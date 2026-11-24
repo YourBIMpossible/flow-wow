@@ -161,6 +161,8 @@ return {
         "Nav/TravelIcon.lua",
         "Nav/Leaving.lua",
         "Nav/FlightPaths.lua",
+        -- S30: that step on the quest arrow and under the route word (after FlightPaths).
+        "Nav/FlightStep.lua",
         "Nav/MapFlights.lua",
         "Nav/TaxiMark.lua",
         -- S30: the flight paths still to learn, said in words (after FlightPaths).
@@ -283,12 +285,16 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
+    -- R4, R5: the route beside the quest log, and its marks and zone card on the world map.
+    "UI/RouteList.lua",
+    "UI/MapRoute.lua",
     -- Old-Flow parity R6: your class buffs with the time left, under the player frame (after the class packs and the kit).
     "UI/BuffStrip.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
     -- S33 (lead section 395 item 4): travel spell and mount advice text (after TripRoute, Arrow, the advisor).
     "Nav/TravelAdvice.lua",
+    "Nav/InvitePrompt.lua",
     -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
     "Spells/TrainAdvice.lua",
     -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).
@@ -317,5 +323,11 @@ return {
     "Nav/ClassTrainerStep.lua",
     -- G4 (section 395): keep or sell on item tooltips (after LootNote, SellList, Reservations).
     "Items/DispositionTip.lua",
+    -- A10: the import word's "now", which copies the earlier add-on's saved data in (after Diag, SettingsShare).
+    "Import/Apply.lua",
+    -- G9 (section 393): the auction watch list (after AuctionLog, which it reads).
+    "Items/AuctionWatch.lua",
+    -- G14 (section 393): the role badge on bag upgrades (after the verdict and the reward mark).
+    "Gear/BagBadge.lua",
     },
 }

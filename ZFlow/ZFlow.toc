@@ -142,6 +142,7 @@ Nav\TravelSpells.lua
 Nav\TravelIcon.lua
 Nav\Leaving.lua
 Nav\FlightPaths.lua
+Nav\FlightStep.lua
 Nav\MapFlights.lua
 Nav\TaxiMark.lua
 Nav\FlightWord.lua
@@ -232,9 +233,12 @@ Nav\PartyRoute.lua
 Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
+UI\RouteList.lua
+UI\MapRoute.lua
 UI\BuffStrip.lua
 Nav\QuestAdvice.lua
 Nav\TravelAdvice.lua
+Nav\InvitePrompt.lua
 Spells\TrainAdvice.lua
 Items\ProfPlan.lua
 Items\ProfSources.lua
@@ -249,3 +253,6 @@ Nav\Activities.lua
 UI\Lite.lua
 Nav\ClassTrainerStep.lua
 Items\DispositionTip.lua
+Import\Apply.lua
+Items\AuctionWatch.lua
+Gear\BagBadge.lua

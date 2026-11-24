@@ -17,7 +17,9 @@
 --   Perf.Start(k, diag) -> { run = fn }
 --
 -- report: { [owner] = { calls, ms, errors } }. A row that is no table is
--- left out; a time that is not a number is "not known", never 0.
+-- left out; a time that is not a number is "not known", never 0. An empty
+-- report is Perf.NONE; no report, or one with no row that can be read, is
+-- Perf.UNREAD.
 local _, ns = ...
 
 local Perf = {}
@@ -26,6 +28,9 @@ ns.Perf = Perf
 Perf.WORD = "perf"
 Perf.DEFAULT_ROWS = 10
 Perf.NONE = "No timing yet: nothing has run."
+-- Lead section 403 (c): the meter gave no report, or none of its rows could
+-- be read. That is not "nothing has run".
+Perf.UNREAD = "Could not read the timings: nothing to show."
 
 local function isCount(n)
     return type(n) == "number" and n == n and n >= 0 and n < math.huge
@@ -91,8 +96,12 @@ end
 -- slash: the command as it is typed (for the hint); the addon's own when
 -- not given.
 function Perf.Lines(report, limit, slash)
+    if type(report) ~= "table" then return { Perf.UNREAD } end
     local rows = Perf.Rows(report)
-    if #rows == 0 then return { Perf.NONE } end
+    if #rows == 0 then
+        if next(report) ~= nil then return { Perf.UNREAD } end
+        return { Perf.NONE }
+    end
     local shown = #rows
     if isCount(limit) and limit >= 1 and limit < #rows then shown = math.floor(limit) end
     local lines = { "Time by module since load, slowest first:" }
@@ -132,7 +141,11 @@ function Perf.Run(k, rest)
     else
         return { Perf.Usage(slash) }
     end
-    local ok, report = pcall(k.meter.report, k.meter)
+    local meter = k.meter
+    local ok, report = false, nil
+    if type(meter) == "table" and type(meter.report) == "function" then
+        ok, report = pcall(meter.report, meter)
+    end
     return Perf.Lines(ok and report or nil, limit, slash)
 end
 

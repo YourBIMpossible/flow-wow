@@ -37,6 +37,8 @@ local KIND = {
              "playAlert",
              -- G14: the mark on the best quest reward choice (Gear/RewardMark.lua).
              "markRewardChoice",
+             -- G14 bag badge: the role letters on bag upgrades (Gear/BagBadge.lua).
+             "markBagSlots",
              -- S21: the Need or Greed value on a loot roll's item (Gear/RollHint.lua).
              "rollValue",
              -- S19 (P-SETS branch 2): the set icon row; a click asks only
@@ -109,6 +111,12 @@ KIND.listen[#KIND.listen + 1] = "chatWheel"
 KIND.show[#KIND.show + 1] = "setChatNameByClass"
 KIND.show[#KIND.show + 1] = "setChatTypeHeader"
 KIND.show[#KIND.show + 1] = "setEditBox"
+-- R4, R5 (lead section 387): the route beside the quest log and on the
+-- world map (UI/RouteList.lua, UI/MapRoute.lua). showMap opens the world
+-- map on a zone, only on the player's own click on a route row.
+KIND.show[#KIND.show + 1] = "routePins"
+KIND.show[#KIND.show + 1] = "mapCard"
+KIND.show[#KIND.show + 1] = "showMap"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {
@@ -129,10 +137,14 @@ local READS = {
     itemUse = false, mapCorners = true, globalText = false, plates = false, canAttack = false,
     grouped = false, plateLabel = false, combo = false, comboColor = false, playerBuffs = true,
     targetDebuffs = true, formName = true, currentSpell = true, taxiNodes = true,
+    -- R4, R5: where the quest log frame stands, and a map's own name and levels.
+    questLogFrame = false, mapInfo = false,
     -- Lead section 197: the pet state the rotation reads.
     pet = true,
     -- Lead section 226: the craft bar reads (P-CRAFT); the capture asks none.
     recipeUsable = false, moving = false,
+    -- G58: the party invite line reads the friends list; the capture asks none.
+    isFriend = false,
     -- G40: the arrow's time to arrive reads the speed; the capture asks none.
     speed = false,
     -- CF-32: a spell's name by id, for your own casts (Rotation/OwnCasts.lua).

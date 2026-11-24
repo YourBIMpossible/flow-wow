@@ -686,6 +686,16 @@ function Arrow.Start(k, diag, own)
                     from = "a class trainer stop"
                 end
             end
+            -- Then a flight path to learn (S30, Nav/FlightStep.lua), only while
+            -- its master is a short detour away. Look only: it points.
+            local flightStep = k.use and k.use("flightStep")
+            if step == nil and flightStep and flightStep.Step then
+                local ok, fs = pcall(flightStep.Step)
+                if ok and type(fs) == "table" and type(fs.place) == "table" then
+                    step = fs
+                    from = "a flight path to learn"
+                end
+            end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
             if step == nil and quests and Arrow.QuestArrowOn(k) then
                 step = quests.step()
@@ -1060,6 +1070,30 @@ function Arrow.Start(k, diag, own)
                        both = current.quest.shown == true and current.prof.shown == true,
                        drawer = drawer ~= nil, lines = shownLines, route = route })
     end
+    -- Lead section 387 R3: the trip list, the stops the arrow walks and the
+    -- Suggest dungeons switch, for the menu's Route level. Read only.
+    local function routeState()
+        local out = {}
+        local trip, walk = k.use and k.use("trip"), k.use and k.use("tripRoute")
+        if type(trip) == "table" and type(trip.List) == "function" then
+            local ok, list = pcall(trip.List)
+            if ok and type(list) == "table" then out.all = list end
+        end
+        if type(walk) == "table" and type(walk.Current) == "function" then
+            local ok, current = pcall(walk.Current)
+            if ok and type(current) == "table" and type(current.stops) == "table" then out.on = current.stops end
+        end
+        if k.settings and k.settings:row(M.SUGGEST_SETTING) then out.suggest = k.settings:get(M.SUGGEST_SETTING) == true end
+        return out
+    end
+    -- The menu's state with the route added (kept apart from menuState so
+    -- each hunk stays small).
+    local baseState = menuState
+    menuState = function()
+        local st = baseState()
+        st.route = routeState()
+        return st
+    end
     -- The menu row with this key was clicked. A row that is not there or
     -- not offered asks for nothing.
     -- The menu is shown one level at a time (UI/ArrowMenu.lua, N57): a row
@@ -1152,6 +1186,11 @@ function Arrow.Start(k, diag, own)
             else
                 say("feedback is not ready.")
             end
+        elseif action.setting then
+            -- Lead section 387 R3: the Suggest dungeons switch; the level stays open.
+            local ok, why = k.settings:set(action.setting, action.on)
+            if not ok then say(tostring(why) .. ".") end
+            if h and type(h.menu) == "function" then showMenu(h, M.ROUTE) end
         elseif action.window then
             -- Lead section 318: a window of its own module (UI/ArrowMenu.lua M.WINDOWS).
             local win = k.use and k.use(action.window) or nil
