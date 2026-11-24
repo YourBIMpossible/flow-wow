@@ -45,6 +45,9 @@ local _, ns = ...
 --   the route the arrow walks (Nav/TripRoute.lua Current) as rows for the
 --   route tracker window (UI/RouteTracker.lua): each stop's distance from
 --   the one before (the first from the player), or why it is not known.
+-- Section 398 item 5: `trip add flightpath` adds the nearest flight master
+--   on this map whose path this character lacks (Nav/FlightPaths.lua Step),
+--   "Learn the flight path: <name>"; none, or its setting off: not added.
 -- Module "trip" provides List, Lines, Go, Tip. Not tested in game.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -56,7 +59,7 @@ P.WORD = "trip"
 P.PATH = "state.trip"
 P.MAX = 20
 P.HELP = "a list of stops to visit: trip add vendor|repair|bank|inn|flight|mail|trainer|giver <quest>"
-    .. "|dungeon <name>|here [label]; trip, trip remove <n>, trip after <n> <m>, trip clear, trip go"
+    .. "|dungeon <name>|flightpath|here [label]; trip, trip remove <n>, trip after <n> <m>, trip clear, trip go"
 
 P.HEADER = "Trip: %d stops"
 P.EMPTY = "Trip: no stops. Add one with trip add."
@@ -77,6 +80,8 @@ P.NO_ENTRANCE = "No entrance known for %s; not added."
 P.NO_KIND = "'%s' is no stop; not added. "
 P.NO_ROUTE = "The route could not take the trip."
 P.HERE_LABEL = "Where you stood"
+P.NO_FLIGHTPATH = "No flight path to learn is on this map; not added."
+P.FLIGHTPATH_LABEL = "Learn the flight path"
 P.HAND_IN = "Hand in: %s"
 P.ENTRANCE = "Dungeon entrance"
 P.TITLE = "Trip"
@@ -542,6 +547,19 @@ function P.Declare(k, diag)
         return { kind = word, label = step.label, place = step.place }
     end
 
+    -- Lead section 398 item 5: the nearest flight master on this map whose
+    -- path this character lacks (Nav/FlightPaths.lua, its module's Step).
+    -- Its setting off reads as nothing to learn.
+    local function flightPath()
+        local ok, fp = pcall(k.use, "flightPaths")
+        if not ok or type(fp) ~= "table" or type(fp.Step) ~= "function" then return nil, P.NO_FLIGHTPATH end
+        local got, step = pcall(fp.Step)
+        local p = got and type(step) == "table" and step.place or nil
+        if type(p) ~= "table" or p.map == nil or not (share(p.x) and share(p.y)) then return nil, P.NO_FLIGHTPATH end
+        return { kind = "flightpath", label = text(step.label) or P.FLIGHTPATH_LABEL,
+                 place = { map = p.map, x = p.x, y = p.y } }
+    end
+
     local function standing(label)
         local h = hereNow()
         if h.map == nil or not (share(h.x) and share(h.y)) then return nil, P.NO_HERE end
@@ -628,6 +646,8 @@ function P.Declare(k, diag)
             stop, why = giver(rest)
         elseif word == "dungeon" then
             stop, why = dungeon(rest)
+        elseif word == "flightpath" then
+            stop, why = flightPath()
         else
             stop, why = seen(word)
             if not stop and not why then return P.NO_KIND:format(tostring(word)) .. P.HELP .. "." end
