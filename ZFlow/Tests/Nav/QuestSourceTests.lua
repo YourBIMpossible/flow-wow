@@ -53,8 +53,8 @@ T["quest source: the nearest point of an unfinished objective on this map"] = fu
     } } }
     local step = Q.Pick({ boars() }, places, HERE)
     t.eq(step, { quest = 101, objective = 1, turnIn = false, label = "Boar Trouble",
-                 detail = "Boars slain: 2/8", place = { cont = 1, map = 1411, x = 0.5, y = 0.3 } },
-        "100 yd north; the done objective right beside the player is not a step")
+                 detail = "Boars slain: 2/8", place = { cont = 1, map = 1411, x = 0.5, y = 0.3 }, area = true },
+        "100 yd north; the done objective right beside the player is not a step; three points: an area")
 end
 
 T["quest source: nearest is in yards when the map size is known"] = function(t)

@@ -170,9 +170,16 @@ local function nearest(spot, here)
     return best, bestD
 end
 
-local function placed(row, i, detail, pt, here)
-    return { quest = row.id, objective = i, turnIn = i == nil, label = row.title, detail = detail,
-             place = { cont = here.cont, map = pt.map, x = pt.x, y = pt.y } }
+-- A1-09: an objective with more than one point (spawns spread over a
+-- place) is an area; Arrow.GuideSource says Arrow.AREA_TEXT within
+-- N.AREA_YARDS of its nearest point. A turn-in is never an area.
+local function placed(row, i, detail, pt, here, spot)
+    local step = { quest = row.id, objective = i, turnIn = i == nil, label = row.title, detail = detail,
+                   place = { cont = here.cont, map = pt.map, x = pt.x, y = pt.y } }
+    if i ~= nil and type(spot) == "table" and type(spot.points) == "table" and #spot.points > 1 then
+        step.area = true
+    end
+    return step
 end
 
 local function worded(row, i, detail, spot, here)
@@ -213,9 +220,10 @@ local function ofQuest(row, places, here, canPoint)
     if canPoint then
         local best, bestD
         for _, o in ipairs(todo) do
-            local pt, d = nearest(spotOf(places, row.id, o.i), here)
+            local spot = spotOf(places, row.id, o.i)
+            local pt, d = nearest(spot, here)
             if pt and (not best or d < bestD) then
-                best, bestD = placed(row, o.i, o.text, pt, here), d
+                best, bestD = placed(row, o.i, o.text, pt, here, spot), d
             end
         end
         if best then return best end
@@ -232,9 +240,10 @@ local function byRules(rows, places, here, canPoint)
         for _, row in ipairs(rows) do
             if usable(row) and row.complete ~= true then
                 for _, o in ipairs(open(row)) do
-                    local pt, d = nearest(spotOf(places, row.id, o.i), here)
+                    local spot = spotOf(places, row.id, o.i)
+                    local pt, d = nearest(spot, here)
                     if pt and (not best or d < bestD) then
-                        best, bestD = placed(row, o.i, o.text, pt, here), d
+                        best, bestD = placed(row, o.i, o.text, pt, here, spot), d
                     end
                 end
             end
