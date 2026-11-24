@@ -112,8 +112,9 @@ tests["advisor bank box: the line at the bank says what to do with the items, in
     t.eq(text, "Put in your bank for later: Linen Cloth x12, Copper Ore x5")
     local w = c.kitWindows().Advisor
     t.ok(type(w) == "table" and w.shown == true, "the advice window is shown at the bank")
-    local head, said = w and w.parts and w.parts[1], false
-    t.eq(head and head.text, TITLE, "under the add-on's own title")
+    local said = false
+    -- Lead section 408: the title is in the title bar, not a part.
+    t.eq(w and w.title, TITLE, "under the add-on's own title")
     for _, p in ipairs((w and w.parts) or {}) do
         if p.text == text then said = true end
     end
