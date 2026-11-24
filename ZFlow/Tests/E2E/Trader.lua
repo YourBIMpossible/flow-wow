@@ -81,7 +81,7 @@ tests["trader e2e: a listing under the vendor price is a deal in chat, tooltip a
     t.eq(word(c), { HEAD0, RULE, FOOT }, "no searches yet: no deals")
     clear(c)
     c.auctionRows(FANG, { { unit = 1, qty = 20 }, { unit = 9, qty = 3 } })
-    t.eq(said(c), { "Deal: 20 x Broken Fang for 20c: a vendor pays 80c  |cff40ff40+60c|r" })
+    t.eq(said(c), { "Deal: 20 x |cff9d9d9dBroken Fang|r for 20c: a vendor pays 80c  |cff40ff40+60c|r" })
     c.setClock(NOW + 300)
     local l = tip(c, FANG)
     t.eq(l and l.text, "Deal: listed at 1c each, under a vendor's 4c (seen 5 min ago)")
