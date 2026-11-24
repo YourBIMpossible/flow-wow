@@ -185,6 +185,28 @@ local function turnInSpot(db, zones, quest, map, areaMap)
     return closed(spot, true)
 end
 
+-- F-028: Questie's quests before this one, asked of the client's done read
+-- (client.questDone). preQuestGroup: every one must be done; preQuestSingle:
+-- one is enough. true only when the reads say so; a read that gives
+-- nothing is not known, and not known is never "missing".
+local function prereqMissing(client, quest)
+    local group = quest.preQuestGroup
+    if type(group) == "table" then
+        for _, id in ipairs(group) do
+            if ask(client, "questDone", id) == false then return true end
+        end
+    end
+    local single = quest.preQuestSingle
+    if type(single) == "table" and #single > 0 then
+        local allNo = true
+        for _, id in ipairs(single) do
+            if ask(client, "questDone", id) ~= false then allNo = false end
+        end
+        if allNo then return true end
+    end
+    return nil
+end
+
 function N.QuestiePlaces(client, rows, map)
     if type(rows) ~= "table" then return nil end
     local db = ask(client, "questieModule", "QuestieDB")
@@ -205,6 +227,10 @@ function N.QuestiePlaces(client, rows, map)
                 end
             end
             e.turnIn = turnInSpot(db, zones, quest, map, areaMap)
+            -- F-028: how many objectives Questie says the quest has, and
+            -- whether a quest before it is read as not done.
+            if type(quest.ObjectiveData) == "table" then e.objectiveCount = #quest.ObjectiveData end
+            e.prereqMissing = prereqMissing(client, quest)
             return e
         end)
         if ok and entry then places[row.id] = entry end
