@@ -51,7 +51,7 @@ end
 
 tests["price e2e: the item's own sell price, labelled"] = function(t)
     local c = boot()
-    t.eq(say(c, "price " .. LINEN), { T("Linen Cloth: a vendor pays 13c each (the item's own sell price)") })
+    t.eq(say(c, "price " .. LINEN), { T("|cffffffffLinen Cloth|r: a vendor pays 13c each (the item's own sell price)") })
     noneActs(t, c)
 end
 
@@ -61,7 +61,7 @@ tests["price e2e: a merchant seen selling it adds its price, by the stack"] = fu
     c.setMerchantOpen(true)
     c.setMerchantOpen(false)
     t.eq(say(c, "price " .. THREAD), {
-        T("Coarse Thread: a vendor pays 2c each (the item's own sell price)"),
+        T("|cffffffffCoarse Thread|r: a vendor pays 2c each (the item's own sell price)"),
         T("A merchant sells it for 10c each, 5 at a time (merchant window)"),
     })
     noneActs(t, c)
@@ -71,7 +71,7 @@ tests["price e2e: the player's own auction search adds the auction line"] = func
     local c = boot()
     c.auctionResult(LINEN, { unitPrice = 5000 })
     t.eq(say(c, "price " .. LINEN), {
-        T("Linen Cloth: a vendor pays 13c each (the item's own sell price)"),
+        T("|cffffffffLinen Cloth|r: a vendor pays 13c each (the item's own sell price)"),
         T("Auction: 50s each, 0 min ago"),
     })
 end
@@ -79,7 +79,7 @@ end
 tests["price e2e: an item link is read, lower-cased by the slash command"] = function(t)
     local c = boot()
     t.eq(say(c, "price |cffffffff|Hitem:2589:0:0:0:0:0:0:0|h[Linen Cloth]|h|r"),
-        { T("Linen Cloth: a vendor pays 13c each (the item's own sell price)") })
+        { T("|cffffffffLinen Cloth|r: a vendor pays 13c each (the item's own sell price)") })
 end
 
 tests["price e2e: unknown data stays unknown"] = function(t)
