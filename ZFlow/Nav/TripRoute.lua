@@ -756,6 +756,21 @@ function T.Declare(k, diag)
         for _, line in ipairs(lines) do tell(line) end
     end
 
+    -- A1-19 (lead sections 488, 497 and 541): the "Quicker by air" line
+    -- for the flight the arrow's step is reached by, while a route is
+    -- walked; nil with no route or no such flight. The mapFlights module
+    -- works it out (Nav/MapFlights.lua, Nav/AirLine.lua) and says it only
+    -- when the leg's time was learned: a guessed time gives nil there, so
+    -- an unknown stays unknown. Words only.
+    function api.AirLine()
+        if not route then return nil end
+        local flights = k.use and k.use("mapFlights")
+        if type(flights) ~= "table" or type(flights.AirLine) ~= "function" then return nil end
+        local ok, line = pcall(flights.AirLine)
+        if not ok or type(line) ~= "string" or line == "" then return nil end
+        return line
+    end
+
     function api.Word(rest)
         local word = tostring(rest or ""):lower():match("^%s*(%S*)")
         if word == "off" or word == "clear" then
@@ -786,6 +801,9 @@ function T.Declare(k, diag)
                 if okLine and type(line) == "string" then tell(line) end
             end
         end
+        -- A1-19: a learned flight that is the quicker way, said under the list.
+        local air = api.AirLine()
+        if air then tell(air) end
     end
 
     if diag and type(diag.commands) == "table" then
@@ -807,7 +825,7 @@ function T.Declare(k, diag)
         name = T.NAME,
         needs = { "client", "store", "settings" },
         provides = { Step = api.Step, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
-                     Lines = api.Lines, Current = api.Current, View = api.View },
+                     Lines = api.Lines, Current = api.Current, View = api.View, AirLine = api.AirLine },
         start = function(c) ctx = c end,
         stop = function() route, at = nil, 1 end,
     })

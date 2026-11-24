@@ -3,8 +3,9 @@ local _, ns = ...
 -- 488). When the arrow's step is reached by a flight, one line names it.
 -- The flight is Nav/TaxiMark.lua's StepFlight (read, not changed); the
 -- mapFlights module (Nav/MapFlights.lua) gives the line as AirLine().
--- Not here yet: a caller. The arrow's route lines are a later hook; until
--- then the player sees nothing new.
+-- The caller is the route (lead section 541): Nav/TripRoute.lua says the
+-- line under the route word's list, and gives it as its own AirLine() for
+-- other faces. The arrow does not show it yet.
 -- Only when the leg's time was learned (lead section 497: flight.learned,
 -- Nav/Flights.lua Last(); the times are A1-32's): a guessed time says
 -- nothing, so an unknown stays unknown.
