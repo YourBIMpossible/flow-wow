@@ -54,9 +54,12 @@ tests["repair lines: the warning is said once, not again while the gear stays lo
     c.setPosition(MAP, 0.15, 0.5)
     c.fire("UPDATE_INVENTORY_DURABILITY")
     c.advance(1, 4)
+    -- The warning's own line only: the login list of ways to improve
+    -- (UI/Alerts.lua, alerts.list) may name the same prompt as a numbered row.
+    local own = ns.id.title .. ": An item you wear is at"
     local n = 0
     for _, line in ipairs(c.printed or {}) do
-        if tostring(line):find("An item you wear is at", 1, true) then n = n + 1 end
+        if tostring(line):sub(1, #own) == own then n = n + 1 end
     end
     t.eq(n, 1)
 end
