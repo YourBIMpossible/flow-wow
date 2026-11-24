@@ -1,39 +1,50 @@
 local _, ns = ...
--- The colour contract (pathing UI slice 1, lead sections 519 and 525; Muse's
--- MUSE-TO-CLAUDE-PATHING-UI.md 4.2 and 6.4). One function gives the colour
--- of a step at a distance. The arrow, the trail, the minimap marker, the
--- tooltip and the pins are all to ask it, so what you see on one is what
--- you see on the others. Pure Lua 5.1: no client calls.
+-- The colour contract (pathing UI slice 1, lead sections 519, 525 and 529).
+-- Built to Muse's spec, from-muse/MUSE-TO-CLAUDE-SLICE-1-COLOURS.md (agreed
+-- in section 529): one function gives the colour of a step at a distance.
+-- The arrow, the trail, the minimap marker, the tooltip and the pins are
+-- all to ask it, so what you see on one is what you see on the others.
+-- Pure Lua 5.1: no client calls, no saved data.
 --
---   r, g, b, family = RC.Of(step, yards, palette)
---     step     a table, or nil for a plain step. Only two fields are read:
---                state   "away" (another zone or continent), "here" (inside
---                        its area), "corpse"; anything else: on the way
---                family  "waypoint" (the spot the player set), "profession"
---                        (a profession step); anything else: a route step
+--   r, g, b, family, hex = RC.Of(step, yards, palette)
+--     step     a table, or nil for a plain step. Two things are read:
+--                state   "away" (the step is in another zone), "here" (you
+--                        are in its area), "corpse"; anything else: on the
+--                        way
+--                family  "waypoint" (the spot the player set) or
+--                        "profession"; a kind of one of those two words
+--                        counts the same. Anything else: a route step.
 --              How a leg is travelled (walk, flight, portal) and what kind
 --              of step it is are never read: they are shown by the line's
 --              style, the label and the icon, never by a second colour.
---     yards    how far it is; nil or not a number: not known, drawn as far
---     palette  the saved palette word (N.ARROW_PALETTES): "standard" or
---              "colourBlind"; anything else is the standard one
+--     yards    straight-line yards to the step; nil or not a number: not
+--              known, drawn as far
+--     palette  "standard" or the colour-blind one ("colourBlind", the saved
+--              word of N.ARROW_PALETTES; "colorblind" in any case too);
+--              anything else is the standard one
 --     family   what the colour stands for: "distance", "waypoint",
 --              "profession" or "corpse"
+--     hex      the colour as six hex digits, "FFD91A"
 --
--- What the colours mean:
+-- What the colours mean (Muse's rules 1 to 3):
+--   waypoint    green, always, at any distance and in any zone: RC.WAYPOINT
+--               (1EFF00; colour-blind 009E73).
+--   profession  purple always means professions. One ramp, dim far to
+--               bright near, over the same distances as the route's
+--               (N.COLOR_FAR to N.COLOR_NEAR): RC.PROFESSION. In another
+--               zone it is the dim far purple (lead section 529); in its
+--               area the bright near one.
 --   distance    grey in another zone, then orange far, through yellow, to
---               green near, and blue inside the area. The sums are
---               N.ArrowColor's (Nav/ArrowLayout.lua), with its palettes, so
---               the arrow and this file cannot disagree.
---   profession  the same far-to-near steps in the echo's purples: dim far,
---               bright near, never one flat colour. The same in both
---               palettes (the echo's purple is not a palette choice yet).
---   waypoint    one green, RC.WAYPOINT, at any distance and in any zone.
+--               green near, and blue in the area. The sums and both
+--               palettes are N.ArrowColor's (Nav/ArrowLayout.lua), so the
+--               arrow and this file cannot disagree; Muse's table has the
+--               same ten values.
 --   corpse      the arrow's red, whatever the distance.
 --
--- The echo's palette is read from Nav/ArrowLayout.lua (N.ECHO_PALETTE), not
--- moved here. That table comes with the echo branch; until it is merged
--- RC.ECHO stands in with the same values (lead section 476).
+-- Two colours that do not change with distance, for the faces that draw
+-- them (rules 4 and 5): RC.ProfessionDot(palette), the bright purple of a
+-- profession step's destination dot, and RC.DESTINATION_X, the gold of the
+-- X at the end of the trail.
 --
 -- Wiring the arrow, the trail and the pins to this function is the later
 -- slices' (3, 4, 6, 7), each in its own files. Not seen in game.
@@ -48,38 +59,79 @@ local function rgb(hex)
              tonumber(hex:sub(5, 6), 16) / 255 }
 end
 
--- "Your waypoint": one value everywhere (Muse 2.2: it was green on the line
--- and the arrow and sky blue as a kind).
-RC.WAYPOINT = rgb("1EFF00")
--- The echo's purples, as Nav/ArrowLayout.lua has them on the echo branch.
-RC.ECHO = { away = rgb("8A84A0"), far = rgb("5A3391"), mid = rgb("9B5DE5"),
-            near = rgb("D9A8FF"), here = rgb("F0D9FF") }
+-- By palette key (the keys of N.ARROW_PALETTE).
+RC.WAYPOINT = { standard = rgb("1EFF00"), colourBlind = rgb("009E73") }
+RC.PROFESSION = {
+    standard = { far = rgb("7B4BA6"), near = rgb("A335EE") },
+    colourBlind = { far = rgb("8E6BBF"), near = rgb("CC79A7") },
+}
+RC.DESTINATION_X = rgb("E69F00")
 RC.STATES = { away = true, here = true }
+RC.FAMILIES = { waypoint = true, profession = true }
 
--- The echo's palette: the arrow layout's own when it is loaded.
-function RC.EchoPalette()
-    if type(N.ECHO_PALETTE) == "table" then return N.ECHO_PALETTE end
-    return RC.ECHO
+local function finite(v)
+    return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+end
+
+-- The palette key of a palette word.
+function RC.PaletteKey(palette)
+    if type(palette) == "string" then
+        local word = palette:lower()
+        if word == "colourblind" or word == "colorblind" then return "colourBlind" end
+    end
+    return "standard"
+end
+
+function RC.Hex(r, g, b)
+    local function byte(v)
+        if not finite(v) then return 0 end
+        return math.max(0, math.min(255, math.floor(v * 255 + 0.5)))
+    end
+    return string.format("%02X%02X%02X", byte(r), byte(g), byte(b))
+end
+
+-- The bright purple of a profession step's destination dot: the same at
+-- any distance (Muse's rule 4: the arrow ramps, the dot does not).
+function RC.ProfessionDot(palette)
+    local c = RC.PROFESSION[RC.PaletteKey(palette)].near
+    return c[1], c[2], c[3], RC.Hex(c[1], c[2], c[3])
+end
+
+local function answer(r, g, b, family)
+    return r, g, b, family, RC.Hex(r, g, b)
 end
 
 function RC.Of(step, yards, palette)
     if type(step) ~= "table" then step = nil end
+    local key = RC.PaletteKey(palette)
     local state, family = "zone", nil
     if step then
-        family = step.family
+        if RC.FAMILIES[step.family] then
+            family = step.family
+        elseif RC.FAMILIES[step.kind] then
+            family = step.kind
+        end
         if step.state == "corpse" then
             local r, g, b = N.ArrowColor("corpse", yards)
-            return r, g, b, "corpse"
+            return answer(r, g, b, "corpse")
         end
         if RC.STATES[step.state] then state = step.state end
     end
     if family == "waypoint" then
-        return RC.WAYPOINT[1], RC.WAYPOINT[2], RC.WAYPOINT[3], "waypoint"
+        local c = RC.WAYPOINT[key]
+        return answer(c[1], c[2], c[3], "waypoint")
     end
     if family == "profession" then
-        local r, g, b = N.ArrowColor(state, yards, RC.EchoPalette())
-        return r, g, b, "profession"
+        local P = RC.PROFESSION[key]
+        if state == "away" then return answer(P.far[1], P.far[2], P.far[3], "profession") end
+        if state == "here" then return answer(P.near[1], P.near[2], P.near[3], "profession") end
+        local d = yards
+        if not finite(d) then d = N.COLOR_FAR end
+        local near = 1 - math.min(1, math.max(0, (d - N.COLOR_NEAR) / (N.COLOR_FAR - N.COLOR_NEAR)))
+        if near >= 1 then return answer(P.near[1], P.near[2], P.near[3], "profession") end
+        return answer(P.far[1] + (P.near[1] - P.far[1]) * near, P.far[2] + (P.near[2] - P.far[2]) * near,
+            P.far[3] + (P.near[3] - P.far[3]) * near, "profession")
     end
-    local r, g, b = N.ArrowColor(state, yards, N.ArrowPaletteOf(palette))
-    return r, g, b, "distance"
+    local r, g, b = N.ArrowColor(state, yards, N.ArrowPaletteOf(key))
+    return answer(r, g, b, "distance")
 end
