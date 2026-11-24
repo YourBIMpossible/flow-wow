@@ -25,6 +25,17 @@
 --                      longer than V.LONG (a look inside, a night away) is
 --                      not kept: the line then says the time is not known.
 --
+--   wings              (B-57, section 496 item 1) in a dungeon with wings
+--                      (Nav/DungeonRead.lua R.WINGS) each wing is a run of
+--                      its own. Which wing you are in is told from the last
+--                      boss you killed this visit. From then on the summary
+--                      is that wing's: its name ("Scarlet Monastery
+--                      (Library)"), its quests (and the ones whose wing is
+--                      not known), "1 of 2 in this wing" for its bosses, and
+--                      its own run time. Before the first kill the summary
+--                      is the whole dungeon's and one line says the wing is
+--                      not known yet.
+--
 -- Chat words only. LOOK ONLY: nothing is accepted, shared, targeted or
 -- clicked. No quest or dungeon table ships here: the quests are Questie's,
 -- read through Nav/DungeonRead.lua (its index is read in slices while you
@@ -35,7 +46,9 @@
 --       have: { { name, done } } the dungeon's quests in your log;
 --       missing: { { name, from } } the ones to pick up before you go.
 --   V.Summary(name, have, missing, kills, reported, max) -> lines
---   V.KillLine(kills, reported) -> the line of bosses killed
+--   V.KillLine(kills, reported, total) -> the line of bosses killed
+--       (total: how many bosses the wing has, when the wing is known)
+--   V.Key(run) -> the name a run's time is kept under
 --   V.Step(run, name, now) -> run, changed, finished, seconds
 --       the saved run after an event: name is the dungeon you are in (nil:
 --       outside), now the clock (nil: not known). finished: the name of a
@@ -45,7 +58,8 @@
 --
 -- Client reads: instance, instanceName, questLog, and DungeonRead's own.
 -- Client reads also: clock.
--- Saved data: char V.RUN = { name, said, t, left }: the run you are in
+-- Saved data: char V.RUN = { name, as, said, t, left }: the run you are in
+-- (as: the wing's run name, once the wing is known)
 -- (t: the clock at entering, left: at leaving), so a reload inside it says
 -- nothing twice and keeps its start. char V.TIMES = { [dungeon name] =
 -- seconds }: the last run of each.
@@ -78,6 +92,8 @@ V.NOT_IN_LOG = "Not in your log (%d): %s"
 V.MORE = "; and %d more"
 V.MAX = 6
 V.KILLS = "Bosses killed this visit (%d): %s"
+V.KILLS_WING = "Bosses killed this visit (%d of %d in this wing): %s"
+V.WING_UNKNOWN = "Which wing this is is not known yet: it is told from the first boss you kill."
 V.NO_KILL = "No boss killed yet this visit."
 V.NO_REPORT = "The game does not report boss kills here."
 V.A_BOSS = "a boss"
@@ -133,7 +149,7 @@ function V.Quests(pane, quests, log)
     return have, missing
 end
 
-function V.KillLine(kills, reported)
+function V.KillLine(kills, reported, total)
     if reported == false then return V.NO_REPORT end
     local names = {}
     for _, e in ipairs(type(kills) == "table" and kills or {}) do
@@ -144,6 +160,9 @@ function V.KillLine(kills, reported)
         end
     end
     if #names == 0 then return V.NO_KILL end
+    if type(total) == "number" and total > 0 then
+        return V.KILLS_WING:format(#names, total, table.concat(names, ", "))
+    end
     return V.KILLS:format(#names, table.concat(names, ", "))
 end
 
@@ -188,6 +207,12 @@ local function clockOk(v)
     return type(v) == "number" and v == v and v > 0 and v ~= math.huge
 end
 
+function V.Key(run)
+    if type(run) ~= "table" then return nil end
+    if type(run.as) == "string" and run.as ~= "" then return run.as end
+    return run.name
+end
+
 function V.RunTime(run)
     if type(run) ~= "table" or not clockOk(run.t) or not clockOk(run.left) or run.left < run.t then return nil end
     return run.left - run.t
@@ -230,7 +255,7 @@ function V.Step(run, name, now)
             end
         end
         local fresh = { name = name, t = t }
-        if has then return fresh, true, run.name, V.RunTime(run) end
+        if has then return fresh, true, V.Key(run), V.RunTime(run) end
         return fresh, true
     end
     if not has then return run, false end
@@ -239,7 +264,7 @@ function V.Step(run, name, now)
         return run, true
     end
     if not clockOk(run.left) or not t or t < run.left or t - run.left >= V.GRACE then
-        return {}, true, run.name, V.RunTime(run)
+        return {}, true, V.Key(run), V.RunTime(run)
     end
     return run, false
 end
@@ -322,26 +347,70 @@ function V.Declare(k, diag)
         end
     end
 
+    -- The bosses killed this visit, and whether the game reports kills.
+    local function killsNow()
+        local kills
+        if type(k.use) == "function" then kills = k.use(ns.BossKills.NAME) end
+        if type(kills) ~= "table" then return {}, nil end
+        local reported
+        if type(kills.Reported) == "function" then reported = kills.Reported() end
+        local list = {}
+        if type(kills.Kills) == "function" then list = kills.Kills() end
+        if type(list) ~= "table" then list = {} end
+        return list, reported
+    end
+
+    -- B-57: the wing you are in, told from the last boss killed this visit
+    -- that Questie names as a boss of one of dungeon d's wings. nil: the
+    -- dungeon has no wings, or no such boss is killed yet.
+    local function wingHere(d)
+        if type(d) ~= "table" or type(st) ~= "table" or st.state ~= "ready" then return nil end
+        local list = killsNow()
+        for i = #list, 1, -1 do
+            local e = list[i]
+            if type(e) == "table" and type(e.name) == "string" then
+                local ok, wing = pcall(R.WingOfBoss, st, client(), d.key, e.name)
+                if ok and wing then return wing end
+            end
+        end
+        return nil
+    end
+
+    -- The run name of the wing you are in, in the dungeon of that name; nil
+    -- when the wing is not known.
+    local function wingTitle(name)
+        if type(st) ~= "table" or st.state ~= "ready" then return nil end
+        local d = R.DungeonNamed(st, name)
+        local wing = wingHere(d)
+        if not wing then return nil end
+        return R.WingTitle(st, d.key, wing)
+    end
+
     -- The line of the last run of the dungeon of that name (the one you
-    -- are in when no name is given); nil outside a dungeon.
+    -- are in when no name is given), or of your wing of it once that is
+    -- known; nil outside a dungeon.
     function api.LastLine(name)
         if name == nil then
             if not inside() then return nil end
             name = ask(client(), "instanceName")
         end
         if type(name) ~= "string" or name == "" then return nil end
-        return V.LastLine(lastOf(name))
+        return V.LastLine(lastOf(wingTitle(name) or name))
     end
 
-    local function killLine()
-        local kills
-        if type(k.use) == "function" then kills = k.use(ns.BossKills.NAME) end
-        if type(kills) ~= "table" then return V.KillLine({}, nil) end
-        local reported
-        if type(kills.Reported) == "function" then reported = kills.Reported() end
-        local list = {}
-        if type(kills.Kills) == "function" then list = kills.Kills() end
-        return V.KillLine(list, reported)
+    -- The kills line; in a known wing only that wing's bosses count, out of
+    -- how many it has.
+    local function killLine(info)
+        local list, reported = killsNow()
+        if type(info) ~= "table" or not info.wing then return V.KillLine(list, reported) end
+        local mine = {}
+        for _, e in ipairs(list) do
+            if type(e) == "table" and type(e.name) == "string"
+                and R.WingOfBoss(st, client(), info.key, e.name) == info.wing then
+                mine[#mine + 1] = e
+            end
+        end
+        return V.KillLine(mine, reported, info.bosses)
     end
 
     -- The quest lines for the dungeon of that name, or the one line that
@@ -357,33 +426,43 @@ function V.Declare(k, diag)
         if st.state == "building" then return { name .. ": " .. R.WHY_BUILDING[1] }, "wait" end
         local d = R.DungeonNamed(st, name)
         if not d then return { name .. ": " .. V.NOT_KNOWN }, "none" end
-        local pane = R.Pane(st, client(), d.key)
-        if type(pane) ~= "table" then return { name .. ": " .. V.NOT_KNOWN }, "wait" end
+        -- B-57: in a known wing the lines are that wing's.
+        local info = { key = d.key, wings = R.Wings(st, d.key), wing = wingHere(d) }
+        if info.wing then
+            name = R.WingTitle(st, d.key, info.wing) or name
+            for _, w in ipairs(info.wings or {}) do
+                if w.name == info.wing then info.bosses = w.bosses end
+            end
+        end
+        local pane = R.Pane(st, client(), d.key, info.wing)
+        if type(pane) ~= "table" then return { name .. ": " .. V.NOT_KNOWN }, "wait", info end
         local log
         if ns.Nav and type(ns.Nav.QuestLogRows) == "function" then log = ns.Nav.QuestLogRows(client()) end
         local have, missing = V.Quests(pane, st.quests, log)
         if #have == 0 and #missing == 0 then
             local W = ns.DungeonStates.WHY
             if type(pane.why) == "table" and pane.why ~= W.noQuests and pane.why ~= W.unplaced then
-                return { name .. ": " .. tostring(pane.why[1]) }, "wait"
+                return { name .. ": " .. tostring(pane.why[1]) }, "wait", info
             end
-            if type(pane.why) == "table" then return { name .. ": " .. tostring(pane.why[1]) }, "none" end
-            return V.QuestLines(name, have, missing), "none"
+            if type(pane.why) == "table" then return { name .. ": " .. tostring(pane.why[1]) }, "none", info end
+            return V.QuestLines(name, have, missing), "none", info
         end
-        return V.QuestLines(name, have, missing), "quests"
+        return V.QuestLines(name, have, missing), "quests", info
     end
 
     -- The summary's lines; outside: nil.
     function api.Lines()
         if not inside() then return nil end
         local name = ask(client(), "instanceName")
-        local out
+        local out, info
         if type(name) ~= "string" or name == "" then
             out = { V.NO_NAME }
         else
-            out = questLines(name)
+            local _
+            out, _, info = questLines(name)
         end
-        out[#out + 1] = killLine()
+        if type(info) == "table" and info.wings and not info.wing then out[#out + 1] = V.WING_UNKNOWN end
+        out[#out + 1] = killLine(info)
         local last = api.LastLine(name)
         if last then out[#out + 1] = last end
         return out
@@ -432,6 +511,14 @@ function V.Declare(k, diag)
         end
         local r, changed, finished, seconds = V.Step(run(), name, ask(client(), "clock"))
         if finished then record(finished, seconds) end
+        -- B-57: once the wing is known the run is that wing's.
+        if name ~= nil and type(r) == "table" and r.name == name then
+            local as = wingTitle(name)
+            if as and r.as ~= as then
+                r.as = as
+                changed = true
+            end
+        end
         if changed then keep(r) end
         pending = name ~= nil and type(r) == "table" and r.said ~= true
         sayEntered()
@@ -468,6 +555,8 @@ function V.Declare(k, diag)
             c.bus:on(V.NAME, "QUEST_LOG_UPDATE", function()
                 if pending then sayEntered() end
             end)
+            -- B-57: a boss killed may tell which wing this run is.
+            c.bus:on(V.NAME, ns.BossKills.EVENT, function() entered() end)
             entered()
         end,
         stop = function()
