@@ -349,6 +349,16 @@ function FB.Declare(k)
             if face and type(face.dim) == "function" then pcall(face.dim, mode) end
         end
 
+        -- Lead section 415: the empty buff button takes no mouse; holding
+        -- a buff it does. Changed only while the lock reads a plain false;
+        -- in a fight it stays as it was (what it holds cannot change then
+        -- either). The Flow button always takes the mouse (hover line).
+        local function mouse(on)
+            if which ~= "self" or not face or type(face.mouse) ~= "function" then return end
+            if lockdown() ~= false then return end
+            pcall(face.mouse, on)
+        end
+
         -- The icon of what it holds; the plain face with nothing held, or
         -- no icon read.
         -- Lead section 409 item 1: the self button holding nothing shows
@@ -359,12 +369,19 @@ function FB.Declare(k)
             local tex = nil
             if e ~= nil then tex = texture(client, e) end
             local mode = nil
-            if which == "self" and e == nil then
+            -- Lead section 415: the Flow button too: the last spell dimmed,
+            -- or, never having held one, its plain word "Flow"; a held
+            -- spell with no icon read shows the word. Never a "?".
+            local none = "gone"
+            if which == "flow" then none = "word" end
+            if e == nil then
                 tex = u.lastTex
                 mode = "picture"
-                if tex == nil then mode = "gone" end
+                if tex == nil then mode = none end
             end
+            mouse(e ~= nil)
             if tex == nil or type(row.icon) ~= "function" then
+                if mode == nil then mode = "word" end
                 plain(true)
                 dim(mode)
                 return
@@ -373,13 +390,13 @@ function FB.Declare(k)
                 local ok, given = pcall(row.icon, 1, tex)
                 if not ok or given == false then
                     plain(true)
-                    if mode ~= nil then mode = "gone" end
+                    if mode ~= nil then mode = none else mode = "word" end
                     dim(mode)
                     return
                 end
                 iconSig = tostring(tex)
             end
-            if which == "self" and e ~= nil then u.lastTex = tex end
+            if e ~= nil then u.lastTex = tex end
             plain(false)
             dim(mode)
         end
@@ -434,7 +451,7 @@ function FB.Declare(k)
                 if okFace and type(got) == "table" and type(got.empty) == "function" then face = got end
             end
             plain(true)
-            if which == "self" then dim("gone") end
+            if which == "self" then dim("gone"); mouse(false) else dim("word") end
             local size = sizeOf()
             -- Lead section 409 item 3: the grip's yellow bar is drawn only
             -- while the mouse is over it or the button (quiet).

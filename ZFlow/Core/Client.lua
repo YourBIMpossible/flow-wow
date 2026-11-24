@@ -8376,6 +8376,14 @@ function ns.make.client(env)
                 if okB and type(back) == "table" then method(back, "SetAlpha", 1) end
                 if mark ~= nil then method(mark, "Hide") end
                 if word ~= nil then method(word, "Show") end
+            elseif mode == "word" then
+                -- Lead section 415: the plain face with no "?": the
+                -- panel and the word under the button only.
+                method(panel, "Show")
+                method(panel, "SetAlpha", 1)
+                if okB and type(back) == "table" then method(back, "SetAlpha", 1) end
+                if mark ~= nil then method(mark, "Hide") end
+                if word ~= nil then method(word, "Show") end
             elseif mode == "gone" then
                 method(panel, "SetAlpha", 0)
                 if okB and type(back) == "table" then method(back, "SetAlpha", 0) end
@@ -8386,6 +8394,16 @@ function ns.make.client(env)
                 if okB and type(back) == "table" then method(back, "SetAlpha", 1) end
                 if word ~= nil then method(word, "Show") end
             end
+            return true
+        end
+        -- Lead section 415: h.mouse(on), whether the button takes the
+        -- mouse. Changed only while InCombatLockdown() reads a plain false;
+        -- else false and "lockdown", nothing changed. First guess:
+        -- EnableMouse on the button.
+        function h.mouse(on)
+            local okLock, locked = call(env.InCombatLockdown)
+            if not okLock or locked ~= false then return false, "lockdown" end
+            if not method(b, "EnableMouse", on == true) then return false, "refused" end
             return true
         end
         return h

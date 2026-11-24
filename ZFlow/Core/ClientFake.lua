@@ -3130,6 +3130,29 @@ function ns.make.fakeClient(opts)
         end
         return h
     end
+    -- Lead section 415: dim also takes "word" (the plain face, no "?"),
+    -- and h.mouse(on) keeps face.mouse; under the lock it changes nothing,
+    -- answers false, "lockdown" and counts face.mouseInLock.
+    local dimmedButtonFace = c.buttonFace
+    function c.buttonFace(spec)
+        local h = dimmedButtonFace(spec)
+        if h == nil then return nil end
+        local face = c.buttonFaces[spec.button]
+        local dimOld = h.dim
+        function h.dim(mode)
+            if mode == "word" then face.dimmed = "word"; return true end
+            return dimOld(mode)
+        end
+        function h.mouse(on)
+            if c.combatLockdown() ~= false then
+                face.mouseInLock = (face.mouseInLock or 0) + 1
+                return false, "lockdown"
+            end
+            face.mouse = on == true
+            return true
+        end
+        return h
+    end
     function c.ctrlDrag(spec)
         if type(spec) ~= "table" or not rowButton(spec.target) or not rowButton(spec.button) then return nil end
         if c.combatLockdown() ~= false then return nil end
