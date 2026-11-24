@@ -36,11 +36,12 @@ local function questie(state)
 end
 
 -- opts: outside, name (false: the client gives none), questie (false: none),
--- state (for questie), log, refused (event names the client does not take)
+-- state (for questie), log, refused (event names the client does not take),
+-- char (saved ahead)
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, opts.char or {})
     c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction("Alliance"); c.setLevel(18)
     c.setQuestDone(101, false); c.setQuestDone(102, false)
     local log = opts.log
@@ -183,6 +184,92 @@ tests["dungeon word: a dungeon list that raises is said in words, then read agai
     t.ok(has(typed(c, "dungeon"), ns.id.title .. ": The Deadmines: 1 of its quests in your log: Red Silk (not done)"),
         "the quests once the list answers")
     t.eq(addon.problems:count(), base, "no new problem")
+end
+
+-- B-47 (lead section 490 item 3): the quest lines said once on entering.
+local IN_LOG = ": The Deadmines: 1 of its quests in your log: Red Silk (not done)"
+local PICK_UP = "  Not in your log (1): Collecting Memories (Gryan)"
+
+local function times(c, text)
+    local n = 0
+    for _, line in ipairs(c.printed) do
+        if tostring(line) == text then n = n + 1 end
+    end
+    return n
+end
+
+local function walkIn(c, name)
+    c.setInstance({ inside = true, kind = "party" })
+    c.setInstanceName(name or "The Deadmines")
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(3, 30)
+end
+
+local function walkOut(c)
+    c.setInstance({ inside = false, kind = "none" })
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(1, 5)
+end
+
+-- Red on 1066f1cc: nothing is said on entering (times(...) is 0).
+tests["dungeon entering: walking in says your quests for it, once"] = function(t)
+    local c, addon, base = boot({ outside = true })
+    t.eq(times(c, ns.id.title .. IN_LOG), 0, "nothing outside")
+    walkIn(c)
+    t.eq(times(c, ns.id.title .. IN_LOG), 1, "the quests in your log")
+    t.eq(times(c, PICK_UP), 1, "the ones to pick up")
+    c.fire("ZONE_CHANGED_NEW_AREA"); c.fire("QUEST_LOG_UPDATE")
+    c.advance(1, 5)
+    t.eq(times(c, ns.id.title .. IN_LOG), 1, "not said again inside")
+    t.eq(addon.problems:count(), base, "no new problem")
+end
+
+-- Red on 1066f1cc: nothing is said.
+tests["dungeon entering: not said again on a reload in the same run; said again after leaving"] = function(t)
+    local c = boot()
+    t.eq(times(c, ns.id.title .. IN_LOG), 1, "said at login inside")
+    local c2 = boot({ char = c.saved(ns.id.charDB) })
+    t.eq(times(c2, ns.id.title .. IN_LOG), 0, "the reload says nothing")
+    t.eq(times(c2, PICK_UP), 0)
+    walkOut(c2)
+    walkIn(c2)
+    t.eq(times(c2, ns.id.title .. IN_LOG), 1, "a new run says it again")
+end
+
+tests["dungeon entering: nothing with the tracker setting off, or for a dungeon with no quest for you"] = function(t)
+    local c, addon = boot({ outside = true })
+    addon.settings:set(ns.DungeonTracker.SETTING, false)
+    walkIn(c)
+    t.eq(times(c, ns.id.title .. IN_LOG), 0, "switched off")
+    t.eq(times(c, PICK_UP), 0)
+    local c2 = boot({ outside = true })
+    walkIn(c2, "Somewhere Else")
+    local named = 0
+    for _, line in ipairs(c2.printed) do
+        if tostring(line):find("Somewhere Else", 1, true) then named = named + 1 end
+    end
+    t.eq(named, 0, "a dungeon Questie does not have: nothing is said of it")
+end
+
+-- Section 236: data arriving late; a read that raises, then recovers.
+-- Red on 1066f1cc: nothing is ever said.
+tests["dungeon entering: the lines wait for Questie, and for a dungeon list that raised"] = function(t)
+    local c, addon, base = boot({ questie = false })
+    t.eq(times(c, ns.id.title .. IN_LOG), 0, "no Questie: nothing yet")
+    local db, zones = questie()
+    c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(3, 30)
+    t.eq(times(c, ns.id.title .. IN_LOG), 1, "said once Questie is there")
+    t.eq(addon.problems:count(), base, "no new problem")
+    local state = { badList = true }
+    local c2, addon2, base2 = boot({ state = state })
+    t.eq(times(c2, ns.id.title .. IN_LOG), 0, "the list raises: nothing yet")
+    state.badList = false
+    c2.fire("QUEST_LOG_UPDATE")
+    c2.advance(3, 30)
+    t.eq(times(c2, ns.id.title .. IN_LOG), 1, "said once the list answers")
+    t.eq(addon2.problems:count(), base2, "no new problem")
 end
 
 return tests

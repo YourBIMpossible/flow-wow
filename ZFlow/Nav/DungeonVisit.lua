@@ -7,6 +7,14 @@
 --                      the ones you could still pick up and who gives them,
 --                      and the bosses killed this visit. Outside a dungeon
 --                      it says so and names the word for the list.
+--   on entering        (B-47, section 490 item 3) the quest lines of that
+--                      summary are said once when you enter a dungeon: one
+--                      line for the quests in your log, one for the ones to
+--                      pick up. Nothing is said for a dungeon with no quest
+--                      for you, or with the dungeon tracker setting off
+--                      (UI/DungeonTracker.lua T.SETTING). They are not said
+--                      again on a reload inside the same run; leaving and
+--                      coming back is a new run.
 --
 -- Chat words only. LOOK ONLY: nothing is accepted, shared, targeted or
 -- clicked. No quest or dungeon table ships here: the quests are Questie's,
@@ -21,6 +29,8 @@
 --   V.KillLine(kills, reported) -> the line of bosses killed
 --
 -- Client reads: instance, instanceName, questLog, and DungeonRead's own.
+-- Saved data: char V.RUN = { name, said, left }: the run you are in, so a
+-- reload inside it says nothing twice.
 -- Not tested in game.
 local _, ns = ...
 
@@ -29,6 +39,7 @@ ns.DungeonVisit = V
 
 V.NAME = "dungeonVisit"
 V.WORD = "dungeon"
+V.RUN = "dungeon.run"
 V.HELP = "say the dungeon you are in: your quests for it and the bosses killed"
 V.OUTSIDE = "you are not in a dungeon. Type %s dungeons for the dungeons and their quests."
 V.NO_NAME = "the game does not say which dungeon this is."
@@ -150,6 +161,7 @@ end
 function V.Declare(k, diag)
     local api = {}
     local ctx, st, cancelStep
+    local afterIndex
     local id = k.id or ns.id
     local R = ns.DungeonRead
 
@@ -173,8 +185,29 @@ function V.Declare(k, diag)
                 if st.state ~= "building" then
                     if cancelStep then cancelStep() end
                     cancelStep = nil
+                    if afterIndex then afterIndex() end
                 end
             end)
+        end
+    end
+
+    -- The run you are in, as saved; a copy to change and save back.
+    local function run()
+        if not ctx then return nil end
+        local ok, r = pcall(ctx.store.get, ctx.store, "char", V.RUN)
+        if not ok or type(r) ~= "table" then return nil end
+        local out = {}
+        for key, v in pairs(r) do out[key] = v end
+        return out
+    end
+
+    local function keep(r)
+        if not ctx then return end
+        local ok, yes, why = pcall(ctx.store.set, ctx.store, "char", V.RUN, r)
+        if not ok then
+            k.problems:add(V.NAME, "run", tostring(yes))
+        elseif yes ~= true then
+            k.problems:add(V.NAME, "run", tostring(why))
         end
     end
 
@@ -191,22 +224,31 @@ function V.Declare(k, diag)
 
     -- The quest lines for the dungeon of that name, or the one line that
     -- says why there are none yet.
+    -- Also answers how sure it is: "wait" (not read yet, or not readable
+    -- now), "none" (read: no quest of this dungeon for you), "quests".
     local function questLines(name)
         index()
-        if not st or st.state == "noquestie" then return { name .. ": " .. ns.DungeonStates.WHY.noQuestie[1] } end
-        if st.state == "failed" then return { name .. ": " .. (st.why or R.WHY_LIST)[1] } end
-        if st.state == "building" then return { name .. ": " .. R.WHY_BUILDING[1] } end
+        if not st or st.state == "noquestie" then
+            return { name .. ": " .. ns.DungeonStates.WHY.noQuestie[1] }, "wait"
+        end
+        if st.state == "failed" then return { name .. ": " .. (st.why or R.WHY_LIST)[1] }, "wait" end
+        if st.state == "building" then return { name .. ": " .. R.WHY_BUILDING[1] }, "wait" end
         local d = R.DungeonNamed(st, name)
-        if not d then return { name .. ": " .. V.NOT_KNOWN } end
+        if not d then return { name .. ": " .. V.NOT_KNOWN }, "none" end
         local pane = R.Pane(st, client(), d.key)
-        if type(pane) ~= "table" then return { name .. ": " .. V.NOT_KNOWN } end
+        if type(pane) ~= "table" then return { name .. ": " .. V.NOT_KNOWN }, "wait" end
         local log
         if ns.Nav and type(ns.Nav.QuestLogRows) == "function" then log = ns.Nav.QuestLogRows(client()) end
         local have, missing = V.Quests(pane, st.quests, log)
-        if #have == 0 and #missing == 0 and type(pane.why) == "table" then
-            return { name .. ": " .. tostring(pane.why[1]) }
+        if #have == 0 and #missing == 0 then
+            local W = ns.DungeonStates.WHY
+            if type(pane.why) == "table" and pane.why ~= W.noQuests and pane.why ~= W.unplaced then
+                return { name .. ": " .. tostring(pane.why[1]) }, "wait"
+            end
+            if type(pane.why) == "table" then return { name .. ": " .. tostring(pane.why[1]) }, "none" end
+            return V.QuestLines(name, have, missing), "none"
         end
-        return V.QuestLines(name, have, missing)
+        return V.QuestLines(name, have, missing), "quests"
     end
 
     -- The summary's lines; outside: nil.
@@ -231,6 +273,53 @@ function V.Declare(k, diag)
         end
     end
 
+    -- B-47: the quest lines, said once for the run you are in. pending:
+    -- you are inside a run whose lines are not said yet.
+    local pending = false
+    local function sayEntered()
+        if not pending or not ctx or not inside() then return end
+        if ctx.settings:get(ns.DungeonTracker.SETTING) ~= true then return end
+        local name = ask(client(), "instanceName")
+        if type(name) ~= "string" or name == "" then return end
+        local ok, lines, sure = pcall(questLines, name)
+        if not ok then
+            pending = false
+            k.problems:add(V.NAME, "entered", tostring(lines))
+            return
+        end
+        if sure == "wait" then return end
+        pending = false
+        local r = run()
+        if not r or r.name ~= name then r = { name = name } end
+        r.said = true
+        keep(r)
+        if sure == "quests" then say(lines) end
+    end
+    afterIndex = sayEntered
+
+    -- Entering, leaving, a reload inside: which run this is.
+    local function entered()
+        if not inside() then
+            pending = false
+            local r = run()
+            if r and r.left == nil then
+                r.left = true
+                keep(r)
+            end
+            return
+        end
+        index()
+        local name = ask(client(), "instanceName")
+        if type(name) ~= "string" or name == "" then return end
+        local r = run()
+        if not r or r.name ~= name or r.left ~= nil then
+            r = { name = name }
+            keep(r)
+        end
+        pending = r.said ~= true
+        sayEntered()
+    end
+
     if diag and type(diag.commands) == "table" then
         diag.commands[V.WORD] = function()
             local ok, lines = pcall(api.Lines)
@@ -250,13 +339,16 @@ function V.Declare(k, diag)
         provides = { Lines = api.Lines },
         start = function(c)
             ctx = c
-            -- Inside a dungeon the index is read ahead, so the word answers at once.
-            local function entered()
-                if inside() then index() end
-            end
+            -- Inside a dungeon the index is read ahead, so the word answers
+            -- at once and the entering lines are said when it is read.
             for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA" }) do
-                c.bus:on(V.NAME, event, entered)
+                c.bus:on(V.NAME, event, function() entered() end)
             end
+            -- Lines that had to wait (Questie not there yet, your level not
+            -- read yet) are tried again when the quest log changes.
+            c.bus:on(V.NAME, "QUEST_LOG_UPDATE", function()
+                if pending then sayEntered() end
+            end)
             entered()
         end,
         stop = function()
