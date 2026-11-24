@@ -13,8 +13,17 @@
 --                      pick up. Nothing is said for a dungeon with no quest
 --                      for you, or with the dungeon tracker setting off
 --                      (UI/DungeonTracker.lua T.SETTING). They are not said
---                      again on a reload inside the same run; leaving and
---                      coming back is a new run.
+--                      again on a reload inside the same run.
+--   run timing         (B-56, section 490 item 4) each run is timed from
+--                      entering to leaving, by the client's clock. Going out
+--                      and coming back within V.GRACE seconds (a death walk)
+--                      is the same run. The last time of each dungeon is
+--                      kept and said as one line, "Last run here: 32
+--                      minutes", in the summary and in the dungeon tracker
+--                      window. A run whose start or end the clock did not
+--                      give has no time, and one shorter than V.SHORT or
+--                      longer than V.LONG (a look inside, a night away) is
+--                      not kept: the line then says the time is not known.
 --
 -- Chat words only. LOOK ONLY: nothing is accepted, shared, targeted or
 -- clicked. No quest or dungeon table ships here: the quests are Questie's,
@@ -27,10 +36,19 @@
 --       missing: { { name, from } } the ones to pick up before you go.
 --   V.Summary(name, have, missing, kills, reported, max) -> lines
 --   V.KillLine(kills, reported) -> the line of bosses killed
+--   V.Step(run, name, now) -> run, changed, finished, seconds
+--       the saved run after an event: name is the dungeon you are in (nil:
+--       outside), now the clock (nil: not known). finished: the name of a
+--       run that ended; seconds: how long it took, or nil.
+--   V.RunTime(run) -> seconds or nil      V.TimeText(seconds) -> words or nil
+--   V.LastLine(seconds) -> the line
 --
 -- Client reads: instance, instanceName, questLog, and DungeonRead's own.
--- Saved data: char V.RUN = { name, said, left }: the run you are in, so a
--- reload inside it says nothing twice.
+-- Client reads also: clock.
+-- Saved data: char V.RUN = { name, said, t, left }: the run you are in
+-- (t: the clock at entering, left: at leaving), so a reload inside it says
+-- nothing twice and keeps its start. char V.TIMES = { [dungeon name] =
+-- seconds }: the last run of each.
 -- Not tested in game.
 local _, ns = ...
 
@@ -40,6 +58,14 @@ ns.DungeonVisit = V
 V.NAME = "dungeonVisit"
 V.WORD = "dungeon"
 V.RUN = "dungeon.run"
+V.TIMES = "dungeon.times"
+V.GRACE = 600
+V.SHORT = 300
+V.LONG = 240 * 60
+V.LAST = "Last run here: %s"
+V.LAST_UNKNOWN = "Last run here: time not known yet."
+V.MINUTE, V.MINUTES = "1 minute", "%d minutes"
+V.HOUR, V.HOURS = "1 hour", "%d hours"
 V.HELP = "say the dungeon you are in: your quests for it and the bosses killed"
 V.OUTSIDE = "you are not in a dungeon. Type %s dungeons for the dungeons and their quests."
 V.NO_NAME = "the game does not say which dungeon this is."
@@ -158,6 +184,66 @@ function V.Summary(name, have, missing, kills, reported, max)
     return out
 end
 
+local function clockOk(v)
+    return type(v) == "number" and v == v and v > 0 and v ~= math.huge
+end
+
+function V.RunTime(run)
+    if type(run) ~= "table" or not clockOk(run.t) or not clockOk(run.left) or run.left < run.t then return nil end
+    return run.left - run.t
+end
+
+function V.TimeText(seconds)
+    if not clockOk(seconds) then return nil end
+    local minutes = math.floor(seconds / 60 + 0.5)
+    if minutes < 1 then minutes = 1 end
+    local hours = math.floor(minutes / 60)
+    minutes = minutes - hours * 60
+    local parts = {}
+    if hours == 1 then parts[#parts + 1] = V.HOUR elseif hours > 1 then parts[#parts + 1] = V.HOURS:format(hours) end
+    if minutes == 1 then
+        parts[#parts + 1] = V.MINUTE
+    elseif minutes > 1 then
+        parts[#parts + 1] = V.MINUTES:format(minutes)
+    end
+    return table.concat(parts, " ")
+end
+
+function V.LastLine(seconds)
+    local text = V.TimeText(seconds)
+    if not text then return V.LAST_UNKNOWN end
+    return V.LAST:format(text)
+end
+
+function V.Step(run, name, now)
+    local t
+    if clockOk(now) then t = now end
+    local has = type(run) == "table" and type(run.name) == "string"
+    if name ~= nil then
+        if has and run.name == name then
+            -- A reload inside the run.
+            if run.left == nil then return run, false end
+            -- Out and back in soon: the same run goes on.
+            if t and clockOk(run.left) and t >= run.left and t - run.left < V.GRACE then
+                run.left = nil
+                return run, true
+            end
+        end
+        local fresh = { name = name, t = t }
+        if has then return fresh, true, run.name, V.RunTime(run) end
+        return fresh, true
+    end
+    if not has then return run, false end
+    if run.left == nil then
+        run.left = t or true
+        return run, true
+    end
+    if not clockOk(run.left) or not t or t < run.left or t - run.left >= V.GRACE then
+        return {}, true, run.name, V.RunTime(run)
+    end
+    return run, false
+end
+
 function V.Declare(k, diag)
     local api = {}
     local ctx, st, cancelStep
@@ -211,6 +297,42 @@ function V.Declare(k, diag)
         end
     end
 
+    local function lastOf(name)
+        if not ctx or type(name) ~= "string" then return nil end
+        local ok, times = pcall(ctx.store.get, ctx.store, "char", V.TIMES)
+        if not ok or type(times) ~= "table" then return nil end
+        return times[name]
+    end
+
+    -- A run that ended: its time is kept when it has one of a run's length.
+    local function record(name, seconds)
+        if not ctx or type(name) ~= "string" or not clockOk(seconds) then return end
+        if seconds < V.SHORT or seconds > V.LONG then return end
+        local ok, times = pcall(ctx.store.get, ctx.store, "char", V.TIMES)
+        local out = {}
+        if ok and type(times) == "table" then
+            for key, v in pairs(times) do out[key] = v end
+        end
+        out[name] = seconds
+        local okSet, yes, why = pcall(ctx.store.set, ctx.store, "char", V.TIMES, out)
+        if not okSet then
+            k.problems:add(V.NAME, "times", tostring(yes))
+        elseif yes ~= true then
+            k.problems:add(V.NAME, "times", tostring(why))
+        end
+    end
+
+    -- The line of the last run of the dungeon of that name (the one you
+    -- are in when no name is given); nil outside a dungeon.
+    function api.LastLine(name)
+        if name == nil then
+            if not inside() then return nil end
+            name = ask(client(), "instanceName")
+        end
+        if type(name) ~= "string" or name == "" then return nil end
+        return V.LastLine(lastOf(name))
+    end
+
     local function killLine()
         local kills
         if type(k.use) == "function" then kills = k.use(ns.BossKills.NAME) end
@@ -262,6 +384,8 @@ function V.Declare(k, diag)
             out = questLines(name)
         end
         out[#out + 1] = killLine()
+        local last = api.LastLine(name)
+        if last then out[#out + 1] = last end
         return out
     end
 
@@ -299,29 +423,24 @@ function V.Declare(k, diag)
 
     -- Entering, leaving, a reload inside: which run this is.
     local function entered()
-        if not inside() then
-            pending = false
-            local r = run()
-            if r and r.left == nil then
-                r.left = true
-                keep(r)
-            end
-            return
+        local name
+        if inside() then
+            index()
+            name = ask(client(), "instanceName")
+            -- Inside a dungeon the game does not name: nothing to keep.
+            if type(name) ~= "string" or name == "" then return end
         end
-        index()
-        local name = ask(client(), "instanceName")
-        if type(name) ~= "string" or name == "" then return end
-        local r = run()
-        if not r or r.name ~= name or r.left ~= nil then
-            r = { name = name }
-            keep(r)
-        end
-        pending = r.said ~= true
+        local r, changed, finished, seconds = V.Step(run(), name, ask(client(), "clock"))
+        if finished then record(finished, seconds) end
+        if changed then keep(r) end
+        pending = name ~= nil and type(r) == "table" and r.said ~= true
         sayEntered()
     end
 
     if diag and type(diag.commands) == "table" then
         diag.commands[V.WORD] = function()
+            -- A run that ended since the last event is closed first.
+            if ctx then pcall(entered) end
             local ok, lines = pcall(api.Lines)
             if not ok then
                 k.problems:add(V.NAME, "word", tostring(lines))
@@ -336,7 +455,7 @@ function V.Declare(k, diag)
     k:Module({
         name = V.NAME,
         needs = { "client", "store", "settings", "bus", "sched" },
-        provides = { Lines = api.Lines },
+        provides = { Lines = api.Lines, LastLine = api.LastLine },
         start = function(c)
             ctx = c
             -- Inside a dungeon the index is read ahead, so the word answers

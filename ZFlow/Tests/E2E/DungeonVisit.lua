@@ -37,7 +37,7 @@ end
 
 -- opts: outside, name (false: the client gives none), questie (false: none),
 -- state (for questie), log, refused (event names the client does not take),
--- char (saved ahead)
+-- char (saved ahead), clock (what the client's clock says)
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -47,6 +47,7 @@ local function boot(opts)
     local log = opts.log
     if not log then log = { { id = 101, title = "Red Silk", objectives = { { text = "Silk 1/4", done = false } } } } end
     c.setQuestLog(log)
+    if opts.clock then c.setClock(opts.clock) end
     for _, e in ipairs(opts.refused or {}) do c.setEventFault(e, true) end
     if opts.outside then
         c.setInstance({ inside = false, kind = "none" })
@@ -88,7 +89,8 @@ tests["dungeon word: inside, the name, your quests done or not, what to pick up,
         "the name and the quest in your log: " .. tostring(lines[1]))
     t.ok(has(lines, "  Not in your log (1): Collecting Memories (Gryan)"), "the one to pick up: " .. tostring(lines[2]))
     t.ok(has(lines, "  No boss killed yet this visit."), "no kill yet: " .. tostring(lines[3]))
-    t.eq(#lines, 3)
+    t.ok(has(lines, "  Last run here: time not known yet."), "no run timed yet: " .. tostring(lines[4]))
+    t.eq(#lines, 4)
     t.eq(addon.problems:count(), base, "no new problem")
 end
 
@@ -102,7 +104,7 @@ tests["dungeon word: a boss killed is named, and a finished quest says to hand i
     t.ok(has(lines, ns.id.title .. ": The Deadmines: 2 of its quests in your log: "
         .. "Collecting Memories (done, hand it in), Red Silk (done, hand it in)"), tostring(lines[1]))
     t.ok(has(lines, "  Bosses killed this visit (1): Rhahk'Zor"), tostring(lines[2]))
-    t.eq(#lines, 2, "nothing left to pick up: no such line")
+    t.eq(#lines, 3, "nothing left to pick up: no such line")
 end
 
 -- Red on fec10ab2: nothing is said.
@@ -270,6 +272,99 @@ tests["dungeon entering: the lines wait for Questie, and for a dungeon list that
     c2.advance(3, 30)
     t.eq(times(c2, ns.id.title .. IN_LOG), 1, "said once the list answers")
     t.eq(addon2.problems:count(), base2, "no new problem")
+end
+
+-- B-56 (lead section 490 item 4): run timing.
+local function trackerHas(c, text)
+    local rec = c.kitWindows().dungeonTracker
+    for _, part in ipairs(rec and rec.parts or {}) do
+        if tostring(part.text) == text then return true end
+    end
+    return false
+end
+
+-- A run from `from` for `seconds`, then outside long enough for it to end.
+local function runFor(c, seconds, from)
+    c.setClock(from + seconds)
+    walkOut(c)
+    c.setClock(from + seconds + ns.DungeonVisit.GRACE + 1)
+    c.fire("ZONE_CHANGED_NEW_AREA")
+    c.advance(1, 5)
+end
+
+-- Red on df47a0fd: no time is kept, the tracker has no such line and the
+-- word does not say it.
+tests["dungeon timing: a run is timed from entering to leaving and said in the tracker and the word"] = function(t)
+    local c, addon, base = boot({ clock = 1000 })
+    t.ok(trackerHas(c, "Last run here: time not known yet."), "no run yet: the tracker says not known")
+    runFor(c, 32 * 60, 1000)
+    t.eq(addon.store:get("char", "dungeon.times"), { ["The Deadmines"] = 32 * 60 })
+    walkIn(c)
+    t.ok(trackerHas(c, "Last run here: 32 minutes"), "the tracker's one line")
+    t.ok(has(typed(c, "dungeon"), "  Last run here: 32 minutes"), "the word says it")
+    t.eq(addon.problems:count(), base, "no new problem")
+end
+
+-- Red on df47a0fd: nothing is kept (the store answers nil).
+tests["dungeon timing: out and back in soon is the same run; a reload inside keeps its start"] = function(t)
+    local c = boot({ clock = 1000 })
+    c.setClock(1600)
+    walkOut(c)
+    c.setClock(1700)
+    walkIn(c)
+    t.eq(times(c, ns.id.title .. IN_LOG), 1, "the same run: its lines are not said again")
+    local c2, addon2 = boot({ char = c.saved(ns.id.charDB), clock = 2000 })
+    runFor(c2, 800, 2000)
+    t.eq(addon2.store:get("char", "dungeon.times"), { ["The Deadmines"] = 1800 }, "from the first entering")
+end
+
+-- An unknown time stays unknown.
+tests["dungeon timing: a run the clock did not time, or a look inside, keeps no time"] = function(t)
+    local c, addon, base = boot()
+    runFor(c, 1800, 5000)
+    t.eq(addon.store:get("char", "dungeon.times"), nil, "entered with no clock: no time")
+    c.setClock(10000)
+    walkIn(c)
+    t.ok(trackerHas(c, "Last run here: time not known yet."), "still not known")
+    runFor(c, 60, 10000)
+    t.eq(addon.store:get("char", "dungeon.times"), nil, "a look inside is not a run")
+    t.eq(addon.problems:count(), base, "no new problem")
+end
+
+-- Section 236: a read that raises, then recovers.
+tests["dungeon timing: a clock that raises gives no time, and the next run is timed"] = function(t)
+    local c, addon = boot({ clock = 1000 })
+    local real = c.clock
+    c.clock = function() error("no clock (test)") end
+    walkOut(c)
+    c.clock = real
+    c.setClock(9000)
+    c.fire("ZONE_CHANGED_NEW_AREA")
+    t.eq(addon.store:get("char", "dungeon.times"), nil, "left with no clock: no time")
+    walkIn(c)
+    runFor(c, 600, 9000)
+    t.eq(addon.store:get("char", "dungeon.times"), { ["The Deadmines"] = 600 }, "the next run is timed")
+end
+
+tests["dungeon timing: the steps and the words, pure"] = function(t)
+    local V = ns.DungeonVisit
+    t.eq(V.TimeText(32 * 60), "32 minutes")
+    t.eq(V.TimeText(60), "1 minute")
+    t.eq(V.TimeText(3900), "1 hour 5 minutes")
+    t.eq(V.TimeText(7200), "2 hours")
+    t.eq(V.TimeText(nil), nil)
+    t.eq(V.LastLine(nil), V.LAST_UNKNOWN)
+    t.eq(V.RunTime({ name = "A", t = 100, left = 400 }), 300)
+    t.eq(V.RunTime({ name = "A", left = 400 }), nil, "no start")
+    t.eq(V.RunTime({ name = "A", t = 100, left = true }), nil, "no end")
+    t.eq({ V.Step(nil, "A", 100) }, { { name = "A", t = 100 }, true })
+    t.eq({ V.Step({ name = "A", t = 100, said = true }, "A", 200) }, { { name = "A", t = 100, said = true }, false })
+    t.eq({ V.Step({ name = "A", t = 100 }, nil, 500) }, { { name = "A", t = 100, left = 500 }, true })
+    t.eq({ V.Step({ name = "A", t = 100, left = 500 }, "A", 600) }, { { name = "A", t = 100 }, true }, "back soon")
+    t.eq({ V.Step({ name = "A", t = 100, left = 500 }, nil, 500 + V.GRACE) }, { {}, true, "A", 400 }, "ended")
+    t.eq({ V.Step({ name = "A", t = 100, left = 500 }, "B", 600) }, { { name = "B", t = 600 }, true, "A", 400 })
+    t.eq({ V.Step({ name = "A", t = 100 }, nil, nil) }, { { name = "A", t = 100, left = true }, true }, "no clock")
+    t.eq({ V.Step({}, nil, 100) }, { {}, false })
 end
 
 return tests
