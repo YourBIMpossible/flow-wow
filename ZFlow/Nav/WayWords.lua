@@ -40,7 +40,10 @@ end
 function WW.Declare(k, diag)
     local api = {}
     local ctx
-    local zoneIds          -- lower-cased map name -> map number, read once
+    -- Lower-cased map name -> map number, read once and kept for the
+    -- session (until the module stops); a map renamed mid-session is not
+    -- seen until then.
+    local zoneIds
 
     local function client() return ctx and ctx.client or k.client end
 
@@ -55,7 +58,8 @@ function WW.Declare(k, diag)
     local function slot()
         local W = N.Waypoint
         local store = ctx and ctx.store or k.store
-        return W and W.Slot(store) or nil
+        if not W then return nil end
+        return W.Slot(store)
     end
 
     local function set(map, x, y, label)
@@ -110,7 +114,8 @@ function WW.Declare(k, diag)
         if not ok or type(place) ~= "table" or place.map == nil then
             return true, "no " .. word .. " seen on this map yet; nothing changed."
         end
-        local step = type(E.Step) == "function" and E.Step(place) or nil
+        local step
+        if type(E.Step) == "function" then step = E.Step(place) end
         return set(place.map, place.x, place.y, step and step.label or E.LABELS[kind])
     end
 
@@ -123,7 +128,7 @@ function WW.Declare(k, diag)
         if WW.ERRANDS[word] then return errand(word) end
         if not body:find("%d") and body:find("^%S+$") then
             if member(body) then
-                local ok, line = api.At(body)
+                local _, line = api.At(body)
                 return true, line
             end
             return false
@@ -133,7 +138,8 @@ function WW.Declare(k, diag)
         local parsed = W.Parse(body)
         if not parsed or not parsed.zone then return false end
         local here = ask("position")
-        local mine = type(here) == "table" and ask("mapName", here.map) or nil
+        local mine
+        if type(here) == "table" then mine = ask("mapName", here.map) end
         if type(mine) == "string" and mine:lower() == parsed.zone:lower() then return false end
         local map = zoneByName(parsed.zone)
         if not map then return true, "no zone named " .. parsed.zone .. " is known; nothing changed." end

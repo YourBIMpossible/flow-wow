@@ -11,7 +11,7 @@ local _, ns = ...
 
 local tests = {}
 local N, M = ns.Nav, ns.ArrowMenu
-local Flights, Travel = N.Flights, N.Travel
+local Flights = N.Flights
 
 local HOME_POST, FAR_POST = "Home Post", "Far Post"
 
