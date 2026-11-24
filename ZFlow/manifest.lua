@@ -294,5 +294,9 @@ return {
     "Nav/HearthAdvice.lua",
     -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
     "Nav/GateWords.lua",
+    -- S32: boat and zeppelin dock names and wait words (Crossings calls them at run time).
+    "Nav/CrossingWords.lua",
+    -- S38 (lead section 395 item 6): activities and route lanes (after Trip, Nodes).
+    "Nav/Activities.lua",
     },
 }
