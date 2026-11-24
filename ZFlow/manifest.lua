@@ -194,6 +194,7 @@ return {
         "Items/Keep.lua",
         "Items/RecipeBook.lua",
         "Items/RecipeLearned.lua",
+        "Items/ProfRecipes.lua",
         "Items/Goals.lua",
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
