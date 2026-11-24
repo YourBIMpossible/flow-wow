@@ -11107,7 +11107,24 @@ function ns.make.client(env)
                     method(nm, "SetWidth", math.max(pane.w - left - right, 1))
                     method(nm, "SetJustifyH", "LEFT")
                     if off then inked(nm, color.textOff) else inked(nm, color.text) end
+                    local wraps = part.wrap == true and not hasSub
+                    -- words() turns wrapping off, and the name is kept from
+                    -- draw to draw: set it each time.
+                    method(nm, "SetWordWrap", wraps)
                     method(nm, "SetText", part.text)
+                    -- Lead section 408: a line that wraps is as tall as its
+                    -- text, and the parts under it start below it. A height
+                    -- the client does not give leaves the line one row high.
+                    if wraps then
+                        local okH, textH = method(nm, "GetStringHeight")
+                        if okH and type(textH) == "number" and not hidden(textH) and textH > 0 then
+                            local tall = math.ceil(textH) + 2 * size.gapSmall
+                            if tall > hgt then
+                                sized(h, pane.w, tall)
+                                pane.y = pane.y + tall - hgt
+                            end
+                        end
+                    end
                 end
                 local sub = words(h, font.small, "sub")
                 if sub ~= nil then
@@ -11515,6 +11532,17 @@ function ns.make.client(env)
                 local pane = { parent = body, x = 0, y = 0, w = w, h = h, first = true, rows = 0 }
                 for i = 1, #kids do
                     if kids[i].kind ~= "footer" then place(kids[i], pane, i == lastFlow) end
+                end
+                -- Lead section 408: a window that fits is as tall as what
+                -- was just drawn in it: the title bar, the padding, the
+                -- parts and the footer. Its width stays.
+                if now.fit == true then
+                    local want = size.title + 2 * size.pad + pane.y
+                    if hasFooter then want = want + size.footer end
+                    if want ~= height then
+                        height = want
+                        sized(f, width, height)
+                    end
                 end
             end
             draw = function(now)

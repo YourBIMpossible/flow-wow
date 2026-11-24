@@ -38,8 +38,8 @@ end
 
 tests["quest advice: the hand-in line"] = function(t)
     local text = A().TurnInText or none
-    t.eq(text({ row(1, "First", true), row(2, "Second", false) }), "Ready to hand in: First")
-    t.eq(text({ row(1, "First", true), row(2, "Second", true) }), "Ready to hand in: First, Second")
+    t.eq(text({ row(1, "First", true), row(2, "Second", false) }), "Ready to hand in: First. Look for the yellow ? over who takes it.")
+    t.eq(text({ row(1, "First", true), row(2, "Second", true) }), "Ready to hand in: First, Second. Look for the yellow ? over who takes it.")
     t.eq(text({ row(2, "Second", false) }), nil, "none ready: no line")
     t.eq(text(nil), nil)
 end
