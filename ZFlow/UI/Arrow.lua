@@ -823,6 +823,13 @@ function Arrow.Start(k, diag, own)
             if step == nil and entered then
                 local okWhy, why = pcall(Arrow.WhyStep, k, quests, prof)
                 if okWhy and why then
+                    -- A1-16 (Nav/NoDirections.lua): with no quest data at
+                    -- all, Flow's two lines in place of the why line.
+                    local noDirections = k.use and k.use("noDirections")
+                    if noDirections and type(noDirections.Now) == "function" then
+                        local okNd, nd = pcall(noDirections.Now)
+                        if okNd and type(nd) == "table" then why = { still = true, lines = { nd.title, nd.sub }, why = true } end
+                    end
                     step = why
                     saying = true
                 end
