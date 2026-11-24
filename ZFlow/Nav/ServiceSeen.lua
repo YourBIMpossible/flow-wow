@@ -24,6 +24,14 @@ local _, ns = ...
 -- key is its map and place to a hundredth of the map, so the same box is
 -- one entry. Everything else already on an entry is kept.
 --
+-- Moved places: a sighting on the saved map within ServiceSeen.NEAR (a
+-- share of the map) of the saved spot keeps the saved spot (the player
+-- only stood on another side); a sighting farther away, or on another
+-- map, moves the one entry there (report.moved = true). A mailbox has no
+-- name to follow, so a sighting within NEAR of a saved mailbox on the same
+-- map is that box, whatever its rounded key; one farther off is another
+-- box. The saved shape is unchanged.
+--
 -- The npc is client.serviceNpc() -> { guid, name } (CLIENT NEED), either
 -- left out when not known. With neither known, or with no position,
 -- nothing is written at all. A new place past ServiceSeen.MAX entries is
@@ -35,7 +43,8 @@ local _, ns = ...
 --   ns.use(ServiceSeen.NAME) -> { Last = api.last }
 --
 --   report = { kind = "service", service (the kind), ok, reason (when not
---              ok), key, name, repair (vendor: true / false / nil) }
+--              ok), key, name, repair (vendor: true / false / nil),
+--              moved (true / false on a known entry, nil on a new one) }
 --
 -- Keys are names and GUIDs the client gave and may hold a dot, so the
 -- table is written by key and never through a dotted path.
@@ -51,6 +60,8 @@ ns.ServiceSeen = ServiceSeen
 ServiceSeen.NAME = "serviceSeen"
 ServiceSeen.PLACES = "learned.places.services"
 ServiceSeen.MAX = 400
+-- A sighting this close (a share of the map) to the saved spot is the same spot.
+ServiceSeen.NEAR = 0.01
 -- The order the events are listened for; each names the kind it shows.
 ServiceSeen.EVENTS = {
     { event = "MERCHANT_SHOW", kind = "vendor" },
@@ -81,6 +92,27 @@ end
 local function refuse(report, reason)
     report.ok, report.reason = false, reason
     return report
+end
+
+-- True when the saved entry e is on map and within NEAR of x, y.
+local function near(e, map, x, y)
+    if type(e) ~= "table" or e.map ~= map or not (finite(e.x) and finite(e.y)) then return false end
+    local dx, dy = e.x - x, e.y - y
+    return dx * dx + dy * dy <= ServiceSeen.NEAR * ServiceSeen.NEAR
+end
+
+-- The key of the saved mailbox nearest to map, x, y within NEAR, or nil.
+local function nearMailbox(places, map, x, y)
+    local best, bestD
+    for key, e in pairs(places) do
+        if type(e) == "table" and type(e.kinds) == "table" and e.kinds.mailbox and near(e, map, x, y) then
+            local d = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y)
+            if not bestD or d < bestD or (d == bestD and tostring(key) < tostring(best)) then
+                best, bestD = key, d
+            end
+        end
+    end
+    return best
 end
 
 local function count(t)
@@ -118,7 +150,6 @@ function ServiceSeen.Seen(kind, client, store)
         key = string.format("mailbox:%s:%d:%d", tostring(pos.map),
             math.floor(pos.x * 100 + 0.5), math.floor(pos.y * 100 + 0.5))
     end
-    report.key = key
 
     if type(store) ~= "table" or type(store.get) ~= "function" or type(store.set) ~= "function" then
         return refuse(report, "the places cannot be saved")
@@ -126,6 +157,8 @@ function ServiceSeen.Seen(kind, client, store)
     local places = store:get("char", ServiceSeen.PLACES)
     if places ~= nil and type(places) ~= "table" then return refuse(report, "the places cannot be saved") end
     places = places or {}
+    if kind == "mailbox" then key = nearMailbox(places, pos.map, pos.x, pos.y) or key end
+    report.key = key
     local old = places[key]
     if type(old) ~= "table" and count(places) >= ServiceSeen.MAX then
         return refuse(report, "the list of places is full")
@@ -144,7 +177,10 @@ function ServiceSeen.Seen(kind, client, store)
     e.kinds = kinds
     if guid then e.guid = guid end
     if name then e.name = name end
-    e.map, e.x, e.y = pos.map, pos.x, pos.y
+    if type(old) == "table" then
+        report.moved = not near(old, pos.map, pos.x, pos.y)
+    end
+    if report.moved ~= false then e.map, e.x, e.y = pos.map, pos.x, pos.y end
     if now then e.seen = now end
     e.n = (finite(e.n) and e.n or 0) + 1
 
