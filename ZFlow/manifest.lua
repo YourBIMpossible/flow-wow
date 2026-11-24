@@ -177,6 +177,7 @@ return {
         "Nav/PlateTarget.lua",
         "Nav/NoDirections.lua",
         "Nav/CorpseHint.lua",
+        "Nav/AreaWords.lua",
         "Nav/FlightWord.lua",
         "Nav/Flights.lua",
         "Nav/Gates.lua",
