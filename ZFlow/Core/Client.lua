@@ -12014,6 +12014,76 @@ function ns.make.client(env)
         if type(log) ~= "table" then return nil end
         return yesNo(call(log.IsPushableQuest, id))
     end
+    -- G4 bag marks (Items/BagMarks.lua): a texture of ours on a bag slot's
+    -- item button; nothing of the bag window is called and no attribute is
+    -- written. First guesses, none seen in game on 16001: ContainerFrame<i>
+    -- (i up to NUM_CONTAINER_FRAMES, else 13) whose GetID() is the bag,
+    -- its buttons ContainerFrame<i>Item<j> whose GetID() is the slot, and
+    -- ContainerFrame_Update to follow the window's redraw.
+    --   c.markBagSlots(marks) marks = { [bag] = { [slot] = texture path } }
+    --     shows those, hides every other mark of ours; how many shown.
+    --   c.onBagRedraw(fn) -> true when followed, nil when not.
+    local bagMarkTex = {}
+    local function bagMarkOn(button)
+        local t = bagMarkTex[button]
+        if t ~= nil then return t or nil end
+        local okT, made = method(button, "CreateTexture", nil, "OVERLAY", nil, 7)
+        if not okT or made == nil then
+            bagMarkTex[button] = false
+            return nil
+        end
+        method(made, "SetSize", 14, 14)
+        method(made, "SetPoint", "TOPLEFT", button, "TOPLEFT", 1, -1)
+        method(made, "Hide")
+        bagMarkTex[button] = made
+        return made
+    end
+    function c.markBagSlots(marks)
+        marks = type(marks) == "table" and marks or {}
+        for _, t in pairs(bagMarkTex) do
+            if t then method(t, "Hide") end
+        end
+        local frames = type(env.NUM_CONTAINER_FRAMES) == "number" and env.NUM_CONTAINER_FRAMES or 13
+        local n = 0
+        for i = 1, frames do
+            local okF, f = pcall(function() return env["ContainerFrame" .. i] end)
+            local okId, bag = false, nil
+            if okF and type(f) == "table" then okId, bag = method(f, "GetID") end
+            local want = okId and type(bag) == "number" and marks[bag] or nil
+            if type(want) == "table" then
+                for j = 1, 40 do
+                    local okB, b = pcall(function() return env["ContainerFrame" .. i .. "Item" .. j] end)
+                    if not okB or type(b) ~= "table" then break end
+                    local okS, slot = method(b, "GetID")
+                    local path = okS and want[slot] or nil
+                    if type(path) == "string" then
+                        local t = bagMarkOn(b)
+                        if t then
+                            method(t, "SetTexture", path)
+                            method(t, "Show")
+                            n = n + 1
+                        end
+                    end
+                end
+            end
+        end
+        return n
+    end
+    local bagRedraw, bagFollowed = {}, false
+    function c.onBagRedraw(fn)
+        if type(fn) ~= "function" then return nil end
+        bagRedraw[#bagRedraw + 1] = fn
+        if bagFollowed then return true end
+        if type(env.hooksecurefunc) == "function" and type(env.ContainerFrame_Update) == "function"
+            and pcall(env.hooksecurefunc, "ContainerFrame_Update", function()
+                for _, f in ipairs({ unpack(bagRedraw) }) do pcall(f) end
+            end) then
+            bagFollowed = true
+            return true
+        end
+        return nil
+    end
+
     return c
 end
 
