@@ -4916,6 +4916,44 @@ function ns.make.fakeClient(opts)
         c.sharedQuests[#c.sharedQuests + 1] = id
         return true
     end
+    -- KNOW lane (C-48, C-56): the spells on the action bars, as the real
+    -- client's c.actionSpells() answers them: { [spell name] = slot }.
+    -- c.setActionSpells(map or nil); nil (as made): the bars are not known.
+    do
+        local barSpells = nil
+        function c.setActionSpells(map) barSpells = map end
+        function c.actionSpells()
+            if type(barSpells) ~= "table" then return nil end
+            local out = {}
+            for name, slot in pairs(barSpells) do out[name] = slot end
+            return out
+        end
+        -- C-56 (ACTING), as the real client's c.placeSpell(id): the spell
+        -- is put on the first empty slot, out of a fight only. Each one
+        -- placed is kept in c.placedSpells ({ id, slot }), in order.
+        -- c.setPlaceRefuse(why): every placing answers nil, why.
+        c.placedSpells = {}
+        local refuse = nil
+        function c.setPlaceRefuse(why) refuse = why end
+        function c.placeSpell(id)
+            if type(id) ~= "number" then return nil, "bad" end
+            if c.inCombat() ~= false then return nil, "lockdown" end
+            if refuse ~= nil then return nil, refuse end
+            local used = {}
+            for _, slot in pairs(barSpells or {}) do used[slot] = true end
+            local free
+            for slot = 1, 12 do
+                if free == nil and not used[slot] then free = slot end
+            end
+            if free == nil then return nil, "full" end
+            barSpells = barSpells or {}
+            for name, spellId in pairs(s.spellIds or {}) do
+                if spellId == id then barSpells[name] = free end
+            end
+            c.placedSpells[#c.placedSpells + 1] = { id = id, slot = free }
+            return free
+        end
+    end
     return c
 end
 
@@ -4935,6 +4973,25 @@ do
         function c.unspentTalents()
             if raises then error("unspentTalents raised") end
             return points
+        end
+        return c
+    end
+end
+
+-- C-62 (UI/TalentsWindow.lua): the talents the player has, as the real
+-- client's talentRanks() is asked for: { [talent name] = rank }.
+-- c.setTalentRanks(map or nil); nil (as made): not known.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local ranks = nil
+        function c.setTalentRanks(map) ranks = map end
+        function c.talentRanks()
+            if type(ranks) ~= "table" then return nil end
+            local out = {}
+            for name, rank in pairs(ranks) do out[name] = rank end
+            return out
         end
         return c
     end
