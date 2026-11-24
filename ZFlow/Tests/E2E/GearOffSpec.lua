@@ -71,12 +71,20 @@ local function startsWith(lines, prefix)
     return false
 end
 
--- One merchant visit: the sell list's text lines while the window is open.
-local function merchantVisit(c)
+-- One merchant visit: the sell list's text lines while the window is open,
+-- as drawn (item names in their quality colour, Items/Present.lua Tint).
+local function rawVisit(c)
     c.setMerchantOpen(true)
     local out = {}
     for i, l in ipairs(c.lists.SellList.last() or {}) do out[i] = l end
     c.setMerchantOpen(false)
+    return out
+end
+
+-- The same with the colour codes taken off, to compare the words.
+local function merchantVisit(c)
+    local out = rawVisit(c)
+    for i, l in ipairs(out) do out[i] = ns.ItemPresent.Plain(l) end
     return out
 end
 
@@ -90,6 +98,10 @@ tests["off-spec: a tank upgrade is kept for a dps warrior, naming the role"] = f
     local lines = merchantVisit(c)
     t.ok(hasLine(lines, KEPT), "kept for the other role: " .. joinedLines(lines))
     t.ok(startsWith(lines, "1 x Frayed Cloak: "), "grey junk is still offered: " .. joinedLines(lines))
+    -- The kept name is in the colour of its quality (uncommon), tinted once.
+    local raw = joinedLines(rawVisit(c))
+    t.ok(raw:find(ns.ItemPresent.Tint("Guard Helm", 2) .. ": better for Protection", 1, true) ~= nil,
+        "the kept name carries its quality colour: " .. raw)
 end
 
 -- Fails before: no role is given to Disposition, so the chosen role's
