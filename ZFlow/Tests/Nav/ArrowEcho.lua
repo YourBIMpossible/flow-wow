@@ -58,7 +58,7 @@ T["echo: beyond 30 degrees it slides straight down to a fixed place below"] = fu
         local q, p = v.quest, v.prof
         t.eq(p.look, "echo", deg .. ": still the echo")
         t.eq(p.slid, true, deg .. ": slid out")
-        t.eq(p.behind, true, deg .. ": never in front of the quest arrow")
+        t.eq(p.behind, false, deg .. ": nothing covers it: not behind, it takes the mouse itself")
         t.eq(p.point[3], q.point[3], deg .. ": straight down, same column")
         t.eq(q.point[4] - p.point[4], SIZE + N.ARROW_GAP, deg .. ": one arrow and a gap down")
         first = first or p.point[4]

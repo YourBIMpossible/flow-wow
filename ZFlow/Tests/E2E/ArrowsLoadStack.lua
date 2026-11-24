@@ -59,7 +59,7 @@ local function stacked(t, c, when)
     t.eq(p.point[3], q.point[3], when .. ": same column")
     t.eq(q.point[4] - p.point[4], DROP, when .. ": the echo one arrow and a gap below, not on it")
     t.eq(q.under, false, when .. ": the quest arrow in front")
-    t.eq(p.under, true, when .. ": the echo behind it")
+    t.eq(p.under, false, when .. ": slid below, the echo is not behind: it takes the mouse itself")
     t.ok(p.lookIs ~= "needle", when .. ": no needle")
 end
 

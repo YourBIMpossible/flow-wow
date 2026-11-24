@@ -92,7 +92,7 @@ return {
         t.eq(p.point, { at[1], at[2], at[3], at[4] - (N.ARROW_SIZE + N.ARROW_GAP) },
             "no spread in the demo: slid one arrow and a gap below the quest arrow, not on it")
         t.eq(p.lookIs, "pointer", "the echo, no needle")
-        t.eq(p.under, true, "behind the quest arrow")
+        t.eq(p.under, false, "slid below it (no spread known): not behind, it takes the mouse itself")
         t.eq(p.scaled, 1, "the same size as the quest arrow")
         t.eq(q.under, false)
         t.eq(q.scaled, 1, "the quest arrow is not shrunk")
@@ -220,7 +220,7 @@ return {
         t.eq(savedArrows(c2).mode, nil, "dropped on the quest arrow: stacked again")
         t.eq(c2.arrows[2].attached, nil)
         t.eq(c2.arrows[2].lookIs, "pointer", "the echo of the stack again, no needle")
-        t.eq(c2.arrows[2].under, true, "behind the quest arrow")
+        t.eq(c2.arrows[2].under, false, "slid below it (no spread known): not behind, it takes the mouse itself")
         -- The slid place under the quest arrow is part of the stack too.
         cmd(d2, "separate")
         t.eq(savedArrows(c2).mode, "separate")
@@ -237,7 +237,7 @@ return {
         t.eq(savedArrows(c).mode, nil, "stacked is the default mode")
         t.eq(c.arrows[2].attached, nil, "the profession arrow has its own place in the stack")
         t.eq(c.arrows[2].lookIs, "pointer", "the quest arrow's echo, no needle")
-        t.eq(c.arrows[2].under, true, "behind the quest arrow")
+        t.eq(c.arrows[2].under, false, "slid below it (no spread known): not behind, it takes the mouse itself")
         t.ok(savedArrows(c).points ~= nil, "the profession arrow's own place is kept for the next separation")
         cmd(d, "hide prof")
         t.eq(c.arrows[2].shown, false)

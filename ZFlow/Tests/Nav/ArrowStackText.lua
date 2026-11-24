@@ -26,7 +26,7 @@ T["stacked: quest text above, profession text below, top or bottom half"] = func
     for name, layout in pairs({ default = {}, ["bottom half"] = low }) do
         local v = N.ArrowView(state(layout))
         t.eq(v.stacked, true, name .. ": stacked")
-        t.eq(v.prof.behind, true, name .. ": the echo is behind the quest arrow")
+        t.eq(v.prof.behind, false, name .. ": slid below (no spread): the echo is not behind")
         t.eq(v.quest.point[4] - v.prof.point[4], 56 + N.ARROW_GAP, name .. ": and under it, not over it")
         t.eq(v.prof.text.shown, true, name)
         t.eq(v.prof.text.to, "prof", name .. ": on the echo's own frame")

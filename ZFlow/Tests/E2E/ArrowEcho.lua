@@ -48,7 +48,7 @@ local function two(t, c, when)
     t.eq(q.shown, true, when .. ": the quest arrow")
     t.eq(p.shown, true, when .. ": the echo")
     t.eq(q.under, false, when .. ": the quest arrow in front")
-    t.eq(p.under, true, when .. ": the echo behind it")
+    t.eq(p.under, q.point[4] - p.point[4] == N.ECHO_NEST, when .. ": the echo is behind only while tucked under")
     t.ok(p.lookIs ~= "needle", when .. ": no needle")
     t.eq(q.scaled, 1, when .. ": the quest arrow at full size")
     t.eq(p.scaled, 1, when .. ": the echo the same size")
@@ -156,6 +156,47 @@ tests["arrow echo: walking along the 30 degree edge the echo does not jump (29 t
         walk(29, 12, "29 degrees again: tucked under")
     end
     walk(36, slid, "36 degrees: slid below")
+    t.eq(problems(addon), 0, "no problem from the arrows")
+end
+
+local function says(lines, text)
+    for _, line in ipairs(type(lines) == "table" and lines or {}) do
+        if tostring(line):find(text, 1, true) then return true end
+    end
+    return false
+end
+
+-- Lead section 510 (CHANGES-2). The hover and the click are the fake
+-- client's, which hears neither on an arrow that is under the other one, as
+-- the client does (Core/Client.lua, OnMouseUp, OnEnter, OnLeave).
+tests["arrow echo: tucked under, the quest arrow speaks for the echo; slid below, the echo has its own tooltip and menu"] = function(t)
+    -- Tucked under: the trainer about 9 degrees off north.
+    local c, addon = start(0.53, 0.1)
+    local q, p = two(t, c, "nested")
+    t.eq(p.under, true, "nested: the echo is behind")
+    p.hover(true)
+    t.eq(p.tipLines, nil, "nested: the echo behind has no tooltip of its own")
+    p.hover(false)
+    p.click("right")
+    t.eq(p.menuItems, nil, "nested: and no menu of its own")
+    q.hover(true)
+    t.ok(says(q.tipLines, "Mining trainer"), "nested: the quest arrow's tooltip says the echo's step too")
+    q.hover(false)
+    t.eq(problems(addon), 0, "no problem from the arrows")
+
+    -- Slid below: the trainer 90 degrees off north.
+    c, addon = start(0.8, 0.5)
+    q, p = two(t, c, "slid")
+    t.eq(p.under, false, "slid: nothing covers the echo, it is not behind")
+    p.hover(true)
+    t.ok(says(p.tipLines, "Mining trainer"), "slid: the echo's own tooltip says its step")
+    p.hover(false)
+    q.hover(true)
+    t.ok(type(q.tipLines) == "table", "slid: the quest arrow has its tooltip")
+    t.ok(not says(q.tipLines, "Mining trainer"), "slid: and leaves the echo's step to the echo")
+    q.hover(false)
+    p.click("right")
+    t.ok(type(p.menuItems) == "table" and #p.menuItems > 0, "slid: a right-click on the echo opens its menu")
     t.eq(problems(addon), 0, "no problem from the arrows")
 end
 

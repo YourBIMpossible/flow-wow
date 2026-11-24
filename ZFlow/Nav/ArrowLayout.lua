@@ -363,6 +363,10 @@ function N.ArrowLayout(state)
         prof.anchor, prof.look, prof.tint = "screen", "echo", "echo"
         prof.behind, prof.alpha, prof.echo = true, N.ECHO_ALPHA, true
         prof.slid = state.slid and true or false
+        -- Lead section 510 (CHANGES-2): behind only while it is tucked under
+        -- the quest arrow. Slid below, nothing covers it: it takes the
+        -- mouse itself, with its own tooltip, click and menu.
+        prof.behind = not prof.slid
         if profShown then
             quest.position, prof.position = N.ArrowStack(stackPoint, size, sw, sh,
                 q.room, p.room, p.mode ~= "off", prof.slid)

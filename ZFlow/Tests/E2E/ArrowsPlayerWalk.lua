@@ -109,7 +109,7 @@ tests["player walk 1: a quest step and a craft at an anvil: two arrows, the echo
     t.ok(q.drawn.body ~= 0, "the quest arrow is drawn")
     t.ok(p.drawn.body ~= 0, "the profession arrow is drawn")
     t.eq(p.lookIs, "pointer", "the quest arrow's echo, no needle")
-    t.eq(p.under, true, "behind the quest arrow")
+    t.eq(p.under, false, "slid below it (no spread known): not behind, it takes the mouse itself")
     t.eq(q.under, false, "the quest arrow in front")
     t.eq(p.faded, N.ECHO_ALPHA, "see-through")
     t.eq(p.point[3], q.point[3], "same column")

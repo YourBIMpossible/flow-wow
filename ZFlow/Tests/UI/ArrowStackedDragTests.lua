@@ -53,7 +53,7 @@ return {
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(saved(k).mode, "stacked", "stacked to begin with")
         t.eq(p.lookIs, "pointer", "the echo of the stack, no needle")
-        t.eq(p.under, true, "behind the quest arrow")
+        t.eq(p.under, false, "slid below it (no spread known): not behind, it takes the mouse itself")
         q.drag(STACK)
         c.advance(0.1, 2)
         t.eq(saved(k).mode, "stacked", "moving the stack keeps it stacked")
@@ -96,7 +96,7 @@ return {
         c.advance(0.1, 2)
         t.eq(saved(k).mode, "stacked", "back within the snap of the slid place")
         t.eq(p.lookIs, "pointer", "the echo of the stack, no needle")
-        t.eq(p.under, true, "behind the quest arrow")
+        t.eq(p.under, false, "slid below it (no spread known): not behind, it takes the mouse itself")
         t.eq(k.problems:count(), 0)
     end,
 
@@ -110,7 +110,7 @@ return {
         c.advance(0.1, 2)
         t.eq(saved(k), before)
         t.eq(p.lookIs, "pointer", "the echo of the stack, no needle")
-        t.eq(p.under, true, "behind the quest arrow")
+        t.eq(p.under, false, "slid below it (no spread known): not behind, it takes the mouse itself")
         t.eq(k.problems:count(), 0)
     end,
 
@@ -127,7 +127,7 @@ return {
         c.advance(0.1, 2)
         t.eq(saved(k).mode, "stacked")
         t.eq(p.lookIs, "pointer", "the echo of the stack, no needle")
-        t.eq(p.under, true, "behind the quest arrow")
+        t.eq(p.under, false, "slid below it (no spread known): not behind, it takes the mouse itself")
         t.eq(k.problems:count(), 0)
     end,
 }
