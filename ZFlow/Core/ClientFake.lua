@@ -4438,6 +4438,17 @@ function ns.make.fakeClient(opts)
         if type(id) ~= "number" then return nil end
         return s.questShareable and s.questShareable[id]
     end
+    -- S32: c.setPlaceText(zone, sub): the zone and sub-zone words; not set,
+    -- placeText() is nil (not known).
+    function c.setPlaceText(zone, sub)
+        local function w(v) return type(v) == "string" and v ~= "" and v or nil end
+        s.placeText = (w(zone) or w(sub)) and { zone = w(zone), sub = w(sub) } or nil
+    end
+    function c.placeText()
+        local p = s.placeText
+        if p == nil then return nil end
+        return { zone = p.zone, sub = p.sub }
+    end
     return c
 end
 
