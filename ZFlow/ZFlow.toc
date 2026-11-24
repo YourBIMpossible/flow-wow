@@ -156,6 +156,7 @@ UI\ProfPick.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
 UI\SettingsPage.lua
+UI\SettingsNative.lua
 UI\SettingsKeys.lua
 UI\SettingsPanel.lua
 UI\SettingsWindow.lua
@@ -235,6 +236,8 @@ Nav\Trip.lua
 UI\RouteTracker.lua
 UI\BuffStrip.lua
 Nav\QuestAdvice.lua
+Nav\TravelAdvice.lua
+Nav\InvitePrompt.lua
 Spells\TrainAdvice.lua
 Items\ProfPlan.lua
 Items\ProfSources.lua
@@ -242,6 +245,7 @@ Items\VendorWares.lua
 UI\ProfDock.lua
 Nav\ProfFeed.lua
 Nav\HearthAdvice.lua
+UI\DungeonTracker.lua
 Nav\GateWords.lua
 Items\RecipeFacts.lua
 Items\VendorRecipes.lua
@@ -249,3 +253,5 @@ Nav\CrossingWords.lua
 Nav\Activities.lua
 UI\Lite.lua
 Nav\ClassTrainerStep.lua
+Items\DispositionTip.lua
+Import\Apply.lua

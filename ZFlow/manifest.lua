@@ -178,6 +178,7 @@ return {
         "UI/DevPanel.lua",
         "UI/SettingsSlash.lua",
         "UI/SettingsPage.lua",
+        "UI/SettingsNative.lua",
         "UI/SettingsKeys.lua",
         "UI/SettingsPanel.lua",
         "UI/SettingsWindow.lua",
@@ -290,6 +291,9 @@ return {
     "UI/BuffStrip.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- S33 (lead section 395 item 4): travel spell and mount advice text (after TripRoute, Arrow, the advisor).
+    "Nav/TravelAdvice.lua",
+    "Nav/InvitePrompt.lua",
     -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
     "Spells/TrainAdvice.lua",
     -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).
@@ -304,6 +308,8 @@ return {
     "Nav/ProfFeed.lua",
     -- G46 (lead section 391 item 2): when hearthing saves the walk, and where to set home (after Trip, TripRoute).
     "Nav/HearthAdvice.lua",
+    -- Lead section 303 (d): the in-dungeon tracker, on the kit (after BossKills and the dungeon data).
+    "UI/DungeonTracker.lua",
     -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
     "Nav/GateWords.lua",
     -- Lead section 406 item 3: recipe facts for the profession plan, seen in game then shipped (read by ProfPlan at call time).
@@ -318,5 +324,9 @@ return {
     "UI/Lite.lua",
     -- G44 (section 397 item 14): the class trainer route step (after TrainAdvice and the packs).
     "Nav/ClassTrainerStep.lua",
+    -- G4 (section 395): keep or sell on item tooltips (after LootNote, SellList, Reservations).
+    "Items/DispositionTip.lua",
+    -- A10: the import word's "now", which copies the earlier add-on's saved data in (after Diag, SettingsShare).
+    "Import/Apply.lua",
     },
 }
