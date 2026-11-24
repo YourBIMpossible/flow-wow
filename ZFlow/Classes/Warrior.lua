@@ -20,9 +20,9 @@ local _, ns = ...
 -- outside source: each needs a check in the game client.
 --
 -- Not in this pack yet (tasks):
---   * Berserker Rage as a fear breaker: breakers is empty; it needs
---     Berserker Stance, and whether the fear read names the effect type is
---     not known yet;
+--   * Berserker Rage as a fear breaker is in (N52 WARRIOR-1/4); the fear
+--     type names it waits for ("FEAR", "FEAR_MECHANIC") are a first guess,
+--     unchecked against the client's loss-of-control read;
 --   * anything that waits on a rage amount: the client hides power amounts
 --     from addon code (R.FROM_AMOUNT in Rotation/Snapshot.lua);
 --   * anything that waits on a swing timer or a block, dodge or parry event:
@@ -271,8 +271,13 @@ local pack = {
         { spell = "Shield Bash", forms = { [BATTLE] = true, [DEFENSIVE] = true }, evidence = GUESS },
     },
 
-    -- Not in this pack yet: see the header (Berserker Rage).
-    breakers = {},
+    -- N52 WARRIOR-1/4 (lead section 233): Berserker Rage breaks a fear,
+    -- shown only. The stance is not checked here: outside Berserker Stance
+    -- the game answers not usable and the chooser passes it by. The fear
+    -- type names (the loss-of-control read) are a first guess.
+    breakers = {
+        { spell = "Berserker Rage", types = { FEAR = true, FEAR_MECHANIC = true }, evidence = GUESS },
+    },
 
     -- The class removes nothing.
     dispels = {},
