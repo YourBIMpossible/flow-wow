@@ -33,14 +33,18 @@ local _, ns = ...
 -- Only orange (sure) and yellow (maybe) give a point. Sure comes first,
 -- then the cheapest by known prices (unpriced last), then by name.
 -- Materials come from the bags, then the bank, then a known Mining smelt
--- of ore in the bags. Gathering, vendors and the auction house are C3
--- (Items/ProfSources.lua); without them a recipe short of materials gives
--- no step.
+-- of ore in the bags. When none of the candidates can be made from those
+-- and the input carries source reads (nodes or vendorPrice, C3), the first
+-- candidate's short materials get a gather, buy_vendor or buy_auction step
+-- (Items/ProfSources.lua), ahead of the rest; without source reads a
+-- recipe short of materials gives no step.
+--   here, nodes, vendorPrice   as ProfSources.For takes them (C3)
 
 ns.ProfPlan = {}
 local P = ns.ProfPlan
 
 P.NAME = "profPlan"
+P.NODE_SOURCE = "gatherMateSource"
 P.SMELT_PROF = "Mining"
 P.SMELT_STATION = "forge"
 P.CHANCE = { optimal = "sure", medium = "maybe" }
@@ -258,12 +262,52 @@ local function craftSteps(input, c)
     return steps
 end
 
+-- The steps for the first candidate with its short materials named first,
+-- or nil.
+local function sourcedSteps(input, c)
+    local n = limit(input, c)
+    if n < 1 then return nil end
+    local steps, extra = {}, {}
+    for _, item in ipairs(sortedKeys(c.entry.mats)) do
+        local need = c.entry.mats[item] * n
+        local got = have(input, item)
+        if need > got then
+            local s = ns.ProfSources.For(input, item, need - got)
+            if s then
+                s.recipe = c.recipe
+                steps[#steps + 1] = s
+                extra[item] = need - got
+            end
+        end
+    end
+    local filled = {}
+    for k, v in pairs(input) do filled[k] = v end
+    local bags = {}
+    if type(input.bags) == "table" then
+        for k in pairs(input.bags) do bags[k] = count(input.bags, k) end
+    end
+    for item, x in pairs(extra) do bags[item] = count(bags, item) + x end
+    filled.bags = bags
+    local rest = craftSteps(filled, c)
+    if not rest then return nil end
+    for _, s in ipairs(rest) do steps[#steps + 1] = s end
+    return steps
+end
+
+local function sourced(input)
+    return type(ns.ProfSources) == "table" and (input.nodes ~= nil or input.vendorPrice ~= nil)
+end
+
 function P.Plan(input)
     if not usable(input) then return {}, "no reading" end
     if input.skill >= input.max then return { tierStep(input) } end
     local list = P.Candidates(input)
     for _, c in ipairs(list) do
         local steps = craftSteps(input, c)
+        if steps then return steps end
+    end
+    if #list > 0 and sourced(input) then
+        local steps = sourcedSteps(input, list[1])
         if steps then return steps end
     end
     if #list > 0 then return {}, "no materials" end
@@ -305,7 +349,7 @@ local function stationTarget(stations, kind, pos)
     return { map = best.map, x = best.x, y = best.y }
 end
 
-function P.Input(client, store, prof)
+function P.Input(client, store, prof, nodeSource)
     local readings = saved(store, "char", "learned.facts.profSkill")
     local r = get(readings, prof)
     local keyOf = ns.Items and ns.Items.Key or function(v) return v end
@@ -318,8 +362,31 @@ function P.Input(client, store, prof)
     local stations = saved(store, "account", "learned.keyStations")
     local target
     if kind then target = stationTarget(stations, kind, pos) end
+    local nodes
+    if type(nodeSource) == "table" and type(nodeSource.Nodes) == "function" then
+        local ok, list = pcall(nodeSource.Nodes)
+        if ok and type(list) == "table" then
+            nodes = {}
+            for _, n in ipairs(list) do
+                if type(n) == "table" then
+                    -- Nodes() gives the current map's nodes, without a map.
+                    local map = n.map
+                    if map == nil then map = get(pos, "map") end
+                    nodes[#nodes + 1] = { kind = n.kind, node = n.node, x = n.x, y = n.y, map = map }
+                end
+            end
+        end
+    end
     return {
         prof = prof,
+        here = pos,
+        nodes = nodes or {},
+        vendorPrice = function(item)
+            if type(prices) ~= "table" or not ns.Prices then return nil end
+            local p = ns.Prices.Get(prices, item, "vendor")
+            if type(p) == "table" and type(p.value) == "number" then return p.value end
+            return nil
+        end,
         skill = get(r, "skill"),
         max = get(r, "max"),
         book = saved(store, "char", "learned.facts.recipeBook"),
@@ -351,7 +418,12 @@ function P.Declare(k)
     local ctx
     function api.plan(prof)
         if not ctx then return {}, "no reading" end
-        return P.Plan(P.Input(ctx.client, ctx.store, prof))
+        local source
+        if type(ctx.use) == "function" then
+            local ok, s = pcall(ctx.use, P.NODE_SOURCE)
+            if ok then source = s end
+        end
+        return P.Plan(P.Input(ctx.client, ctx.store, prof, source))
     end
     k:Module({
         name = P.NAME,
