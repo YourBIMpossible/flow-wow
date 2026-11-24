@@ -643,6 +643,68 @@ function P.Input(client, store, prof, nodeSource)
     }
 end
 
+-- Lead section 416 item 3: every item the plan's steps name as a material
+-- is kept off the sell list (DISPATCH 382: it goes to the auction house,
+-- never to a vendor). The step kinds whose item is a material; a craft's
+-- material lines (mats, with the ore of a smelt) and a smelt's ore (from)
+-- count too. A craft's own item is what it makes, not a material.
+P.MATERIAL_KINDS = { take_bank = true, make_part = true, gather = true, buy_vendor = true, buy_auction = true }
+
+-- steps -> out[item] = { { prof, what = the recipe }, ... }, as
+-- Disposition's context.materials takes it. out is added to when given.
+function P.StepMaterials(prof, steps, out)
+    out = type(out) == "table" and out or {}
+    if type(prof) ~= "string" or prof == "" then return out end
+    local function add(item, recipe)
+        if item == nil then return end
+        local uses = out[item]
+        if type(uses) ~= "table" then uses = {} out[item] = uses end
+        for _, u in ipairs(uses) do
+            if u.prof == prof then return end
+        end
+        uses[#uses + 1] = { prof = prof, what = type(recipe) == "string" and recipe ~= "" and recipe or nil }
+    end
+    for _, s in ipairs(type(steps) == "table" and steps or {}) do
+        if type(s) == "table" then
+            if P.MATERIAL_KINDS[s.kind] then add(s.item, s.recipe) end
+            if type(s.from) == "table" then add(s.from.item, s.recipe) end
+            if s.kind == "craft" and type(s.mats) == "table" then
+                for _, m in ipairs(s.mats) do
+                    if type(m) == "table" then
+                        add(m.item, s.recipe)
+                        add(m.ore, s.recipe)
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- The materials every profession's plan names, read from the client and
+-- the store: the professions are the saved skill readings and
+-- client.professions(). nil when no store is given (nothing saved: no plan).
+function P.Materials(client, store)
+    if type(store) ~= "table" or type(store.get) ~= "function" then return nil end
+    local profs, seen = {}, {}
+    local function addProf(name)
+        if type(name) == "string" and name ~= "" and not seen[name] then
+            seen[name] = true
+            profs[#profs + 1] = name
+        end
+    end
+    local readings, known = saved(store, "char", "learned.facts.profSkill"), ask(client, "professions")
+    for name in pairs(type(readings) == "table" and readings or {}) do addProf(name) end
+    for name in pairs(type(known) == "table" and known or {}) do addProf(name) end
+    table.sort(profs)
+    local out = {}
+    for _, prof in ipairs(profs) do
+        local ok, steps = pcall(function() return P.Plan(P.Input(client, store, prof)) end)
+        if ok then P.StepMaterials(prof, steps, out) end
+    end
+    return out
+end
+
 function P.Declare(k)
     local api = {}
     local ctx
