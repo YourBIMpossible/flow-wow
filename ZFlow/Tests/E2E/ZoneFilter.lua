@@ -62,11 +62,9 @@ tests["zone filter e2e: picks are kept; the module orders by them; the row is he
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(2, 8)
     local ZF = ns.Nav.ZoneFilter
-    -- Lead section 541: the row is back, with the route that reads it
-    -- (Tests/E2E/TripRouteZones.lua).
-    t.ok(addon.settings:row(ZF.SETTING) ~= nil, "the settings row ships with the route's hook")
+    t.eq(addon.settings:row(ZF.SETTING), nil, "no settings row yet (lead sections 507 and 542)")
     local mod = addon.use("zoneFilter")
-    t.eq(mod.First(), false, "off by default: left out, not after")
+    t.eq(mod.First(), false, "without the row: left out, not after")
     t.eq(mod.Selected(), nil, "nothing picked yet")
     t.ok(mod.SetZoneOn(2, true), "pick zone 2")
     t.eq(mod.Selected(), { [2] = true })

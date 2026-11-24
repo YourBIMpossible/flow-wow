@@ -3,11 +3,13 @@ local _, ns = ...
 -- 522 and 541): the quest route keeps the stops of the zones you picked
 -- first. A stop in a zone you did not pick is left out and named, with why
 -- (the setting off), or comes after your zones (the setting on). Nothing
--- picked: the route is as it was. The settings row ships here, with the
--- route that reads it. A stop's zone is the map it is on. Whole add-on on a
--- fake client; made-up quests and places. Not tested in game.
+-- picked: the route is as it was. The settings row is held back until the
+-- player can pick zones (lead section 542); its words stay as data, and
+-- with no row the setting reads as off. A stop's zone is the map it is on.
+-- Whole add-on on a fake client; made-up quests and places. Not tested in
+-- game.
 -- Red on the base (1a947eb7 with route-a4 6ccc4df8 merged in): the route
--- does not read the picks, there is no T.Zoned, and the row is not there.
+-- does not read the picks and there is no T.Zoned.
 local tests = {}
 
 local MAP, OTHER = 1436, 1437
@@ -108,15 +110,16 @@ tests["route zones: the picks order the stops; a zone not picked is left out and
     t.eq({ labels(kept), changed }, { "a,b,c,d", false }, "a zone filter that raises: as planned")
 end
 
--- Red: the row is not there (lead section 507 held it back until the route reads it).
-tests["route zones: the settings row is there, off by default, with the zone filter's own words"] = function(t)
+-- Lead section 542: the row is held back until zones can be picked; its
+-- words are kept, unregistered, for when it comes back.
+tests["route zones: no settings row yet; its words are kept as data; the setting reads as off"] = function(t)
     local _, addon = boot()
     local ZF = ns.Nav.ZoneFilter
-    local row = addon.settings:row(ZF.SETTING)
-    t.ok(row ~= nil, "a settings row")
-    if not row then return end
-    t.eq({ row.type, row.default, row.label, row.help }, { "bool", false, ZF.ROW_LABEL, ZF.ROW_HELP })
-    t.eq(addon.settings:get(ZF.SETTING), false)
+    t.eq(addon.settings:row(ZF.SETTING), nil, "no settings row")
+    t.eq(ZF.ROW_LABEL, "Finish the selected zones first")
+    t.ok(type(ZF.ROW_HELP) == "string" and ZF.ROW_HELP:find("selected zones first", 1, true) ~= nil
+        and ZF.ROW_HELP:find("left out of the route", 1, true) ~= nil, "the help says both ways")
+    t.eq(addon.use("zoneFilter").First(), false, "with no row: a zone not picked is left out")
 end
 
 tests["route zones: nothing picked, or this zone picked, the route is as it was"] = function(t)
@@ -132,17 +135,17 @@ tests["route zones: nothing picked, or this zone picked, the route is as it was"
 end
 
 -- Red: the route ignores the picks and plans all three stops.
-tests["route zones: only another zone picked - off leaves this zone's stops out, on puts them after"] = function(t)
+tests["route zones: only another zone picked leaves this zone's stops out, and unpicked it plans them again"] = function(t)
     local c, addon, base = boot()
-    local T, ZF = ns.Nav.TripRoute, ns.Nav.ZoneFilter
-    t.eq(addon.use("zoneFilter").SetZoneOn(OTHER, true), true, "pick another zone only")
+    local T = ns.Nav.TripRoute
+    local zones = addon.use("zoneFilter")
+    t.eq(zones.SetZoneOn(OTHER, true), true, "pick another zone only")
     local lines = route(c)
-    t.ok(with(lines, T.WHY_ZONES) ~= nil, "the setting off: the word says no stop is in your zones: " .. tostring(lines[1]))
+    t.ok(with(lines, T.WHY_ZONES) ~= nil, "the word says no stop is in your zones: " .. tostring(lines[1]))
     t.eq(with(lines, "1. Bandages"), nil, "and plans none")
-    addon.settings:set(ZF.SETTING, true)
+    t.eq(zones.SetZoneOn(OTHER, false), true, "unpick it")
     lines = route(c)
-    t.ok(with(lines, "1. Bandages") ~= nil and with(lines, "3. Herbs") ~= nil,
-        "the setting on: this zone's stops come after your zones, so they are planned")
+    t.ok(with(lines, "1. Bandages") ~= nil and with(lines, "3. Herbs") ~= nil, "nothing picked again: all three stops")
     t.eq(addon.problems:count(), base, "no new problem")
 end
 

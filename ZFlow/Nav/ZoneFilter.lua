@@ -6,12 +6,14 @@ local _, ns = ...
 -- The picks are per character (store "char", ZF.PATH); not picked yet
 -- (nil, or an empty pick table): every zone is yours, as before.
 -- The route reads it: Nav/TripRoute.lua api.Plan orders its planned stops
--- through this module's Order (T.Zoned; a stop's zone is the map it is on),
--- and the settings row (ZF.SETTING, words ZF.ROW_LABEL and ZF.ROW_HELP)
--- ships with that (lead sections 507 and 541).
--- Not here yet: a place to pick. Ticking zones is a new UI surface that
--- waits for a Muse note, so until then nothing is picked and the route is
--- as it was.
+-- through this module's Order (T.Zoned; a stop's zone is the map it is on;
+-- lead section 541).
+-- Not here yet: a place to pick, and the settings row. Ticking zones is a
+-- new UI surface that waits for a Muse note, so nothing is picked and the
+-- route is as it was. The row (ZF.SETTING, words ZF.ROW_LABEL and
+-- ZF.ROW_HELP, kept here as data) is held back until the player can pick
+-- (lead section 542): a row that changes nothing would mislead. With no
+-- row the setting reads as off: a zone not picked is left out.
 -- Compared with Flow Modules/Nav/Nav.lua N.ZoneFilter, N.ZoneLine,
 -- N.SelectedZones, N.ZonesFirstOn and its "Finish the selected zones first"
 -- row: the same split and words. Flow also counts steps to accept and the
@@ -109,11 +111,6 @@ function ZF.Declare(k)
     function api.Order(stops, zoneOf)
         return ZF.Order(stops, api.Selected(), api.First(), zoneOf)
     end
-
-    -- Lead section 507: the row ships now that the route reads it.
-    k:Setting({ key = ZF.SETTING, scope = "account", type = "bool", default = false, group = "travel.route",
-        synonyms = { "zone", "zones", "selected", "route", "order" },
-        label = ZF.ROW_LABEL, help = ZF.ROW_HELP })
 
     k:Module({
         name = ZF.NAME,
