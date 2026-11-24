@@ -243,6 +243,7 @@ UI\BuffStrip.lua
 Nav\QuestAdvice.lua
 Nav\TravelAdvice.lua
 Nav\InvitePrompt.lua
+Items\QuestBags.lua
 Spells\TrainAdvice.lua
 Nav\RoutePickups.lua
 Nav\RidingStep.lua

@@ -137,7 +137,7 @@ tests["settings layout: choosing a topic in the list swaps the rows and moves th
     t.eq(c.optionsNav("topic", "bags"), true)
     local keys = drawn(c)
     table.sort(keys)
-    t.eq(keys, { "bank.list", "items.dispositionTip", "items.haveCount", "repair.costLine", "repair.warnBelow", "vendor.list" })
+    t.eq(keys, { "bank.list", "items.dispositionTip", "items.haveCount", "items.questBags", "repair.costLine", "repair.warnBelow", "vendor.list" })
     t.eq((c.optionsRows() or {})[1], { kind = "group", text = T.Find("bags").name }, "the pane's heading is the topic")
     for _, key in ipairs(before) do t.eq(drawnRow(c, key), nil, key .. " of the first topic is gone") end
     if not ready(t, c) then return end

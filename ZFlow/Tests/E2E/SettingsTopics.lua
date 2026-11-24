@@ -367,7 +367,7 @@ tests["settings workflow: open the page, pick a topic, search, change a result, 
     t.eq(c.optionsNav("topic", "bags"), true)
     local keys = drawn(c)
     table.sort(keys)
-    t.eq(keys, { "bank.list", "items.dispositionTip", "items.haveCount", "repair.costLine", "repair.warnBelow", "vendor.list" })
+    t.eq(keys, { "bank.list", "items.dispositionTip", "items.haveCount", "items.questBags", "repair.costLine", "repair.warnBelow", "vendor.list" })
     t.eq(ofKind(c, "group").text, T.Find("bags").name)
 
     -- Search every topic.
