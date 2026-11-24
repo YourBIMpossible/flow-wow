@@ -317,6 +317,12 @@ N.PROF_WHY_GM_OFF = "No known %s node here: turn on Read GatherMate2 nodes"
 N.PROF_WHY_NODE = "No known %s node on this map"
 N.PROF_WHY_RECIPES = "Open your %s window once to see what gives a point"
 N.PROF_WHY_NO_POINT = "No known %s recipe gives a point at %d"
+-- Lead section 421 point 2: a recipe last seen giving a point below the
+-- skill, and never seen grey, is still the step, not confirmed: the craft
+-- on one line, then when it was last seen giving points (two lines, never
+-- cut).
+N.PROF_CRAFT_STALE = "Make %s"
+N.PROF_STALE_CHECK = "last seen giving points at %d; open your %s window to check"
 N.PROF_WHY_NOTHING = "Nothing known to point at for %s"
 
 -- Recipe colours that give a point: sure, or may.
@@ -347,29 +353,48 @@ local function apart(n, pos, size)
     return dx * dx + dy * dy
 end
 
+-- Seen grey at or below skill: a colour only goes down, so it gives no
+-- point now.
+local function seenGrey(spans, skill)
+    local s = spans.trivial
+    return type(s) == "table" and finite(s.lo) and s.lo <= skill
+end
+
 -- The craft of prof that gives a point at skill: its name and "sure" or
--- "maybe"; else nil, nil and whether any recipe of prof has colours seen.
+-- "maybe"; else (lead section 421 point 2) one last seen giving a point
+-- below skill and never seen grey: its name, "stale", and the highest
+-- skill it was seen giving a point at; else nil, nil. The third value:
+-- whether any recipe of prof has colours seen; the fifth: whether every
+-- such recipe was seen grey.
 local function craftFor(prof, skill, book, colours)
-    if type(book) ~= "table" or type(colours) ~= "table" then return nil, nil, false end
-    local sure, maybe, seen = {}, {}, false
+    if type(book) ~= "table" or type(colours) ~= "table" then return nil, nil, false, nil, false end
+    local sure, maybe, stale, last, seen, allGrey = {}, {}, {}, {}, false, true
     for name, rec in pairs(book) do
         local spans = colours[name]
         if type(name) == "string" and type(rec) == "table" and rec.profession == prof and type(spans) == "table" then
             seen = true
+            local grey = seenGrey(spans, skill)
+            if not grey then allGrey = false end
             for difficulty, span in pairs(spans) do
                 local kind = GIVES[difficulty]
-                if kind and type(span) == "table" and finite(span.lo) and finite(span.hi)
-                    and span.lo <= skill and skill <= span.hi then
-                    if kind == "sure" then sure[#sure + 1] = name else maybe[#maybe + 1] = name end
+                if kind and type(span) == "table" and finite(span.lo) and finite(span.hi) then
+                    if span.lo <= skill and skill <= span.hi then
+                        if kind == "sure" then sure[#sure + 1] = name else maybe[#maybe + 1] = name end
+                    elseif not grey and span.hi < skill and (last[name] == nil or span.hi > last[name]) then
+                        if last[name] == nil then stale[#stale + 1] = name end
+                        last[name] = span.hi
+                    end
                 end
             end
         end
     end
     table.sort(sure)
     table.sort(maybe)
+    table.sort(stale)
     if sure[1] then return sure[1], "sure", true end
     if maybe[1] then return maybe[1], "maybe", true end
-    return nil, nil, seen
+    if stale[1] then return stale[1], "stale", true, last[stale[1]] end
+    return nil, nil, seen, nil, seen and allGrey
 end
 
 local function nodeWhy(prof, state)
@@ -420,7 +445,7 @@ local function stationStep(input, names, here)
         local r = reading(input.readings, prof)
         if serves and N.PROF_GATHER[prof] == nil and r and not capped(r) then
             local craft, gives = craftFor(prof, r.skill, input.book, input.colours)
-            if craft then
+            if craft and gives ~= "stale" then
                 for _, s in ipairs(input.stations) do
                     if type(s) == "table" and serves[s.kind] == true and s.map == pos.map
                         and share(s.x) and share(s.y) then
@@ -540,24 +565,34 @@ end
 
 -- Steps 3 and 4 of N.ProfNext: nothing has a place.
 textNext = function(input, names, here)
-    -- The craft that gives a point: sure before maybe, then by profession.
-    local pick, pickKind, pickProf
+    -- The craft that gives a point: sure before maybe before one last seen
+    -- giving a point lower (lead section 421), then by profession.
+    local ORDER = { sure = 1, maybe = 2, stale = 3 }
+    local pick, pickKind, pickProf, pickLast
     for _, prof in ipairs(names) do
         local r = reading(input.readings, prof)
         if N.PROF_GATHER[prof] == nil and r and not capped(r) then
-            local name, kind = craftFor(prof, r.skill, input.book, input.colours)
-            if name and (not pick or (kind == "sure" and pickKind ~= "sure")) then
-                pick, pickKind, pickProf = name, kind, prof
+            local name, kind, _, last = craftFor(prof, r.skill, input.book, input.colours)
+            if name and (not pick or ORDER[kind] < ORDER[pickKind]) then
+                pick, pickKind, pickProf, pickLast = name, kind, prof, last
             end
         end
     end
     if pick then
-        local words = pickKind == "sure" and N.PROF_CRAFT_SURE or N.PROF_CRAFT_MAYBE
-        local line = words:format(pick, pickProf)
-        if N.ProfBankShort(input.book[pick], input.bags, input.bank) then
-            return textStep({ line, N.PROF_BANK_NOTE })
+        local lines
+        if pickKind == "stale" then
+            lines = { N.PROF_CRAFT_STALE:format(pick), N.PROF_STALE_CHECK:format(pickLast, pickProf) }
+        else
+            local words = pickKind == "sure" and N.PROF_CRAFT_SURE or N.PROF_CRAFT_MAYBE
+            lines = { words:format(pick, pickProf) }
         end
-        return textStep(line)
+        if N.ProfBankShort(input.book[pick], input.bags, input.bank) then
+            lines[#lines + 1] = N.PROF_BANK_NOTE
+        end
+        local step = textStep(lines)
+        -- Lead section 421 point 1: this names a craft the player can do now.
+        step.doable = true
+        return step
     end
 
     -- Why, one line for each profession by name.
@@ -576,8 +611,9 @@ textNext = function(input, names, here)
         elseif not r then
             return N.PROF_WHY_READ:format(prof)
         end
-        local _, _, seen = craftFor(prof, r.skill, input.book, input.colours)
-        if seen then return N.PROF_WHY_NO_POINT:format(prof, r.skill) end
+        -- Lead section 421 point 2: only when every known recipe was seen grey.
+        local _, _, _, _, allGrey = craftFor(prof, r.skill, input.book, input.colours)
+        if allGrey then return N.PROF_WHY_NO_POINT:format(prof, r.skill) end
         return N.PROF_WHY_RECIPES:format(prof)
     end
     local lines = {}
@@ -671,9 +707,11 @@ function N.ProfChoose(picked, pick, older)
     -- Lead section 419: "any trainer", said only because every known recipe
     -- was outgrown and no trainer was seen, leaves it to the older step's
     -- words, which name the craft or say why nothing gives a point.
+    -- Lead section 421 point 1: a trainer step with no place (any kind)
+    -- never beats an older step that names something the player can do now.
     local step = pick.step
     if type(older) == "table" and type(step) == "table" and step.kind == "learn_recipe"
-        and step.outgrown == true then
+        and (step.outgrown == true or older.doable == true) then
         return older
     end
     local training = type(pick.step) == "table" and pick.step.kind == "train_tier"
