@@ -9,6 +9,8 @@
 -- word already does (Plan, Skip, Off) and says the result in chat in the
 -- same words, switches the route window's setting, and opens the settings
 -- page. It orders no route itself and nothing is moved, targeted or cast.
+-- Its advice row (G32) opens the advice panel (UI/Advisor.lua Open), which
+-- only draws text; a refusal is said in chat.
 --
 -- Setting "ui.minimapButton" (bool, account, default on): off hides the
 -- button at once, on shows it (making it the first time).
@@ -41,13 +43,17 @@ MB.MENU_CLEAR = "Clear the route"
 MB.MENU_NONE = "No route yet"
 MB.MENU_WINDOW = "Show the route window"
 MB.MENU_SETTINGS = "Settings"
+MB.MENU_ADVICE = "Show advice"
+MB.MENU_ADVICE_N = "Show advice (%d)"
 MB.SYNONYMS = { "minimap button", "minimap icon" }
 
 local function MP() return ns.MinimapPlace or {} end
 
 -- The route menu's rows (the arrows' menu shape, UI/ArrowMenu.lua).
 -- state = { title = the add-on's title, route = a route is planned,
---           window = the route window's setting (nil: no such setting) }
+--           window = the route window's setting (nil: no such setting),
+--           advice = how many prompts the advice panel holds (nil: no
+--           advisor, no row) }
 function MB.Menu(state)
     state = type(state) == "table" and state or {}
     local has = state.route == true
@@ -64,6 +70,12 @@ function MB.Menu(state)
     if state.window ~= nil then
         items[#items + 1] = { sep = true }
         items[#items + 1] = { key = "window", text = MB.MENU_WINDOW, checked = state.window == true }
+    end
+    local advice = state.advice
+    if type(advice) == "number" then
+        items[#items + 1] = { sep = true }
+        items[#items + 1] = { key = "advice",
+            text = advice > 0 and MB.MENU_ADVICE_N:format(advice) or MB.MENU_ADVICE }
     end
     items[#items + 1] = { sep = true }
     items[#items + 1] = { key = "settings", text = MB.MENU_SETTINGS }
@@ -121,13 +133,26 @@ function MB.Declare(k)
         return key
     end
 
+    local function advisor()
+        local A = ns.Advisor
+        local a = k.use and A and k.use(A.NAME)
+        if type(a) ~= "table" or type(a.Open) ~= "function" or type(a.List) ~= "function" then return nil end
+        return a
+    end
+
     local function menuState()
         local r = route()
         local lines = r and type(r.Lines) == "function" and r.Lines() or nil
         local key = windowKey()
         local window
         if key then window = ctx.settings:get(key) == true end
-        return { title = id().title, route = lines ~= nil, window = window }
+        local a = advisor()
+        local advice
+        if a then
+            local list = a.List()
+            advice = type(list) == "table" and #list or 0
+        end
+        return { title = id().title, route = lines ~= nil, window = window, advice = advice }
     end
 
     local function say(lines)
@@ -162,6 +187,14 @@ function MB.Declare(k)
                 local ok, why = ctx.settings:set(row, ctx.settings:get(row) ~= true)
                 if not ok and why ~= nil then problem("menu", why) end
             end
+        elseif key == "advice" then
+            local a = advisor()
+            if not a then
+                problem("menu", "the advice panel is not ready")
+                return
+            end
+            local ok, why = a.Open()
+            if not ok then say({ why }) end
         elseif ROUTE[key] then
             local r = route()
             if r and type(r.Plan) == "function" and type(r.Skip) == "function" and type(r.Off) == "function"
