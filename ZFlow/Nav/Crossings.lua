@@ -541,7 +541,11 @@ function Crossings.Declare(k)
                 board = ended
             end
         end
-        if board and N.CrossingBoardKept then board = N.CrossingBoardKept(board, hereName) end
+        -- Only on the side the wait was read on: the landing's word never
+        -- judges the dock's wait (the crossing itself is judged below).
+        if board and N.CrossingBoardKept and (last == nil or last.cont == here.cont) then
+            board = N.CrossingBoardKept(board, hereName)
+        end
         local before, beforeName = last, lastName
         last, lastName = here, hereName
         if before == nil or before.cont == here.cont then return nil end
