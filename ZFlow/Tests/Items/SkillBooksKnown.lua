@@ -11,6 +11,23 @@ local ENGLISH = { "Angler's Notes", "Use: Increases your Fishing skill by 5, up 
 local GERMAN = { "Benutzen: Erhoeht Eure Fertigkeit in Angeln um 5." }
 local ENTRY = { skill = "Fishing", amount = 5, cap = 75, source = "test record", seen = "2026-11-24" }
 
+-- What the login alone leaves behind is not this module's: the problems and
+-- the secure macros are counted after the boot, and each test asks only for
+-- what came after it (as Tests/E2E/SellThese.lua does). said() names the
+-- new problems when there are any.
+local atBoot = setmetatable({}, { __mode = "k" })
+local function newProblems(addon) return addon.problems:count() - (atBoot[addon] or 0) end
+local function said(addon)
+    local out = {}
+    for _, p in ipairs(addon.problems:list()) do
+        local parts = {}
+        for key, v in pairs(p) do parts[#parts + 1] = tostring(key) .. "=" .. tostring(v) end
+        table.sort(parts)
+        out[#out + 1] = table.concat(parts, " ")
+    end
+    return "problems: " .. table.concat(out, " | ")
+end
+
 -- lines: { [item ID] = tooltip lines }. Gives the client, the add-on and
 -- how often each item's tooltip text was asked for.
 local function boot(lines)
@@ -32,6 +49,7 @@ local function boot(lines)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
     if type(addon.SkillBoosters) == "table" then addon.SkillBoosters.KNOWN[KNOWN_BOOK] = ENTRY end
+    atBoot[addon] = addon.problems:count()
     return c, addon, asked
 end
 
@@ -60,13 +78,13 @@ end
 tests["skill books known: a known item is found by ID under a tooltip in another language"] = function(t)
     local c, addon = boot({ [KNOWN_BOOK] = GERMAN })
     t.eq(tip(c, KNOWN_BOOK), USE)
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
 end
 
 tests["skill books known: a known item is found by ID with no tooltip lines at all"] = function(t)
     local c, addon = boot({})
     t.eq(tip(c, KNOWN_BOOK), USE)
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
 end
 
 tests["skill books known: a known item's tooltip text is never read"] = function(t)
@@ -81,10 +99,10 @@ end
 tests["skill books known: an item not in the list is still read from an English tooltip only"] = function(t)
     local c, addon = boot({ [OTHER_BOOK] = ENGLISH })
     t.eq(tip(c, OTHER_BOOK), USE, "the fallback")
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
     c, addon = boot({ [OTHER_BOOK] = GERMAN })
     t.eq(tip(c, OTHER_BOOK), nil, "not in the list, not English: unknown")
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
 end
 
 return tests

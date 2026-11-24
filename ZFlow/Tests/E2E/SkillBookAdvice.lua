@@ -19,6 +19,25 @@ local INFO = {
 local LINES = { "Angler's Notes", "Use: Increases your Fishing skill by 5, up to a maximum of 75." }
 local BAGS = { { item = BOOK, count = 1 }, { item = ROCK, count = 1 } }
 
+-- What the login alone leaves behind is not this module's: the problems and
+-- the secure macros are counted after the boot, and each test asks only for
+-- what came after it (as Tests/E2E/SellThese.lua does). said() names the
+-- new problems when there are any.
+local atBoot = setmetatable({}, { __mode = "k" })
+local function newProblems(addon) return addon.problems:count() - (atBoot[addon] or 0) end
+local function said(addon)
+    local out = {}
+    for _, p in ipairs(addon.problems:list()) do
+        local parts = {}
+        for key, v in pairs(p) do parts[#parts + 1] = tostring(key) .. "=" .. tostring(v) end
+        table.sort(parts)
+        out[#out + 1] = table.concat(parts, " ")
+    end
+    return "problems: " .. table.concat(out, " | ")
+end
+
+local macrosAtBoot = setmetatable({}, { __mode = "k" })
+
 -- ranks: the skillRanks map, or false for skills not read. bags: the bag
 -- stacks, or false for bags not read.
 local function boot(ranks, bags)
@@ -34,6 +53,8 @@ local function boot(ranks, bags)
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(10, 40)
+    atBoot[addon] = addon.problems:count()
+    macrosAtBoot[c] = #c.secureMacros()
     return c, addon
 end
 
@@ -56,7 +77,7 @@ end
 local function noneActs(t, c)
     t.eq(#c.soldSlots, 0, "nothing sold")
     t.eq(c.equipCalls, 0, "nothing equipped")
-    t.eq(#c.secureMacros(), 0, "no macro, no button that uses it")
+    t.eq(#c.secureMacros(), macrosAtBoot[c], "no macro, no button that uses it, beyond the login's own")
     t.eq(#c.bagItems(), 2, "the bags as they were")
 end
 
@@ -65,7 +86,7 @@ tests["skill book advice e2e: at the best rank the card says use it now"] = func
     t.eq(text(addon), "Angler's Notes: Use it now: Fishing is 70, the best moment for +5")
     t.eq(#cards(addon), 1, "one card for the book, none for the rock")
     noneActs(t, c)
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
 end
 
 tests["skill book advice e2e: past the best rank the card still says use it now"] = function(t)
@@ -77,7 +98,7 @@ tests["skill book advice e2e: below the best rank the card says keep it, and unt
     local c, addon = boot({ Fishing = { rank = 20, max = 75 } })
     t.eq(text(addon), "Angler's Notes: Keep it until Fishing is 70 (now 20): the last points are the slow ones")
     noneActs(t, c)
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
 end
 
 tests["skill book advice e2e: a skill not learned says keep it and learn it first"] = function(t)
@@ -104,14 +125,14 @@ tests["skill book advice e2e: skills not read say nothing, never \"learn first\"
     local _, addon = boot(false)
     t.ok(type(addon.SkillBoosters.PROMPT) == "string", "the prompt has a name")
     t.eq(#cards(addon), 0, "no guess about the skill")
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
 end
 
 tests["skill book advice e2e: bags not read say nothing"] = function(t)
     local _, addon = boot({ Fishing = { rank = 70, max = 75 } }, false)
     t.ok(type(addon.SkillBoosters.PROMPT) == "string", "the prompt has a name")
     t.eq(#cards(addon), 0)
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
 end
 
 tests["skill book advice e2e: no skill book in the bags, no card"] = function(t)
@@ -135,7 +156,7 @@ tests["skill book advice e2e: the card follows the skill and goes when the book 
     c.fire("BAG_UPDATE")
     c.advance(1, 5)
     t.eq(#cards(addon), 0, "gone from the bags")
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
 end
 
 tests["skill book advice e2e: two stacks of one book make one card"] = function(t)
@@ -152,14 +173,14 @@ tests["skill book advice e2e: a book known by ID gets its card with no English t
     c.fire("BAG_UPDATE")
     c.advance(1, 5)
     t.eq(text(addon), "Anglerbuch: Use it now: Fishing is 70, the best moment for +5")
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
 end
 
 tests["skill book advice e2e: a book whose name is not read gets no card"] = function(t)
     local _, addon = boot({ Fishing = { rank = 70, max = 75 } }, { { item = NAMELESS, count = 1 } })
     t.ok(type(addon.SkillBoosters.PROMPT) == "string", "the prompt has a name")
     t.eq(#cards(addon), 0, "no name to say")
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
 end
 
 -- The card is words only: the advisor's row is { id, text, priority } and
@@ -173,7 +194,7 @@ tests["skill book advice e2e: the card carries no action and nothing is used"] =
     end
     t.eq(list[1] and list[1].action, nil, "no action")
     noneActs(t, c)
-    t.eq(addon.problems:count(), 0)
+    t.eq(newProblems(addon), 0, said(addon))
 end
 
 return tests
