@@ -34,7 +34,7 @@ end
 
 tests["quest advice: a complete quest in the log is named as ready to hand in"] = function(t)
     local _, addon = start({ row(1, "Test wolves", true), row(2, "Test boars") })
-    t.eq(prompt(addon), "Ready to hand in: Test wolves")
+    t.eq(prompt(addon), "Ready to hand in: Test wolves. Look for the yellow ? over who takes it.")
 end
 
 tests["quest advice: no prompt with nothing complete, or with a log not read"] = function(t)
@@ -50,12 +50,12 @@ tests["quest advice: the prompt follows the log"] = function(t)
     c.setQuestLog({ row(1, "Test wolves", true), row(2, "Test boars", true) })
     c.fire("QUEST_LOG_UPDATE")
     c.advance(1, 5)
-    t.eq(prompt(addon), "Ready to hand in: Test wolves, Test boars", "both complete")
+    t.eq(prompt(addon), "Ready to hand in: Test wolves, Test boars. Look for the yellow ? over who takes it.", "both complete")
     c.setQuestLog({ row(2, "Test boars", true) })
     c.fire("QUEST_TURNED_IN", 1)
     c.fire("QUEST_LOG_UPDATE")
     c.advance(1, 5)
-    t.eq(prompt(addon), "Ready to hand in: Test boars", "one handed in by the player")
+    t.eq(prompt(addon), "Ready to hand in: Test boars. Look for the yellow ? over who takes it.", "one handed in by the player")
     c.setQuestLog({})
     c.fire("QUEST_REMOVED", 2)
     c.advance(1, 5)
@@ -72,7 +72,7 @@ tests["quest advice: the setting turns the prompt off and on"] = function(t)
     t.eq(prompt(addon), nil, "off")
     addon.settings:set(A.TURN_IN_SETTING, true)
     c.advance(1, 5)
-    t.eq(prompt(addon), "Ready to hand in: Test wolves", "on again")
+    t.eq(prompt(addon), "Ready to hand in: Test wolves. Look for the yellow ? over who takes it.", "on again")
 end
 
 return tests

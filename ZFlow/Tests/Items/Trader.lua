@@ -126,7 +126,7 @@ local INFO = {
     [4306] = { name = "Silk Cloth", quality = 1, sellPrice = 150, classID = 7 },
 }
 local LINEN_ROWS = { { unit = 100, qty = 10 }, { unit = 200, qty = 10 }, { unit = 300, qty = 5 } }
-local LINEN_LINE = "20 x Linen Cloth for 30s: usually 4s each  |cffffd100about +46s|r"
+local LINEN_LINE = "20 x |cffffffffLinen Cloth|r for 30s: usually 4s each  |cffffd100about +46s|r"
 local RULES = "  resell at 50% of the usual price or less, from 4 visits; the house keeps 5%, the deposit is not counted"
 
 local function start()
@@ -170,7 +170,7 @@ tests["trader module: a listing under the vendor needs no price history"] = func
     local _, c, api = start()
     local before = #c.printed
     c.auctionRows(4306, { { unit = 100, qty = 3 }, { unit = 150, qty = 9 }, { unit = 90 }, { qty = 4 } })
-    t.eq(c.printed[before + 1], "Deal: 3 x Silk Cloth for 3s: a vendor pays 4s 50c  |cff40ff40+1s 50c|r",
+    t.eq(c.printed[before + 1], "Deal: 3 x |cffffffffSilk Cloth|r for 3s: a vendor pays 4s 50c  |cff40ff40+1s 50c|r",
         "a row without a count or without a price is passed over")
     t.eq(api.deals()[1].kind, "vendor")
 end
