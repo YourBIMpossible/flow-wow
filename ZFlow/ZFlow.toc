@@ -172,6 +172,7 @@ UI\ProfHelper.lua
 UI\KitHost.lua
 Items\Keep.lua
 Items\RecipeBook.lua
+Items\RecipeLearned.lua
 Items\Goals.lua
 UI\Arrow.lua
 UI\MinimapPin.lua
@@ -225,6 +226,7 @@ Nav\PartyRoute.lua
 Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
+Nav\QuestAdvice.lua
 Items\ProfPlan.lua
 Items\ProfSources.lua
 Nav\ProfFeed.lua

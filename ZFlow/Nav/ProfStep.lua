@@ -306,6 +306,9 @@ N.PROF_STATION_DETAIL = "nearest known %s"
 N.PROF_STATIONS_PATH = "learned.keyStations"
 N.PROF_CRAFT_SURE = "Make %s: a sure %s point"
 N.PROF_CRAFT_MAYBE = "Make %s: may give a %s point"
+-- P-PROF slice 4 (Lazy), as Flow's SkillPlan UseBank: the craft's mats are
+-- short in the bags but there with what the bank held at the last visit.
+N.PROF_BANK_NOTE = "Its mats are in your bank: visit the banker first."
 N.PROF_WHY_READ = "Open your %s window once to read your skill"
 N.PROF_WHY_TRAINER = "%s capped at %d: open a %s trainer once to mark it"
 N.PROF_WHY_TRAIN = "%s capped at %d: train the next rank when you can"
@@ -515,6 +518,26 @@ function N.ProfNext(input)
     return textNext(input, names, here)
 end
 
+-- Slice 4: true when one craft of rec is short in bags and not with bank
+-- added. bags, bank: { [item key] = count } (Items/HaveTip.lua); nil (not
+-- read, or the bank never seen) is never short.
+function N.ProfBankShort(rec, bags, bank)
+    if type(rec) ~= "table" or type(rec.mats) ~= "table" or type(bags) ~= "table" or type(bank) ~= "table" then
+        return false
+    end
+    local short = false
+    for item, need in pairs(rec.mats) do
+        local key = ns.Items.Key(item)
+        if key == nil or not finite(need) then return false end
+        local inBags, inBank = bags[key], bank[key]
+        if not finite(inBags) then inBags = 0 end
+        if not finite(inBank) then inBank = 0 end
+        if inBags + inBank < need then return false end
+        if inBags < need then short = true end
+    end
+    return short
+end
+
 -- Steps 3 and 4 of N.ProfNext: nothing has a place.
 textNext = function(input, names, here)
     -- The craft that gives a point: sure before maybe, then by profession.
@@ -530,7 +553,11 @@ textNext = function(input, names, here)
     end
     if pick then
         local words = pickKind == "sure" and N.PROF_CRAFT_SURE or N.PROF_CRAFT_MAYBE
-        return textStep(words:format(pick, pickProf))
+        local line = words:format(pick, pickProf)
+        if N.ProfBankShort(input.book[pick], input.bags, input.bank) then
+            return textStep({ line, N.PROF_BANK_NOTE })
+        end
+        return textStep(line)
     end
 
     -- Why, one line for each profession by name.
@@ -561,6 +588,19 @@ end
 -- N.ProfNextFrom(client, store, nodeSource) -> N.ProfNext read from the
 -- client, the saved tables and the GatherMate2 source module (or nil).
 -- It writes nothing; a read that fails is "not known".
+-- Slice 4: the bag and bank counts by item key, or nil when not read.
+local function bagCounts(client)
+    local stacks = ask(client, "bagItems")
+    if type(stacks) ~= "table" or type(ns.HaveTip) ~= "table" then return nil end
+    return ns.HaveTip.Counts(stacks, ns.Items.Key)
+end
+
+local function bankCounts(store)
+    local b = saved(store, "char", "learned.bankCounts")
+    if type(b) ~= "table" or type(b.counts) ~= "table" then return nil end
+    return b.counts
+end
+
 function N.ProfNextFrom(client, store, nodeSource)
     local nodes, state
     if type(nodeSource) == "table" then
@@ -589,6 +629,8 @@ function N.ProfNextFrom(client, store, nodeSource)
         book = saved(store, "char", "learned.facts.recipeBook"),
         colours = saved(store, "char", "learned.recipeColors"),
         stations = saved(store, "account", N.PROF_STATIONS_PATH),
+        bags = bagCounts(client),
+        bank = bankCounts(store),
     })
 end
 
