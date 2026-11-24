@@ -306,7 +306,12 @@ function T.Declare(k, diag)
         local yards = runLegs(stops, client())
         local left = {}
         for _, name in ipairs(type(run.left) == "table" and run.left or {}) do
-            left[#left + 1] = { label = tostring(name), why = "giver's place not known" }
+            if type(name) == "table" then
+                -- TN-2: a stop the trip skipped comes with its own why.
+                left[#left + 1] = { label = tostring(name.label), detail = name.detail, why = tostring(name.why) }
+            else
+                left[#left + 1] = { label = tostring(name), why = "giver's place not known" }
+            end
         end
         route, at = { kind = "run", stops = stops, yards = yards, label = tostring(run.title or N.ROUTE_STRAIGHT),
                       left = left }, 1
