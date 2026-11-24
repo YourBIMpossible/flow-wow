@@ -69,7 +69,8 @@ ns.BagMarks = B
 
 B.NAME = "bagMarks"
 B.SETTING = "bags.marks"
-B.WORD = "bags"
+-- (B.SLASH, not B.WORD: B.WORD below is the table of the mark words.)
+B.SLASH = "bags"
 B.HELP = "bags on, bags off: the marks on your bag slots; bags alone says which it is"
 
 -- The game textures the client puts on a slot (first guesses, not seen in
@@ -195,7 +196,7 @@ end
 -- The bags word's lines. id is the add-on's names (ns.id: title, slash);
 -- on is the setting as it was read back, true or false.
 local function wordOf(id)
-    return tostring(id.slash) .. " " .. B.WORD
+    return tostring(id.slash) .. " " .. B.SLASH
 end
 
 function B.StateLine(id, on)
@@ -435,8 +436,8 @@ function B.Declare(k, diag)
     end
 
     if diag and type(diag.commands) == "table" then
-        diag.commands[B.WORD] = run
-        if type(diag.help) == "table" then diag.help[B.WORD] = B.HELP end
+        diag.commands[B.SLASH] = run
+        if type(diag.help) == "table" then diag.help[B.SLASH] = B.HELP end
     end
 
     k:Module({
