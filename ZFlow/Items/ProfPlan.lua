@@ -60,6 +60,7 @@ P.SAY = {
     ["no colours"] = "Open your %s window once",
     ["no materials"] = "Get the materials for %s",
     ["no recipe"] = "Visit a %s trainer for new recipes",
+    ["known recipe"] = "Make %s",
     ["at the top"] = "%s is done: the top rank is reached",
 }
 -- Section 400 item 2: the last rank's end in Classic. No rank past it to train.
@@ -354,6 +355,23 @@ local function bookEmpty(input)
     return true
 end
 
+-- Lead section 419: the first known recipe of this profession, by name,
+-- that gives a point at this skill: orange or yellow seen here, or (section
+-- 414 a) last seen orange or yellow lower and never seen green or grey.
+-- Its materials need not be known. nil when none does.
+local function pointRecipe(input)
+    local colours = type(input.colours) == "table" and input.colours or {}
+    local names = {}
+    for name, r in pairs(type(input.book) == "table" and input.book or {}) do
+        if type(r) == "table" and r.profession == input.prof
+            and (colourAt(colours[name], input.skill) or staleAt(colours[name], input.skill)) then
+            names[#names + 1] = name
+        end
+    end
+    table.sort(names)
+    return names[1]
+end
+
 local function firstRecipeStep(input)
     local npc = get(trainerAt(input), "npc")
     return { kind = "learn_recipe", npc = npc, target = npcTarget(input, npc),
@@ -627,11 +645,19 @@ function P.Plan(input)
     end
     if bookEmpty(input) then return { learnStep(input) or firstRecipeStep(input) } end
     if not coloursRead(input) then return { openStep(input) } end
+    -- Lead section 419: a known recipe that gives a point is named before
+    -- any trainer step; a trainer step only when none does.
+    local known = pointRecipe(input)
+    if known then return empty("known recipe", input, known) end
     local learn = learnStep(input)
     if learn then return { learn } end
     -- Review of section 405 item 4: every learned recipe outgrown and no
     -- trainer list of this profession seen: a trainer is the next step.
-    if not trainerSeen(input) then return { firstRecipeStep(input) } end
+    if not trainerSeen(input) then
+        local step = firstRecipeStep(input)
+        step.outgrown = true
+        return { step }
+    end
     return empty("no recipe", input)
 end
 

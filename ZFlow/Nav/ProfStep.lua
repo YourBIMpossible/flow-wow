@@ -668,6 +668,14 @@ function N.ProfChoose(picked, pick, older)
     if type(rank) ~= "number" then return picked end
     if rank <= 3 then return picked end
     if type(older) == "table" and type(older.place) == "table" then return older end
+    -- Lead section 419: "any trainer", said only because every known recipe
+    -- was outgrown and no trainer was seen, leaves it to the older step's
+    -- words, which name the craft or say why nothing gives a point.
+    local step = pick.step
+    if type(older) == "table" and type(step) == "table" and step.kind == "learn_recipe"
+        and step.outgrown == true then
+        return older
+    end
     local training = type(pick.step) == "table" and pick.step.kind == "train_tier"
     if rank <= 5 and not (training and type(older) == "table") then return picked end
     if type(older) == "table" then return older end

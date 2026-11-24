@@ -31,14 +31,18 @@ local function rankMax(skill)
 end
 
 -- A made-up recipe sure from each multiple of 25 for 25 points; outgrown
--- keeps only the first.
+-- keeps only the first, and says it is outgrown the way the window saves it
+-- (lead section 419): seen grey from the skill after its sure span.
 local function book(prof, outgrown)
     local b, colours = {}, {}
     for lo = 1, CAP - 1, 25 do
         local name = string.format("Test %s %d", prof, lo)
         b[name] = { profession = prof, makes = 9100 + lo, mats = { [MAT] = 1 } }
         colours[name] = { optimal = { lo = lo, hi = lo + 24 } }
-        if outgrown then break end
+        if outgrown then
+            colours[name].trivial = { lo = lo + 25, hi = CAP }
+            break
+        end
     end
     return b, colours
 end
