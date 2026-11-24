@@ -13230,6 +13230,30 @@ function ns.make.client(env)
         end
         return nil
     end
+
+    -- G50 (ACTING): offers quest id to the group, only on the player's own
+    -- share word (Nav/QuestShare.lua). First guesses, not seen in game on
+    -- 16001: SelectQuestLogEntry(index) picks the quest's entry in the log,
+    -- QuestLogPushQuest() offers the picked quest, and the entry that was
+    -- picked before (GetQuestLogSelection) is picked again, so the quest
+    -- log shows what it showed. Whether a member takes it is not read.
+    --   c.shareQuest(id) -> true, or nil and why:
+    --     "bad" (not a number), "notInLog", "noCall", "raised"
+    function c.shareQuest(id)
+        if type(id) ~= "number" then return nil, "bad" end
+        local index = questLogIndex(id)
+        if index == nil then return nil, "notInLog" end
+        local pickEntry, push = env.SelectQuestLogEntry, env.QuestLogPushQuest
+        if type(pickEntry) ~= "function" or type(push) ~= "function" then return nil, "noCall" end
+        local okWas, was = call(env.GetQuestLogSelection)
+        if not pcall(pickEntry, index) then return nil, "raised" end
+        local pushed = pcall(push)
+        if okWas and type(was) == "number" and not hidden(was) and was > 0 and was ~= index then
+            pcall(pickEntry, was)
+        end
+        if not pushed then return nil, "raised" end
+        return true
+    end
     return c
 end
 

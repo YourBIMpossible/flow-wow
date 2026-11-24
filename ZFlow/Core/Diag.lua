@@ -286,6 +286,8 @@ Diag.NAMES = {
     -- G25 (lead section 404 item 4): what holds you in place
     -- (client.heldBy). First guesses on 16001.
     "C_LossOfControl.GetActiveLossOfControlDataCount", "C_LossOfControl.GetActiveLossOfControlData",
+    -- G50 (ACTING, client.shareQuest): first guesses on 16001.
+    "SelectQuestLogEntry", "QuestLogPushQuest", "GetQuestLogSelection",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

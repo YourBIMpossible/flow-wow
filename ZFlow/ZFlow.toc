@@ -243,6 +243,7 @@ UI\RouteList.lua
 UI\MapRoute.lua
 UI\BuffStrip.lua
 Nav\QuestAdvice.lua
+Nav\QuestShare.lua
 Nav\TravelAdvice.lua
 Nav\InvitePrompt.lua
 Items\QuestBags.lua
