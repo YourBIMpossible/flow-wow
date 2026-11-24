@@ -277,5 +277,7 @@ return {
     "UI/RouteTracker.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
+    "Nav/GateWords.lua",
     },
 }
