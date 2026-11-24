@@ -74,7 +74,7 @@ end
 
 -- What the fake client lacks for other modules is recorded at start, with
 -- or without a quest item: the tracker must add nothing to it.
-local BASE = 2
+local BASE = 1 -- 2 before D-08: the fake client now has the cast read
 
 -- The tracker's parts as the kit was last given them (the fake client's
 -- window record keeps only kind, key and text; boot keeps the tree itself).
