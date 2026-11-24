@@ -463,4 +463,8 @@ KIND.act[#KIND.act + 1] = "addonSend"
 READS.trackingRaw = false
 READS.tradeSkillAnswers = false
 
+-- G47 (lead section 397 item 15): who leads the group; read by
+-- Nav/FollowAdvice.lua only. Its name (UnitIsGroupLeader) is in Diag.NAMES.
+READS.groupLeader = false
+
 return tests
