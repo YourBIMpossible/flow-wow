@@ -236,6 +236,7 @@ Nav\QuestAdvice.lua
 Spells\TrainAdvice.lua
 Items\ProfPlan.lua
 Items\ProfSources.lua
+Items\VendorWares.lua
 UI\ProfDock.lua
 Nav\ProfFeed.lua
 Nav\HearthAdvice.lua
