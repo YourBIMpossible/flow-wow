@@ -312,10 +312,21 @@ function Travel.Declare(k, diag)
         return true
     end
 
+    -- Parity B-30: what the arrow menu's walk row reads. nil with no step;
+    -- else { how = the shortcut it would take or nil, skipped }.
+    function api.state()
+        if not lastKey then return nil end
+        return { how = lastHow, skipped = skips[lastKey] == true }
+    end
+
     k:Module({
         name = Travel.NAME,
         needs = { "client", "store" },
-        provides = { Via = function(step) return api.via(step) end },
+        provides = {
+            Via = function(step) return api.via(step) end,
+            State = function() return api.state() end,
+            Walk = function() return api.walk() end,
+        },
         start = function(c) ctx = c end,
         stop = function()
             skips, lastKey, lastHow = {}, nil, nil
