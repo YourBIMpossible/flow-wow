@@ -1,6 +1,8 @@
 local _, ns = ...
--- Lead section 402 item 4 (G19): buy-tool and buy-materials steps, from a
--- vendor only, with the cost; never the auction house. The cost is a vendor
+-- Lead section 402 item 4 (G19): buy-tool and buy-materials steps, with the
+-- cost. The gathering tool comes from a vendor only, never the auction
+-- house; a material with no vendor price seen still offers the auction
+-- house (lead section 407 item 1). The cost is a vendor
 -- price this account saw (learned.prices). Through the real planner entry
 -- (addon.profPlan.plan) on the whole add-on and a fake client; made-up items
 -- and prices. Nothing is bought: the step is a line. Not tested in game.
@@ -77,12 +79,11 @@ tests["prof buy e2e: bars short, a vendor price seen: buy them from a vendor wit
     t.eq(steps[#steps] and steps[#steps].kind, "craft")
 end
 
-tests["prof buy e2e: bars short, no vendor price seen: never the auction house"] = function(t)
+tests["prof buy e2e: bars short, no vendor price seen: the auction house (section 407)"] = function(t)
     local _, addon = start({ prof = "Blacksmithing" })
-    local steps, why = addon.profPlan.plan("Blacksmithing")
-    for _, k in ipairs(kinds(steps)) do t.ok(k ~= "buy_auction", "no auction house step") end
-    t.eq(steps[1] and steps[1].kind, "find_material", "no source seen: find the bars")
-    t.eq(why, nil)
+    local steps = addon.profPlan.plan("Blacksmithing")
+    t.eq(steps[1] and steps[1].kind, "buy_auction", "a material, not the tool")
+    t.eq(steps[#steps] and steps[#steps].kind, "craft")
 end
 
 return tests

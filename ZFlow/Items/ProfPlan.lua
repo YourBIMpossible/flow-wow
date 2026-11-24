@@ -428,8 +428,8 @@ local function sourcedSteps(input, c)
         local got = have(input, item)
         if need > got then
             local s = ns.ProfSources.For(input, item, need - got)
-            -- Section 402 item 4: a plan step never sends to the auction house.
-            if s and s.kind == "buy_auction" then s = nil end
+            -- Lead section 407 item 1: G19 keeps the auction house out of the
+            -- gathering-tool step only; a short material may come from it.
             if s then
                 s.recipe = c.recipe
                 steps[#steps + 1] = s
