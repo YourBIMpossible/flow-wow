@@ -156,6 +156,21 @@ end
 -- bytes, written as byte escapes to keep this file ASCII) and the words.
 N.PROF_OTHER_MAP = " \226\128\148 other map"
 
+-- Lead section 418 item 6: the profession each older step covers, kept
+-- beside the step (the step's own shape is unchanged), for N.ProfCovers.
+local COVERS = setmetatable({}, { __mode = "k" })
+local function covers(step, prof)
+    if type(step) == "table" then COVERS[step] = prof end
+    return step
+end
+
+-- N.ProfCovers(step) -> the one profession an older step (N.ProfStep,
+-- N.ProfNext) is about, or nil (a why step names every profession).
+function N.ProfCovers(step)
+    if type(step) ~= "table" then return nil end
+    return COVERS[step]
+end
+
 function N.ProfStep(readings, npcs, tierSeen, here)
     if type(here) ~= "table" then here = {} end
     local names = {}
@@ -185,14 +200,14 @@ function N.ProfStep(readings, npcs, tierSeen, here)
         local step = { still = true, elsewhere = { map = to.map, x = to.x, y = to.y } }
         local label = prof .. " trainer" .. N.PROF_OTHER_MAP
         if #label <= max then step.label = label end
-        return step
+        return covers(step, prof)
     end
     local cont
     if near and type(here.zone) == "table" then cont = here.zone.cont end
     local step = { place = { cont = cont, map = to.map, x = to.x, y = to.y }, radius = N.PROF_NEAR }
     local label = prof .. " trainer"
     if #label <= max then step.label = label end
-    return step
+    return covers(step, prof)
 end
 
 -- One read of the client, or nil when it has no such read or the read fails.
@@ -403,7 +418,7 @@ local function nodeStep(input, names, here)
     local max = N.Waypoint and N.Waypoint.LABEL_MAX or 40
     local label = type(best.node) == "string" and #best.node <= max and best.node or (bestProf .. " node")
     if #label <= max then step.label = label end
-    return step
+    return covers(step, bestProf)
 end
 
 -- The craft that gives a point, at the nearest station this account has
@@ -446,7 +461,7 @@ local function stationStep(input, names, here)
         local label = bestProf .. " " .. best.kind
         if #label <= max then step.label = label end
     end
-    return step
+    return covers(step, bestProf)
 end
 
 -- The professions of the input, by name.
@@ -555,9 +570,9 @@ textNext = function(input, names, here)
         local words = pickKind == "sure" and N.PROF_CRAFT_SURE or N.PROF_CRAFT_MAYBE
         local line = words:format(pick, pickProf)
         if N.ProfBankShort(input.book[pick], input.bags, input.bank) then
-            return textStep({ line, N.PROF_BANK_NOTE })
+            return covers(textStep({ line, N.PROF_BANK_NOTE }), pickProf)
         end
-        return textStep(line)
+        return covers(textStep(line), pickProf)
     end
 
     -- Why, one line for each profession by name.
@@ -658,6 +673,26 @@ function N.ProfChoose(picked, pick, older)
     return picked
 end
 
+-- Lead section 418 item 6: the older step N.ProfChoose shows, with the
+-- other professions' lines (also, Nav/ProfFeed.lua F.Also) after its own:
+-- a text step's lines, else its also (UI/Arrow.lua says it under the label
+-- and detail). A copy; place, label and the rest are kept as they are.
+function N.ProfWithAlso(step, also)
+    if type(step) ~= "table" or type(also) ~= "table" or #also == 0 then return step end
+    local out = {}
+    for key, v in pairs(step) do out[key] = v end
+    if type(step.lines) == "table" then
+        out.lines = {}
+        for i = 1, #step.lines do out.lines[i] = step.lines[i] end
+        for i = 1, #also do out.lines[#out.lines + 1] = also[i] end
+    else
+        out.also = {}
+        for i = 1, #also do out.also[i] = also[i] end
+    end
+    COVERS[out] = COVERS[step]
+    return out
+end
+
 function N.ProfStepDeclare(k)
     local api = {}
     local ctx
@@ -683,17 +718,29 @@ function N.ProfStepDeclare(k)
             local okOff, isOff = pcall(feed.Off)
             if okOff and isOff then return nil end
         end
-        local picked, pick
+        local picked, pick, result
         if feed and type(feed.Step) == "function" then
-            local okStep, s, p = pcall(feed.Step)
-            if okStep and type(s) == "table" then picked, pick = s, p end
+            local okStep, s, p, r = pcall(feed.Step)
+            if okStep and type(s) == "table" then picked, pick, result = s, p, r end
         end
         local source
         if type(ctx.use) == "function" then
             local ok, s = pcall(ctx.use, "gatherMateSource")
             if ok then source = s end
         end
-        return N.ProfChoose(picked, pick, N.ProfNextFrom(ctx.client, ctx.store, source))
+        local older = N.ProfNextFrom(ctx.client, ctx.store, source)
+        local chosen = N.ProfChoose(picked, pick, older)
+        -- Lead section 418 item 6: the older step shown, the other
+        -- professions still get their lines, none for the one it covers
+        -- (a why step covers them all: no line added).
+        local covered = N.ProfCovers(older)
+        local F = N.ProfFeed
+        if chosen == older and picked ~= nil and covered ~= nil and type(result) == "table"
+            and F and type(F.Also) == "function" then
+            local okAlso, also = pcall(F.Also, result, covered)
+            if okAlso then chosen = N.ProfWithAlso(chosen, also) end
+        end
+        return chosen
     end
 
     k:Setting({ key = N.PROF_SETTING, scope = "account", type = "bool", default = true,

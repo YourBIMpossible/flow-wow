@@ -233,17 +233,20 @@ local function alsoLine(c)
     return nil
 end
 
--- F.Also(result) -> { line, ... }: one for each profession but the pick's,
--- in name order (one at its max only for its training); a line too long is
--- left out.
-function F.Also(result)
+-- F.Also(result, covered) -> { line, ... }: one for each profession but the
+-- one the shown step covers (covered, else the pick's), in name order (one
+-- at its max only for its training); a line too long is left out.
+-- Lead section 418 item 6: covered is the older step's profession when
+-- N.ProfChoose (Nav/ProfStep.lua) shows that step instead.
+function F.Also(result, covered)
     local out = {}
     local pick = type(result) == "table" and result.pick or nil
+    if covered == nil and type(pick) == "table" then covered = pick.prof end
     local rows = type(result) == "table" and type(result.rows) == "table" and result.rows or {}
     for _, row in ipairs(rows) do
         -- A profession at its max says only its training (it gains no
         -- point any other way).
-        local own = type(row.next) == "table" and not (type(pick) == "table" and row.prof == pick.prof)
+        local own = type(row.next) == "table" and row.prof ~= covered
         local stuck = row.capped and not (own and type(row.next.step) == "table" and row.next.step.kind == "train_tier")
         if own and not stuck then
             local line = alsoLine(row.next)
@@ -428,10 +431,11 @@ function F.Declare(k, diag)
     end
 
     -- The needle's step, or nil: off, no planner yet, or nothing below max.
+    -- Also the pick and the whole result (for F.Also under the older step).
     function api.step()
         if not ctx or api.off() or not planOf() then return nil end
         local result = api.result()
-        return F.Step(result), type(result) == "table" and result.pick or nil
+        return F.Step(result), type(result) == "table" and result.pick or nil, result
     end
 
     function api.lines()
