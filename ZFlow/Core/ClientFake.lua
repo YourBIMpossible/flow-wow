@@ -3105,6 +3105,20 @@ function ns.make.fakeClient(opts)
         c.buttonFaces[spec.button] = face
         return { empty = function(on) face.empty = on == true; return true end }
     end
+    -- Lead section 409: the face also keeps label (spec.label) and dimmed
+    -- (the last h.dim mode: "picture", "gone" or nil).
+    local plainButtonFace = c.buttonFace
+    function c.buttonFace(spec)
+        local h = plainButtonFace(spec)
+        if h == nil then return nil end
+        local face = c.buttonFaces[spec.button]
+        face.label = spec.label
+        function h.dim(mode)
+            if mode == "picture" or mode == "gone" then face.dimmed = mode else face.dimmed = nil end
+            return true
+        end
+        return h
+    end
     function c.ctrlDrag(spec)
         if type(spec) ~= "table" or not rowButton(spec.target) or not rowButton(spec.button) then return nil end
         if c.combatLockdown() ~= false then return nil end
