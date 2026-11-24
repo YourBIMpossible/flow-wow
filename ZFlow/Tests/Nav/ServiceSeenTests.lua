@@ -59,7 +59,7 @@ tests["service seen: the names are the ones agreed"] = function(t)
     local kinds = {}
     for _, row in ipairs(S.EVENTS) do kinds[row.event] = row.kind end
     t.eq(kinds, { MERCHANT_SHOW = "vendor", BANKFRAME_OPENED = "banker", TAXIMAP_OPENED = "flight",
-                  CONFIRM_BINDER = "innkeeper", MAIL_SHOW = "mailbox" })
+                  CONFIRM_BINDER = "innkeeper", MAIL_SHOW = "mailbox", AUCTION_HOUSE_SHOW = "auction" })
 end
 
 tests["service seen: before any event nothing is saved"] = function(t)
@@ -322,6 +322,103 @@ tests["service seen: the pure read, by hand"] = function(t)
     t.eq(S.Seen("flight", nil, store).ok, false)
     t.eq(S.Seen("flight", client, nil).ok, false)
     t.eq(S.Seen("flight", {}, store).ok, false)
+end
+
+-- Moved places (G37, lead section 395 item 8). NEAR is a share of the map:
+-- a sighting closer than that to the saved spot is the same spot.
+tests["service seen: the near distance is a small share of the map"] = function(t)
+    t.eq(S.NEAR, 0.01)
+end
+
+tests["service seen: the first visit is not a move"] = function(t)
+    local _, c, w = start({ npc = VENDOR })
+    c.fire("MERCHANT_SHOW")
+    t.eq(w.last().moved, nil)
+    t.eq(places(c)[VENDOR.guid].x, 0.5)
+end
+
+tests["service seen: the same npc met far away moves its one entry"] = function(t)
+    local _, c, w = start({ npc = VENDOR })
+    c.fire("MERCHANT_SHOW")
+    c.setPosition(1411, 0.8, 0.6)
+    c.fire("MERCHANT_SHOW")
+    local n = 0
+    for _ in pairs(places(c)) do n = n + 1 end
+    t.eq(n, 1, "one entry, no copy")
+    local e = places(c)[VENDOR.guid]
+    t.eq({ e.map, e.x, e.y, e.n }, { 1411, 0.8, 0.6, 2 })
+    t.eq(w.last().moved, true)
+end
+
+tests["service seen: the same npc met on another map moves too"] = function(t)
+    local _, c, w = start({ npc = VENDOR })
+    c.fire("MERCHANT_SHOW")
+    c.setPosition(1429, 0.5, 0.25)
+    c.fire("MERCHANT_SHOW")
+    t.eq(places(c)[VENDOR.guid].map, 1429)
+    t.eq(w.last().moved, true)
+end
+
+tests["service seen: a small step beside the npc keeps the saved spot"] = function(t)
+    local _, c, w = start({ npc = VENDOR })
+    c.fire("MERCHANT_SHOW")
+    c.setPosition(1411, 0.504, 0.253)
+    c.fire("MERCHANT_SHOW")
+    local e = places(c)[VENDOR.guid]
+    t.eq({ e.x, e.y, e.n }, { 0.5, 0.25, 2 })
+    t.eq(w.last().moved, false)
+end
+
+tests["service seen: an old entry with no place takes the new one"] = function(t)
+    local _, c, w = start({ npc = VENDOR, char = { learned = { places = { services = {
+        [VENDOR.guid] = { name = "Kaita Deepforge", kinds = { vendor = true }, n = 1 },
+    } } } } })
+    c.fire("MERCHANT_SHOW")
+    local e = places(c)[VENDOR.guid]
+    t.eq({ e.map, e.x, e.y, e.n }, { 1411, 0.5, 0.25, 2 })
+    t.eq(w.last().moved, true)
+end
+
+tests["service seen: an unknown place on a known npc changes nothing"] = function(t)
+    local _, c, w = start({ npc = VENDOR })
+    c.fire("MERCHANT_SHOW")
+    local before = copy(places(c))
+    c.setPosition(nil)
+    c.fire("MERCHANT_SHOW")
+    t.eq(places(c), before)
+    t.eq(w.last().ok, false)
+end
+
+tests["service seen: a mailbox met from its other side is the same one entry"] = function(t)
+    local _, c, w = start({})
+    c.setPosition(1411, 0.504, 0.25)
+    c.fire("MAIL_SHOW")
+    c.setPosition(1411, 0.507, 0.252)
+    c.fire("MAIL_SHOW")
+    local keys = {}
+    for key in pairs(places(c)) do keys[#keys + 1] = key end
+    t.eq(keys, { "mailbox:1411:50:25" }, "one box, though the spots round apart")
+    local e = places(c)["mailbox:1411:50:25"]
+    t.eq({ e.x, e.y, e.n }, { 0.504, 0.25, 2 })
+    t.eq(w.last().moved, false)
+    t.eq(w.last().key, "mailbox:1411:50:25")
+end
+
+tests["service seen: a mailbox far from a saved one is another box"] = function(t)
+    local _, c = start({})
+    c.fire("MAIL_SHOW")
+    c.setPosition(1411, 0.53, 0.25)
+    c.fire("MAIL_SHOW")
+    t.eq(places(c)["mailbox:1411:50:25"].n, 1)
+    t.eq(places(c)["mailbox:1411:53:25"].n, 1)
+end
+
+tests["service seen: a mailbox with no place is not saved"] = function(t)
+    local _, c, w = start({})
+    c.setPosition(nil)
+    c.fire("MAIL_SHOW")
+    t.eq(places(c), nil)
+    t.eq(w.last().reason, "the position is not known")
 end
 
 return tests

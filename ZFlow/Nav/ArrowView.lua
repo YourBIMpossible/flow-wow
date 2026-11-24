@@ -29,8 +29,9 @@ function N.AtPoint(d)
 end
 
 -- What the profession arrow draws: "ring" at its own step; "off" when it
--- cannot point, or (stacked only) while the player stands on the main step's
--- point; else "arrow".
+-- cannot point, or when mainAtPoint is given; else "arrow". The arrow view
+-- gives mainAtPoint false: the profession arrow has its own place over the
+-- quest arrow, so it stays at a quest stop.
 function N.ProfArrowMode(mainAtPoint, profHere, canPoint)
     if profHere then return "ring" end
     if mainAtPoint or not canPoint then return "off" end
@@ -102,24 +103,34 @@ function N.ArrowView(state)
     local size = finite(state.size) and state.size or N.ARROW_SIZE
     local sw, sh = state.screenW, state.screenH
     local saved = N.ArrowSaved(state.layout)
-    local separate = saved.mode == "separate"
 
     local canPoint = (p.bearingKnown and state.facingKnown) and true or false
     local profHere = (p.here or N.AtPoint(p.distance)) and true or false
     local questHere = (q.here or N.AtPoint(q.distance)) and true or false
-    -- Separated, the profession arrow has its own place: the main step's
-    -- point does not switch it off.
-    local profMode = N.ProfArrowMode(not separate and N.AtPoint(q.distance), profHere, canPoint)
+    -- The profession arrow has its own place, stacked or separated: the
+    -- main step's point does not switch it off.
+    local profMode = N.ProfArrowMode(false, profHere, canPoint)
     local profStep = (p.on ~= false and p.hasStep) and true or false
+    local qNeed = finite(q.textHeight) and q.textHeight or 0
+    local pNeed = finite(p.textHeight) and p.textHeight or 0
+    -- The first gap of each text in the stack of two: the quest text under
+    -- the quest arrow, the profession text over the profession arrow.
+    local belowFirst = N.TEXT_GAP_BELOW
+    if q.travel then belowFirst = math.max(belowFirst, (N.TRAVEL_ICON - size) / 2 + 4) end
+    local aboveFirst = profMode == "off" and N.TEXT_GAP_ABOVE or N.NeedleClearance(size)
 
     local L = N.ArrowLayout({
         layout = state.layout, gate = gate, screenW = sw, screenH = sh,
         size = state.size, defaultPoint = state.defaultPoint,
-        quest = { hasStep = q.hasStep, overlay = q.overlay },
-        prof = { hasStep = profStep, mode = profMode },
+        quest = { hasStep = q.hasStep, overlay = q.overlay,
+                  room = saved.text.quest ~= false and qNeed > 0 and qNeed + belowFirst or 0 },
+        prof = { hasStep = profStep, mode = profMode,
+                 room = saved.text.prof ~= false and pNeed > 0 and pNeed + aboveFirst or 0 },
     })
     local lq, lp = L.quest, L.prof
-    local under = lp.shown and lp.anchor == "quest" and lq.shown   -- stacked behind the quest arrow
+    local under = lp.shown and lp.anchor == "quest" and lq.shown   -- not laid out any more
+    -- The stack of two: the profession arrow over the quest arrow.
+    local over = (lp.shown and lp.above and lq.shown) and true or false
 
     -- ---------------------------------------------------------- quest arrow
     local qMode = "arrow"
@@ -143,7 +154,6 @@ function N.ArrowView(state)
     local qState = qMode == "corpse" and "corpse" or N.ArrowState(state.player, q.target, questHere)
     local qr, qg, qb = N.ArrowColor(qState, q.distance, state.palette)
     local stackClear = under and N.NeedleClearance(size) or nil
-    local qNeed = finite(q.textHeight) and q.textHeight or 0
     local quest = {
         shown = lq.shown, anchor = "screen", point = point4(lq.position),
         scale = scale, alpha = alpha, colour = { qr, qg, qb },
@@ -151,14 +161,24 @@ function N.ArrowView(state)
         text = textOps(lq.shown and lq.text, "quest", lq.position, size, sw, sh,
                        stackClear, qNeed, travel),
     }
+    if over then
+        -- Its text below it, always: the profession arrow stands above.
+        quest.text = { shown = (lq.shown and lq.text) and true or false, to = "quest", side = "below",
+                       point = { "TOP", "BOTTOM", 0, -belowFirst }, first = belowFirst }
+    end
 
     -- ----------------------------------------------------- profession arrow
     local pState = N.ArrowState(state.player, p.target, profHere)
     local pr, pg, pb, pa = N.ArrowPaint(lp, pState, p.distance, state.palette, p.own)
     if profMode == "ring" then pa = N.PROF_RING_ALPHA end
-    local pNeed = finite(p.textHeight) and p.textHeight or 0
     local pText
-    if under then
+    if over then
+        -- Its text above it, always: never between the two arrows. With no
+        -- needle drawn its frame stands on the quest arrow's place, so the
+        -- lines stand right over the quest arrow.
+        pText = { shown = lp.text and true or false, to = "prof", side = "above",
+                  point = { "BOTTOM", "TOP", 0, aboveFirst }, first = aboveFirst }
+    elseif under then
         -- The fallback: one stack of lines on the quest arrow, same side,
         -- same first gap.
         -- The needle's lines are shown while the needle is "off" too (owner
@@ -168,11 +188,19 @@ function N.ArrowView(state)
         -- stand on the other side of the arrow, on the needle's own frame,
         -- with the same first gap. Only when the screen is known and they
         -- fit there; otherwise the one stack above stays.
+        -- Lead section 387 R2 (owner, the original look): stacked, the
+        -- profession step's lines stand above the arrows and the quest lines
+        -- below, wherever the stack is, when both fit there; else as 341.
         local qt = quest.text
         if qt.shown and pText.shown and knownScreen(sw, sh) and lq.position then
             local _, bottom = N.ArrowCorner(lq.position, size, sw, sh)
             local first = qt.first
-            if qt.side == "above" and bottom - first - pNeed >= 0 then
+            if bottom + size + first + pNeed <= sh and bottom - first - qNeed >= 0 then
+                quest.text = { shown = true, to = "quest", side = "below",
+                               point = { "TOP", "BOTTOM", 0, -first }, first = first }
+                pText = { shown = true, to = "prof", side = "above",
+                          point = { "BOTTOM", "TOP", 0, first }, first = first }
+            elseif qt.side == "above" and bottom - first - pNeed >= 0 then
                 pText = { shown = true, to = "prof", side = "below",
                           point = { "TOP", "BOTTOM", 0, -first }, first = first }
             elseif qt.side == "below" and bottom + size + first + pNeed <= sh then
@@ -192,6 +220,7 @@ function N.ArrowView(state)
         anchor = lp.anchor, point = point4(lp.position),
         scale = 1, alpha = pa, colour = { pr, pg, pb },
         look = lp.look, mode = profMode, behind = lp.behind and true or false, beside = false,
+        above = over,
         text = pText,
     }
     return { quest = quest, prof = prof, stacked = L.stacked }

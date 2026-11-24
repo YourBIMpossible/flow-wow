@@ -218,4 +218,43 @@ tests["dungeon run: Plan the run hands the run to the arrow, which walks it"] = 
     t.eq(first(c), "The Deadmines", "at the giver: on to the entrance")
 end
 
+-- S43 (lead dispatch section 391 item 4): the route step says how many are still needed.
+local function paws(text, done)
+    return { { id = 401, title = "Paws", objectives = { { text = text, done = done } } } }
+end
+
+local function lineWith(c, text)
+    local a = c.arrows[1]
+    for _, l in ipairs(a and a.lines or {}) do
+        if tostring(l):find(text, 1, true) then return l end
+    end
+    return nil
+end
+
+tests["trip route: the step says how many are still needed, live from the quest log"] = function(t)
+    local c = boot({ log = paws("Gnoll Paw: 4/8") })
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    t.ok(said(c, "1. Paws - You still need 4 of Gnoll Paw.") ~= nil, "the route list")
+    t.eq(first(c), "Paws")
+    t.eq(lineWith(c, "You still need"), "You still need 4 of Gnoll Paw.", "under the arrow")
+    c.setQuestLog(paws("Gnoll Paw: 7/8"))
+    c.advance(3, 30)
+    t.eq(lineWith(c, "You still need"), "You still need 1 Gnoll Paw.", "one left: singular, read again")
+    c.setQuestLog(paws("Gnoll Paw: 8/8", true))
+    c.advance(3, 30)
+    t.eq(lineWith(c, "You still need"), nil, "done: no need line")
+end
+
+tests["trip route: an unreadable count says no number at all"] = function(t)
+    local c = boot({ log = paws(nil) })
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    t.eq(first(c), "Paws")
+    t.eq(lineWith(c, "need"), nil, "no need line when the count cannot be read")
+    for _, line in ipairs(c.printed or {}) do
+        t.ok(not tostring(line):find("still need", 1, true), tostring(line))
+    end
+end
+
 return tests

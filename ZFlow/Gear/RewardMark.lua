@@ -126,6 +126,28 @@ function RM.Pick(client, packs, role)
     return best
 end
 
+-- G14 coin (section 393): when no choice is an upgrade, the choice that
+-- sells for the most, to take and sell. nil when the choices or any price
+-- are not read, two prices tie, or nothing sells.
+function RM.Coin(client)
+    local rows = ask(client, "questChoices")
+    if type(rows) ~= "table" or #rows < 2 then return nil end
+    local best, bestPrice, tie = nil, 0, false
+    for _, row in ipairs(rows) do
+        if type(row) ~= "table" or type(row.link) ~= "string" then return nil end
+        local info = ask(client, "itemInfo", row.link)
+        local price = type(info) == "table" and info.sellPrice or nil
+        if not finite(price) or price < 0 then return nil end
+        if price > bestPrice then
+            best, bestPrice, tie = row.index, price, false
+        elseif price == bestPrice and price > 0 then
+            tie = true
+        end
+    end
+    if tie then return nil end
+    return best
+end
+
 function RM.Declare(k, packs)
     local api = {}
     local ctx, open, tick, marked, errors = nil, false, nil, nil, 0
@@ -133,11 +155,11 @@ function RM.Declare(k, packs)
     function api.marked() return marked end
     function api.errors() return errors end
 
-    local function show(index)
+    local function show(index, kind)
         marked = nil
         local mark = ctx and ctx.client.markRewardChoice
         if type(mark) ~= "function" then return end
-        local ok, done = pcall(mark, index)
+        local ok, done = pcall(mark, index, kind or "upgrade")
         if not ok then
             errors = errors + 1
             local text = tostring(done)
@@ -156,7 +178,7 @@ function RM.Declare(k, packs)
             show(nil)
             return
         end
-        local ok, pick = pcall(RM.Pick, ctx.client, packs or ns.Packs, ctx.settings:get(RM.ROLE))
+        local ok, pick, why = pcall(RM.Pick, ctx.client, packs or ns.Packs, ctx.settings:get(RM.ROLE))
         if not ok then
             errors = errors + 1
             local text = tostring(pick)
@@ -166,6 +188,10 @@ function RM.Declare(k, packs)
             end
             show(nil)
             return
+        end
+        if pick == nil and why == RM.WHY.none then
+            local okC, coin = pcall(RM.Coin, ctx.client)
+            if okC and coin ~= nil then return show(coin, "coin") end
         end
         show(pick)
     end
@@ -191,6 +217,7 @@ function RM.Declare(k, packs)
             key = RM.SETTING, scope = "account", type = "bool", default = true,
             label = "Mark the best quest reward",
             help = "When a quest offers a choice of rewards, mark the biggest upgrade for your role."
+                .. " When none is an upgrade, a coin marks the one that sells for the most."
                 .. " You pick; it takes nothing.",
             group = "gear", synonyms = { "reward", "quest", "choice", "mark", "upgrade" },
         } },
