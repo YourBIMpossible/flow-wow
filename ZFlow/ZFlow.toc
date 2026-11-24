@@ -94,6 +94,7 @@ UI\SpellCard.lua
 Rotation\Driver.lua
 Rotation\KeyFrame.lua
 Rotation\Role.lua
+Rotation\Spec.lua
 Rotation\Fights.lua
 UI\FightLog.lua
 Classes\Druid.lua
@@ -167,12 +168,11 @@ UI\MacroIcons.lua
 UI\GameOptions.lua
 UI\SellList.lua
 UI\BankList.lua
-UI\CraftBar.lua
-UI\ProfHelper.lua
 UI\KitHost.lua
 Items\Keep.lua
 Items\RecipeBook.lua
 Items\RecipeLearned.lua
+Items\ProfRecipes.lua
 Items\Goals.lua
 UI\Arrow.lua
 UI\MinimapPin.lua
@@ -214,6 +214,8 @@ Nav\DungeonStates.lua
 Nav\DungeonRead.lua
 Nav\BossKills.lua
 UI\DungeonWindow.lua
+UI\HelpPages.lua
+UI\SetupList.lua
 Nav\QuestSpots.lua
 Nav\TripRoute.lua
 UI\MinimapPlace.lua
@@ -228,3 +230,10 @@ Nav\Trip.lua
 UI\RouteTracker.lua
 Nav\QuestAdvice.lua
 Items\QuestBags.lua
+Spells\TrainAdvice.lua
+Items\ProfPlan.lua
+Items\ProfSources.lua
+UI\ProfDock.lua
+Nav\ProfFeed.lua
+Nav\HearthAdvice.lua
+Nav\GateWords.lua

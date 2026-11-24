@@ -31,6 +31,10 @@ local _, ns = ...
 -- it was.
 --
 --   T.Next(pts, here, there) -> index or nil     pure, yards
+--   T.Hint(pts, here, there) -> line or nil      pure, yards
+-- The step also gets one plain line (hint, only when it has none): on the
+-- trail T.ON_TRAIL; with the target on a trail but the player not on it,
+-- T.TO_ENTRANCE (a far player keeps the straight arrow to the target).
 --   T.Declare(k, diag) -> api
 -- Not tested in game: client.indoors() is a first guess.
 ns.Nav = ns.Nav or {}
@@ -54,6 +58,8 @@ T.NEAR = 25          -- yards: a target this close to a trail point is on it
 T.JOIN = 60          -- yards: the player this close to a trail may take it
 T.PER_MAP = 20
 T.MAPS = 60
+T.ON_TRAIL = "The way is through the cave: follow the arrow along the path you walked."
+T.TO_ENTRANCE = "The way in is a cave: walk to the entrance first."
 
 local sqrt = math.sqrt
 
@@ -88,6 +94,19 @@ function T.Next(pts, here, there)
     if di > T.STEP then return i end
     if i < j then return i + 1 end
     return i - 1
+end
+
+-- The line the arrow says for a target on this trail: T.ON_TRAIL with the
+-- player on it, T.TO_ENTRANCE with the player off it; nil when the target
+-- is not on the trail or the player is already at the target.
+function T.Hint(pts, here, there)
+    if type(pts) ~= "table" or #pts < 2 or type(here) ~= "table" or type(there) ~= "table" then return nil end
+    if dist(here, there) <= T.NEAR then return nil end
+    local j, dj = nearest(pts, there)
+    if not j or dj > T.NEAR then return nil end
+    local _, di = nearest(pts, here)
+    if di ~= nil and di <= T.STEP then return T.ON_TRAIL end
+    return T.TO_ENTRANCE
 end
 
 local function round4(v) return math.floor(v * 10000 + 0.5) / 10000 end
@@ -234,7 +253,7 @@ function T.Declare(k, diag)
         local list = all and all[p.map]
         if type(list) ~= "table" then return step end
         local there = { x = place.x * size.w, y = place.y * size.h }
-        local pick, pickD
+        local pick, pickD, pickHint, hint
         for _, trail in ipairs(list) do
             if type(trail) == "table" and type(trail.pts) == "table" then
                 local pts = {}
@@ -245,15 +264,25 @@ function T.Declare(k, diag)
                     if #pts ~= i then break end
                 end
                 local n = T.Next(pts, p, there)
+                local line = T.Hint(pts, p, there)
                 if n then
                     local d = dist(pts[n], p)
-                    if pickD == nil or d < pickD then pick, pickD = pts[n], d end
+                    if pickD == nil or d < pickD then pick, pickD, pickHint = pts[n], d, line end
+                elseif line ~= nil and hint == nil then
+                    hint = line
                 end
             end
         end
-        if not pick then return step end
         local out = {}
         for key, v in pairs(step) do out[key] = v end
+        if not pick then
+            -- Not on any trail: the arrow stays on the target, with the
+            -- entrance line when the target is past a trail.
+            if hint == nil or step.hint ~= nil then return step end
+            out.hint = hint
+            return out
+        end
+        if out.hint == nil then out.hint = pickHint or T.TO_ENTRANCE end
         out.place = { cont = place.cont, map = place.map, x = pick.x / size.w, y = pick.y / size.h }
         out.trail = true
         return out

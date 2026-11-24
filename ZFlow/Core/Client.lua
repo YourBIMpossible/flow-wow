@@ -6815,6 +6815,17 @@ function ns.make.client(env)
         return nil
     end
 
+    -- How fast the player is moving, in yards a second: GetUnitSpeed(
+    -- "player") (0 standing still), or nil when it cannot be read.
+    function c.speed()
+        local ok, speed = call(env.GetUnitSpeed, "player")
+        if ok and type(speed) == "number" and not hidden(speed) and speed == speed and speed >= 0
+            and speed < math.huge then
+            return speed
+        end
+        return nil
+    end
+
     -- A panel of rows (the craft bar): c.panel h, always closable, with
     -- shown() and draw(rows, act). rows, top to bottom:
     --   { kind = "info", text = }
@@ -11536,7 +11547,11 @@ function ns.make.client(env)
     --            (its first letter is the plain look's face) }
     --   h.place(x, y)    its middle x right and y up from the minimap's middle
     --   h.show(on)
-    --   h.onClick(fn)    fn() on a left click; nothing else is done
+    --   h.onClick(fn)    fn(button) on a click, button "left" or "right";
+    --                    nothing else is done
+    --   h.menu(items, pick)  the arrows' menu (menuOpen above) at the
+    --                    pointer with these rows; pick(key) is told the row
+    --                    chosen. nil or no rows closes this button's menu.
     --   h.onDrag(fn)     fn(dx, dy, done) while dragged with the left button:
     --                    the cursor's offset from the minimap's middle, in the
     --                    minimap's own units; done true once, at the drop
@@ -11575,7 +11590,7 @@ function ns.make.client(env)
             method(b, "SetWidth", 31)
             method(b, "SetHeight", 31)
         end
-        method(b, "RegisterForClicks", "LeftButtonUp")
+        method(b, "RegisterForClicks", "LeftButtonUp", "RightButtonUp")
         method(b, "RegisterForDrag", "LeftButton")
         local function texture(layer, path, w, h, x, y)
             local okT, tex = method(b, "CreateTexture", nil, layer)
@@ -11626,8 +11641,8 @@ function ns.make.client(env)
             local dx, dy = cursor()
             if dx ~= nil then pcall(dragFn, dx, dy, done) end
         end
-        method(b, "SetScript", "OnClick", function()
-            if type(clickFn) == "function" then pcall(clickFn) end
+        method(b, "SetScript", "OnClick", function(_, button)
+            if type(clickFn) == "function" then pcall(clickFn, button == "RightButton" and "right" or "left") end
         end)
         method(b, "SetScript", "OnDragStart", function(self)
             method(self, "SetScript", "OnUpdate", function() drag(false) end)
@@ -11653,11 +11668,23 @@ function ns.make.client(env)
             method(b, "SetPoint", "CENTER", map, "CENTER", x, y)
         end
         function h.show(on)
-            if on then method(b, "Show") else method(b, "Hide") end
+            if on then
+                method(b, "Show")
+            else
+                if menu.owner == h then menuClose() end
+                method(b, "Hide")
+            end
         end
         function h.onClick(fn) clickFn = fn end
         function h.onDrag(fn) dragFn = fn end
         function h.tip(t) lines = type(t) == "table" and t or nil end
+        function h.menu(items, pick)
+            if type(items) ~= "table" or #items == 0 then
+                if menu.owner == h then menuClose() end
+                return
+            end
+            menuOpen(h, b, items, pick, spec.name)
+        end
         return h
     end
 
@@ -11954,6 +11981,27 @@ function ns.make.client(env)
             end
         end
         return out
+    end
+    -- Lead section 382 (Nav/ProfFeed.lua): the name of the continent a map
+    -- lies on, for "Next time you are in <continent>". C_Map.GetMapInfo up
+    -- the parents to the first of Enum.UIMapType.Continent (2 when the enum
+    -- is not there). nil when the client will not say; never guessed. A
+    -- first guess, not seen in game.
+    function c.mapContName(map)
+        if type(map) ~= "number" then return nil end
+        local kinds = type(env.Enum) == "table" and env.Enum.UIMapType
+        local contType = type(kinds) == "table" and tonumber(kinds.Continent) or 2
+        for _ = 1, 8 do
+            local ok, info = mapCall("GetMapInfo", map)
+            if not ok or type(info) ~= "table" then return nil end
+            if tonumber(info.mapType) == contType then
+                if type(info.name) ~= "string" or hidden(info.name) or info.name == "" then return nil end
+                return info.name
+            end
+            if type(info.parentMapID) ~= "number" or info.parentMapID == 0 then return nil end
+            map = info.parentMapID
+        end
+        return nil
     end
 
     -- P-QUEST (lead section 354 item 4): whether quest id can be shared

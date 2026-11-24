@@ -104,6 +104,43 @@ tests["gear tooltip lines: one line for each role the pack has weights for, in n
     })
 end
 
+-- G31: the chosen role (spec.role, passed as opts.role) drives the verdict.
+tests["gear tooltip lines: a chosen role gets its own verdict alone"] = function(t)
+    local c = client()
+    t.eq(M.Lines(c, packs(), HELM, { role = "tank" }), {
+        { text = "Upgrade for your head piece (+12, tank)", tone = "good" },
+    })
+    t.eq(M.Lines(c, packs(), HELM, { role = "dps" }), {
+        { text = "Upgrade for your head piece (+4, dps)", tone = "good" },
+    })
+end
+
+tests["gear tooltip lines: no role chosen, or one the pack has no weights for: every role"] = function(t)
+    local c = client()
+    local every = M.Lines(c, packs(), HELM)
+    t.eq(#every, 2)
+    t.eq(M.Lines(c, packs(), HELM, {}), every, "no role in opts")
+    t.eq(M.Lines(c, packs(), HELM, { role = "" }), every, "none chosen")
+    t.eq(M.Lines(c, packs(), HELM, { role = "heal" }), every, "no weights for it")
+    t.eq(M.Lines(c, packs(), HELM, { role = 3 }), every, "not a role")
+end
+
+tests["gear tooltip lines: a chosen role still gets can't use, once"] = function(t)
+    local c = client()
+    t.eq(M.Lines(c, packs(), PLATE, { role = "tank" }),
+        { { text = "Can't use: " .. ns.GearUsable.REASON.unmet .. ": Plate", tone = "bad" } })
+end
+
+tests["gear tooltip lines: a chosen role - the score line still has every role, the chosen first"] = function(t)
+    local c = client()
+    local lines = M.Lines(c, packs(), HELM, { role = "tank", score = true })
+    t.eq(lines[1], { text = "Upgrade for your head piece (+12, tank)", tone = "good" })
+    t.eq(lines[2], { text = "Score 12 (tank), 4 (dps)", tone = "info" })
+    for i = 1, #lines do
+        t.ok(lines[i].text ~= "Upgrade for your head piece (+4, dps)", "the other role's verdict is not shown")
+    end
+end
+
 tests["gear tooltip lines: can't use is said once, not once for each role"] = function(t)
     local c = client()
     local lines = M.Lines(c, packs(), PLATE)
