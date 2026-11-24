@@ -223,6 +223,7 @@ Nav\BossLootData.lua
 Nav\DungeonRead.lua
 Nav\BossKills.lua
 UI\DungeonWindow.lua
+UI\HoverBind.lua
 UI\HelpPages.lua
 UI\SetupList.lua
 Nav\QuestSpots.lua

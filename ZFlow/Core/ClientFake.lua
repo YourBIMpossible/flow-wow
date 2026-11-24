@@ -2866,6 +2866,86 @@ function ns.make.fakeClient(opts)
             end
             return true
         end
+        -- G34: the twins of c.setBinding and c.bindHover (hover-to-bind).
+        --   c.setBarButtons({ frame name, ... })  the buttons on the screen
+        --   c.bindHoverOpen() -> true while the mode's covers are up
+        --   c.bindHoverIds()  the ids that took a cover, in order
+        --   c.bindHoverOver(id | nil)  the mouse goes onto that cover (false
+        --     when it has none), or off them all
+        --   c.bindHoverKey(chord) -> true when the mode took the press:
+        --     "ESCAPE" cancels; any other is told with the cover the mouse is on
+        --   c.bindHoverRight(id) -> true: a right click on that cover
+        --   c.bindHoverLabels()  the text on each cover, by id
+        local barButtons, hover = {}, nil
+        function c.setBarButtons(list)
+            barButtons = {}
+            for _, name in ipairs(list or {}) do barButtons[name] = true end
+        end
+        function c.setBinding(key, command)
+            if type(key) ~= "string" or key == "" or type(command) ~= "string" or command == "" then
+                return false, "no key"
+            end
+            if locked() then return false, "lockdown" end
+            bind(key, command)
+            calls[#calls + 1] = "setBinding"
+            return true
+        end
+        function c.bindHover()
+            local h = { on = false, ids = {}, has = {}, texts = {} }
+            function h.stop() h.on, h.over, h.ids, h.has, h.texts = false, nil, {}, {}, {} end
+            function h.start(targets, onKey, onCancel, onClear)
+                h.stop()
+                for _, target in ipairs(targets or {}) do
+                    if barButtons[target.frame] and target.id ~= nil then
+                        h.ids[#h.ids + 1] = target.id
+                        h.has[target.id] = true
+                    end
+                end
+                if #h.ids == 0 then return 0 end
+                h.on, h.onKey, h.onCancel, h.onClear = true, onKey, onCancel, onClear
+                return #h.ids
+            end
+            function h.labels(texts)
+                h.texts = {}
+                if type(texts) == "table" then
+                    for id in pairs(h.has) do h.texts[id] = texts[id] end
+                end
+            end
+            function h.open() return h.on end
+            hover = h
+            return h
+        end
+        function c.bindHoverOpen() return hover ~= nil and hover.on == true end
+        function c.bindHoverIds()
+            local out = {}
+            for i, id in ipairs(hover and hover.ids or {}) do out[i] = id end
+            return out
+        end
+        function c.bindHoverLabels()
+            local out = {}
+            for id, text in pairs(hover and hover.texts or {}) do out[id] = text end
+            return out
+        end
+        function c.bindHoverOver(id)
+            if not c.bindHoverOpen() then return false end
+            if id ~= nil and not hover.has[id] then return false end
+            hover.over = id
+            return true
+        end
+        function c.bindHoverKey(chord)
+            if not c.bindHoverOpen() then return false end
+            if chord == "ESCAPE" then
+                if type(hover.onCancel) == "function" then hover.onCancel() end
+                return true
+            end
+            if type(hover.onKey) == "function" then hover.onKey(chord, hover.over) end
+            return true
+        end
+        function c.bindHoverRight(id)
+            if not c.bindHoverOpen() or not hover.has[id] then return false end
+            if type(hover.onClear) == "function" then hover.onClear(id) end
+            return true
+        end
     end
 
     -- Slider rows of the Options page (row N57), as the real page draws
