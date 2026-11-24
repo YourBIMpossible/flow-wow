@@ -192,6 +192,8 @@ return {
         "UI/KitHost.lua",
         "Items/Keep.lua",
         "Items/RecipeBook.lua",
+        -- Lead section 413: the profession window's row colours, saved for the profession plan (after RecipeBook).
+        "Items/RecipeColours.lua",
         "Items/RecipeLearned.lua",
         "Items/ProfRecipes.lua",
         "Items/Goals.lua",
