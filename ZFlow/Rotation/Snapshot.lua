@@ -53,6 +53,10 @@ R.SNAPSHOT_FIELDS = {
     -- stoneName, stoneWait, potion, potionName, potionWait, alt }; nil when
     -- not read or the setting is off (Rotation/Driver.lua).
     { "healItem", "map" },
+    -- D-14 (Rotation/Recover.lua): your best bandage, food and drink, {
+    -- bandage, bandageName, food, foodName, drink, drinkName }; read out of
+    -- a fight only; nil when not read (Rotation/Driver.lua).
+    { "recoverItem", "map" },
     -- P-GATHER (Rotation/Gather.lua): gathering tracking, read by G.Read.
     { "tracking", "map" }, { "trackKnown", "map" }, { "professions", "map" }, { "gatherOn", "flag" },
     -- GT-1 (Rotation/Gather.lua): any tracking on. Mounted and on a flight path are the two flags above.

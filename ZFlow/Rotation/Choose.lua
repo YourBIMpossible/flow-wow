@@ -82,8 +82,11 @@ local _, ns = ...
 -- N8 (lead section 238): in a fight with the low-health warning on, the heal
 -- step offers your healthstone, else a healing potion, before any heal spell
 -- (snapshot.healItem, Rotation/HealItems.lua).
--- Not in the chooser yet (tasks): other items (bandage, drink), and anything
--- for another player (friend heal, group buffs, group dispels), which needs
+-- D-14: before 8, "recover": hurt after a fight, your bandage (not with
+-- Recently Bandaged on you), else food when quite hurt (Rotation/Recover.lua,
+-- legacy Flow Engine.lua E:Recover). Drink is not chosen: no mana amount is
+-- read (R.FROM_AMOUNT).
+-- Not in the chooser yet (tasks): anything for another player (friend heal, group buffs, group dispels), which needs
 -- a party member read.
 -- P-PARTY (lead section 233): group buffs and group dispels are now the last
 -- step, "group" (Rotation/Group.lua), look only: the suggestion carries
@@ -694,7 +697,39 @@ function steps.cc(s, pack, prefs, _, unread)
     return nil, noteWith("no enemy to hold", unread)
 end
 
-R.STEPS = { "breakFree", "heal", "interrupt", "plateCast", "dispel", "engage", "threat", "cc", "list", "farOpener", "food" }
+-- D-14: hurt after a fight, a bandage or food to heal up, as legacy Flow
+-- (Modules/Rotation/Engine.lua E:Recover, BuffItems.lua BandageStep and
+-- FoodStep): out of a fight, not eating, mounted or on a flight path, and
+-- hurt (the driver's estimate at R.HURT.outStart, or the low-health
+-- warning). The bandage first, on you, unless Recently Bandaged is on you
+-- (your debuffs not read: no bandage); food only when quite hurt
+-- (R.HURT.outBig or the warning) and no enemy targeted. A bandage waits
+-- for the Well Fed meal the food step would offer (one meal heals and
+-- buffs; Flow's BuffButton.lua BB.Pick). On the key: the item type.
+function steps.recover(s)
+    if not R.OutOfFight(s) then return nil, "not out of a fight" end
+    local hurt = type(s.hurt) == "number" and s.hurt or 0
+    local quite = s.lowHealth == true or hurt >= R.HURT.outBig
+    if not (quite or hurt >= R.HURT.outStart) then return nil, "not hurt" end
+    if type(s.buffs) ~= "table" then return nil, "your buffs not read" end
+    if ns.BuffFood.Eating(s.buffs) then return nil, "eating or drinking" end
+    if s.mounted ~= false or s.onTaxi ~= false then return nil, "mounted, on a flight path, or not known" end
+    local r = s.recoverItem
+    if type(r) ~= "table" then return nil, "your bandage and food not read" end
+    local bandaged = type(s.debuffs) ~= "table" or s.debuffs[ns.Recover.RECENTLY_BANDAGED]
+    if type(r.bandage) == "number" and not bandaged then
+        if steps.food(s) then return nil, "Well Fed food first" end
+        return { item = r.bandageName, itemId = r.bandage, kind = "bandage", unit = "player",
+                 reason = "Hurt after your fight: bandage up with " .. tostring(r.bandageName) }
+    end
+    if type(r.food) == "number" and quite and s.hostile ~= true then
+        return { item = r.foodName, itemId = r.food, kind = "recoverFood",
+                 reason = "Hurt after your fight: eat " .. tostring(r.foodName) .. " to heal up" }
+    end
+    return nil, "no bandage or food to use"
+end
+
+R.STEPS = { "breakFree", "heal", "interrupt", "plateCast", "dispel", "engage", "threat", "cc", "list", "farOpener", "recover", "food" }
 -- 9. P-GATHER: out of a fight, a gathering tracking that is off and can be
 -- turned on (Rotation/Gather.lua G.Step). Last: anything above comes first,
 -- food included (lead, merge of P-FOOD and P-GATHER).

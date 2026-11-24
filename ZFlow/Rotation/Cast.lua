@@ -103,7 +103,10 @@ local function actionOf(p)
     local a = p.action
     if type(a) ~= "table" then return nil end
     local id = a.itemId
-    if type(id) == "number" and id > 0 and id % 1 == 0 then return { itemId = id } end
+    -- D-14: an item on you (a bandage) keeps unit "player"; any other unit is dropped.
+    if type(id) == "number" and id > 0 and id % 1 == 0 then
+        return { itemId = id, unit = a.unit == "player" and "player" or nil }
+    end
     if type(a.spell) ~= "string" or a.spell == "" then return nil end
     if a.unit ~= nil and a.unit ~= "player" and a.unit ~= "target" then return nil end
     return { spell = a.spell, unit = a.unit }
@@ -304,7 +307,8 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
         kind = "item"
     elseif type(apply.plan.action) == "table" and apply.plan.action.itemId ~= nil then
         -- P-KEYS slice D: the plan's key action, an item (the item type).
-        item, kind, source = apply.plan.action.itemId, "item", "plan"
+        -- D-14: a bandage on you carries unit "player", as legacy Flow's button.
+        item, kind, unit, source = apply.plan.action.itemId, "item", apply.plan.action.unit, "plan"
     elseif type(apply.plan.action) == "table" then
         -- P-KEYS slice D: the plan's key action, a spell on its unit.
         spell, kind, unit, source = apply.plan.action.spell, "spell", apply.plan.action.unit, "plan"

@@ -89,6 +89,9 @@ local _, ns = ...
 --       hurt       G26: extra.hurt, the driver's estimate of seconds of
 --                  hits (D.HURT, D.StepHurt) as a whole number; nil when
 --                  none is given
+--       recoverItem  D-14: your bandage, food and drink (Rotation/
+--                  Recover.lua), read out of a fight only, kept in
+--                  extra.heal.recover until the bags change
 --       healItem   N8: your healthstone and healing potion
 --                  (Rotation/HealItems.lua): { stone, stoneName, potion,
 --                  potionName } kept in extra.heal until the bags change
@@ -506,6 +509,22 @@ local function cooldownOf(client, id)
     return nil
 end
 
+-- D-14: your bandage, food and drink (Rotation/Recover.lua), read out of a
+-- fight only (nil in one, or the fight not known), kept in heal.recover
+-- until the bags change or item data arrives, as the healing items are.
+-- Only when hurt (extra.hurt at R.HURT.outStart, as the step asks): not
+-- hurt, the bags are not read for it.
+local function recoverItemKept(client, heal, hurt)
+    if type(ns.Recover) ~= "table" or type(client.inCombat) ~= "function" then return nil end
+    if type(hurt) ~= "number" or hurt < ns.Rotation.HURT.outStart then return nil end
+    local okC, inFight = pcall(client.inCombat)
+    if not okC or inFight ~= false then return nil end
+    if type(heal) == "table" and type(heal.recover) == "table" then return heal.recover end
+    local got, partial = ns.Recover.Read(client)
+    if type(heal) == "table" and got ~= nil and not partial then heal.recover = got end
+    return got
+end
+
 -- N8: the healing items, kept as the food is (above). Without heal: read
 -- each time, no alt.
 local function healItemKept(client, heal)
@@ -730,6 +749,7 @@ function D.Read(client, pack, ids, role, extra)
             return nil
         end
         if field == "healItem" then return healItemKept(client, heal) end
+        if field == "recoverItem" then return recoverItemKept(client, heal, type(extra) == "table" and extra.hurt or nil) end
         -- G25: what holds you (client.heldBy), for the break-free rule. Not
         -- held, not known and a failed read are all nil: the rule then
         -- reads no hold and suggests nothing.
@@ -943,6 +963,14 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     if type(suggestion) == "table" and suggestion.engage == true and type(suggestion.spell) == "string"
         and type(plan) == "table" and plan.action == nil and lockdown == false then
         plan.action = { spell = suggestion.spell }
+    end
+    -- D-14: out of a fight, the bandage or food to heal up goes on the plan,
+    -- an item (the item type; a bandage on you), as legacy Flow's key held
+    -- its recovery step (Modules/Rotation/Engine.lua E:Recover, line 812).
+    if type(suggestion) == "table" and (suggestion.kind == "bandage" or suggestion.kind == "recoverFood")
+        and type(suggestion.itemId) == "number" and suggestion.look ~= true
+        and type(plan) == "table" and plan.action == nil and lockdown == false then
+        plan.action = { itemId = suggestion.itemId, unit = suggestion.unit }
     end
     local onKey = suggestion
     if type(KC) == "table" and type(controls) == "table" then

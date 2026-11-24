@@ -51,7 +51,7 @@ end
 
 tests["class b: the step order puts the plate cast after your own interrupt and crowd control before the list"] = function(t)
     t.eq(table.concat(R.STEPS, " "),
-        "breakFree heal interrupt plateCast dispel engage threat cc list farOpener food track group")
+        "breakFree heal interrupt plateCast dispel engage threat cc list farOpener recover food track group")
 end
 
 -- MAGE-3 and PRIEST-6 Shackle --------------------------------------------
