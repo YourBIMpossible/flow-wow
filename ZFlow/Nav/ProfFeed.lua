@@ -41,8 +41,12 @@ local _, ns = ...
 -- (The module's Step also gives the pick, for Nav/ProfStep.lua's
 -- N.ProfChoose between it and the older step.)
 -- F.Step(result) -> the step the needle takes (Nav/ProfStep.lua's shapes):
---   a place: { place = { cont, map, x, y }, radius, label, detail }
---   else text: { still = true, lines = { text }, label }
+--   a place: { place = { cont, map, x, y }, radius, label, detail, also }
+--   else text: { still = true, lines = { text, ... }, label }
+--   Lead section 416 item 2: after the pick's own lines, one line for each
+--   other profession, by name, its own current step (F.Also): the text
+--   step's lines, a place step's also (said under its label and detail by
+--   UI/Arrow.lua). The needle still points at the pick.
 -- F.Lines(result) -> the lines of "/zflow prof plan".
 --
 -- Module F.Declare(k, diag): setting F.SETTING (account, on by default,
@@ -62,6 +66,25 @@ F.HELP = "prof plan: what each of your professions needs next, and the step the 
 F.OPEN = "Open your %s window once"
 F.HELD = "Next time you are in %s: %s"
 F.HELD_UNNAMED = "Next time you are on that continent: %s"
+-- Lead section 416 item 2: another profession's step over
+-- N.Waypoint.LABEL_MAX bytes is said short, by its kind; a kind not here,
+-- or a short line still over, is left out, never cut.
+F.ALSO_SHORT = "%s: %s"
+F.KIND_WORDS = {
+    learn_recipe = "learn a recipe",
+    train_tier = "train the next rank",
+    craft = "make an item",
+    make_part = "make a part",
+    take_bank = "take from the bank",
+    gather = "gather",
+    gather_skill = "gather",
+    buy_vendor = "buy from a vendor",
+    buy_auction = "buy at the auction house",
+    go_station = "go to a station",
+    -- Kinds the planner gained with lead section 419 (Items/ProfPlan.lua).
+    open_window = "open its window",
+    find_material = "find materials",
+}
 -- Yards a second on foot (Nav/Legs.lua's L.RUN); a first guess.
 F.RUN = 7
 -- Kinds done where the player stands when the step has no place.
@@ -140,7 +163,14 @@ local function candidate(prof, first, input, say)
     if not first then return { prof = prof, rank = 6, text = say or F.OPEN:format(prof) } end
     local c = { prof = prof, step = first, text = first.text }
     if not placed(first.target) then
+        -- Lead section 414: no place known: what to look for goes with it.
+        if type(first.look) == "string" and first.look ~= "" then c.look = first.look end
         if F.HERE[first.kind] then c.rank, c.seconds = 1, 0 else c.rank = 4 end
+        return c
+    end
+    -- A smelt whose forge the player stands at is done here.
+    if F.HERE[first.kind] and call(input.reached, first.target) == true then
+        c.rank, c.seconds = 1, 0
         return c
     end
     local cont = call(input.contOf, first.target.map)
@@ -192,16 +222,56 @@ function F.Pick(input)
         for i, s in ipairs(steps) do row.steps[i] = s.text end
         rows[#rows + 1] = row
         local now = F.Current(steps, input.reached)
+        -- Every profession's own current step, for F.Also (section 416).
+        local c = candidate(prof, now, input, say)
+        row.next = c
         if not row.capped or (now and now.kind == "train_tier") then
-            local c = candidate(prof, now, input, say)
             if not best or better(c, best) then best = c end
         end
     end
     return { rows = rows, pick = best }
 end
 
-local function textStep(text)
+-- One line for another profession's step: its words, else short by kind.
+local function alsoLine(c)
+    local max = N.Waypoint and N.Waypoint.LABEL_MAX or 40
+    if type(c.text) == "string" and #c.text <= max then return c.text end
+    local words = F.KIND_WORDS[type(c.step) == "table" and c.step.kind or ""]
+    if not words then return nil end
+    local line = F.ALSO_SHORT:format(c.prof, words)
+    if #line <= max then return line end
+    return nil
+end
+
+-- F.Also(result, covered) -> { line, ... }: one for each profession but the
+-- one the shown step covers (covered, else the pick's), in name order (one
+-- at its max only for its training); a line too long is left out.
+-- Lead section 418 item 6: covered is the older step's profession when
+-- N.ProfChoose (Nav/ProfStep.lua) shows that step instead.
+function F.Also(result, covered)
+    local out = {}
+    local pick = type(result) == "table" and result.pick or nil
+    if covered == nil and type(pick) == "table" then covered = pick.prof end
+    local rows = type(result) == "table" and type(result.rows) == "table" and result.rows or {}
+    for _, row in ipairs(rows) do
+        -- A profession at its max says only its training (it gains no
+        -- point any other way).
+        local own = type(row.next) == "table" and row.prof ~= covered
+        local stuck = row.capped and not (own and type(row.next.step) == "table" and row.next.step.kind == "train_tier")
+        if own and not stuck then
+            local line = alsoLine(row.next)
+            if line then out[#out + 1] = line end
+        end
+    end
+    return out
+end
+
+-- Lead section 414: what to look for comes right under the step's words,
+-- then the other professions' lines.
+local function textStep(text, look, also)
     local step = { still = true, lines = { text } }
+    if type(look) == "string" and look ~= "" then step.lines[#step.lines + 1] = look end
+    for _, line in ipairs(also) do step.lines[#step.lines + 1] = line end
     if #text <= (N.Waypoint and N.Waypoint.LABEL_MAX or 40) then step.label = text end
     return step
 end
@@ -209,7 +279,8 @@ end
 function F.Step(result)
     local pick = type(result) == "table" and result.pick or nil
     if type(pick) ~= "table" then return nil end
-    if pick.rank ~= 2 and pick.rank ~= 3 then return textStep(pick.text) end
+    local also = F.Also(result)
+    if pick.rank ~= 2 and pick.rank ~= 3 then return textStep(pick.text, pick.look, also) end
     local to = pick.step.target
     local step = { place = { cont = pick.cont, map = to.map, x = to.x, y = to.y },
                    radius = N.PROF_NEAR or 10 }
@@ -220,6 +291,7 @@ function F.Step(result)
         step.detail = pick.text
         if #pick.prof <= max then step.label = pick.prof end
     end
+    if #also > 0 then step.also = also end
     return step
 end
 
@@ -343,6 +415,9 @@ function F.Declare(k, diag)
         if not ctx or type(ctx.store) ~= "table" then return nil end
         local ok, v = pcall(ctx.store.get, ctx.store, "char", "learned.facts.profSkill")
         if not ok then return nil end
+        -- Lead section 414: at the skill the game has now, window or not.
+        local P = ns.ProfPlan
+        if type(P) == "table" and type(P.Readings) == "function" then return P.Readings(ctx.client, v) end
         return v
     end
 
@@ -372,10 +447,11 @@ function F.Declare(k, diag)
     end
 
     -- The needle's step, or nil: off, no planner yet, or nothing below max.
+    -- Also the pick and the whole result (for F.Also under the older step).
     function api.step()
         if not ctx or api.off() or not planOf() then return nil end
         local result = api.result()
-        return F.Step(result), type(result) == "table" and result.pick or nil
+        return F.Step(result), type(result) == "table" and result.pick or nil, result
     end
 
     function api.lines()
