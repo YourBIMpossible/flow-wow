@@ -978,9 +978,17 @@ function Arrow.Start(k, diag, own)
     -- The lines are the step's own, also for an arrow whose text is off.
     local function tip(key)
         if not handles or not ready or not live() or not current then return nil end
+        -- P-TRIP slice 2: the planned route's stops (Nav/Trip.lua), on the
+        -- quest arrow's tooltip.
+        local route
+        local trip = key == "quest" and k.use and k.use("trip") or nil
+        if trip and type(trip.Tip) == "function" then
+            local okTrip, lines = pcall(trip.Tip)
+            if okTrip and type(lines) == "table" then route = lines end
+        end
         return M.Tip({ key = key, stacked = current.prof.behind == true,
                        both = current.quest.shown == true and current.prof.shown == true,
-                       drawer = drawer ~= nil, lines = shownLines })
+                       drawer = drawer ~= nil, lines = shownLines, route = route })
     end
     -- The menu row with this key was clicked. A row that is not there or
     -- not offered asks for nothing.

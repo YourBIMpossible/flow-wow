@@ -24,7 +24,11 @@ local _, ns = ...
 --   P.Run(ordered, label) -> the run Nav/TripRoute.lua Run takes
 --   P.Quest(rows, text) -> row or nil   by id or part of the title
 --   P.Dungeon(list, text) -> entry or nil   by part of the name
--- Module "trip" provides List, Lines, Go. Not tested in game.
+--   P.TipLines(current, here) -> lines or nil   (slice 2) the route the
+--     arrow walks (Nav/TripRoute.lua Current) for the quest arrow's
+--     tooltip: the current stop marked, the straight distance left. Z-Flow
+--     has no route panel; the arrow's tooltip is where the step is shown.
+-- Module "trip" provides List, Lines, Go, Tip. Not tested in game.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 local P = {}
@@ -59,6 +63,11 @@ P.HERE_LABEL = "Where you stood"
 P.HAND_IN = "Hand in: %s"
 P.ENTRANCE = "Dungeon entrance"
 P.TITLE = "Trip"
+P.TIP_HEADER = "Route: %d stops left, %s"
+P.TIP_NOW = "> "
+P.TIP_NEXT = "  "
+P.TIP_MORE = "  and %d more"
+P.TIP_MAX = 5
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -178,6 +187,47 @@ function P.Run(ordered, label)
     local title = P.TITLE
     if label ~= nil then title = title .. " (" .. tostring(label) .. ")" end
     return { title = title, steps = steps, left = {} }
+end
+
+local function yardsOf(n)
+    return tostring(math.floor(n + 0.5)) .. " yd"
+end
+
+function P.TipLines(current, here)
+    local stops = type(current) == "table" and type(current.stops) == "table" and current.stops or nil
+    if not stops or #stops == 0 then return nil end
+    here = type(here) == "table" and here or {}
+    local size = sizeOf(here)
+    local rows, total = {}, 0
+    local last
+    if finite(here.x) and finite(here.y) then last = { map = here.map, x = here.x, y = here.y } end
+    for i, s in ipairs(stops) do
+        local p = type(s) == "table" and s.place or nil
+        local dist
+        if type(p) ~= "table" or type(last) ~= "table" then
+            dist, total = P.NO_DISTANCE, nil
+        elseif p.map ~= last.map then
+            dist, total = P.OTHER_MAP, nil
+        elseif not size or p.map ~= here.map or not (finite(p.x) and finite(p.y)) then
+            dist, total = P.NO_DISTANCE, nil
+        else
+            local dx, dy = (p.x - last.x) * size.w, (p.y - last.y) * size.h
+            local d = math.sqrt(dx * dx + dy * dy)
+            dist = yardsOf(d)
+            if total then total = total + d end
+        end
+        if i <= P.TIP_MAX then
+            local parts = { tostring(type(s) == "table" and s.label or "?") }
+            if type(s) == "table" and s.detail ~= nil then parts[#parts + 1] = tostring(s.detail) end
+            parts[#parts + 1] = dist
+            rows[#rows + 1] = (i == 1 and P.TIP_NOW or P.TIP_NEXT) .. table.concat(parts, " - ")
+        end
+        last = type(p) == "table" and p or nil
+    end
+    local lines = { P.TIP_HEADER:format(#stops, total and yardsOf(total) or P.NO_DISTANCE) }
+    for _, r in ipairs(rows) do lines[#lines + 1] = r end
+    if #stops > P.TIP_MAX then lines[#lines + 1] = P.TIP_MORE:format(#stops - P.TIP_MAX) end
+    return lines
 end
 
 function P.Quest(rows, want)
@@ -363,6 +413,14 @@ function P.Declare(k, diag)
         return tostring(line)
     end
 
+    function api.Tip()
+        local route = k.use and k.use("tripRoute")
+        if not (route and type(route.Current) == "function") then return nil end
+        local ok, current = pcall(route.Current)
+        if not ok then return nil end
+        return P.TipLines(current, hereNow())
+    end
+
     local function say(lines)
         local c = client()
         if type(c) ~= "table" or type(c.print) ~= "function" then return end
@@ -405,7 +463,7 @@ function P.Declare(k, diag)
     k:Module({
         name = P.NAME,
         needs = { "client", "store" },
-        provides = { List = api.List, Lines = api.Lines, Go = api.Go },
+        provides = { List = api.List, Lines = api.Lines, Go = api.Go, Tip = api.Tip },
         start = function(c) ctx = c end,
         stop = function() dungeons = nil end,
     })

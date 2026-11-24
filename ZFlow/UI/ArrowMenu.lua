@@ -291,7 +291,9 @@ end
 
 -- The tooltip's lines for the arrow under the pointer, or nil for no arrow:
 --   { key = "quest" | "prof", stacked, both, drawer,
---     lines = { quest = { ... }, prof = { ... } } }
+--     lines = { quest = { ... }, prof = { ... } }, route = { ... } }
+-- route (P-TRIP slice 2, optional): the lines of the route the quest arrow
+-- walks (Nav/Trip.lua P.TipLines), after the quest arrow's own lines.
 -- The arrow's name, its step's lines, and last how to use it. Stacked with
 -- both showing, the needle is under the quest arrow and takes no mouse, so
 -- the quest arrow's tooltip carries the needle's lines too. A click is
@@ -301,6 +303,7 @@ function M.Tip(state)
     local lines = type(state.lines) == "table" and state.lines or {}
     local out = { NAMES[state.key] }
     add(out, lines[state.key])
+    if state.key == "quest" then add(out, state.route) end
     if state.key == "quest" and state.stacked and state.both then
         out[#out + 1] = NAMES.prof
         add(out, lines.prof)
