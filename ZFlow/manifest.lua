@@ -299,5 +299,9 @@ return {
     "Nav/CrossingWords.lua",
     -- S38 (lead section 395 item 6): activities and route lanes (after Trip, Nodes).
     "Nav/Activities.lua",
+    -- G57: lite mode, the perf.lite row and the lite word (after Diag and every module it switches off).
+    "UI/Lite.lua",
+    -- G44 (section 397 item 14): the class trainer route step (after TrainAdvice and the packs).
+    "Nav/ClassTrainerStep.lua",
     },
 }

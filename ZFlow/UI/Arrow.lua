@@ -668,6 +668,16 @@ function Arrow.Start(k, diag, own)
                     from = "a profession trainer stop"
                 end
             end
+            -- Then the class trainer stop (G44, Nav/ClassTrainerStep.lua): new
+            -- class spells at the level and a class trainer saved on this map.
+            local classTrainer = k.use and k.use("classTrainerStep")
+            if step == nil and classTrainer and classTrainer.Step then
+                local ok, ct = pcall(classTrainer.Step)
+                if ok and type(ct) == "table" and type(ct.place) == "table" then
+                    step = ct
+                    from = "a class trainer stop"
+                end
+            end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
             if step == nil and quests and Arrow.QuestArrowOn(k) then
                 step = quests.step()
