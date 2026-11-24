@@ -127,7 +127,36 @@ end
 -- The colours picked on kernel k: the N.ARROW_PALETTE row of the saved
 -- word, the standard one for no word or a word that is no choice.
 function Arrow.Palette(k)
-    return ns.Nav.ArrowPaletteOf(k.store:get("account", Arrow.PALETTE_PATH))
+    return ns.Nav.ArrowPaletteOf(k.store:get("account", Arrow.PALETTE_PATH),
+        k.store:get("account", Arrow.BY_DISTANCE_PATH) ~= false)
+end
+
+-- N43: the arrow's colour by distance, a setting row of its own. On (the
+-- default, as the predecessor's "distance" arrow colour was) the colour
+-- runs far to near; off it is the palette's near colour whatever the
+-- distance. Away, here and the corpse keep their colours either way.
+Arrow.BY_DISTANCE = "arrow.byDistance"
+Arrow.BY_DISTANCE_PATH = "layout.arrowByDistance"
+
+local byDistanceRefused = setmetatable({}, { __mode = "k" })
+
+-- The row on kernel k, declared the first time it is asked for; nil when
+-- the kernel refused it (asked once, one problem of the arrow).
+function Arrow.ByDistanceRow(k)
+    local row = k.settings:row(Arrow.BY_DISTANCE)
+    if row or byDistanceRefused[k] then return row end
+    row = k:Setting({
+        key = Arrow.BY_DISTANCE, scope = "account", type = "bool", default = true,
+        path = Arrow.BY_DISTANCE_PATH,
+        label = "Arrow colour by distance", group = "travel.arrow",
+        synonyms = { "arrow", "colour", "color", "distance", "near", "far" },
+        help = "The arrow's colour shows how far the step is: far, then nearer, then near. Off: one colour.",
+    })
+    if not row then
+        byDistanceRefused[k] = true
+        k.problems:add("arrow", "row", "the colour by distance row was refused; it is not kept")
+    end
+    return row
 end
 
 -- The styles for a menu, in order: { key, label, on } with `on` the one
@@ -1344,6 +1373,7 @@ function Arrow.Declare(k, diag)
     Arrow.Row(k)
     Arrow.StyleRow(k)
     Arrow.PaletteRow(k)
+    Arrow.ByDistanceRow(k)
     -- Before the start the style in use is the modern one and none is set.
     function api.style()
         if inner then return inner.style() end

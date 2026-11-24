@@ -47,8 +47,20 @@ end
 
 -- The colours of a saved palette word: the N.ARROW_PALETTE row that
 -- N.ArrowColor and N.ArrowPaint take.
-function N.ArrowPaletteOf(v)
-    return N.ARROW_PALETTE[N.ArrowPaletteKey(v)]
+-- byDistance (N43): false gives the one-colour row of that palette (far,
+-- mid and near all its near colour; away and here as they are), made once;
+-- anything else gives the palette row itself.
+local oneColour = {}
+function N.ArrowPaletteOf(v, byDistance)
+    local key = N.ArrowPaletteKey(v)
+    local row = N.ARROW_PALETTE[key]
+    if byDistance ~= false then return row end
+    local flat = oneColour[key]
+    if not flat then
+        flat = { away = row.away, far = row.near, mid = row.near, near = row.near, here = row.here }
+        oneColour[key] = flat
+    end
+    return flat
 end
 
 -- ---------------------------------------------------------------- helpers
