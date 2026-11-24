@@ -503,4 +503,10 @@ READS.hitOnYouAge = false
 -- S32: the zone and sub-zone words behind client.placeText, read by
 -- Nav/Crossings.lua to name a dock; never by the capture.
 READS.placeText = false
+
+-- G14 probe (RM-1): the reward buttons' numbers and kinds; read by
+-- Gear/RewardMark.lua only, when a quest's rewards are open (saved in
+-- account diag.rewardButtons). Their names are in Diag.NAMES.
+READS.rewardButtons = false
+
 return tests

@@ -13148,6 +13148,42 @@ function ns.make.client(env)
         if zone == nil and sub == nil then return nil end
         return { zone = zone, sub = sub }
     end
+    -- G14 probe (lead section 275, RM-1): which choice each quest reward
+    -- button shows. Read only, when the quest's rewards are open
+    -- (Gear/RewardMark.lua saves it in account diag.rewardButtons). First
+    -- guess, unseen on 16001: each button QuestInfoRewardsFrameQuestInfoItem<i>
+    -- (else QuestRewardItem<i>) answers its own number with GetID() and its
+    -- kind in a `type` field ("choice" or "reward"), as later clients' quest
+    -- info buttons do. The names are in Diag.NAMES.
+    --   c.rewardButtons() -> { { index, id, kind } ... } for each button
+    --     found (id, kind nil when not given), or nil when none is found.
+    -- In a do block: make.client is near Lua 5.1's 200 locals.
+    do
+        local PROBE_BUTTONS = 10
+        function c.rewardButtons()
+            local out = {}
+            for i = 1, PROBE_BUTTONS do
+                local b = nil
+                for _, name in ipairs({ "QuestInfoRewardsFrameQuestInfoItem" .. i, "QuestRewardItem" .. i }) do
+                    local okB, found = pcall(function() return env[name] end)
+                    if okB and type(found) == "table" then
+                        b = found
+                        break
+                    end
+                end
+                if b ~= nil then
+                    local row = { index = i }
+                    local okI, id = method(b, "GetID")
+                    if okI and type(id) == "number" and id == id then row.id = id end
+                    local okK, kind = pcall(function() return b.type end)
+                    if okK and type(kind) == "string" and #kind <= 16 then row.kind = kind end
+                    out[#out + 1] = row
+                end
+            end
+            if #out == 0 then return nil end
+            return out
+        end
+    end
     return c
 end
 

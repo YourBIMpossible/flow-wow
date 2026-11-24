@@ -83,6 +83,7 @@ Items\BagMarks.lua
 Gear\RollHint.lua
 Gear\Sets.lua
 Gear\SetIcons.lua
+Gear\OffSpec.lua
 Rotation\Pack.lua
 Rotation\Snapshot.lua
 Rotation\BuffFood.lua

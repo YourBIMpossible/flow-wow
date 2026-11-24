@@ -190,4 +190,17 @@ tests["keep rules: facts in the wrong shape decide nothing and raise nothing"] =
     end
 end
 
+-- Lead section 372: the item read gave no level need; the gear read's
+-- (gear facts minLevel, Gear/OffSpec.lua) decides "wear now" or "at level".
+tests["keep rules: no level need from the item read, the gear read's is used"] = function(t)
+    local function decide(gearMin, level)
+        local item = gearItem(); item.minLevel = nil
+        return D.Decide(item, { gearRead = true, role = "feral", level = level,
+            gear = { [1000] = { canUse = true, diffs = { feral = 2 }, minLevel = gearMin } } }).reason
+    end
+    t.eq(decide(1, 10), "an upgrade you can wear now")
+    t.eq(decide(24, 10), "upgrade at level 24")
+    t.eq(decide(nil, 10), "upgrade at a later level", "no need read anywhere: not guessed")
+end
+
 return tests

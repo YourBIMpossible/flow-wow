@@ -214,6 +214,9 @@ Diag.NAMES = {
     -- markRewardChoice). First guesses, never asked of 16001; saved in the
     -- snapshot's names table so a normal login records which exist.
     "GetNumQuestChoices", "GetQuestItemLink", "QuestInfoRewardsFrameQuestInfoItem1", "QuestRewardItem1",
+    -- G14 probe (RM-1, Core/Client.lua rewardButtons): the reward button's
+    -- own number. First guesses, never asked of 16001.
+    "QuestInfoRewardsFrameQuestInfoItem1.GetID", "QuestRewardItem1.GetID",
     -- SD-1 (N2, N20; P-KEYS slice D): the corpse you target and the
     -- profession window's tools (Core/Client.lua targetCorpse; the tools
     -- name GetTradeSkillTools is listed above, N24). First guesses, never asked of 16001; saved here so
