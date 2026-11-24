@@ -229,4 +229,5 @@ UI\RouteTracker.lua
 Nav\QuestAdvice.lua
 Items\ProfPlan.lua
 Items\ProfSources.lua
+Items\VendorWares.lua
 UI\ProfDock.lua

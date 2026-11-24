@@ -44,7 +44,7 @@ local _, ns = ...
 -- candidate's short materials get a gather, buy_vendor or buy_auction step
 -- (Items/ProfSources.lua), ahead of the rest; without source reads a
 -- recipe short of materials gives no step.
---   here, nodes, vendorPrice   as ProfSources.For takes them (C3)
+--   here, nodes, vendorPrice, vendorOf   as ProfSources.For takes them (C3, A5)
 
 ns.ProfPlan = {}
 local P = ns.ProfPlan
@@ -493,6 +493,8 @@ function P.Input(client, store, prof, nodeSource)
     local prices = saved(store, "account", "learned.prices")
     local kind = get(get(ns.Nav, "PROF_STATION"), prof)
     local pos = ask(client, "position")
+    -- Queue item A5: who was seen selling what (Items/VendorWares.lua).
+    local wares = saved(store, "char", get(ns.VendorWares, "PATH") or "learned.vendorWares")
     local stations = saved(store, "account", "learned.keyStations")
     local target
     if kind then target = stationTarget(stations, kind, pos) end
@@ -520,6 +522,9 @@ function P.Input(client, store, prof, nodeSource)
             local p = ns.Prices.Get(prices, item, "vendor")
             if type(p) == "table" and type(p.value) == "number" then return p.value end
             return nil
+        end,
+        vendorOf = function(item)
+            return call(get(ns.VendorWares, "Of"), wares, item, pos)
         end,
         skill = get(r, "skill"),
         max = get(r, "max"),

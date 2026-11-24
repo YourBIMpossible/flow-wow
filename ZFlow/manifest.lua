@@ -281,6 +281,8 @@ return {
     "Items/ProfPlan.lua",
     -- P-COACH C3 (section 382): where the plan's short materials come from (after ProfPlan, Prices).
     "Items/ProfSources.lua",
+    -- Queue item A5: which vendor sold what and where, for the plan's buy line (after Items/Key).
+    "Items/VendorWares.lua",
     -- Section 387: the next-step panel docked under the game's profession window (after ProfPlan, ProfSources, KitHost).
     "UI/ProfDock.lua",
     },
