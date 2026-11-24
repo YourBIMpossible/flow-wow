@@ -333,6 +333,10 @@ function N.CrossingSteps(input)
                 weight = weight,
                 forQuests = forQuests,
                 details = details,
+                -- S32 (Nav/CrossingWords.lua): only a crossing learned from
+                -- the player's trips says its dock, landing and wait.
+                hint = (best.crossing.seen ~= nil and N.CrossingHint)
+                    and N.CrossingHint(best.how, best.from.name, best.to.name, best.from.wait) or nil,
             }
         end
     end
@@ -509,6 +513,9 @@ function Crossings.Declare(k)
     -- flight, N.CrossingSeen gets both and its list is saved. Only what
     -- this client showed; nothing is copied in.
     local last
+    -- S32: the still run the player stands in, the last one long enough to
+    -- be a wait (where the boat was boarded), and the place words read.
+    local still, board
 
     function api.sample()
         if not ctx then return nil end
@@ -518,18 +525,32 @@ function Crossings.Declare(k)
         local here = { cont = zone.cont, map = pos.map, x = pos.x, y = pos.y }
         if not whole(here) then return nil end
         if ask(client, "onTaxi") ~= false then
-            last = nil
+            last, still, board = nil, nil, nil
             return nil
+        end
+        local hereName = N.CrossingName and N.CrossingName(ask(client, "placeText")) or nil
+        if N.CrossingStill then
+            local ended
+            still, ended = N.CrossingStill(still, here, ask(client, "now"), hereName)
+            if type(ended) == "table" and type(ended.secs) == "number" and ended.secs >= N.CROSSING_WAIT_MIN then
+                board = ended
+            end
         end
         local before = last
         last = here
         if before == nil or before.cont == here.cont then return nil end
+        local boarded = board
+        board = nil
         local okBind, bind = pcall(ctx.store.get, ctx.store, "char", Crossings.BIND)
         local list, key, what = N.CrossingSeen(saved(), before, here, {
             apart = N.CrossingApart(function(map) return ask(client, "mapSize", map) end),
             bind = okBind and type(bind) == "table" and bind or nil,
         })
         if key == nil then return nil, what end
+        if N.CrossingNameTrip then
+            local okName, namedList = pcall(N.CrossingNameTrip, saved(), list, key, before, boarded, hereName)
+            if okName and type(namedList) == "table" then list = namedList end
+        end
         local okSet = pcall(ctx.store.set, ctx.store, "account", N.CROSSING_PLACES, list)
         if not okSet then return nil, "not saved" end
         return key, what
@@ -571,7 +592,7 @@ function Crossings.Declare(k)
         provides = { Way = function(place) return api.way(place) end },
         ticks = { { every = Crossings.EVERY, when = "always", run = function() api.sample() end } },
         start = function(c) ctx = c end,
-        stop = function() ctx, last = nil, nil end,
+        stop = function() ctx, last, still, board = nil, nil, nil, nil end,
     })
     return api
 end
