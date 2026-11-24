@@ -86,10 +86,11 @@ for _, prof in ipairs(CRAFTS) do
     end
 
     tests["every profession: " .. prof .. " short of materials, no vendor price: never the auction house"] = function(t)
-        local steps, why = P().Plan(craftInput(prof, { bags = {}, nodes = {},
+        local steps = P().Plan(craftInput(prof, { bags = {}, nodes = {},
             vendorPrice = function() return nil end }))
-        t.eq(steps, {})
-        t.eq(why, "no materials")
+        t.eq(#steps, 1, "one step")
+        t.eq(steps[1] and steps[1].kind, "find_material", "no source seen: find it")
+        t.eq(steps[1] and steps[1].item, 1)
     end
 
     tests["every profession: " .. prof .. " never opened says to open its window"] = function(t)
@@ -100,10 +101,10 @@ for _, prof in ipairs(CRAFTS) do
     end
 
     tests["every profession: " .. prof .. " with colours never read says to open its window"] = function(t)
-        local steps, why, say = P().Plan(craftInput(prof, { colours = {} }))
-        t.eq(#steps, 0, "no step")
-        t.eq(why, "no colours", "no colours")
-        t.eq(say, "Open your " .. prof .. " window once", "how the player teaches it")
+        local steps = P().Plan(craftInput(prof, { colours = {} }))
+        t.eq(#steps, 1, "one step")
+        t.eq(steps[1] and steps[1].kind, "open_window")
+        t.eq(steps[1] and steps[1].text, "Open your " .. prof .. " window", "how the player teaches it")
     end
 
     tests["every profession: " .. prof .. " with nothing left to make says to see a trainer"] = function(t)

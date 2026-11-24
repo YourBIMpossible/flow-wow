@@ -99,25 +99,22 @@ local function walk(prof, state)
 end
 
 -- The craft skill values that are not a rank's end, as ranges.
-local OFF_RANK = { "1-74", "76-149", "151-224", "226-299" }
 local OUTGROWN = { "25-74", "76-149", "151-224", "226-299" }
 
 -- The coverage table: per state, the craft gaps. Gathering professions never
 -- end without a step (the gather line), so their gaps are none in every state.
 local CRAFT_GAPS = {
     ["ladder, mats"] = {},
-    -- Measured limit: no vendor, node or bank source for the short material
-    -- was seen; the plan says "Get the materials for <recipe>".
-    ["ladder, none"] = { ["no materials"] = OFF_RANK },
+    -- Review: no source seen for the short material is a step naming it.
+    ["ladder, none"] = {},
     -- Fixed: no trainer list seen, so the next step is a new recipe at one.
     ["outgrown"] = {},
     -- Measured limit: every recipe on the seen trainer's list is known; the
     -- plan says "Visit <trainer> for new <prof> recipes" (no vendor or drop
     -- recipes are known to the addon; section 406).
     ["trainer done"] = { ["no recipe"] = OUTGROWN },
-    -- Measured limit: the window was never read with these recipes; the plan
-    -- says "Open your <prof> window once".
-    ["no colours"] = { ["no colours"] = OFF_RANK },
+    -- Review: colours never read is a step to open the window.
+    ["no colours"] = {},
 }
 
 for _, state in ipairs({ "ladder, mats", "ladder, none", "outgrown", "trainer done", "no colours" }) do
@@ -148,6 +145,23 @@ tests["prof walk learned: rank ends train the next rank in every state"] = funct
         local steps = addon.profPlan.plan("Tailoring")
         t.eq(steps[1] and steps[1].kind, "train_tier", tostring(skill))
     end
+end
+
+tests["prof walk learned: no materials and no source seen names the material"] = function(t)
+    local addon = start("Tailoring", "ladder, none")
+    addon.store:set("char", "learned.facts.profSkill", { Tailoring = { skill = 40, max = 75 } })
+    local steps = addon.profPlan.plan("Tailoring")
+    t.eq(steps[1] and steps[1].kind, "find_material")
+    t.eq(steps[1] and steps[1].item, MAT)
+    t.ok(steps[1] and steps[1].text:find(": no source seen yet$") ~= nil, tostring(steps[1] and steps[1].text))
+end
+
+tests["prof walk learned: colours never read: open the window"] = function(t)
+    local addon = start("Tailoring", "no colours")
+    addon.store:set("char", "learned.facts.profSkill", { Tailoring = { skill = 40, max = 75 } })
+    local steps = addon.profPlan.plan("Tailoring")
+    t.eq(steps[1] and steps[1].kind, "open_window")
+    t.eq(steps[1] and steps[1].text, "Open your Tailoring window")
 end
 
 return tests

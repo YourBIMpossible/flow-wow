@@ -81,8 +81,8 @@ tests["prof buy e2e: bars short, no vendor price seen: never the auction house"]
     local _, addon = start({ prof = "Blacksmithing" })
     local steps, why = addon.profPlan.plan("Blacksmithing")
     for _, k in ipairs(kinds(steps)) do t.ok(k ~= "buy_auction", "no auction house step") end
-    t.eq(steps, {})
-    t.eq(why, "no materials")
+    t.eq(steps[1] and steps[1].kind, "find_material", "no source seen: find the bars")
+    t.eq(why, nil)
 end
 
 return tests
