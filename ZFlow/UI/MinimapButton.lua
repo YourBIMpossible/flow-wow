@@ -1,8 +1,14 @@
 -- The minimap button (lead DISPATCH sections 340 and 303(g); the owner
 -- asked for it): a small round button on the minimap's rim. LOOK ONLY: a
--- left click opens the settings page and does nothing else; a drag moves it
--- round the rim and saves the angle account-wide; hover says the title and
--- what a click and a drag do.
+-- left click opens the settings page and does nothing else; a right click
+-- opens the route menu (WHITE-QUEUE C2); a drag moves it round the rim and
+-- saves the angle account-wide; hover says the title and what a click, a
+-- right click and a drag do.
+--
+-- The route menu (MB.Menu) only asks Nav/TripRoute.lua for what its chat
+-- word already does (Plan, Skip, Off) and says the result in chat in the
+-- same words, switches the route window's setting, and opens the settings
+-- page. It orders no route itself and nothing is moved, targeted or cast.
 --
 -- Setting "ui.minimapButton" (bool, account, default on): off hides the
 -- button at once, on shows it (making it the first time).
@@ -13,8 +19,8 @@
 --   client.minimap() -> { size, square } or nil   (the rim radius and shape)
 --   client.minimapButton(spec) -> h | nil, why     CLIENT NEED (Core/Client.lua)
 --     spec = { name = global name, title = the add-on's title }
---     h.place(x, y), h.show(on), h.onClick(fn), h.onDrag(fn(dx, dy, done)),
---     h.tip(lines)
+--     h.place(x, y), h.show(on), h.onClick(fn(button)),
+--     h.onDrag(fn(dx, dy, done)), h.tip(lines), h.menu(items, pick)
 -- A client that cannot make the button costs one problem line; the button
 -- is not asked for again until a reload.
 local _, ns = ...
@@ -26,10 +32,43 @@ MB.NAME = "minimapButton"
 MB.KEY = "ui.minimapButton"
 MB.PLACE_KEY = "ui.minimapButtonPlace"
 MB.PATH = "layout.minimapButton"
-MB.HINT = "Click: settings. Drag: move."
+MB.HINT = "Click: settings. Right-click: route menu. Drag: move."
+MB.MENU_TITLE = "%s route"
+MB.MENU_PLAN = "Plan a route from my quest log"
+MB.MENU_AGAIN = "Plan the route again"
+MB.MENU_SKIP = "Skip the current stop"
+MB.MENU_CLEAR = "Clear the route"
+MB.MENU_NONE = "No route yet"
+MB.MENU_WINDOW = "Show the route window"
+MB.MENU_SETTINGS = "Settings"
 MB.SYNONYMS = { "minimap button", "minimap icon" }
 
 local function MP() return ns.MinimapPlace or {} end
+
+-- The route menu's rows (the arrows' menu shape, UI/ArrowMenu.lua).
+-- state = { title = the add-on's title, route = a route is planned,
+--           window = the route window's setting (nil: no such setting) }
+function MB.Menu(state)
+    state = type(state) == "table" and state or {}
+    local has = state.route == true
+    local items = {
+        { title = true, text = MB.MENU_TITLE:format(tostring(state.title or "")) },
+        { key = "plan", text = has and MB.MENU_AGAIN or MB.MENU_PLAN },
+    }
+    if has then
+        items[#items + 1] = { key = "skip", text = MB.MENU_SKIP }
+        items[#items + 1] = { key = "clear", text = MB.MENU_CLEAR }
+    else
+        items[#items + 1] = { key = "none", text = MB.MENU_NONE, disabled = true }
+    end
+    if state.window ~= nil then
+        items[#items + 1] = { sep = true }
+        items[#items + 1] = { key = "window", text = MB.MENU_WINDOW, checked = state.window == true }
+    end
+    items[#items + 1] = { sep = true }
+    items[#items + 1] = { key = "settings", text = MB.MENU_SETTINGS }
+    return items
+end
 
 function MB.Declare(k)
     local api = {}
@@ -69,6 +108,79 @@ function MB.Declare(k)
         if not ok then problem("click", err) end
     end
 
+    local function route()
+        local T = ns.Nav and ns.Nav.TripRoute
+        local r = k.use and T and k.use(T.NAME)
+        return type(r) == "table" and r or nil
+    end
+
+    local function windowKey()
+        local RT = ns.RouteTracker
+        local key = RT and RT.SETTING
+        if type(key) ~= "string" or ctx.settings:row(key) == nil then return nil end
+        return key
+    end
+
+    local function menuState()
+        local r = route()
+        local lines = r and type(r.Lines) == "function" and r.Lines() or nil
+        local key = windowKey()
+        local window
+        if key then window = ctx.settings:get(key) == true end
+        return { title = id().title, route = lines ~= nil, window = window }
+    end
+
+    local function say(lines)
+        local c = ctx.client
+        if type(c.print) ~= "function" then return end
+        for _, line in ipairs(type(lines) == "table" and lines or {}) do
+            c.print(id().title .. ": " .. tostring(line))
+        end
+    end
+
+    -- As the route's chat word (Nav/TripRoute.lua api.Word) does and says.
+    local ROUTE = {}
+    function ROUTE.plan(r, T)
+        local made, why = r.Plan()
+        say(made and r.Lines() or { why or T.WHY_NONE })
+    end
+    function ROUTE.skip(r, T)
+        if r.Skip() then say(r.Lines()) else say({ T.DONE }) end
+    end
+    function ROUTE.clear(r, T)
+        r.Off()
+        say({ T.CLEARED })
+    end
+
+    local function choose(key)
+        if not ctx then return end
+        if key == "settings" then
+            openSettings()
+        elseif key == "window" then
+            local row = windowKey()
+            if row then
+                local ok, why = ctx.settings:set(row, ctx.settings:get(row) ~= true)
+                if not ok and why ~= nil then problem("menu", why) end
+            end
+        elseif ROUTE[key] then
+            local r = route()
+            if r and type(r.Plan) == "function" and type(r.Skip) == "function" and type(r.Off) == "function"
+                and type(r.Lines) == "function" then
+                ROUTE[key](r, ns.Nav.TripRoute)
+            else
+                problem("menu", "the route is not ready")
+            end
+        end
+    end
+
+    local function openMenu()
+        if not button or not ctx or type(button.menu) ~= "function" then return end
+        button.menu(MB.Menu(menuState()), function(key)
+            local ok, err = pcall(choose, key)
+            if not ok then problem("menu", err) end
+        end)
+    end
+
     local function dragged(dx, dy, done)
         local a = MP().Angle(dx, dy)
         if a == nil then return end
@@ -99,8 +211,8 @@ function MB.Declare(k)
         end
         button = h
         h.tip({ id().title, MB.HINT })
-        h.onClick(function()
-            local okC, err = pcall(openSettings)
+        h.onClick(function(which)
+            local okC, err = pcall(which == "right" and openMenu or openSettings)
             if not okC then problem("click", err) end
         end)
         h.onDrag(function(dx, dy, done)
@@ -136,7 +248,8 @@ function MB.Declare(k)
             { key = MB.KEY, scope = "account", type = "bool", default = true, group = "general.windows",
               label = "Minimap button", synonyms = MB.SYNONYMS,
               help = "A small round button on the edge of the minimap, shown while this is on. "
-                  .. "A click opens these settings; a drag moves it round the minimap." },
+                  .. "A click opens these settings; a right click opens the route menu; "
+                  .. "a drag moves it round the minimap." },
             { key = MB.PLACE_KEY, scope = "account", type = "table", path = MB.PATH, keepOnResetAll = true,
               group = "general.windows", label = "Minimap button place", synonyms = MB.SYNONYMS },
         },
