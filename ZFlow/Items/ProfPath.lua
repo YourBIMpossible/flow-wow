@@ -440,17 +440,28 @@ function ProfPath.Picked(store, prof)
 end
 
 -- Keep the range the player picked (a range of the plan); nil forgets it.
--- true when it was saved.
+-- true when it was saved; false and the store's reason when it was not.
 function ProfPath.Select(store, prof, range)
-    if type(prof) ~= "string" or type(store) ~= "table" or type(store.set) ~= "function" then return false end
+    if type(prof) ~= "string" or type(store) ~= "table" or type(store.set) ~= "function" then
+        return false, "no store"
+    end
     local all = picks(store)
     if type(range) == "table" and type(range.recipe) == "string" then
         all[prof] = { recipe = range.recipe, from = range.from }
     else
         all[prof] = nil
     end
-    local ok = pcall(store.set, store, "char", ProfPath.PICKS, all)
-    return ok
+    local ok, saved, why = pcall(store.set, store, "char", ProfPath.PICKS, all)
+    if not ok then return false, tostring(saved) end
+    if saved ~= true then return false, why end
+    return true
+end
+
+-- What a pick shows when it is not the step now: the usual plan, saying so.
+local function usual(P, planInput, line)
+    local steps, why, say = P.Plan(planInput)
+    if line then say = line end
+    return steps, why, say
 end
 
 -- Lead section 450, "Task": the selected range's steps, in ProfPlan's kinds,
@@ -462,6 +473,13 @@ local function tasksOf(P, planInput, path)
     local range = path.ranges[path.selected]
     local b = path.brackets[path.selected]
     if path.picked ~= true or type(range) ~= "table" then return P.Plan(planInput) end
+    -- At the cap the training comes first (the usual plan's tier step). A
+    -- range that starts later and gives no point yet falls to the usual
+    -- plan below, saying so.
+    if whole(path.skill) and whole(path.max) and path.skill >= path.max then
+        return usual(P, planInput, string.format("Train %s first; %s waits until then", path.prof,
+            tostring(range.recipe)))
+    end
     if type(b) == "table" and b.learn == true then
         local where = "a trainer"
         if range.learnAt.kind == "recipe" then where = "its recipe" end
@@ -474,6 +492,11 @@ local function tasksOf(P, planInput, path)
     for k, v in pairs(planInput) do wanted[k] = v end
     wanted.want = range.recipe
     local steps, why, say = P.Plan(wanted)
+    local crafts = false
+    for _, s in ipairs(steps) do
+        if s.kind == "craft" and s.recipe == range.recipe then crafts = true end
+    end
+    if not crafts then return usual(P, planInput, "this pick gives no points; showing the usual path") end
     for _, s in ipairs(steps) do
         if s.kind == "craft" and s.recipe == range.recipe then
             s.remaining = range.crafts

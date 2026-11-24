@@ -183,4 +183,80 @@ tests["prof pick: ProfPlan.Plan makes the wanted recipe when it gives a point"] 
     t.eq(crafted(P.Plan(input("No Such Recipe"))), "Test Buckle", "a recipe that gives no point is not wanted")
 end
 
+
+-- Plexy CHANGES on 3eedb2d9 -------------------------------------------------
+
+tests["prof pick: one step asks the live plan once per profession (CHANGES-1)"] = function(t)
+    local _, addon = start()
+    local PATH = addon.ProfPath
+    t.ok(type(PATH) == "table" and type(PATH.Live) == "function", "the live plan is there")
+    if type(PATH) ~= "table" then return end
+    local real, calls = PATH.Live, {}
+    PATH.Live = function(client, store, prof, source)
+        calls[prof] = (calls[prof] or 0) + 1
+        return real(client, store, prof, source)
+    end
+    local _, pick = addon.profFeed.step()
+    PATH.Live = real
+    t.ok(type(pick) == "table", "the feed has a step")
+    t.eq(calls.Blacksmithing, 1, "plan, steps and rev read one look at the plan")
+    t.eq(type(pick) == "table" and pick.rev, addon.profFeed.rev("Blacksmithing"), "and the rev is that plan's")
+end
+
+tests["prof pick: at the cap a pick keeps the training step first (CHANGES-2)"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true } })
+    c.setSaved(ns.id.charDB, { learned = {
+        facts = { profSkill = { Blacksmithing = { skill = 75, max = 75 } },
+            recipeBook = { ["Test Buckle"] = { profession = "Blacksmithing", makes = 50, mats = { [2] = 2 } } } },
+    } })
+    c.setScreen(1024, 768)
+    c.setZone(1, 1411)
+    c.setFaction("Horde")
+    c.setPosition(1411, 0.5, 0.5)
+    c.setMapSize(1411, 1000, 500)
+    c.setMapCont(1411, 1)
+    c.setBagItems({})
+    c.setProfessions({ "Blacksmithing" })
+    c.setRecipes({ profession = 164, name = "Blacksmithing", skill = 75, max = 75, recipes = {} })
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(5, 20)
+    c.fire("TRADE_SKILL_SHOW")
+    c.advance(1, 5)
+    local feed, panel = addon.profFeed, addon.profPathPanel
+    local path = feed.path("Blacksmithing")
+    t.ok(type(path) == "table" and #path.ranges > 0, "a path at the cap")
+    if type(path) ~= "table" or #path.ranges == 0 then return end
+    pcall(panel.pick, path.selected)
+    path = feed.path("Blacksmithing")
+    t.eq(path.picked, true, "the pick is kept")
+    t.eq(path.tasks[1] and path.tasks[1].kind, "train_tier", "training comes first, not the pick")
+    t.ok(type(path.say) == "string" and path.say:find("Train Blacksmithing first", 1, true) ~= nil,
+        "and the words say why: " .. tostring(path.say))
+end
+
+tests["prof pick: a pick the store will not keep says so (CHANGES-3)"] = function(t)
+    local PP = ns.ProfPath
+    local store = { get = function() return {} end, set = function() return false, "blocked" end }
+    local saved, why = PP.Select(store, "Blacksmithing", { recipe = "Test Buckle", from = 50 })
+    t.eq(saved, false, "a refused save is not called saved")
+    t.eq(why, "blocked", "with the store's reason")
+    local _, addon = start()
+    local panel = addon.profPathPanel
+    local real = addon.ProfPath.Select
+    addon.ProfPath.Select = function() return false, "blocked" end
+    local i = other(addon.profFeed.path("Blacksmithing"))
+    pcall(panel.pick, i or 1)
+    addon.ProfPath.Select = real
+    local model = panel.model()
+    t.eq(type(model) == "table" and model.notSaved, true, "the panel knows the pick was not kept")
+    local view = ns.ProfPathPanel.View(model, {})
+    local note
+    for _, part in ipairs(view.children) do
+        if part.key == "notSaved" then note = part end
+    end
+    t.eq(note and note.text, ns.ProfPathPanel.NOT_SAVED, "and the player sees it")
+end
+
 return tests

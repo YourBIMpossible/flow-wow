@@ -48,6 +48,8 @@ PPP.SUMMARY = "%s %d/%d: %s"
 PPP.SUMMARY_DONE = "%s %d/%d: nothing more to plan"
 PPP.HEAD_RANGES = "Skill brackets"
 PPP.HEAD_MATERIALS = "Shopping and farming"
+-- Shown under the line when the pick could not be kept (CHANGES-3).
+PPP.NOT_SAVED = "Pick not saved; it lasts until the window closes"
 PPP.RANGE = "%d-%d %s"
 PPP.CRAFTS = "x%d"
 PPP.CRAFTS_UNSURE = "about x%d"
@@ -134,6 +136,7 @@ end
 function PPP.Height(model)
     local l = lists(model)
     local h = PPP.HEAD_HEIGHT
+    if type(model) == "table" and model.notSaved == true then h = h + PPP.ROW_HEIGHT end
     if type(model) ~= "table" or model.open ~= true then return h end
     if #l.ranges > 0 then h = h + PPP.SECTION_HEIGHT + #l.ranges * PPP.ROW_HEIGHT end
     if #l.materials > 0 then h = h + PPP.SECTION_HEIGHT + #l.materials * PPP.ROW_HEIGHT end
@@ -154,6 +157,9 @@ function PPP.View(model, on)
         head.onFold = function(folded) on.fold(not folded) end
     end
     local children = { head }
+    if model.notSaved == true then
+        children[#children + 1] = { kind = "line", key = "notSaved", text = PPP.NOT_SAVED, tone = "warn" }
+    end
     if open and foldable then
         if #l.ranges > 0 then
             children[#children + 1] = { kind = "section", key = "rangesHead", text = PPP.HEAD_RANGES }
@@ -268,6 +274,7 @@ function PPP.Declare(k, diag)
     end
 
     local draw
+    local notSaved = false
     local on = {}
     function on.fold(want)
         open = want == true
@@ -279,10 +286,12 @@ function PPP.Declare(k, diag)
         local PATH = ns.ProfPath
         -- The pick belongs to the plan (lead section 450): the arrow's feed
         -- reads the same one. Only a ProfPath with no Select keeps it here.
+        notSaved = false
         if type(PATH) == "table" and type(PATH.Select) == "function" and type(range) == "table"
             and PATH.Select(ctx.store, prof, range) then
             selected = nil
         else
+            notSaved = type(PATH) == "table" and type(PATH.Select) == "function" and type(range) == "table"
             selected = index
         end
         if type(range) == "table" and text(range.recipe) then ask("selectRecipe", range.recipe) end
@@ -301,7 +310,7 @@ function PPP.Declare(k, diag)
         if type(p) == "table" and model and type(model.plan) == "table" and model.plan.rev ~= p.rev then
             selected = nil
         end
-        model = { plan = p, open = open, selected = selected, prof = prof }
+        model = { plan = p, open = open, selected = selected, prof = prof, notSaved = notSaved }
         host.draw(PPP.View(model, on), PPP.Plain(model), function() end)
         -- Size only: the place is the player's (never docked again).
         host.place(nil, PPP.WIDTH, PPP.Height(model))

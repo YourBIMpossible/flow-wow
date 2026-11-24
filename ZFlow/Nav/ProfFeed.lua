@@ -424,7 +424,19 @@ function F.Declare(k, diag)
     -- Lead section 450: the one live plan of a profession (Items/ProfPath.lua,
     -- the plan the path panel shows), and its rev. nil when there is no path:
     -- never 0. A reader keeps the rev and drops its copy when it changes.
-    function api.path(prof)
+    -- One look at the live plan per profession while one step is worked
+    -- out: the plan, the steps and the rev all read that one (CHANGES-1).
+    local memo
+    local function within(fn, ...)
+        if memo then return fn(...) end
+        memo = {}
+        local ok, a, b, c = pcall(fn, ...)
+        memo = nil
+        if not ok then error(a, 0) end
+        return a, b, c
+    end
+
+    local function live(prof)
         local PATH, PL = ns.ProfPath, ns.ProfPlan
         if not ctx or type(PATH) ~= "table" or type(PATH.Live) ~= "function" then return nil end
         local source
@@ -435,6 +447,13 @@ function F.Declare(k, diag)
         local ok, path = pcall(PATH.Live, ctx.client, ctx.store, prof, source)
         if ok and type(path) == "table" then return path end
         return nil
+    end
+
+    function api.path(prof)
+        if not memo then return live(prof) end
+        local key = tostring(prof)
+        if memo[key] == nil then memo[key] = { path = live(prof) } end
+        return memo[key].path
     end
 
     -- Lead section 450, "Arrow": once the player has picked a range in the
@@ -457,7 +476,9 @@ function F.Declare(k, diag)
         return nil
     end
 
-    function api.result()
+    local result
+    function api.result() return within(result) end
+    function result()
         if not ctx then return nil end
         local zone = ask("zone")
         local cont = type(zone) == "table" and zone.cont or nil
@@ -484,7 +505,9 @@ function F.Declare(k, diag)
 
     -- The needle's step, or nil: off, no planner yet, or nothing below max.
     -- Also the pick and the whole result (for F.Also under the older step).
-    function api.step()
+    local step
+    function api.step() return within(step) end
+    function step()
         if not ctx or api.off() or not planOf() then return nil end
         local result = api.result()
         local pick
