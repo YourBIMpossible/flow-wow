@@ -251,6 +251,7 @@ Nav\TravelAdvice.lua
 Nav\InvitePrompt.lua
 Items\QuestBags.lua
 Spells\TrainAdvice.lua
+Spells\Talents.lua
 Nav\RoutePickups.lua
 Nav\RidingStep.lua
 Items\ProfPlan.lua
