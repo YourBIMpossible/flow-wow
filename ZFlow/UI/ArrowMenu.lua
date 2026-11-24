@@ -463,14 +463,14 @@ function M.Action(key, state)
         return nil
     end
     if key == "settings" then return { settings = true } end
-    -- Lead section 382: { professions = the new value } for the tick.
-    if key == M.PROFESSIONS then return { professions = not s.professions } end
     -- Lead section 387 R3: the Route level; its count rows choose nothing.
     if key == M.ROUTE then return { open = key } end
     if key == M.ROUTE .. ".suggest" then
         local route = type(state) == "table" and type(state.route) == "table" and state.route or {}
         return { setting = M.SUGGEST_SETTING, on = route.suggest ~= true }
     end
+    -- Lead section 382: { professions = the new value } for the tick.
+    if key == M.PROFESSIONS then return { professions = not s.professions } end
     if M.WINDOWS[key] then return { window = M.WINDOWS[key] } end
     -- Lead section 387 R3: Buttons and Flow windows.
     if key == M.BUTTONS or key == M.FLOW then return { open = key } end

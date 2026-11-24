@@ -210,8 +210,16 @@ with `cost`); the price is the test that the item can be bought. Setting `ns.db.
 - Route files from RestedXP (CC BY-NC-SA), Guidelime (all rights reserved) and similar guides
   can't be bundled either. They're for reference only, or for reading at runtime if you have
   that addon installed.
-- Flow is licensed under the GPLv3 (`LICENSE`). That holds only while the repo contains no
-  third-party data or route text.
+- **Boss loot table** (lead DISPATCH 426): `ZFlow/Nav/BossLootData.lua` is the one shipped table made
+  from someone else's work. It holds which items each dungeon and raid boss can drop, as ids only
+  (instance, area, encounter, creature, item), made by `tools/zflow-boss-loot.ps1` from a local
+  checkout of AllTheThings (MIT). The MIT notice is in `THIRD_PARTY.md`; the checkout is never
+  committed. `ZFlow/Nav/DungeonRead.lua` `R.Loot` reads the table first, then the client's dungeon
+  journal if it answers, then Questie; your own kills only mark a drop as seen.
+- Flow is licensed under the GPLv3 (`LICENSE`). The repo holds no third-party quest, route or
+  recipe data and no route text; the only third-party data is the MIT-licensed id table above,
+  listed in `THIRD_PARTY.md`. Anything added later must have a licence that allows it and a notice
+  there.
 
 Missed quests today: doable quests in zones you've already completed quests in, that you
 haven't done and aren't on. **Next step:** route steps (quest ID, NPC, coordinates) so it can

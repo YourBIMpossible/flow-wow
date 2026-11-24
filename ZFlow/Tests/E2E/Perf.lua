@@ -83,7 +83,7 @@ tests["perf: unknown data: words that are no count get the usage, and a timing t
     t.eq(said(c, "perf -3"), usage, "nor -3")
 
     addon.meter.report = function() error("meter read failed") end
-    t.eq(said(c, "perf"), { title .. ns.Perf.NONE }, "a read that raises: no rows made up")
+    t.eq(said(c, "perf"), { title .. ns.Perf.UNREAD }, "a read that raises: no rows made up, and not \"nothing has run\"")
 end
 
 return tests

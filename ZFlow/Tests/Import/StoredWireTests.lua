@@ -234,7 +234,8 @@ return {
         -- 28 with rotation.sayKept (PC-7, zflow-paladin-carry-2);
         -- 29 with loot.bossPanel (N55); 30 with plateQuests.off (G51);
         -- 32 with nav.learnTrails and nav.nodes (P-NAV, G38 and G22).
-        t.eq(#model:keys(), 32, "the shipped model changed its number of rows")
+        -- 33 with repair.costLine (G2, the repair cost line).
+        t.eq(#model:keys(), 33, "the shipped model changed its number of rows")
         for _, key in ipairs(model:keys()) do
             t.ok(not model:explicit(out, key), key .. " counts as chosen")
             t.eq((model:get(out, key)), model:default(key), key)

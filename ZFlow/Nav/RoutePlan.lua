@@ -65,6 +65,15 @@ local _, ns = ...
 --     "circle"           the afters go round in a circle; ring is the list
 --                        of the places (indexes in `places`) in it
 --
+-- N.RoutePlan(places, map, size, from, legs, after, optional) (lead
+--   section 375 item 6, TN-2): optional = { [i] = true } marks places that
+--   are kept only when on the way. The others are ordered as above; then
+--   each optional place, in list order, goes in at its cheapest place on
+--   the route (the extra yards of visiting it between its neighbours, or
+--   past the last stop) when that costs at most N.DETOUR yards, its stop
+--   with optional = true; else it is left with reason N.OFF_THE_WAY and
+--   detour = those yards. Afters naming an optional place are let go.
+--
 -- N.RouteCycle(n, after) -> ring or nil   (G42) the first circle in the
 --   afters of places 1..n, as a list of indexes, or nil when there is none.
 --
@@ -78,6 +87,8 @@ local N = ns.Nav
 N.ROUTE_STRAIGHT = "straight lines, not paths"
 N.ROUTE_LEARNED = "your own trip times where known, straight lines elsewhere"
 N.ROUTE_MAX = 40
+N.DETOUR = 250
+N.OFF_THE_WAY = "off the way"
 
 local EPS = 1e-9
 local ROUNDS = 400
@@ -270,27 +281,50 @@ function N.RouteCycle(n, after)
     return nil
 end
 
-function N.RoutePlan(places, map, size, from, legs, after)
+-- TN-2: the cheapest place for p in order (0 = before the first stop)
+-- and its extra yards.
+local function cheapest(order, pts, start, far, p)
+    local bestK, bestD
+    for k = 0, #order do
+        local prev = k == 0 and start or pts[order[k]]
+        local nxt = pts[order[k + 1]]
+        local d = 0
+        if prev and nxt then
+            d = far(prev, p) + far(p, nxt) - far(prev, nxt)
+        elseif prev then
+            d = far(prev, p)
+        elseif nxt then
+            d = far(p, nxt)
+        end
+        if bestD == nil or d < bestD - EPS then bestK, bestD = k, d end
+    end
+    return bestK, bestD
+end
+
+function N.RoutePlan(places, map, size, from, legs, after, optional)
     if map == nil then return nil, "no map" end
     if type(size) ~= "table" or not (finite(size.w) and finite(size.h) and size.w > 0 and size.h > 0) then
         return nil, "size unknown"
     end
     if type(places) ~= "table" then return nil, "no places" end
 
-    -- pts[n] = { x, y (yards), index (in places) }
-    local pts, left = {}, {}
+    -- pts[n] = { x, y (yards), index (in places) }; extra: the optional ones
+    optional = type(optional) == "table" and optional or {}
+    local pts, left, extra = {}, {}, {}
     for i = 1, #places do
         local p = places[i]
         if type(p) ~= "table" or not (share(p.x) and share(p.y)) then
             left[#left + 1] = { index = i, reason = "no place" }
         elseif p.map ~= map then
             left[#left + 1] = { index = i, reason = "other map" }
+        elseif optional[i] then
+            extra[#extra + 1] = { x = p.x * size.w, y = p.y * size.h, index = i, optional = true }
         else
             pts[#pts + 1] = { x = p.x * size.w, y = p.y * size.h, index = i }
         end
     end
-    if #pts == 0 then return nil, "no places" end
-    if #pts > N.ROUTE_MAX then return nil, "too many places" end
+    if #pts + #extra == 0 then return nil, "no places" end
+    if #pts + #extra > N.ROUTE_MAX then return nil, "too many places" end
 
     -- G42: the afters between places on the route, by pts number.
     local posOf, need = {}, {}
@@ -321,11 +355,22 @@ function N.RoutePlan(places, map, size, from, legs, after)
 
     local order = shorten(nearestFirst(pts, start, far, need), pts, start, far, need)
 
+    -- TN-2: each optional place at its cheapest place, when on the way.
+    for _, p in ipairs(extra) do
+        local k, d = cheapest(order, pts, start, far, p)
+        if d <= N.DETOUR + EPS then
+            pts[#pts + 1] = p
+            table.insert(order, k + 1, #pts)
+        else
+            left[#left + 1] = { index = p.index, reason = N.OFF_THE_WAY, detour = d }
+        end
+    end
+
     local stops, total, last = {}, 0, start
     local straight = true
     for i = 1, #order do
         local p = pts[order[i]]
-        local stop = { index = p.index, place = places[p.index] }
+        local stop = { index = p.index, place = places[p.index], optional = p.optional }
         if last then
             stop.leg = far(last, p)
             stop.how = howOf and howOf(last, p) or nil
