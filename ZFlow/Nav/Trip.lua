@@ -55,7 +55,7 @@ P.NAME = "trip"
 P.WORD = "trip"
 P.PATH = "state.trip"
 P.MAX = 20
-P.HELP = "a list of stops to visit: trip add vendor|repair|bank|inn|flight|mail|trainer|giver <quest>"
+P.HELP = "a list of stops to visit: trip add vendor|repair|bank|inn|flight|mail|auction|trainer|giver <quest>"
     .. "|dungeon <name>|here [label]; trip, trip remove <n>, trip after <n> <m>, trip clear, trip go"
 
 P.HEADER = "Trip: %d stops"
@@ -239,6 +239,16 @@ function P.ViaText(step)
     if step.via == "far" then return N.Travel and N.Travel.FAR or nil end
     if type(step.label) ~= "string" or step.label == "" then return nil end
     return P.VIA:format(step.label)
+end
+
+-- S35: a leg through a learned gate gets the gate's line (Nav/GateWords.lua);
+-- any other leg, or a gate whose maps are not known, keeps P.ViaText.
+function P.GateVia(step, fromMap, toMap, stopLabel)
+    if type(step) == "table" and step.via == "gate" and type(N.GateWords) == "function" then
+        local line = N.GateWords(fromMap, toMap, stopLabel)
+        if line then return line end
+    end
+    return P.ViaText(step)
 end
 
 local function sizeOf(here)
@@ -607,7 +617,7 @@ function P.Declare(k, diag)
             if placed(s) and s.place.map ~= here.map then
                 local ok, step = pcall(travel.Via, { label = s.label, detail = s.detail,
                     place = { map = s.place.map, x = s.place.x, y = s.place.y } })
-                if ok then vias[i] = P.ViaText(step) end
+                if ok then vias[i] = P.GateVia(step, here.map, s.place.map, s.label) end
             end
         end
         return vias
