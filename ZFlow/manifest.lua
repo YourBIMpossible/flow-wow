@@ -175,6 +175,7 @@ return {
         "Nav/FlightTimes.lua",
         "Nav/FlightNow.lua",
         "Nav/PlateTarget.lua",
+        "Nav/NoDirections.lua",
         "Nav/FlightWord.lua",
         "Nav/Flights.lua",
         "Nav/Gates.lua",

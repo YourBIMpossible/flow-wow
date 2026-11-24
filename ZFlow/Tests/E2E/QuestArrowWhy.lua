@@ -26,6 +26,9 @@ local function start(opts)
     c.setPosition(1411, 0.5, 0.5)
     c.setMapSize(1411, 1000, 500)
     if opts.log then c.setQuestLog(opts.log) end
+    -- A1-16: with no quest data the arrow says "No directions yet"
+    -- (Tests/E2E/NoDirections.lua); these why lines are with Questie.
+    c.setQuestieModule("QuestieDB", {})
     if opts.professions then c.setProfessions(opts.professions) end
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")

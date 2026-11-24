@@ -202,7 +202,7 @@ tests["prof needle: no profession, or only weapon skills, shows nothing"] = func
     for name, list in pairs({ none = false, skills = { "Swords", "Defense" } }) do
         local c = start({ professions = list or nil })
         t.eq(c.arrows[2] and c.arrows[2].shown, false, name .. ": no profession frame")
-        t.eq(said(c), { ns.Arrow.NO_QUEST }, name .. ": no profession line; only the quest arrow says why (lead section 294 item 5)")
+        t.eq(said(c), { ns.Nav.NoDirections.TITLE, ns.Nav.NoDirections.SUB }, name .. ": no profession line; only the quest arrow says why (lead section 294 item 5; no Questie here: A1-16 words)")
     end
 end
 
@@ -210,7 +210,7 @@ end
 tests["prof needle: nav.profArrow off says nothing, even a why line; a saved non-boolean is on"] = function(t)
     local c = start({ professions = { "Mining" }, account = { settings = { nav = { profArrow = false } } } })
     t.eq(c.arrows[2] and c.arrows[2].shown, false, "off: no profession frame")
-    t.eq(said(c), { ns.Arrow.NO_QUEST }, "off: no profession line; only the quest arrow says why (lead section 294 item 5)")
+    t.eq(said(c), { ns.Nav.NoDirections.TITLE, ns.Nav.NoDirections.SUB }, "off: no profession line; only the quest arrow says why (lead section 294 item 5; no Questie here: A1-16 words)")
     t.ok(N.PROF_WHY_GM_ABSENT ~= nil, "the line exists")
     local c2 = start({ professions = { "Mining" }, account = { settings = { nav = { profArrow = "no" } } } })
     t.eq(c2.arrows[2] and c2.arrows[2].lines, { fmt(N.PROF_WHY_GM_ABSENT, "Mining") }, "not false: on")
