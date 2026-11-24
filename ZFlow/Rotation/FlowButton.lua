@@ -81,6 +81,7 @@ FB.DEFAULT_POINT = { "CENTER", "CENTER", 0, -270 } -- authored: well under the r
 -- to its right, one button and a gap clear of it (authored).
 FB.SELF_DEFAULT_POINT = { "CENTER", "CENTER", 100, -270 }
 FB.FLOW_NAME = "Flow button"
+FB.ITEM_PENDING = "Item not loaded yet."
 FB.SELF_NAME = "Buff button, for your self buffs"
 -- Lead section 409 item 4: the word under each button, so the two are told
 -- apart without hovering.
@@ -206,6 +207,7 @@ function FB.Tip(which, why, hold, now)
     local name = FB.FLOW_NAME
     if which == "self" then name = FB.SELF_NAME end
     if type(hold) ~= "table" then return name .. ". " .. tostring(why) end
+    if hold.pending then return name .. ". " .. FB.ITEM_PENDING end
     local what = hold.spell or hold.item
     if which == "self" then return name .. ". Casts " .. tostring(what) .. " on you when you click it." end
     local line = name .. ". Casts " .. tostring(what) .. " when you click it."
@@ -228,12 +230,14 @@ end
 -- in, { name = } out) so the line reads a name, never the raw secure-
 -- attribute token ("item:28653") the button is actually set with; FB.Tip
 -- stays pure and unaware of the client. Unresolved (not yet loaded, or no
--- client): falls back to the raw hold, unchanged from before this fix.
+-- client): the hold is marked pending and FB.Tip says FB.ITEM_PENDING,
+-- never the raw token (section 454).
 local function tipHold(client, hold)
     if type(hold) ~= "table" or type(hold.item) ~= "string" then return hold end
-    if type(client) ~= "table" or type(client.itemInfo) ~= "function" then return hold end
+    local pending = { item = hold.item, pending = true }
+    if type(client) ~= "table" or type(client.itemInfo) ~= "function" then return pending end
     local ok, info = pcall(client.itemInfo, hold.item)
-    if not ok or type(info) ~= "table" or type(info.name) ~= "string" or info.name == "" then return hold end
+    if not ok or type(info) ~= "table" or type(info.name) ~= "string" or info.name == "" then return pending end
     return { item = info.name }
 end
 

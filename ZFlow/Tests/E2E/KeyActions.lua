@@ -313,6 +313,23 @@ tests["key actions: a better item in the bags: the Flow button's tooltip names i
         "never the raw item text: " .. tostring(line))
 end
 
+-- Section 454: the item's name not loaded yet: a plain line, never the token.
+tests["key actions: the Flow button's item name not loaded yet: a plain line, not the raw item text"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no FlowButton module"); return end
+    local c = start()
+    gear(c)
+    local info = {}
+    for id, row in pairs(INFO) do info[id] = row end
+    info[4321] = { name = "" }
+    c.setItemInfo(info); c.advance(1, 5)
+    t.eq(attr(c, "item"), "item:4321", "the key still casts by the raw item text")
+    local line = tip(c, FLOW)
+    t.ok(type(line) == "string" and line:find(FB.ITEM_PENDING or "Item not loaded yet.", 1, true) ~= nil,
+        "the tooltip says the item is not loaded yet: " .. tostring(line))
+    t.ok(type(line) == "string" and line:find("item:4321", 1, true) == nil,
+        "never the raw item text: " .. tostring(line))
+end
+
 tests["key actions: the key's actions row off: none of these is put on the key"] = function(t)
     local c, addon = start()
     gear(c)
