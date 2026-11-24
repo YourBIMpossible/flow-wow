@@ -132,27 +132,6 @@ function W.Declare(k, diag)
             view.said = W.NO_ROUTE
             return
         end
-        -- B-52: the get-ready steps go first; the player does each.
-        local function stepOf(name)
-            local m = k.use and k.use(name)
-            if type(m) ~= "table" or type(m.Step) ~= "function" then return nil end
-            local ok, v = pcall(m.Step)
-            if ok then return v end
-            return nil
-        end
-        local E = ns.Nav.Errand
-        local bank
-        if E and type(E.Find) == "function" then
-            local ok, v = pcall(E.Find, "banker", client(), k.store)
-            if ok then bank = v end
-        end
-        local ready = R.Ready(stepOf("classTrainerStep"), stepOf("repairStep"), bank)
-        if #ready > 0 then
-            local steps = {}
-            for _, s in ipairs(ready) do steps[#steps + 1] = s end
-            for _, s in ipairs(run.steps) do steps[#steps + 1] = s end
-            run.steps = steps
-        end
         view.said = trip.Run(run)
     end
 
