@@ -216,7 +216,8 @@ function D.StepText(step, input)
     elseif kind == "gather" then
         return "Gather " .. counted(n or 1, item), forRecipe
     elseif kind == "buy_vendor" then
-        return "Buy " .. counted(n or 1, item) .. " from a vendor", forRecipe
+        local who = text(step.vendor) and step.vendor or "a trade goods vendor"
+        return "Buy " .. counted(n or 1, item) .. " from " .. who, forRecipe
     elseif kind == "buy_auction" then
         return "Buy " .. counted(n or 1, item) .. " at the auction house", forRecipe
     elseif kind == "go_station" then

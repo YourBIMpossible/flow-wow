@@ -44,7 +44,7 @@ local _, ns = ...
 -- candidate's short materials get a gather, buy_vendor or buy_auction step
 -- (Items/ProfSources.lua), ahead of the rest; without source reads a
 -- recipe short of materials gives no step.
---   here, nodes, vendorPrice   as ProfSources.For takes them (C3)
+--   here, nodes, vendorPrice, vendorFor   as ProfSources.For takes them (C3)
 
 ns.ProfPlan = {}
 local P = ns.ProfPlan
@@ -354,7 +354,8 @@ local function sourcedSteps(input, c)
 end
 
 local function sourced(input)
-    return type(ns.ProfSources) == "table" and (input.nodes ~= nil or input.vendorPrice ~= nil)
+    return type(ns.ProfSources) == "table"
+        and (input.nodes ~= nil or input.vendorPrice ~= nil or input.vendorFor ~= nil)
 end
 
 -- Was any recipe colour of this profession read?
@@ -477,6 +478,41 @@ local function stationTarget(stations, kind, pos)
     return { map = best.map, x = best.x, y = best.y }
 end
 
+-- The vendor to buy item from, out of the vendors this character has seen
+-- (Nav/ServiceSeen.lua): the nearest that sold it, else the nearest that
+-- sold trade goods. Only on the player's continent: a vendor on another
+-- map counts when contOf says both maps are on one continent, and stands
+-- behind every vendor on the player's own map. nil when none.
+--   -> { map, x, y, name, sells }
+function P.VendorFor(places, pos, contOf, item)
+    if type(places) ~= "table" or type(pos) ~= "table" or pos.map == nil then return nil end
+    local keyOf = ns.Items and ns.Items.Key or function(v) return v end
+    local key = keyOf(item)
+    local myCont = call(contOf, pos.map)
+    local best, bestRank, bestD
+    local names = {}
+    for k in pairs(places) do names[#names + 1] = k end
+    table.sort(names, function(a, b) return tostring(a) < tostring(b) end)
+    for _, k in ipairs(names) do
+        local e = places[k]
+        if type(e) == "table" and type(e.kinds) == "table" and e.kinds.vendor == true
+            and type(e.x) == "number" and type(e.y) == "number" and e.map ~= nil then
+            local sells = key ~= nil and type(e.wares) == "table" and e.wares[key] == true
+            local same = e.map == pos.map
+            local near = same
+            if not same and myCont ~= nil then near = call(contOf, e.map) == myCont end
+            if near and (sells or e.trade == true) then
+                local rank = (sells and 0 or 2) + (same and 0 or 1)
+                local d = same and ((e.x - (pos.x or 0)) ^ 2 + (e.y - (pos.y or 0)) ^ 2) or 0
+                if not best or rank < bestRank or (rank == bestRank and d < bestD) then
+                    best, bestRank, bestD = { map = e.map, x = e.x, y = e.y, name = e.name, sells = sells }, rank, d
+                end
+            end
+        end
+    end
+    return best
+end
+
 function P.Input(client, store, prof, nodeSource)
     local readings = saved(store, "char", "learned.facts.profSkill")
     local r = get(readings, prof)
@@ -515,6 +551,13 @@ function P.Input(client, store, prof, nodeSource)
         prof = prof,
         here = pos,
         nodes = nodes or {},
+        vendorFor = function(item)
+            return P.VendorFor(saved(store, "char", "learned.places.services"), pos, function(map)
+                local got = ask(client, "mapCont", map)
+                if got ~= nil then return got end
+                return get(ask(client, "mapCorners", map), "cont")
+            end, item)
+        end,
         vendorPrice = function(item)
             if type(prices) ~= "table" or not ns.Prices then return nil end
             local p = ns.Prices.Get(prices, item, "vendor")

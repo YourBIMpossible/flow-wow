@@ -86,7 +86,7 @@ tests["prof dock: the next step in plain words, for every kind of step"] = funct
         { { kind = "take_bank", item = 1, count = 6, recipe = "Test Buckle" }, "Take 6 Test Ore from the bank",
             "For Test Buckle" },
         { { kind = "gather", item = 1, count = 5 }, "Gather 5 Test Ore", nil },
-        { { kind = "buy_vendor", item = 4, count = 2 }, "Buy 2 Test Thread from a vendor", nil },
+        { { kind = "buy_vendor", item = 4, count = 2 }, "Buy 2 Test Thread from a trade goods vendor", nil },
         { { kind = "buy_auction", item = 3, count = 7 }, "Buy 7 Test Cloth at the auction house", nil },
         { { kind = "go_station", station = "anvil" }, "Go to an anvil", nil },
         { { kind = "go_station", station = "forge" }, "Go to a forge", nil },

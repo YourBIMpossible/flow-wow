@@ -10,6 +10,13 @@ local _, ns = ...
 --   MERCHANT_SHOW     a vendor; also a repair vendor when
 --                     client.merchantRepairs() says true. A plain false
 --                     takes a repair mark off again; no answer leaves it.
+--                     What it sold (client.merchantItems()) is kept as
+--                     wares = { [item key] = true }, at most
+--                     ServiceSeen.WARES_MAX, and trade = true when one of
+--                     them is a trade good (client.itemInfo's classID is
+--                     ServiceSeen.TRADE_CLASS; a first guess). No wares
+--                     read leaves what was saved. Read by the profession
+--                     plan (Items/ProfPlan.lua) to place its buy step.
 --   BANKFRAME_OPENED  a banker
 --   TAXIMAP_OPENED    a flight master
 --   CONFIRM_BINDER    an innkeeper (the player asked to make the inn home)
@@ -51,6 +58,9 @@ ns.ServiceSeen = ServiceSeen
 ServiceSeen.NAME = "serviceSeen"
 ServiceSeen.PLACES = "learned.places.services"
 ServiceSeen.MAX = 400
+ServiceSeen.WARES_MAX = 200
+-- The game's item class for trade goods; a first guess, not seen in game.
+ServiceSeen.TRADE_CLASS = 7
 -- The order the events are listened for; each names the kind it shows.
 ServiceSeen.EVENTS = {
     { event = "MERCHANT_SHOW", kind = "vendor" },
@@ -76,6 +86,27 @@ end
 local function ask(client, read)
     if type(client) ~= "table" or type(client[read]) ~= "function" then return nil end
     return client[read]()
+end
+
+-- What the open merchant sells: wares by item key, and whether any is a
+-- trade good. nil when the client does not say.
+local function waresOf(client)
+    local rows = ask(client, "merchantItems")
+    if type(rows) ~= "table" then return nil end
+    local keyOf = ns.Items and ns.Items.Key or function(v) return v end
+    local wares, n, trade = {}, 0, nil
+    for _, r in ipairs(rows) do
+        local key = type(r) == "table" and keyOf(r.item) or nil
+        if key ~= nil and not wares[key] and n < ServiceSeen.WARES_MAX then
+            wares[key] = true
+            n = n + 1
+            if type(client.itemInfo) == "function" then
+                local info = client.itemInfo(r.item)
+                if type(info) == "table" and info.classID == ServiceSeen.TRADE_CLASS then trade = true end
+            end
+        end
+    end
+    return wares, trade
 end
 
 local function refuse(report, reason)
@@ -110,6 +141,8 @@ function ServiceSeen.Seen(kind, client, store)
         if type(repair) ~= "boolean" then repair = nil end
         report.repair = repair
     end
+    local wares, trade
+    if kind == "vendor" then wares, trade = waresOf(client) end
     local now = ask(client, "clock")
     if not finite(now) then now = nil end
 
@@ -142,6 +175,10 @@ function ServiceSeen.Seen(kind, client, store)
     kinds[kind] = true
     if repair == true then kinds.repair = true elseif repair == false then kinds.repair = nil end
     e.kinds = kinds
+    if wares then
+        e.wares = wares
+        e.trade = trade
+    end
     if guid then e.guid = guid end
     if name then e.name = name end
     e.map, e.x, e.y = pos.map, pos.x, pos.y

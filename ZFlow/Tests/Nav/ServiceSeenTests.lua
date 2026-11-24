@@ -81,6 +81,26 @@ tests["service seen: a merchant window saves a vendor where the player stands"] 
     t.eq(k.problems:count(), 0)
 end
 
+tests["service seen: what the vendor sold is kept as wares, and trade goods are marked"] = function(t)
+    local _, c = start({ npc = VENDOR })
+    c.setItemInfo({ [2318] = { name = "Test Leather", classID = 7 }, [2319] = { name = "Test Hat", classID = 4 } })
+    c.setMerchant({ { item = "item:2319", price = 60, stack = 1 } })
+    c.setMerchantOpen(true)
+    c.fire("MERCHANT_SHOW")
+    local e = places(c)[VENDOR.guid]
+    t.eq(e.wares, { [2319] = true })
+    t.eq(e.trade, nil, "a hat is not a trade good")
+    c.setMerchant({ { item = "item:2319", price = 60, stack = 1 }, { item = "item:2318", price = 15, stack = 1 } })
+    c.fire("MERCHANT_SHOW")
+    e = places(c)[VENDOR.guid]
+    t.eq(e.wares, { [2318] = true, [2319] = true })
+    t.eq(e.trade, true)
+    -- The wares are not read (the window is shut): what was saved stays.
+    c.setMerchantOpen(false)
+    c.fire("MERCHANT_SHOW")
+    t.eq(places(c)[VENDOR.guid].wares, { [2318] = true, [2319] = true })
+end
+
 tests["service seen: saved for the character, not the account"] = function(t)
     local _, c = start({ npc = VENDOR })
     c.fire("MERCHANT_SHOW")

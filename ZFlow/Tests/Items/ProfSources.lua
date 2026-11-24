@@ -65,7 +65,7 @@ tests["prof sources: no node, a vendor price seen: buy from a vendor, text only"
     local s = S().For(input(), 4, 3)
     t.eq(s and s.kind, "buy_vendor")
     t.eq(s and s.target, nil, "the vendor's place is not saved with the price")
-    t.eq(s and s.text, "Buy 3 Test Thread from a vendor (50c each)")
+    t.eq(s and s.text, "Buy 3 Test Thread from a trade goods vendor (50c each)")
 end
 
 tests["prof sources: nothing else: the auction house, as text"] = function(t)
