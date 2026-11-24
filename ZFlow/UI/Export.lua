@@ -15,6 +15,9 @@ local _, ns = ...
 --   quest   a quest in your log;   obj  one of its objectives
 --   skill   a profession and its rank, as last seen in its window
 --   improve one line of the advice panel (importance, id, text)
+--   route   (S25) the planned route's heading (stops, text), only when a
+--           route is planned (Nav/TripRoute.lua's module Lines)
+--   stop    one line of that route, in its order (i, text)
 --   end     how many lines there are
 -- Legacy Flow's goal, plan, opt, flight, fm, gate and ride records
 -- need Z-Flow's route in a settled shape; they are not written yet (see the
@@ -139,6 +142,22 @@ function X.Lines(r)
         end
     end
 
+    -- S25: the planned route, its heading then one line a stop. No route,
+    -- no route lines.
+    -- A stop is a numbered line ("2. Boars - ..." or "> 2. ..."); the
+    -- indented lines under them (held stops, why no pick-ups were added,
+    -- stops left out) are notes, not stops.
+    local route = type(r.route) == "table" and r.route or {}
+    if type(route[1]) == "string" then
+        local stops = {}
+        for i = 2, #route do
+            local line = route[i]
+            if type(line) == "string" and line:find("^>? ?%d+%. ") then stops[#stops + 1] = line end
+        end
+        add("route", { { "stops", #stops }, { "text", route[1] } })
+        for i, line in ipairs(stops) do add("stop", { { "i", i }, { "text", line } }) end
+    end
+
     add("end", { { "lines", #out + 1 } })
     return out
 end
@@ -192,6 +211,13 @@ function X.Declare(k, diag)
             if type(advisor) == "table" and type(advisor.List) == "function" then advice = advisor.List end
             local r = X.Read(ctx.client, ctx.store, advice)
             r.addon = k.id.addon
+            -- S25: the planned route's lines, through the route module.
+            local trip
+            if type(k.use) == "function" then trip = k.use("tripRoute") end
+            if type(trip) == "table" and type(trip.Lines) == "function" then
+                local ok, lines = pcall(trip.Lines)
+                if ok and type(lines) == "table" then r.route = lines end
+            end
             local lines = X.Lines(r)
             made = lines
             local copy = {}

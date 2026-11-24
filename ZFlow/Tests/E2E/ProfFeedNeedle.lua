@@ -61,7 +61,8 @@ end
 tests["prof feed: a step on another continent is text, never a needle"] = function(t)
     local c = start({ Cooking = { FAR } })
     local p = c.arrows[2]
-    t.eq(p and p.lines, { "Next time you are in Eastern Kingdoms: " .. FAR.text })
+    -- Lead section 416 item 2: then Mining's line (no step: open its window).
+    t.eq(p and p.lines, { "Next time you are in Eastern Kingdoms: " .. FAR.text, "Open your Mining window once" })
     c.advance(0.1, 2)
     t.eq(p and type(p.drawn) == "table" and p.drawn.body, 0, "no needle")
 end
@@ -128,7 +129,8 @@ tests["prof feed: no step with a place, no pin"] = function(t)
     local c = start({ Cooking = { FAR } })
     c.setWorldMap(1453)
     c.advance(2, 4)
-    t.eq(c.arrows[2] and c.arrows[2].lines, { "Next time you are in Eastern Kingdoms: " .. FAR.text },
+    t.eq(c.arrows[2] and c.arrows[2].lines, { "Next time you are in Eastern Kingdoms: " .. FAR.text,
+        "Open your Mining window once" },
         "the step is held back as words")
     for _, h in ipairs(c.mapPinSets or {}) do
         t.ok(not (h.shown and h.pins[1] and h.pins[1].name == FISH.text), "no Cooking pin")

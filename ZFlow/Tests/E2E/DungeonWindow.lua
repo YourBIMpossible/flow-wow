@@ -10,7 +10,7 @@ local tests = {}
 local ID = "dungeons"
 local DM, SFK = 1581, 209
 
-local function questie()
+local function questie(inside)
     local quests = {
         [101] = { Id = 101, name = "Red Silk", level = 18, requiredLevel = 14, zoneOrSort = DM,
             Starts = { NPC = { 501 } } },
@@ -20,6 +20,12 @@ local function questie()
             Starts = { NPC = { 503 } } },
     }
     local npcs = { [501] = { name = "Gryan", friendlyToFaction = "A" }, [503] = { name = "Sorcerer", friendlyToFaction = "AH" } }
+    if inside then
+        -- Its giver is inside the Deadmines (Twin low note, icons by group).
+        quests[108] = { Id = 108, name = "Deep Inside", level = 18, requiredLevel = 14, zoneOrSort = DM,
+            Starts = { NPC = { 505 } } }
+        npcs[505] = { name = "Prisoner", friendlyToFaction = "A", spawns = { [DM] = { { 10, 10 } } } }
+    end
     local db = { QuestPointers = {} }
     for id in pairs(quests) do db.QuestPointers[id] = true end
     function db.GetQuest(id) return quests[id] end
@@ -43,11 +49,12 @@ local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, opts.account or {}); c.setSaved(ns.id.charDB, {})
-    c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction("Alliance"); c.setLevel(18)
-    for _, id in ipairs({ 101, 103, 201 }) do c.setQuestDone(id, false) end
+    c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction(opts.faction or "Alliance"); c.setLevel(18)
+    for _, id in ipairs({ 101, 103, 108, 201 }) do c.setQuestDone(id, false) end
+    if opts.log then c.setQuestLog(opts.log) end
     c.setZone(1, 1436); c.setPosition(1436, 0.5, 0.5)
     if opts.questie ~= false then
-        local db, zones = questie()
+        local db, zones = questie(opts.inside)
         c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
     end
     local addon = ns.offline.addon(c)
@@ -118,8 +125,46 @@ tests["dungeon window: search narrows the list"] = function(t)
     t.ok(texts(c.kitWindows()[ID]):find(ns.DungeonRead.WHY_NO_MATCH[1], 1, true) ~= nil, "nothing found says so")
 end
 
+-- Lead DISPATCH 426: the made-up Questie uses real area numbers, so a case
+-- about the Bosses tab gives the add-on it loaded (its own table, made
+-- fresh by boot) the boss list it runs on.
+
+local function notes(rec)
+    local out = {}
+    for _, p in ipairs(rec and rec.parts or {}) do
+        if p.note ~= nil then out[#out + 1] = tostring(p.note) end
+    end
+    return table.concat(out, " | ")
+end
+
+-- Fails before: the Bosses tab listed only bosses this account had killed,
+-- each headed "(N kills)" (UI/DungeonWindow.lua bossesPane).
+tests["dungeon window 426: Bosses lists every boss and its drops before the first kill, no kill count"] = function(t)
+    do
+        local c, addon = boot({ account = { learned = { bossLoot = {
+            ["n:501"] = { name = "Gryan", kills = 3, items = { ["item:12"] = { times = 2 } } } } } } })
+        addon.BossLootData = { instances = { { id = 9001, area = DM, bosses = {
+            { npcs = { 501 }, items = { 11, 12 } },
+            { npcs = { 777 }, items = {} },
+        } } } }
+        c.setItemInfo({ [11] = { name = "Made Up Blade", quality = 2 }, [12] = { name = "Made Up Hat", quality = 3 } })
+        open(c)
+        c.kitSelect(ID, "dungeons", 1)
+        t.eq(c.kitSelect(ID, "tabs", 2), true)
+        local rec = c.kitWindows()[ID]
+        local words = texts(rec)
+        t.ok(words:find("Gryan", 1, true) ~= nil, "the boss by its name: " .. words)
+        t.ok(words:find("kill", 1, true) == nil, "no kill count: " .. words)
+        t.ok(words:find(ns.DungeonRead.BOSS_UNNAMED, 1, true) ~= nil, "a boss nothing names says so, never a number")
+        t.ok(words:find("777", 1, true) == nil, "no bare creature number")
+        t.ok(words:find(ns.DungeonRead.BOSS_NO_DATA[1], 1, true) ~= nil, "a boss with no list says so")
+        t.eq(notes(rec), ns.DungeonRead.SEEN, "only the drop this account saw is marked")
+    end
+end
+
 tests["dungeon window: Bosses with no loot seen, and Map with no entrance, say why"] = function(t)
-    local c = boot()
+    local c, addon = boot()
+    addon.BossLootData = { instances = {} }
     open(c)
     c.kitType(ID, "header", "shadow")
     c.kitSelect(ID, "dungeons", 1)
@@ -275,5 +320,56 @@ tests["dungeon window 343: a summary line above the tabs: name, level range, que
     s = partByKey(box.tree, "summary")
     t.eq(s and { s.text, s.right, s.sub }, { "Shadowfang Keep", "Level 27", "1 quest" }, "follows the pick")
 end
+
+-- Twin low note: the other three groups' icons. unfold: a group to open
+-- first (Not for you is folded at first).
+local function iconsOf(c, unfold)
+    local last
+    local real = c.kitWindow
+    c.kitWindow = function(id, tree, extra)
+        last = tree
+        local h = real(id, tree, extra)
+        if type(h) == "table" then
+            local update = h.update
+            h.update = function(now)
+                last = now
+                return update(now)
+            end
+        end
+        return h
+    end
+    open(c)
+    if unfold then c.kitClick(ID, "group." .. unfold) end
+    local icons = {}
+    ns.Kit.Each(last, function(part)
+        if part.kind == "line" and type(part.text) == "string" then icons[part.text] = part.icon end
+    end)
+    return icons
+end
+
+tests["dungeon window icons: in your log, inside, and not for you"] = function(t)
+    local look = ns.Kit.look.icon
+    local icons = iconsOf((boot({ inside = true, log = { { id = 101, title = "Red Silk", objectives = {} } } })))
+    t.eq(icons["Red Silk"], look.questInLog, "in your log")
+    t.eq(icons["Deep Inside"], look.questAvailable, "inside: the available mark")
+    local horde = iconsOf((boot({ faction = "Horde" })), "notforyou")
+    t.eq(horde["Red Silk"], look.questNotForYou, "the other faction's quest")
+end
+
+tests["dungeon window next: each quest line says what to do with it"] = function(t)
+    local c = boot()
+    local box = capture(c)
+    open(c)
+    t.eq(c.kitSelect(ID, "dungeons", 1), true, "the Deadmines")
+    local subs = {}
+    ns.Kit.Each(box.tree, function(p)
+        if p.text ~= nil and p.sub ~= nil then subs[tostring(p.text)] = tostring(p.sub) end
+    end)
+    local S = ns.DungeonStates
+    local red, defias = subs["Red Silk"], subs["The Defias Brotherhood"]
+    t.ok(red ~= nil and red:find(S.NEXT.pickup, 1, true) ~= nil, "pick it up first: " .. tostring(red))
+    t.ok(defias ~= nil and defias:find(S.NEXT.nextrun, 1, true) ~= nil, "level 20 at 18, a later run: " .. tostring(defias))
+end
+
 
 return tests

@@ -150,7 +150,11 @@ function SB.Declare(k)
                 if type(add) ~= "function" then return end
                 local b = boosterOf(c.client, link)
                 if not b then return end
-                local s = (ranks(c.client) or {})[b.skill]
+                -- Skills not read: say nothing (never "learn first" to a
+                -- player who may have the skill), as SB.Facts does.
+                local all = ranks(c.client)
+                if not all then return end
+                local s = all[b.skill]
                 s = type(s) == "table" and s or {}
                 add(ns.id.title .. ": " .. SB.Advice(b, s.rank, s.max), SB.COLOUR[1], SB.COLOUR[2], SB.COLOUR[3])
             end)

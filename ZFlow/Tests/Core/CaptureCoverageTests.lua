@@ -19,11 +19,15 @@ local KIND = {
                "onSpellLearned", "onItemTooltip", "onLootRoll", "onPrint", "onError", "watchCombatLog",
                "watchSoundDevices", "watchUnitCombat", "watchMoves", "onMerchantRedraw",
                "watchAuctionResults", "onUnitTooltip", "watchAuctionRows", "onSystemMessage",
+               -- G4: the bag window's redraw (Items/BagMarks.lua).
+               "onBagRedraw",
                -- N60a: the chat filter and the link click (UI/Chat.lua).
                "chatFilter", "onLinkClick" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
-             "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
+             "optionsPage", "guideLines", "taxiMark", "mapPins", "mapClick", "comboBar", "slotIcon",
              "markMerchantButtons", "rowPanel", "textEntry",
+             -- G4: the marks on bag slots (Items/BagMarks.lua).
+             "markBagKinds",
              -- N59: the info bar, and its data broker feed where the library is loaded.
              "infoBar", "broker",
              -- N57: the key-capture overlay on the settings page.
@@ -37,6 +41,8 @@ local KIND = {
              "playAlert",
              -- G14: the mark on the best quest reward choice (Gear/RewardMark.lua).
              "markRewardChoice",
+             -- G14 bag badge: the role letters on bag upgrades (Gear/BagBadge.lua).
+             "markBagSlots",
              -- S21: the Need or Greed value on a loot roll's item (Gear/RollHint.lua).
              "rollValue",
              -- S19 (P-SETS branch 2): the set icon row; a click asks only
@@ -81,6 +87,8 @@ KIND.listen[#KIND.listen + 1] = "onKitDrawn"
 -- The settings in one kit window (lead section 285 item 3): it hands the
 -- caller's tree to kitWindow and asks the game nothing.
 KIND.show[#KIND.show + 1] = "settingsWindow"
+-- Lead section 410: the settings as the game's own rows in its Options.
+KIND.show[#KIND.show + 1] = "optionsNative"
 
 -- Section 285 item 2b: the face, Ctrl-drag and hover tip of the Flow and
 -- self buttons (Rotation/FlowButton.lua).
@@ -107,6 +115,12 @@ KIND.listen[#KIND.listen + 1] = "chatWheel"
 KIND.show[#KIND.show + 1] = "setChatNameByClass"
 KIND.show[#KIND.show + 1] = "setChatTypeHeader"
 KIND.show[#KIND.show + 1] = "setEditBox"
+-- R4, R5 (lead section 387): the route beside the quest log and on the
+-- world map (UI/RouteList.lua, UI/MapRoute.lua). showMap opens the world
+-- map on a zone, only on the player's own click on a route row.
+KIND.show[#KIND.show + 1] = "routePins"
+KIND.show[#KIND.show + 1] = "mapCard"
+KIND.show[#KIND.show + 1] = "showMap"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {
@@ -115,22 +129,26 @@ local READS = {
     merchantItems = false, returnableItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, tradeSkillTools = true, trainer = false, faction = false, class = true,
     stealthed = true, target = true, inRange = true, level = false, gear = false, spellCooldown = true,
     spellId = true, spellTexture = false, facing = true, spell = true, position = true, dead = true,
-    ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, zone = true,
+    ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, mapName = false, zone = true,
     combatLockdown = true, version = false, screen = false, questLog = true, questFocus = true,
     questFocusReads = false, questieModule = false, minimap = false, itemInfo = false,
     itemLines = false, itemTexture = false, tracking = false, anyTracking = false, professions = false,
     durability = false, lootWindow = false, windowState = false, form = true, petBattle = false,
     vehicle = false, guid = false, playerGUID = false, petGUID = false, serviceNpc = false,
-    merchantRepairs = false, bindLocation = false, hearthCooldown = false, targetRank = false,
+    merchantRepairs = false, repairCost = false, bindLocation = false, hearthCooldown = false, targetRank = false,
     frameRect = false, worldPosition = true, onTaxi = true, realm = false, modifiers = false,
     unitInfo = false, unitBuff = true, mounted = false, questItem = true, itemCount = true,
     itemUse = false, mapCorners = true, globalText = false, plates = false, canAttack = false,
     grouped = false, plateLabel = false, combo = false, comboColor = false, playerBuffs = true,
     targetDebuffs = true, formName = true, currentSpell = true, taxiNodes = true,
+    -- R4, R5: where the quest log frame stands, and a map's own name and levels.
+    questLogFrame = false, mapInfo = false,
     -- Lead section 197: the pet state the rotation reads.
     pet = true,
     -- Lead section 226: the craft bar reads (P-CRAFT); the capture asks none.
     recipeUsable = false, moving = false,
+    -- G58: the party invite line reads the friends list; the capture asks none.
+    isFriend = false,
     -- G40: the arrow's time to arrive reads the speed; the capture asks none.
     speed = false,
     -- CF-32: a spell's name by id, for your own casts (Rotation/OwnCasts.lua).
@@ -245,10 +263,15 @@ local READS = {
     -- Nav/Trails.lua and Nav/Follow.lua only. Their names (IsIndoors,
     -- C_Map.GetBestMapForUnit, C_Map.GetPlayerMapPosition) are in Diag.NAMES.
     indoors = false, unitPosition = false,
+    -- Lead section 303 (d): the instance name, read by UI/DungeonTracker.lua
+    -- only. Its name (GetInstanceInfo) is in Diag.NAMES.
+    instanceName = false,
 }
 -- Lead section 337 item 1: the bag stacks with their bag and slot, and one
 -- slot read again before it is sold; read by Items/SellThese.lua only, on
 -- the player click. The capture asks neither.
+-- Lead DISPATCH 426: the dungeon journal, asked by the Bosses tab and the diag word.
+READS.journalBoss = false
 READS.bagSlots = false
 READS.bagSlot = false
 -- P-QUEST (lead section 354 item 4): whether a quest can be shared; read by
@@ -261,6 +284,9 @@ KIND.act[#KIND.act + 1] = "sellBagItem"
 -- Lead section 382: a map's continent name; read by Nav/ProfFeed.lua only.
 -- Its name (C_Map.GetMapInfo, Enum.UIMapType) is in Diag.NAMES.
 READS.mapContName = false
+-- Lead section 404 item 2: seconds left on a spell's cooldown, the same
+-- client calls as spellCooldown. The capture does not ask it.
+READS.spellCooldownLeft = false
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {

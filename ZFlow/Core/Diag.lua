@@ -166,6 +166,13 @@ Diag.NAMES = {
     "Settings.RegisterCanvasLayoutCategory", "Settings.RegisterCanvasLayoutSubcategory",
     "Settings.RegisterAddOnCategory", "Settings.OpenToCategory", "SettingsPanel",
     "SettingsPanel.SearchBox", "InterfaceOptionsFrame",
+    -- Lead section 410: whether the game's own setting rows are there for
+    -- add-ons (c.optionsNative). No installed add-on shows they are.
+    "Settings.RegisterVerticalLayoutCategory", "Settings.RegisterVerticalLayoutSubcategory",
+    "Settings.RegisterProxySetting", "Settings.CreateCheckbox", "Settings.CreateCheckBox",
+    "Settings.CreateSlider", "Settings.CreateSliderOptions", "Settings.CreateDropdown",
+    "Settings.CreateDropDown", "Settings.CreateControlTextContainer",
+    "CreateSettingsButtonInitializer", "CreateSettingsListSectionHeaderInitializer",
     -- Row N73: the feedback report takes the guild name out of its text
     -- (UI/Feedback.lua Names). Saved in the snapshot's names table.
     "GetGuildInfo",
@@ -1730,6 +1737,13 @@ function Diag.Start(k)
             local sources = ns.Nav and ns.Nav.AddonSources
             if type(sources) ~= "table" or type(sources.Line) ~= "function" then return nil end
             return sources.Line(k)
+        end)
+        -- Lead DISPATCH 426 item 4: whether the dungeon journal of this
+        -- client answers (Nav/DungeonRead.lua R.JournalLine).
+        say("dungeon journal", function()
+            local read = ns.DungeonRead
+            if type(read) ~= "table" or type(read.JournalLine) ~= "function" then return nil end
+            return read.JournalLine(client)
         end)
     end
 

@@ -93,6 +93,11 @@ local function diffFor(g, role)
 end
 
 Disposition.QUEST_CLASS = 12     -- the game's item class for quest items
+-- G4: the reason laterOrOtherRole gives an upgrade whose level you have
+-- reached (Items/BagMarks.lua marks it as an upgrade).
+Disposition.UPGRADE_NOW = "an upgrade you can wear now"
+-- Lead section 418 item 4 (b): a kept material held past the steps' need.
+Disposition.SPARE = " (spare %d: sell at the auction house)"
 
 -- The built-in rules whose facts can all be passed in. (Gear, recipes,
 -- materials by profession, ammunition, reagents and spare bags come with the
@@ -208,7 +213,19 @@ Disposition.RULES = {
             end
         end
         if #parts == 0 then return nil end
-        return { action = "keep", reason = table.concat(parts, "; "), basis = "fact" }
+        -- Lead section 418 item 4 (b): held past what the steps need (each
+        -- use's need known), the spare goes to the auction house. Words only.
+        local need = 0
+        for idx = 1, #uses do
+            local u = uses[idx]
+            if type(u) ~= "table" or not isCount(u.need) then need = nil break end
+            need = need + u.need
+        end
+        local spare = ""
+        if need ~= nil and isCount(i.count) and i.count > need then
+            spare = string.format(Disposition.SPARE, i.count - need)
+        end
+        return { action = "keep", reason = table.concat(parts, "; ") .. spare, basis = "fact" }
     end },
     -- Flow Modules/Items/Disposition.lua:807-841, the keep half. A bag (class
     -- 1) bigger than one you wear, or with a bag slot empty. context.bagSize[key]
@@ -288,7 +305,7 @@ Disposition.RULES = {
             -- "later". A level that is not known is not guessed.
             local at
             if isCount(i.minLevel) and isCount(c.level) and i.minLevel <= c.level then
-                at = "an upgrade you can wear now"
+                at = Disposition.UPGRADE_NOW
             elseif isCount(i.minLevel) then
                 at = "upgrade at level " .. i.minLevel
             else
