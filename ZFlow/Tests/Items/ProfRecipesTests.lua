@@ -110,7 +110,7 @@ tests["prof recipes: nothing known says the one thing to do so it will know"] = 
     t.eq(#steps, 1, "never silent")
     shape(t, steps[1], "unknown")
     t.eq(steps[1].kind, "learn_recipe", "a learn step")
-    t.eq(steps[1].text, "Z-Flow does not know where to learn Stylish Blue Shirt yet: talk to your Tailoring trainer once so it can check.", "plain sentence")
+    t.eq(steps[1].text, tostring(ns.id.title) .. " does not know where to learn Stylish Blue Shirt yet: talk to your Tailoring trainer once so it can check.", "plain sentence")
     t.eq(steps[1].target, nil, "no guessed place")
     t.eq(#ns.ProfRecipes.Steps(SHIRT), 1, "no facts at all: the same")
 end

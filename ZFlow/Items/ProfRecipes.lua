@@ -121,7 +121,7 @@ function PR.Steps(recipe, facts)
     if vendor then out[#out + 1] = vendor end
     if #out == 0 then
         out[1] = { kind = "learn_recipe", item = recipe.item, count = 1, target = nil,
-                   text = "Z-Flow does not know where to learn " .. recipe.name .. " yet: talk to your "
+                   text = tostring(ns.id.title) .. " does not know where to learn " .. recipe.name .. " yet: talk to your "
                        .. recipe.profession .. " trainer once so it can check." }
     end
     return out
