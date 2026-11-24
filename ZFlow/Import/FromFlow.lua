@@ -86,7 +86,7 @@
 --   cast         Modules/Rotation/Cast.lua:757
 --   chat         Modules/AskClaude.lua:492, Modules/Chat.lua:22
 --   choices      Modules/Fight/Choices.lua:260, :264
---   colorblind   Theme.lua:128
+--   colorblind   Theme.lua:128 (to the arrow palette, N44)
 --   crafting     Modules/Crafting/Recipes.lua:105-108, SkillPlan.lua:585
 --   deathReports, deathNext   Modules/Rotation/Engine.lua:1811-1812
 --   deaths       Modules/Deaths.lua:425
@@ -412,7 +412,8 @@ local MAP = {
     { "cast.formKey", to = "settings.cast.formKey" },
     { "cast.clickSlots", to = "settings.cast.clickSlots" },
     { "cast.healTipShown", drop = ONCE },
-    { "colorblind", to = "settings.general.colorblind" },
+    -- N44: Flow's palette switch is the arrow's palette (UI/Arrow.lua).
+    { "colorblind", to = "layout.arrowPalette", as = "palette" },
     { "gear.enabled", to = "settings.gear.enabled" },
     { "gear.keepBar", to = "settings.gear.keepBar" },
     { "gear.keepOffspec", to = "settings.gear.keepOffspec" },
@@ -694,6 +695,14 @@ end
 function KIND.arrowStyle(v)
     if v == "modern" or v == "3d" or v == "flat" then return v end
     return nil, "not an arrow style this importer knows"
+end
+
+-- Flow's colour-blind switch as an arrow palette name (Nav/ArrowLayout.lua
+-- N.ARROW_PALETTES).
+function KIND.palette(v)
+    if v == true then return "colourBlind" end
+    if v == false then return "standard" end
+    return nil, "expected true or false, found a " .. type(v)
 end
 
 function KIND.positive(v)
