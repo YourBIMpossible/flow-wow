@@ -1,7 +1,8 @@
 local _, ns = ...
 -- Z-Flow view state: the state table the arrow view takes (see the header of
--- N.ArrowView in Nav/ArrowView.lua), built from a client's reads. Pure given
--- a client: no frames, nothing remembered.
+-- N.ArrowView in Nav/ArrowView.lua), built from a client's reads. No frames.
+-- One thing is remembered, per client: whether the echo stood slid below
+-- the quest arrow at the read before (see `slidOf`).
 -- Needs Nav/GuideRead.lua.
 --
 -- The reads are N.GuideRead's: client.position() (shares of a map),
@@ -17,6 +18,14 @@ ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
 local VIEW = { "layout", "screenW", "screenH", "size", "defaultPoint", "gate", "palette" }
+
+-- Lead section 510 (CHANGES-1): the echo's last place, per client. N.EchoSlid
+-- moves its 30 degree edge by N.ECHO_BAND towards the other side of the
+-- answer before, so a player walking along the edge does not see the echo
+-- jump at every update. The answer before has to be kept somewhere that
+-- outlives one update: here, by the client the reads came from. Weak keys:
+-- a client that is gone takes its answer with it.
+local slidOf = setmetatable({}, { __mode = "k" })
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -90,6 +99,18 @@ function N.ViewState(client, guide)
     -- How far apart the two steps lie, as the player sees them: the echo
     -- is tucked under the quest arrow or stands below it by this (lead
     -- section 476). Bearings, not turns: it is known without a facing.
-    if finite(g.spread) then state.spread = g.spread end
+    -- echoSlid is the answer of the read before: N.ArrowView decides from
+    -- it, any number of times, and gets the answer kept here for the next
+    -- read. With no spread (a step is gone or has no bearing) nothing is
+    -- kept: the next spread is judged at the plain edge.
+    if finite(g.spread) then
+        state.spread = g.spread
+        if type(client) == "table" then
+            state.echoSlid = slidOf[client]
+            slidOf[client] = N.EchoSlid(g.spread, state.echoSlid)
+        end
+    elseif type(client) == "table" then
+        slidOf[client] = nil
+    end
     return state, { quest = beside(q), prof = beside(p) }
 end

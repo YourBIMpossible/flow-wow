@@ -123,4 +123,40 @@ tests["arrow echo: the quest arrow is coloured by distance as before, the echo d
     t.eq(q.faded, 1, "the quest arrow is not")
 end
 
+-- Lead section 510 (CHANGES-1). The trainer stands 200 yards from the map's
+-- middle, 31 degrees east of north; the waypoint is due north. Walking south
+-- on that line the angle between the two closes, walking north it opens.
+-- -> the player's y share where the two are `deg` degrees apart.
+local EDGE_X = 0.5 + 200 * math.sin(31 * math.pi / 180) / 1000
+local EDGE_Y = 0.5 - 200 * math.cos(31 * math.pi / 180) / 500
+local function apart(deg)
+    local east, north = (EDGE_X - 0.5) * 1000, (0.5 - EDGE_Y) * 500
+    return 0.5 + (east / math.tan(deg * math.pi / 180) - north) / 500
+end
+
+tests["arrow echo: walking along the 30 degree edge the echo does not jump (29 to 31 degrees)"] = function(t)
+    local c, addon = start(EDGE_X, EDGE_Y)
+    local q, p = two(t, c, "31 degrees")
+    local slid = 56 + N.ARROW_GAP
+    t.eq(q.point[4] - p.point[4], slid, "31 degrees first: slid below")
+    local qy = q.point[4]
+    local function walk(deg, want, msg)
+        c.setPosition(HERE, 0.5, apart(deg)); c.advance(2, 8)
+        q, p = two(t, c, msg)
+        t.eq(q.point[4], qy, msg .. ": the quest arrow stays")
+        t.eq(q.point[4] - p.point[4], want, msg)
+    end
+    for _ = 1, 3 do
+        walk(29, slid, "29 degrees after 31: still slid")
+        walk(31, slid, "31 degrees again: slid")
+    end
+    walk(24, 12, "24 degrees: tucked under")
+    for _ = 1, 3 do
+        walk(31, 12, "31 degrees after 24: still tucked under")
+        walk(29, 12, "29 degrees again: tucked under")
+    end
+    walk(36, slid, "36 degrees: slid below")
+    t.eq(problems(addon), 0, "no problem from the arrows")
+end
+
 return tests
