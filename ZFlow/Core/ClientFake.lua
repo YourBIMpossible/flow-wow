@@ -4797,6 +4797,23 @@ function ns.make.fakeClient(opts)
         if p == nil then return nil end
         return { zone = p.zone, sub = p.sub }
     end
+
+    -- G50 (ACTING), as the real client's: a quest shared is kept in
+    -- c.sharedQuests, in the order shared. c.setShareRefuse(why): every
+    -- share answers nil, why (nil: shares).
+    c.sharedQuests = {}
+    function c.setShareRefuse(why) s.shareRefuse = why end
+    function c.shareQuest(id)
+        if type(id) ~= "number" then return nil, "bad" end
+        local found = false
+        for _, row in ipairs(type(s.questLog) == "table" and s.questLog or {}) do
+            if type(row) == "table" and row.id == id then found = true end
+        end
+        if not found then return nil, "notInLog" end
+        if s.shareRefuse ~= nil then return nil, s.shareRefuse end
+        c.sharedQuests[#c.sharedQuests + 1] = id
+        return true
+    end
     return c
 end
 

@@ -9,9 +9,11 @@ local _, ns = ...
 --                      says can be shared: "You can share with your group:
 --                      A, B". Only while you are known to be in a group; a
 --                      quest not known to be shareable is never named.
+--                      The line ends with the word that offers one
+--                      (Nav/QuestShare.lua, the player's own word).
 -- TEXT ONLY. Nothing here accepts, shares, hands in or abandons a quest,
--- picks a reward or talks to anyone: the player does all of that. The rows
--- that act stay held for the owner.
+-- picks a reward or talks to anyone: the player does all of that. Sharing
+-- is in Nav/QuestShare.lua, on the player's own word only.
 --
 -- A log that cannot be read says nothing new: the prompt stays as it was,
 -- and none is made up.
@@ -27,8 +29,10 @@ local _, ns = ...
 --                          the installed Questie at runtime through
 --                          ns.Nav.QuestiePlaces; not known, the line says
 --                          what to look for instead
---   A.Shareable(rows, can) the titles not complete, not failed, for which
---                          can(id) is a plain true; log order, each once
+--   A.ShareRows(rows, can) { id, title } of each quest not complete, not
+--                          failed, for which can(id) is a plain true; log
+--                          order, each title once
+--   A.Shareable(rows, can) the titles of those rows
 --   A.ShareText(rows, can, grouped)  the share line, or nil
 --
 -- Reads: client.questLog() through ns.Nav.QuestLogRows, client.grouped(),
@@ -58,7 +62,8 @@ A.GO_SEE = " Go see %s."
 A.SEE = "%s (see %s)"
 -- Who takes one of them is not known: what the game itself shows.
 A.LOOK = " Look for the yellow ? over who takes it."
-A.SHARE = "You can share with your group: %s"
+-- The names, then the slash word that offers one (Nav/QuestShare.lua).
+A.SHARE = "You can share with your group: %s. Type %s share to offer one."
 A.MORE = "%s and %d more"
 
 function A.Ready(rows)
@@ -133,7 +138,7 @@ function A.TurnInText(rows, who)
     return A.TURN_IN:format(A.Names(titles)) .. (unknown and A.LOOK or "")
 end
 
-function A.Shareable(rows, can)
+function A.ShareRows(rows, can)
     local out, seen = {}, {}
     if type(rows) ~= "table" or type(can) ~= "function" then return out end
     for _, r in ipairs(rows) do
@@ -142,10 +147,16 @@ function A.Shareable(rows, can)
             local ok, yes = pcall(can, r.id)
             if ok and yes == true then
                 seen[r.title] = true
-                out[#out + 1] = r.title
+                out[#out + 1] = { id = r.id, title = r.title }
             end
         end
     end
+    return out
+end
+
+function A.Shareable(rows, can)
+    local out = {}
+    for i, r in ipairs(A.ShareRows(rows, can)) do out[i] = r.title end
     return out
 end
 
@@ -153,7 +164,7 @@ function A.ShareText(rows, can, grouped)
     if grouped ~= true then return nil end
     local names = A.Names(A.Shareable(rows, can))
     if names == nil then return nil end
-    return A.SHARE:format(names)
+    return A.SHARE:format(names, ns.id.slash)
 end
 
 local function ask(client, read, ...)

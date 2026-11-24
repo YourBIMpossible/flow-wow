@@ -37,7 +37,7 @@ local function row(id, title, complete)
 end
 
 local LOG = { row(1, "Test wolves"), row(2, "Test boars"), row(3, "Test bears") }
-local LINE = "You can share with your group: Test wolves, Test bears"
+local LINE = "You can share with your group: Test wolves, Test bears. Type " .. ns.id.slash .. " share to offer one."
 
 tests["quest share: in a group the shareable quests are named"] = function(t)
     local _, addon = start({ log = LOG, share = { [1] = true, [2] = false, [3] = true }, grouped = true })

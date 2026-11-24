@@ -280,6 +280,8 @@ Diag.NAMES = {
     -- P-QUEST (lead section 354 item 4): whether a quest can be shared
     -- (client.questShareable). A first guess on 16001.
     "C_QuestLog.IsPushableQuest",
+    -- G50 (ACTING, client.shareQuest): first guesses on 16001.
+    "SelectQuestLogEntry", "QuestLogPushQuest", "GetQuestLogSelection",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

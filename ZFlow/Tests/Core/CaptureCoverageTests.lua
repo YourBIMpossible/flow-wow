@@ -287,6 +287,9 @@ READS.mapContName = false
 -- Lead section 404 item 2: seconds left on a spell's cooldown, the same
 -- client calls as spellCooldown. The capture does not ask it.
 READS.spellCooldownLeft = false
+-- G50 (ACTING): one quest offered to the group, only on the player's own
+-- share word (Nav/QuestShare.lua). Never the capture.
+KIND.act[#KIND.act + 1] = "shareQuest"
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {
