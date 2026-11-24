@@ -399,7 +399,11 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if type(d) == "number" then
                 local word = more[key].compass
                 if arrived then
-                    out[#out + 1] = type(step.there) == "string" and step.there or Arrow.HERE_TEXT
+                    -- A1-09 (Nav/AreaWords.lua): far from the middle of a
+                    -- wide step it is the area, not the spot.
+                    local AW = N.AreaWords
+                    out[#out + 1] = type(step.there) == "string" and step.there
+                        or (AW and AW.Words(d)) or Arrow.HERE_TEXT
                 else
                     local far = word ~= nil
                         and Arrow.DISTANCE_COMPASS_TEXT:format(math.floor(d + 0.5), word)
