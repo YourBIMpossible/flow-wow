@@ -81,7 +81,7 @@ tests["lite: the word sets the row and asks for a reload; it changes nothing els
     t.eq(k.settings:get(L.SETTING), true)
     t.eq(out[1], L.RELOAD)
     t.eq(k:ModuleState("plateThreat"), "started", "takes effect at the next load")
-    out = said(c, "lite off")
+    said(c, "lite off")
     t.eq(k.settings:get(L.SETTING), false)
     out = said(c, "lite")
     t.eq(out[1], "Lite mode is off: every feature runs.")

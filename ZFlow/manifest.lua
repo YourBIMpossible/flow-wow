@@ -277,5 +277,7 @@ return {
     "UI/RouteTracker.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
+    -- G57: lite mode, the perf.lite row and the lite word (after Diag and every module it switches off).
+    "UI/Lite.lua",
     },
 }

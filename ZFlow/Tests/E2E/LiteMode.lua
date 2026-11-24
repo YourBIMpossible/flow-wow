@@ -28,7 +28,8 @@ tests["lite mode: on after a reload, the extras are off and the arrow still runs
     local L = addon.Lite
     t.ok(type(L) == "table", "the lite file is loaded")
     for _, name in ipairs(L.OFF) do
-        t.ok(addon:ModuleState(name) ~= "off", name .. " runs while lite is off")
+        local _, why = addon:ModuleState(name)
+        t.ok(why ~= L.REASON, name .. " is not left off while lite is off")
     end
     local out = said(c, "lite")
     t.eq(out[1], addon.id.title .. ": Lite mode is off: every feature runs.")
@@ -50,7 +51,8 @@ tests["lite mode: on after a reload, the extras are off and the arrow still runs
     said(c2, "lite off")
     local _, addon3 = boot(c2.saved(addon2.id.accountDB))
     for _, name in ipairs(addon3.Lite.OFF) do
-        t.ok(addon3:ModuleState(name) ~= "off", name .. " is back")
+        local _, why = addon3:ModuleState(name)
+        t.ok(why ~= addon3.Lite.REASON, name .. " is back")
     end
 end
 
