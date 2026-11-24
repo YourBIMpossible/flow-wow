@@ -56,6 +56,12 @@ Z.LEFT = "You left %d quests unfinished in the zone behind you: %s. Go back for 
 Z.LEFT_ONE_IN = "You left 1 quest unfinished in %s: %s. Go back for it, or carry on."
 Z.LEFT_IN = "You left %d quests unfinished in %s: %s. Go back for them, or carry on."
 Z.MORE = "%s and %d more"
+Z.WORK_ONE_SPELL = "%s (1 new spell)"
+Z.WORK_SPELLS = "%s (%d new spells)"
+Z.WORK_IN = "Still to do in %s before you go on: %s."
+Z.WORK = "Still to do in the zone behind you: %s."
+Z.WORK_FROM = { "classTrainerStep", "profStep" } -- training first, as Flow lists it
+Z.EVERY = 5              -- seconds: Flow's Leaving.lua ticker
 Z.NAME_MAX = 60          -- bytes: a longer name is not a zone's name
 
 local function ask(client, name, ...)
@@ -156,11 +162,53 @@ function Z.Notice(list, name)
     return Z.LEFT:format(#list, said)
 end
 
+-- FLOW-PARITY B-33 (Flow Modules/Nav/Leaving.lua:33-49 counts training and
+-- profession items): the route's own class-trainer and profession steps
+-- whose place is on the map just left, as short names. A step with no
+-- known place says nothing; the map is never guessed.
+local function stepMap(step)
+    if type(step) ~= "table" then return nil end
+    if type(step.place) == "table" and step.place.map ~= nil then return step.place.map end
+    if type(step.elsewhere) == "table" then return step.elsewhere.map end
+    return nil
+end
+
+function Z.Work(steps, map)
+    local out = {}
+    if map == nil or type(steps) ~= "table" then return out end
+    for _, step in ipairs(steps) do
+        local label = type(step) == "table" and step.label or nil
+        if type(label) == "string" and label ~= "" and stepMap(step) == map then
+            local other = N.PROF_OTHER_MAP
+            if type(other) == "string" and label:sub(-#other) == other then label = label:sub(1, -#other - 1) end
+            local n = step.count
+            if type(n) == "number" and n >= 1 and n % 1 == 0 then
+                label = n == 1 and Z.WORK_ONE_SPELL:format(label) or Z.WORK_SPELLS:format(label, n)
+            end
+            out[#out + 1] = label
+        end
+    end
+    return out
+end
+
+-- The line naming that work, or nil when there is none.
+function Z.WorkNotice(work, name)
+    if type(work) ~= "table" or #work == 0 then return nil end
+    local said = table.concat(work, ", ")
+    name = Z.Named(name)
+    if name then return Z.WORK_IN:format(name, said) end
+    return Z.WORK:format(said)
+end
+
 function Z.Declare(k, diag)
     local api = {}
     local ctx
     local cancels = {}
     local last            -- { zone, map }: where the player last was
+    -- { map, work }: the work on the player's map, read while still on it;
+    -- once across, the trainer step no longer places a trainer left behind.
+    local held
+    local cancelEvery
 
     local function client() return ctx and ctx.client or k.client end
 
@@ -225,6 +273,21 @@ function Z.Declare(k, diag)
         return lines
     end
 
+    -- The class-trainer and profession steps as the route has them now.
+    local function workSteps()
+        local use = ctx and ctx.use or k.use
+        local steps = {}
+        if type(use) ~= "function" then return steps end
+        for _, from in ipairs(Z.WORK_FROM) do
+            local okUse, mod = pcall(use, from)
+            if okUse and type(mod) == "table" and type(mod.Step) == "function" then
+                local ok, step = pcall(mod.Step)
+                if ok and type(step) == "table" then steps[#steps + 1] = step end
+            end
+        end
+        return steps
+    end
+
     -- The player's zone changed: say once what was left behind.
     local function moved()
         local c = client()
@@ -236,9 +299,21 @@ function Z.Declare(k, diag)
         local was = last
         last = { zone = zone, map = map }
         if not was or was.zone == zone or not noticeOn() then return end
+        local name = nameOf(was.zone, was.map)
         local list = leftOn(was.map)
-        local line = Z.Notice(list, nameOf(was.zone, was.map))
+        local line = Z.Notice(list, name)
         if line then tell(line) end
+        local work = held and held.map == was.map and held.work or Z.Work(workSteps(), was.map)
+        held = nil
+        local line2 = Z.WorkNotice(work, name)
+        if line2 then tell(line2) end
+    end
+
+    local function look()
+        local pos = ask(client(), "position")
+        local map = type(pos) == "table" and pos.map or nil
+        if map == nil then return end
+        held = { map = map, work = Z.Work(workSteps(), map) }
     end
 
     if diag and type(diag.commands) == "table" then
@@ -250,7 +325,7 @@ function Z.Declare(k, diag)
 
     k:Module({
         name = Z.NAME,
-        needs = { "client", "store", "settings" },
+        needs = { "client", "store", "settings", "sched" },
         provides = { Left = api.Left, Lines = api.Lines },
         start = function(c)
             ctx = c
@@ -259,10 +334,12 @@ function Z.Declare(k, diag)
                 if ok and type(cancel) == "function" then cancels[#cancels + 1] = cancel end
             end
             pcall(moved)
+            cancelEvery = c.sched:every(Z.NAME, Z.EVERY, function() pcall(look) end)
         end,
         stop = function()
             for _, fn in ipairs(cancels) do pcall(fn) end
-            cancels, last, ctx = {}, nil, nil
+            if cancelEvery then pcall(cancelEvery) end
+            cancels, last, ctx, held, cancelEvery = {}, nil, nil, nil, nil
         end,
     })
     return api
