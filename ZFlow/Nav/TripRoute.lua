@@ -23,6 +23,12 @@ local _, ns = ...
 --   T.Stops(rows, places, here) -> stops, left
 --   T.Plan(rows, places, here, legs) -> route or nil, why
 --   T.Live(stop, rows) -> bool
+--   T.Held(stop, rows) -> why or nil   (lead section 372) a turn-in stop
+--     already on the route, checked again each re-read: held while its
+--     quest is no longer complete (and, where Nav/QuestSource.lua has it,
+--     while Q.TurnInHold holds it). A held stop is not walked; the route
+--     lists it as a held line with its reason, and it is walked again once
+--     it is ready.
 --   T.Lines(route, at) -> lines
 -- Module "tripRoute" provides Step, Plan, Run, Skip, Off, Lines.
 -- Not tested in game.
@@ -49,6 +55,8 @@ T.DONE = "Route done."
 T.CLEARED = "Route cleared."
 T.HEADER = "Route: %d stops (%s)"
 T.RUN_SAID = "Run planned: %d stops; the arrow walks it."
+T.HELD_LINE = "Turn-in held: %s"
+T.HELD_NOT_COMPLETE = "not complete any more"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -172,18 +180,41 @@ function T.Live(stop, rows)
     return false
 end
 
+function T.Held(stop, rows)
+    if type(stop) ~= "table" or stop.turnIn ~= true or stop.quest == nil or stop.kind ~= nil then return nil end
+    for _, row in ipairs(type(rows) == "table" and rows or {}) do
+        if type(row) == "table" and row.id == stop.quest then
+            if row.complete ~= true then return T.HELD_NOT_COMPLETE end
+            local Q = N.QuestSource
+            if type(Q) == "table" and type(Q.TurnInHold) == "function" then
+                local ok, why = pcall(Q.TurnInHold, row, nil)
+                if ok and type(why) == "string" then return why end
+            end
+            return nil
+        end
+    end
+    return nil
+end
+
 function T.Lines(route, at)
     if type(route) ~= "table" or type(route.stops) ~= "table" then return {} end
     local lines = { T.HEADER:format(#route.stops, tostring(route.label or N.ROUTE_STRAIGHT)) }
+    local held = {}
     for i, s in ipairs(route.stops) do
+        if s.held and not s.gone then
+            held[#held + 1] = "  " .. tostring(s.label) .. " - " .. T.HELD_LINE:format(tostring(s.held))
+        end
         local dist = (finite(s.leg) and route.yards ~= false) and (tostring(math.floor(s.leg + 0.5)) .. " yd")
             or T.NO_DISTANCE
         local parts = { tostring(s.label) }
         if s.detail ~= nil then parts[#parts + 1] = tostring(s.detail) end
         parts[#parts + 1] = dist
         if s.gone then parts[#parts + 1] = "done" end
-        lines[#lines + 1] = (i == at and "> " or "") .. i .. ". " .. table.concat(parts, " - ")
+        if not (s.held and not s.gone) then
+            lines[#lines + 1] = (i == at and "> " or "") .. i .. ". " .. table.concat(parts, " - ")
+        end
     end
+    for _, line in ipairs(held) do lines[#lines + 1] = line end
     for _, l in ipairs(type(route.left) == "table" and route.left or {}) do
         local what = type(l) == "table" and (tostring(l.label) .. (l.detail and (" - " .. tostring(l.detail)) or "")
             .. " - " .. tostring(l.why or T.NOT_HERE)) or tostring(l)
@@ -318,7 +349,11 @@ function T.Declare(k, diag)
                 local rows = N.QuestLogRows(c)
                 if rows then
                     for _, s in ipairs(route.stops) do
-                        if not T.Live(s, rows) then s.gone = true end
+                        if not T.Live(s, rows) then
+                            s.gone = true
+                        else
+                            s.held = T.Held(s, rows)
+                        end
                     end
                 end
             end
@@ -331,7 +366,15 @@ function T.Declare(k, diag)
             end
         end
         settle()
-        local s = route and route.stops[at]
+        -- A held stop stays on the route but is not walked (lead section 372).
+        local s
+        for i = at, route and #route.stops or 0 do
+            local o = route.stops[i]
+            if not o.gone and not o.held then
+                s = o
+                break
+            end
+        end
         if not s then return nil end
         return { quest = s.quest, objective = s.objective, turnIn = s.turnIn, label = s.label, detail = s.detail,
                  place = { map = s.place.map, x = s.place.x, y = s.place.y } }
@@ -348,7 +391,7 @@ function T.Declare(k, diag)
         local stops = {}
         for i = at, #route.stops do
             local s = route.stops[i]
-            if not s.gone then
+            if not s.gone and not s.held then
                 stops[#stops + 1] = { label = s.label, detail = s.detail,
                                       place = { map = s.place.map, x = s.place.x, y = s.place.y } }
             end

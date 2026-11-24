@@ -122,6 +122,26 @@ tests["trip route: the setting rows are there"] = function(t)
     t.eq(learn and learn.default, true)
 end
 
+-- Lead section 372: Live checks a turn-in stop on the route again; one no
+-- longer ready leaves the route as a held line and comes back when ready.
+tests["trip route: a turn-in no longer ready is held with its reason and comes back"] = function(t)
+    local c = boot()
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    t.eq(first(c), "Bandages")
+    c.setQuestLog({ LOG[1], LOG[2], { id = 403, title = "Bandages", objectives = { { text = "Linen: 3/4" } } } })
+    c.advance(5, 60)
+    t.eq(first(c), "Boars", "the held turn-in is not walked")
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    local T = ns.Nav.TripRoute
+    local held = said(c, T.HELD_LINE:format(T.HELD_NOT_COMPLETE))
+    t.ok(held ~= nil and held:find("Bandages", 1, true) ~= nil, tostring(held))
+    c.setQuestLog(LOG)
+    c.advance(5, 60)
+    t.eq(first(c), "Bandages", "ready again: back on the route")
+end
+
 -- S40: the dungeon run from the Dungeon Quests window.
 local DM = 1581
 

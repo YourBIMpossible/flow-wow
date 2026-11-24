@@ -17,7 +17,7 @@ local _, ns = ...
 --                   player made (legs, below)
 -- N.ROUTE_MAX       the most places one route takes
 --
--- N.RoutePlan(places, map, size, from, legs) -> route, reason
+-- N.RoutePlan(places, map, size, from, legs, after) -> route, reason, ring
 --   places  a list; each { map, x, y, ... } with x, y shares 0..1 of map.
 --           Read only: it is not changed and not copied.
 --   map     the one map the route is on
@@ -31,6 +31,10 @@ local _, ns = ...
 --           how "area" (its neighbourhood) only ever stretches the line.
 --           nil, another how, or an error: the straight line. Without
 --           legs every distance is the straight line, as before.
+--   after   optional (G42): { [i] = { j, ... } }: place i comes after
+--           place j (indexes in `places`). An after naming a place not on
+--           the route is let go. The nearest-next pick and every shortening
+--           keep them: no stop is ever put before what it must follow.
 --
 --   route = {
 --     map, straight, label,
@@ -58,6 +62,11 @@ local _, ns = ...
 --                        be compared without it, so no order is claimed
 --     "no places"        places is not a list, or none of it is on the map
 --     "too many places"  more than N.ROUTE_MAX of them are on the map
+--     "circle"           the afters go round in a circle; ring is the list
+--                        of the places (indexes in `places`) in it
+--
+-- N.RouteCycle(n, after) -> ring or nil   (G42) the first circle in the
+--   afters of places 1..n, as a list of indexes, or nil when there is none.
 --
 -- How the order is made: the nearest place next, from the start (from the
 -- first place of the list when the start is not known); then, while it
@@ -123,18 +132,44 @@ local function moved(order, i, j)
     return out
 end
 
--- The nearest place next. Ties go to the place earlier in the list.
-local function nearestFirst(pts, start, far)
+-- G42: i may go now when every place it comes after is used.
+local function ready(i, used, need)
+    for _, j in ipairs(need[i] or {}) do
+        if not used[j] then return false end
+    end
+    return true
+end
+
+-- G42: true when no place in order comes before one it must follow.
+local function keeps(order, need)
+    local pos = {}
+    for i = 1, #order do pos[order[i]] = i end
+    for i, list in pairs(need) do
+        for _, j in ipairs(list) do
+            if pos[i] and pos[j] and pos[j] > pos[i] then return false end
+        end
+    end
+    return true
+end
+
+-- The nearest place next, of those that may go now. Ties go to the place
+-- earlier in the list.
+local function nearestFirst(pts, start, far, need)
     local n = #pts
     local used, order = {}, {}
     local last = start
     if not last then
-        order[1], used[1], last = 1, true, pts[1]
+        for i = 1, n do
+            if ready(i, used, need) then
+                order[1], used[i], last = i, true, pts[i]
+                break
+            end
+        end
     end
     while #order < n do
         local best, bestD
         for i = 1, n do
-            if not used[i] then
+            if not used[i] and ready(i, used, need) then
                 local d = far(last, pts[i])
                 if bestD == nil or d < bestD - EPS then best, bestD = i, d end
             end
@@ -146,7 +181,7 @@ end
 
 -- While it makes the whole shorter: the best single change. The first
 -- found wins a tie.
-local function shorten(order, pts, start, far)
+local function shorten(order, pts, start, far, need)
     local n = #order
     local len = length(order, pts, start, far)
     for _ = 1, ROUNDS do
@@ -155,7 +190,7 @@ local function shorten(order, pts, start, far)
             for j = i + 1, n do
                 local try = turned(order, i, j)
                 local l = length(try, pts, start, far)
-                if l < bestLen - EPS then best, bestLen = try, l end
+                if l < bestLen - EPS and keeps(try, need) then best, bestLen = try, l end
             end
         end
         for i = 1, n do
@@ -163,7 +198,7 @@ local function shorten(order, pts, start, far)
                 if i ~= j then
                     local try = moved(order, i, j)
                     local l = length(try, pts, start, far)
-                    if l < bestLen - EPS then best, bestLen = try, l end
+                    if l < bestLen - EPS and keeps(try, need) then best, bestLen = try, l end
                 end
             end
         end
@@ -206,7 +241,36 @@ local function costs(legs)
     return far, howOf
 end
 
-function N.RoutePlan(places, map, size, from, legs)
+function N.RouteCycle(n, after)
+    after = type(after) == "table" and after or {}
+    local mark, stack = {}, {}
+    local ring
+    local function visit(i)
+        mark[i] = 1
+        stack[#stack + 1] = i
+        for _, j in ipairs(type(after[i]) == "table" and after[i] or {}) do
+            if type(j) == "number" and j >= 1 and j <= n then
+                if mark[j] == 1 then
+                    ring = {}
+                    local from = 1
+                    for k = 1, #stack do if stack[k] == j then from = k end end
+                    for k = from, #stack do ring[#ring + 1] = stack[k] end
+                    return true
+                end
+                if mark[j] == nil and visit(j) then return true end
+            end
+        end
+        stack[#stack] = nil
+        mark[i] = 2
+        return false
+    end
+    for i = 1, n do
+        if mark[i] == nil and visit(i) then return ring end
+    end
+    return nil
+end
+
+function N.RoutePlan(places, map, size, from, legs, after)
     if map == nil then return nil, "no map" end
     if type(size) ~= "table" or not (finite(size.w) and finite(size.h) and size.w > 0 and size.h > 0) then
         return nil, "size unknown"
@@ -228,6 +292,25 @@ function N.RoutePlan(places, map, size, from, legs)
     if #pts == 0 then return nil, "no places" end
     if #pts > N.ROUTE_MAX then return nil, "too many places" end
 
+    -- G42: the afters between places on the route, by pts number.
+    local posOf, need = {}, {}
+    for n = 1, #pts do posOf[pts[n].index] = n end
+    for i, list in pairs(type(after) == "table" and after or {}) do
+        if posOf[i] and type(list) == "table" then
+            for _, j in ipairs(list) do
+                if posOf[j] and posOf[j] ~= posOf[i] then
+                    need[posOf[i]] = need[posOf[i]] or {}
+                    table.insert(need[posOf[i]], posOf[j])
+                end
+            end
+        end
+    end
+    local ring = N.RouteCycle(#pts, need)
+    if ring then
+        for n = 1, #ring do ring[n] = pts[ring[n]].index end
+        return nil, "circle", ring
+    end
+
     local start
     if type(from) == "table" and from.map == map and share(from.x) and share(from.y) then
         start = { x = from.x * size.w, y = from.y * size.h }
@@ -236,7 +319,7 @@ function N.RoutePlan(places, map, size, from, legs)
     local far, howOf = apart, nil
     if type(legs) == "function" then far, howOf = costs(legs) end
 
-    local order = shorten(nearestFirst(pts, start, far), pts, start, far)
+    local order = shorten(nearestFirst(pts, start, far, need), pts, start, far, need)
 
     local stops, total, last = {}, 0, start
     local straight = true
