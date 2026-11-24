@@ -11993,6 +11993,47 @@ function ns.make.client(env)
         if type(log) ~= "table" then return nil end
         return yesNo(call(log.IsPushableQuest, id))
     end
+    -- Section 401 (mage-3 HOLD): the close-enemy reads the class packs name
+    -- (targetNear, targetMelee, targetOnYou, hittingYou; Rotation/Choose.lua).
+    -- New reads, added at the end. c.targetClose() -> { near, noMana, onYou },
+    -- each true, false, or nil when not known; nil when no target is read.
+    -- First guesses, not seen in game on 16001: CheckInteractDistance(
+    -- "target", 3) (about ten yards; it may answer nothing in a fight),
+    -- UnitPowerMax("target", 0) (0: the target has no mana) and
+    -- UnitIsUnit("targettarget", "player"). Only reads: nothing is targeted.
+    function c.targetClose()
+        if yesNo(call(env.UnitExists, "target")) ~= true then return nil end
+        local okMax, most = call(env.UnitPowerMax, "target", 0)
+        local noMana = nil
+        if okMax and type(most) == "number" and not hidden(most) then noMana = most == 0 end
+        return {
+            near = yesNo(call(env.CheckInteractDistance, "target", 3)),
+            noMana = noMana,
+            onYou = yesNo(call(env.UnitIsUnit, "targettarget", "player")),
+        }
+    end
+
+    -- c.hitOnYouAge() -> seconds since an enemy last hit you (UNIT_COMBAT on
+    -- "player" with "WOUND"), false when no hit since the first ask, nil when
+    -- the clock is not read. The listener starts on the first ask, so the
+    -- first answer is false. The payload order is a first guess (as
+    -- watchUnitCombat above); not seen in game on 16001.
+    local lastHitOnYou, hitWatch = nil, false
+    function c.hitOnYouAge()
+        if not hitWatch then
+            hitWatch = true
+            events.add("UNIT_COMBAT", function(unit, action)
+                if type(unit) ~= "string" or hidden(unit) or unit ~= "player" then return end
+                if type(action) ~= "string" or hidden(action) or action ~= "WOUND" then return end
+                local ok, t = call(env.GetTime)
+                if ok and type(t) == "number" then lastHitOnYou = t end
+            end)
+        end
+        if lastHitOnYou == nil then return false end
+        local ok, now = call(env.GetTime)
+        if not ok or type(now) ~= "number" then return nil end
+        return now - lastHitOnYou
+    end
     return c
 end
 

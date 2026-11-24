@@ -148,10 +148,12 @@ local buffs = tag({
 })
 
 local single = tag({
-    -- Needs game test: the three reads (targetMelee, targetOnYou,
-    -- hittingYou) as the Druid pack uses them for Entangling Roots.
+    -- Needs game test: the reads (Rotation/Driver.lua, section 401):
+    -- targetNear (within about ten yards), targetMelee (no mana: a melee
+    -- enemy), targetOnYou and hittingYou (hit you in the last few seconds).
     { spell = "Frost Nova", reason = "An enemy is hitting you up close: freeze it, then step back",
-      when = function(s) return inFight(s) and s.hostile and s.targetMelee and s.targetOnYou and s.hittingYou end },
+      when = function(s) return inFight(s) and s.hostile and s.targetNear and s.targetMelee
+          and s.targetOnYou and s.hittingYou end },
     { spell = "Fire Blast", target = true, reason = "Fire Blast is ready: instant damage",
       when = function(s) return s.hostile end },
     { spell = "Frostbolt", target = true, reason = "Frostbolt: damage, and it slows",

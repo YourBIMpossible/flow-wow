@@ -131,11 +131,16 @@ end
 
 tests["mage N52: an enemy hitting you up close: Frost Nova first; otherwise not"] = function(t)
     local known = { MAGE_ARMOR, "Arcane Intellect", "Frostbolt", "Fire Blast", "Frost Nova" }
-    local close = { buffs = ARMORED, inCombat = true, hostile = true,
+    -- Section 401 (section 208 pin update): the rule now also needs targetNear,
+    -- since targetMelee only means the target has no mana.
+    local close = { buffs = ARMORED, inCombat = true, hostile = true, targetNear = true,
         targetMelee = true, targetOnYou = true, hittingYou = true }
     t.eq(pick(close, known), "Frost Nova", "an enemy next to you, hitting you")
     local apart = { buffs = ARMORED, inCombat = true, hostile = true, targetOnYou = true, hittingYou = true }
     t.eq(pick(apart, known), "Fire Blast", "not next to you: damage as before")
+    local ranged = { buffs = ARMORED, inCombat = true, hostile = true, targetNear = false,
+        targetMelee = true, targetOnYou = true, hittingYou = true }
+    t.eq(pick(ranged, known), "Fire Blast", "no mana but not near: no Frost Nova")
     local quiet = { buffs = ARMORED, inCombat = true, hostile = true, targetMelee = true, targetOnYou = true }
     t.eq(pick(quiet, known), "Fire Blast", "next to you, not hitting you yet: as before")
     t.eq(pick(close, { MAGE_ARMOR, "Arcane Intellect", "Frostbolt", "Fire Blast" }), "Fire Blast",

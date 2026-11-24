@@ -465,4 +465,9 @@ KIND.act[#KIND.act + 1] = "addonSend"
 READS.trackingRaw = false
 READS.tradeSkillAnswers = false
 
+-- Section 401: the close-enemy reads, read by the rotation only
+-- (Rotation/Driver.lua); never by the capture.
+READS.targetClose = false
+READS.hitOnYouAge = false
+
 return tests
