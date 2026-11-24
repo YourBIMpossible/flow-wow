@@ -17,6 +17,7 @@ local QUESTS = {
     [702] = { Id = 702, name = "Second Steps", preQuestSingle = { 701 }, nextQuestInChain = 703 },
     [703] = { Id = 703, name = "Last Steps", preQuestSingle = { 702 } },
     [801] = { Id = 801, name = "Lone Errand" },
+    [901] = { Id = 901, name = "Gated Errand", preQuestSingle = { 999 } },
 }
 
 local function boot(lines, log)
@@ -75,7 +76,7 @@ tests["focus e2e: remove this step and what follows; remove the whole line"] = f
     local c, addon = boot({ { quest = 702 }, { quest = 801 } })
     local focus = addon.use and addon.use("focus") or ns.focus
     t.eq(focus.RemoveFrom(702), true)
-    t.eq(said(c, "focus")[2], "  1. Last Steps: quests 701")
+    t.eq(said(c, "focus")[2], "  1. Last Steps: quests 701 (ends before 702)")
     t.eq(focus.RemoveLine(801), true)
     t.eq(said(c, "focus")[1], "custom route lines: 1")
 end
@@ -86,6 +87,13 @@ tests["focus e2e: a line whose quests are all done leaves with a chat line"] = f
     c.setQuestDone(801, true)
     c.advance(3, 6)
     t.eq(said(c), { "Custom route: Lone Errand is done.", "Custom route finished: back to your usual route." })
+end
+
+tests["focus e2e: a line needing a quest the data lacks says it is blocked"] = function(t)
+    local c = boot({ { quest = 901 } })
+    local got = said(c, "focus")
+    t.eq(got[2], "  1. Gated Errand: quests 901")
+    t.eq(got[3], "     blocked: needs quest(s) 999 first, which the quest data doesn't have (not routed)")
 end
 
 tests["focus e2e: a quest still in the log keeps its line"] = function(t)

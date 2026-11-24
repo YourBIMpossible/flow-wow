@@ -22,7 +22,10 @@ local _, ns = ...
 -- Compared with Flow Modules/Nav/Focus.lua: F.Before, F.After, F.Line,
 -- F.Cut, F.AddKey, F.RemoveFrom, F.RemoveLine, F.Filter's done lines,
 -- F.DumpLines and `/flow focus [clear]`. Flow's class-spell line names
--- (teach) are left out: no class quest data here.
+-- (teach) are left out: no class quest data here. F.Missing and the
+-- word's "(ends before ...)" and "blocked:" lines are Flow's; Flow's route
+-- mode words ("back to Most XP", "waiting: pick Custom route", the errand
+-- ticks) are not: there is no route mode choice here.
 -- LOOK ONLY: nothing is accepted, handed in or abandoned. Not tested in game.
 --
 -- Pure:
@@ -30,7 +33,8 @@ local _, ns = ...
 --   F.After(id, get) -> ids             quests chained after id, in order
 --   F.Line(id, get, isDone) -> ids, title
 --   F.Cut(ids, stop) -> ids             the ids before stop (nil: all)
---   F.Lines(lines, idsOf, slash) -> the word's lines
+--   F.Missing(id, get, isDone) -> ids   named prerequisites the data lacks
+--   F.Lines(lines, idsOf, slash[, missingOf]) -> the word's lines
 --     get(id) -> Questie's quest table or nil; isDone(id) -> true when done
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -49,7 +53,9 @@ F.ADDED = "Custom route: %s. Its steps are your route now."
 F.DONE = "Custom route: %s is done."
 F.FINISHED = "Custom route finished: back to your usual route."
 F.HEADER = "custom route lines: %d"
-F.LINE = "  %d. %s: quests %s"
+F.LINE = "  %d. %s: quests %s%s"
+F.ENDS = " (ends before %s)"
+F.BLOCKED = "     blocked: needs quest(s) %s first, which the quest data doesn't have (not routed)"
 F.CLEAR_HINT = "  %s focus clear"
 F.CLEARED = "custom route cleared"
 F.UNNAMED = "a quest line"
@@ -64,7 +70,7 @@ local function list(v)
     return type(v) == "table" and v or {}
 end
 
-function F.Before(id, get, isDone, out, seen, depth)
+function F.Before(id, get, isDone, out, seen, depth, missing)
     out, seen, depth = out or {}, seen or {}, depth or 0
     local q = quest(get, id)
     if not q or depth >= F.MAX_BACK then return out end
@@ -79,12 +85,22 @@ function F.Before(id, get, isDone, out, seen, depth)
         if not seen[p] then
             seen[p] = true
             if quest(get, p) then
-                F.Before(p, get, isDone, out, seen, depth + 1)
+                F.Before(p, get, isDone, out, seen, depth + 1, missing)
                 out[#out + 1] = p
+            elseif missing then
+                missing[#missing + 1] = p
             end
         end
     end
     return out
+end
+
+-- The prerequisites of id (not done) the quest data names but cannot
+-- give: a line that needs them is blocked there (Flow F.Missing).
+function F.Missing(id, get, isDone)
+    local missing = {}
+    F.Before(id, get, isDone, nil, nil, nil, missing)
+    return missing
 end
 
 function F.After(id, get)
@@ -121,13 +137,20 @@ function F.Cut(ids, stop)
     return out
 end
 
-function F.Lines(lines, idsOf, slash)
+function F.Lines(lines, idsOf, slash, missingOf)
     local out = { F.HEADER:format(#list(lines)) }
     for i, line in ipairs(list(lines)) do
         local ids, title = idsOf(line)
         local names = {}
         for j, x in ipairs(ids or {}) do names[j] = tostring(x) end
-        out[#out + 1] = F.LINE:format(i, tostring(line.title or title or F.UNNAMED), table.concat(names, ", "))
+        local ends = line.stop ~= nil and F.ENDS:format(tostring(line.stop)) or ""
+        out[#out + 1] = F.LINE:format(i, tostring(line.title or title or F.UNNAMED), table.concat(names, ", "), ends)
+        local miss = missingOf and missingOf(line) or nil
+        if type(miss) == "table" and #miss > 0 then
+            local m = {}
+            for j, x in ipairs(miss) do m[j] = tostring(x) end
+            out[#out + 1] = F.BLOCKED:format(table.concat(m, ", "))
+        end
     end
     out[#out + 1] = F.CLEAR_HINT:format(tostring(slash or "/zflow"))
     return out
@@ -262,9 +285,15 @@ function F.Declare(k, diag)
         return out
     end
 
+    local function missingOf(line)
+        local get = source()
+        if not get or type(line) ~= "table" or line.quest == nil then return nil end
+        return F.Missing(line.quest, get, isDone)
+    end
+
     function api.Lines()
         local id = k.id or ns.id
-        return F.Lines(saved() or {}, idsOf, id and id.slash)
+        return F.Lines(saved() or {}, idsOf, id and id.slash, missingOf)
     end
 
     -- A1-47: lines whose quests are all done leave, each with a line.
