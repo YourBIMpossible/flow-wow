@@ -6,6 +6,10 @@ local _, ns = ...
 -- the source here is the test's own.
 -- Offline: the reads are the fake client's, not the game's. Not tested in game.
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local PELT, POTION, BOLT = 4865, 858, 2996
 local INFO = {
@@ -78,21 +82,21 @@ local function joined(lines) return table.concat(lines or {}, " / ") end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l == text then return true end
+        if plain(l) == text then return true end
     end
     return false
 end
 
 local function starts(lines, prefix)
     for _, l in ipairs(lines or {}) do
-        if l:sub(1, #prefix) == prefix then return true end
+        if plain(l):sub(1, #prefix) == prefix then return true end
     end
     return false
 end
 
 local function finds(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l:find(text, 1, true) then return true end
+        if plain(l):find(text, 1, true) then return true end
     end
     return false
 end
@@ -292,6 +296,13 @@ tests["sell reservations: away from a merchant nothing is listed; the next visit
     t.ok(not finds(addon.sellList.last(), "x Ruined Pelt: "), "the new hold, no pelt offered: " .. joined(addon.sellList.last()))
     t.ok(has(addon.sellList.last(), "Ruined Pelt: 3 held for your steps"), "three held now: " .. joined(addon.sellList.last()))
     c.setMerchantOpen(false)
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

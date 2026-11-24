@@ -90,7 +90,7 @@ function SellView.Kept(bag, context)
             rows[#rows + 1] = {
                 key = item.key,
                 name = type(item.name) == "string" and item.name ~= "" and item.name or nil,
-                count = D.CountOf(decision, "keep"),
+                count = D.CountOf(decision, "keep"), quality = item.quality,
                 reason = part.reason, basis = part.basis, rule = part.rule,
             }
         end
