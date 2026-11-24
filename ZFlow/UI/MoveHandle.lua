@@ -16,7 +16,12 @@ MH.GRIP = 10 -- pixels: the width of the grip
 
 -- MH.Attach(k, client, spec) -> handle or nil. spec = { target (frame
 -- name), width, height (the frame, to keep it on the screen), place(point),
--- save(point), quiet (lead section 409: the bar drawn only on hover) }. nil when the client has no grip or no such frame.
+-- save(point), resized(delta) (F2, lead section 447 item 3: the raw wheel
+-- delta from a Ctrl+wheel over the target; the caller clamps it to its own
+-- scale range and persists it, then calls handle.scale to apply it — this
+-- grip reports the gesture, it does not judge the size), quiet (lead
+-- section 409: the bar drawn only on hover) }. nil when the client has no
+-- grip or no such frame.
 function MH.Attach(k, client, spec)
     if type(client) ~= "table" or type(client.moveHandle) ~= "function" then return nil end
     if type(spec) ~= "table" or type(spec.target) ~= "string" then return nil end
@@ -33,8 +38,13 @@ function MH.Attach(k, client, spec)
         if type(spec.place) == "function" then pcall(spec.place, to) end
         if type(spec.save) == "function" then pcall(spec.save, to) end
     end
+    local onResized = nil
+    if type(spec.resized) == "function" then
+        onResized = function(delta) pcall(spec.resized, delta) end
+    end
     local ok, handle = pcall(client.moveHandle, {
         target = spec.target, width = MH.GRIP, height = spec.height, onMoved = onMoved,
+        onResized = onResized,
         quiet = spec.quiet == true or nil,
     })
     if not ok or type(handle) ~= "table" then return nil end

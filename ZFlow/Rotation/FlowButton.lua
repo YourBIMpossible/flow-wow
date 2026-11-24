@@ -72,6 +72,12 @@ FB.LAYOUT = "flowButton.place"
 FB.PATH = "layout.rotation.frame"
 FB.SELF_LAYOUT = "selfButton.place"
 FB.SELF_PATH = "layout.buffButton.frame"
+-- F2 (lead section 447 item 3): the Flow button only, as Flow itself had it
+-- (Modules/MoveHandle.lua at b657e6e5; Cast.lua:457-461) — the self button
+-- is not wired to this, same as Flow.
+FB.SCALE = "flowButton.scale"
+FB.SCALE_PATH = "layout.rotation.scale"
+FB.SCALE_STEP = 0.1                  -- Flow's own ns.SCALE_STEP
 FB.FRAME = "FlowButton"
 FB.SELF_FRAME = "SelfButton"
 FB.SIZE = 52                         -- legacy BuffButton.lua BB.SIZE
@@ -277,8 +283,14 @@ function FB.Declare(k)
 
     local St = ns.Import.Stored
 
+    -- F2: the raw 0.5-2 scale factor, live setting first, else the one-time
+    -- import value — the same precedence flowPoint() already gives position.
+    local function flowScale()
+        return St.Scale(setting(FB.SCALE)) or St.RotationScale(raw("layout"))
+    end
+
     local function flowSize()
-        return roundSize(St.RotationScale(raw("layout")))
+        return roundSize(flowScale())
     end
 
     local function docked()
@@ -327,9 +339,12 @@ function FB.Declare(k)
     end
 
     -- One button: made once, out of a fight; set through a KeyFrame.
-    local function unit(which, frame, sizeOf, pointOf, layoutKey)
+    -- scaleKey, scaleOf: F2, the Flow button only (nil for the self button,
+    -- same as Flow itself had it). scaleOf() reads the raw 0.5-2 factor;
+    -- sizeOf() is the rounded pixel size already used for layout.
+    local function unit(which, frame, sizeOf, pointOf, layoutKey, scaleKey, scaleOf)
         local u = { which = which, why = "", hold = nil, wanted = nil, lastTex = nil }
-        local row, kf, face, iconSig
+        local row, kf, face, iconSig, grip
         local name = ns.id.framePrefix .. frame
         local madeSaid = false
 
@@ -430,6 +445,23 @@ function FB.Declare(k)
             if which == "flow" and units.self then units.self.place() end
         end
 
+        -- F2: Ctrl + wheel over the button. grip is the handle MoveHandle
+        -- gave us; delta is the raw wheel step from the client (positive:
+        -- away from the player, Flow's own "bigger" direction). Clamped to
+        -- St's own half-to-double range, rounded to its own 5% grain —
+        -- the same sanitizing an imported size already gets.
+        local function resized(delta)
+            if not scaleKey or not grip or type(grip.scale) ~= "function" then return end
+            if type(delta) ~= "number" or delta == 0 then return end
+            local step = delta > 0 and FB.SCALE_STEP or -FB.SCALE_STEP
+            local new = St.Scale(scaleOf() + step)
+            if not new then return end
+            local ok = k.settings:set(scaleKey, new)
+            if not ok then return end
+            local applied = grip.scale(new)
+            if applied then u.place() end
+        end
+
         local function ensure()
             if row then return true end
             if not client or type(client.clickRow) ~= "function" then return false end
@@ -455,7 +487,10 @@ function FB.Declare(k)
             local size = sizeOf()
             -- Lead section 409 item 3: the grip's yellow bar is drawn only
             -- while the mouse is over it or the button (quiet).
-            ns.MoveHandle.Attach(k, client, { target = name, width = size, height = size, save = moved, quiet = true })
+            grip = ns.MoveHandle.Attach(k, client, {
+                target = name, width = size, height = size, save = moved,
+                resized = resized, quiet = true,
+            })
             if type(client.hoverTip) == "function" then
                 local function line()
                     if which == "flow" then return FB.Tip(which, u.why, u.hold, suggestedNow()) end
@@ -489,7 +524,7 @@ function FB.Declare(k)
         return u
     end
 
-    units.flow = unit("flow", FB.FRAME, flowSize, flowPoint, FB.LAYOUT)
+    units.flow = unit("flow", FB.FRAME, flowSize, flowPoint, FB.LAYOUT, FB.SCALE, flowScale)
     units.self = unit("self", FB.SELF_FRAME, selfSize, selfPoint, FB.SELF_LAYOUT)
 
     function api.made() return units.flow.made() end
@@ -583,6 +618,12 @@ function FB.Declare(k)
             label = "Flow button position", group = "combat", synonyms = { "flow", "button", "position", "move" },
             keepOnResetAll = true,
             help = "Where the Flow button stands. Drag the grip on its left to move it, outside fights. Resetting puts it back.",
+        }, {
+            key = FB.SCALE, scope = "account", type = "number", path = FB.SCALE_PATH,
+            label = "Flow button size", group = "combat",
+            synonyms = { "flow", "button", "size", "scale", "resize", "bigger", "smaller" },
+            keepOnResetAll = true,
+            help = "How big the Flow button is, half to double size. Hold Ctrl and turn the mouse wheel over it to resize, outside fights. Resetting puts it back.",
         }, {
             key = FB.SELF_LAYOUT, scope = "account", type = "table", path = FB.SELF_PATH,
             label = "Self button position", group = "combat", synonyms = { "self", "buff button", "position", "move" },

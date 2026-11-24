@@ -3278,19 +3278,41 @@ function ns.make.fakeClient(opts)
     end
     function c.moveHandle(spec)
         if type(spec) ~= "table" or type(spec.target) ~= "string" then return nil end
-        local found = false
+        local found = nil
         for _, row in ipairs(c.clickRows) do
-            if row.spec.name == spec.target then found = true end
+            if row.spec.name == spec.target then found = row end
         end
-        if not found then return nil end
+        if found == nil then return nil end
         c.moveHandles[spec.target] = spec
-        return { show = function() return true end }
+        return {
+            show = function() return true end,
+            scale = function(factor)
+                if c.combatLockdown() ~= false then return false, "lockdown" end
+                if type(factor) ~= "number" or factor <= 0 then return false, "refused" end
+                found.scale = factor
+                return true
+            end,
+        }
     end
     function c.dragHandle(target, point)
         local spec = c.moveHandles[target]
         if spec == nil then return false, "absent" end
         if c.combatLockdown() ~= false then return false, "lockdown" end
         if type(spec.onMoved) == "function" then pcall(spec.onMoved, point) end
+        return true
+    end
+    -- F2 (lead section 447 item 3): Ctrl + wheel over the button, as the
+    -- offline stand-in for the real client's OnMouseWheel wiring
+    -- (Core/Client.lua). ctrl defaults to true (the usual case a test
+    -- cares about); pass false to check the gate is respected.
+    function c.wheelHandle(target, delta, ctrl)
+        local spec = c.moveHandles[target]
+        if spec == nil then return false, "absent" end
+        if c.combatLockdown() ~= false then return false, "lockdown" end
+        if ctrl == nil then ctrl = true end
+        if ctrl ~= true then return false, "no-ctrl" end
+        if type(delta) ~= "number" or delta == 0 then return false, "refused" end
+        if type(spec.onResized) == "function" then pcall(spec.onResized, delta) end
         return true
     end
     -- Flow and self buttons (Rotation/FlowButton.lua). Each helper answers

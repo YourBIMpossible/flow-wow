@@ -9082,12 +9082,34 @@ function ns.make.client(env)
             if type(spec.onMoved) == "function" then pcall(spec.onMoved, { a, r, x, y }) end
         end
         method(grip, "SetScript", "OnDragStop", onStop)
+        -- F2 (lead section 447 item 3): Ctrl + mouse wheel over the button
+        -- itself resizes it, same as Flow's move handle (Modules/MoveHandle.lua).
+        -- Reports the raw wheel delta; the add-on clamps, applies SetScale
+        -- and saves (Rotation/FlowButton.lua), same split as onMoved above.
+        if type(spec.onResized) == "function" then
+            local function ctrl()
+                local okC, down = call(env.IsControlKeyDown)
+                return okC and down == true
+            end
+            method(target, "EnableMouseWheel", true)
+            method(target, "SetScript", "OnMouseWheel", function(_, delta)
+                if not unlocked() or not ctrl() then return end
+                if hidden(delta) or type(delta) ~= "number" or delta == 0 then return end
+                pcall(spec.onResized, delta)
+            end)
+        end
         local h = {}
         function h.show(on)
             if not unlocked() then return false, "lockdown" end
             local called
             if on == true then called = method(grip, "Show") else called = method(grip, "Hide") end
             if not called then return false, "refused" end
+            return true
+        end
+        function h.scale(factor)
+            if not unlocked() then return false, "lockdown" end
+            if type(factor) ~= "number" or factor <= 0 then return false, "refused" end
+            if not method(target, "SetScale", factor) then return false, "refused" end
             return true
         end
         return h
