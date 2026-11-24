@@ -191,6 +191,7 @@ return {
         "UI/BankList.lua",
         "UI/KitHost.lua",
         "Items/Keep.lua",
+        "Items/Buyback.lua",
         "Items/RecipeBook.lua",
         "Items/RecipeLearned.lua",
         "Items/ProfRecipes.lua",
@@ -293,5 +294,7 @@ return {
     "Nav/HearthAdvice.lua",
     -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
     "Nav/GateWords.lua",
+    -- S32: boat and zeppelin dock names and wait words (Crossings calls them at run time).
+    "Nav/CrossingWords.lua",
     },
 }
