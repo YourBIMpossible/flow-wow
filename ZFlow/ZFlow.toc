@@ -216,6 +216,7 @@ Nav\BossKills.lua
 UI\DungeonWindow.lua
 Nav\QuestSpots.lua
 Nav\TripRoute.lua
+Nav\ZoneLeft.lua
 UI\MinimapPlace.lua
 UI\MinimapButton.lua
 Nav\Trails.lua

@@ -257,6 +257,8 @@ return {
     "Nav/QuestSpots.lua",
     -- P-TRIP (S39/S43/S40): quest routes and dungeon runs for the arrow (after RoutePlan, QuestSpots).
     "Nav/TripRoute.lua",
+    -- S37: what is still worth doing on this map before leaving (after TripRoute, Leaving).
+    "Nav/ZoneLeft.lua",
     -- Lead DISPATCH section 340: the minimap button's rim math (pure), then the button.
     "UI/MinimapPlace.lua",
     "UI/MinimapButton.lua",
