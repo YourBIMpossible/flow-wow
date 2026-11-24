@@ -5,6 +5,10 @@ local _, ns = ...
 -- Offline: the fake client's reads, not the game's. Not tested in game.
 
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local LINEN, BOLT, POTION = 2589, 2996, 858
 local INFO = {
@@ -546,7 +550,7 @@ tests["goal list: a recipe goal shows what is missing, or that it is ready"] = f
     local lines = say(c, "list")
     t.eq(lines[1], "Your goals (1):")
     local want = "15 x Bolt of Linen Cloth, made by Bolt of Linen Cloth: missing 10 x Linen Cloth"
-    t.eq(tostring(lines[2]):sub(1, #want), want, "20 Linen of 30")
+    t.eq(plain(tostring(lines[2])):sub(1, #want), want, "20 Linen of 30")
     local c2 = start({ { item = BOLT, count = 3, recipe = BOLT_RECIPE } }, false, BOOK)
     t.eq(say(c2, "list"), { "Your goals (1):", "3 x Bolt of Linen Cloth, made by Bolt of Linen Cloth: ready to make 3" })
 end
@@ -632,6 +636,13 @@ tests["goals: unavailable before login, then none once the store opens with no g
     c.advance(5, 20)
     t.ok(type(addon.store) == "table" and addon.store.opened, "the store is open")
     t.eq(addon.Reservations.Evaluate(READ).status, addon.Reservations.NONE, "no goal: none")
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

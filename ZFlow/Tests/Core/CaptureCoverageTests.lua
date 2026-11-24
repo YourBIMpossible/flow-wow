@@ -112,7 +112,7 @@ KIND.show[#KIND.show + 1] = "setEditBox"
 local READS = {
     now = false, clock = true, clockMs = false, addonLoaded = true, listenFaults = true, uptime = true, inCombat = true,
     money = true, bags = true, bagItems = true, bankOpen = true, bankItems = true, merchantOpen = false,
-    merchantItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, tradeSkillTools = true, trainer = false, faction = false, class = true,
+    merchantItems = false, returnableItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, tradeSkillTools = true, trainer = false, faction = false, class = true,
     stealthed = true, target = true, inRange = true, level = false, gear = false, spellCooldown = true,
     spellId = true, spellTexture = false, facing = true, spell = true, position = true, dead = true,
     ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, zone = true,
@@ -468,4 +468,8 @@ KIND.act[#KIND.act + 1] = "addonSend"
 READS.trackingRaw = false
 READS.tradeSkillAnswers = false
 
+
+-- S32: the zone and sub-zone words behind client.placeText, read by
+-- Nav/Crossings.lua to name a dock; never by the capture.
+READS.placeText = false
 return tests

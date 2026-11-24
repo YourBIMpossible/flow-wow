@@ -170,6 +170,7 @@ UI\SellList.lua
 UI\BankList.lua
 UI\KitHost.lua
 Items\Keep.lua
+Items\Buyback.lua
 Items\RecipeBook.lua
 Items\RecipeColours.lua
 Items\CraftSpots.lua
@@ -240,3 +241,7 @@ Nav\HearthAdvice.lua
 Nav\GateWords.lua
 Items\RecipeFacts.lua
 Items\VendorRecipes.lua
+Nav\CrossingWords.lua
+Nav\Activities.lua
+UI\Lite.lua
+Nav\ClassTrainerStep.lua

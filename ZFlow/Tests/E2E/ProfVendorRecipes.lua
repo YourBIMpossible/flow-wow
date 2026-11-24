@@ -103,6 +103,8 @@ end
 tests["prof vendor recipes: a vendor on another continent gives no step"] = function(t)
     local c, addon = start()
     openVendor(c)
+    -- A check that always runs: a plan with no step made no checks below.
+    t.eq(kindsOf((plan(addon))), { "buy_recipe" }, "offered on the vendor's continent")
     c.setZone(2, 1412)
     c.setPosition(1412, 0.5, 0.5)
     local steps = plan(addon)

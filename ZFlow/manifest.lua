@@ -191,6 +191,7 @@ return {
         "UI/BankList.lua",
         "UI/KitHost.lua",
         "Items/Keep.lua",
+        "Items/Buyback.lua",
         "Items/RecipeBook.lua",
         -- Lead section 413: the profession window's row colours, saved for the profession plan (after RecipeBook).
         "Items/RecipeColours.lua",
@@ -301,5 +302,13 @@ return {
     "Items/RecipeFacts.lua",
     -- Lead section 422 item 1: recipes seen for sale at vendors, for the profession plan (read by ProfPlan at call time).
     "Items/VendorRecipes.lua",
+    -- S32: boat and zeppelin dock names and wait words (Crossings calls them at run time).
+    "Nav/CrossingWords.lua",
+    -- S38 (lead section 395 item 6): activities and route lanes (after Trip, Nodes).
+    "Nav/Activities.lua",
+    -- G57: lite mode, the perf.lite row and the lite word (after Diag and every module it switches off).
+    "UI/Lite.lua",
+    -- G44 (section 397 item 14): the class trainer route step (after TrainAdvice and the packs).
+    "Nav/ClassTrainerStep.lua",
     },
 }

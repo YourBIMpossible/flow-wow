@@ -226,7 +226,8 @@ function T.Declare(k, diag)
             end
         end
         local found = agg and T.Deals({ [id] = agg }, function()
-            return type(item) == "table" and type(item.name) == "string" and item.name or nil
+            return type(item) == "table" and type(item.name) == "string"
+                and ns.ItemPresent.Tint(item.name, item.quality) or nil
         end, candidate)[1] or nil
         if found then found.at = ctx.client.clock() end
         local was = deals[id]
