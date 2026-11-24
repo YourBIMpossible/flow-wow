@@ -65,6 +65,26 @@ local USE = ns.id.title .. ": Use it now: Fishing is 70, the best moment for +5"
 
 tests["skill books known: every row of the list names a skill, an amount, where and when"] = function(t)
     local SB = ns.SkillBoosters
+    -- The list is empty until a book is read in game (the runner fails a
+    -- test that makes no check), so the rule for a row is checked on rows
+    -- made here too: a whole row is taken, one with a part missing is not.
+    t.eq(type(SB.KNOWN), "table", "the list is there")
+    local rows = {
+        [1] = ENTRY,
+        [2] = { amount = 5, source = "test record", seen = "2026-11-24" },
+        [3] = { skill = "Fishing", source = "test record", seen = "2026-11-24" },
+        [4] = { skill = "Fishing", amount = 0, source = "test record", seen = "2026-11-24" },
+        [5] = { skill = "Fishing", amount = 5, seen = "2026-11-24" },
+        [6] = { skill = "Fishing", amount = 5, source = "test record" },
+    }
+    local function get(id) return rows[id] end
+    t.ok(SB.Known(1, get) == ENTRY, "a whole row is a row")
+    t.eq(SB.Known(2, get), nil, "no skill: not a row")
+    t.eq(SB.Known(3, get), nil, "no amount: not a row")
+    t.eq(SB.Known(4, get), nil, "an amount of 0: not a row")
+    t.eq(SB.Known(5, get), nil, "no source: not a row")
+    t.eq(SB.Known(6, get), nil, "no date seen: not a row")
+    t.eq(SB.Known(7, get), nil, "not in the list: not a row")
     for id, e in pairs(SB.KNOWN) do
         t.ok(type(id) == "number", "an item ID: " .. tostring(id))
         t.ok(SB.Known(id) == e, "a whole row: " .. tostring(id))
