@@ -7802,6 +7802,186 @@ function ns.make.client(env)
         function h.open() return waiting end
         return h
     end
+    -- Lead section 410: Z-Flow's settings as the game's own rows, under
+    -- Options > AddOns. One entry for the add-on, one under it for each
+    -- topic; each setting is a checkbox, slider or dropdown the game builds,
+    -- so look, spacing, scrolling, search and Defaults are the game's.
+    --
+    -- NOT CONFIRMED ON THIS CLIENT. No add-on installed on 16001 and no copy
+    -- of the client's interface source uses these calls; every installed
+    -- add-on registers a canvas (Questie's QuestieOptionsEngine.lua,
+    -- ForeverDungeonJournal's OptionsPanel.lua, Ace3's AceConfigDialog-3.0).
+    -- The names and argument orders below are the ones of the game's
+    -- Settings API as later clients have it, so every one is looked for
+    -- before anything is registered, and the answer is nil (the caller keeps
+    -- its own window) when one is missing. RegisterProxySetting has had two
+    -- argument orders; a setting that is never shown is registered first to
+    -- learn which one this client reads, and nil is the answer when neither
+    -- reads back. The add-on's entry is added to the list last, so a client
+    -- that fails part way shows no empty entry.
+    --
+    --   c.optionsNative(spec) -> h | nil   (show)
+    --   spec = { title, name, rows = { row, ... },
+    --            topics = { { id, name, rows = { row, ... } }, ... } }
+    --   row = { kind = "header", text }
+    --       | { kind = "button", label, text, tip, run = fn }
+    --       | { kind = "toggle" | "number" | "choice", key, label, tip,
+    --           default, get = fn() -> value, set = fn(value),
+    --           can = fn() -> true when it may be changed now,
+    --           tags = { word, ... }, min, max, step (number),
+    --           choices = { { value, label }, ... } (choice) }
+    --   h.open(topicId or nil) -> true when the game's Options was asked to
+    --     open at that topic's entry (the add-on's own entry for nil)
+    --   h.count() -> how many rows the game took
+    --   h.order() -> "new" | "old": the argument order that read back
+    function c.optionsNative(spec)
+        spec = type(spec) == "table" and spec or {}
+        local S = env.Settings
+        if type(S) ~= "table" then return nil end
+        local NEED = { "RegisterVerticalLayoutCategory", "RegisterVerticalLayoutSubcategory",
+            "RegisterAddOnCategory", "RegisterProxySetting", "OpenToCategory", "CreateSlider",
+            "CreateSliderOptions", "CreateControlTextContainer" }
+        for i = 1, #NEED do
+            if type(S[NEED[i]]) ~= "function" then return nil end
+        end
+        local checkbox = S.CreateCheckbox or S.CreateCheckBox
+        local dropdown = S.CreateDropdown or S.CreateDropDown
+        if type(checkbox) ~= "function" or type(dropdown) ~= "function" then return nil end
+        local title = type(spec.title) == "string" and spec.title or "Add-on"
+        local prefix = (type(spec.name) == "string" and spec.name or "AddOn") .. "_"
+        local okP, parent, parentLayout = call(S.RegisterVerticalLayoutCategory, title)
+        if not okP or type(parent) ~= "table" then return nil end
+
+        local VT = type(S.VarType) == "table" and S.VarType or {}
+        local function varType(v)
+            if type(v) == "boolean" then return VT.Boolean or "boolean" end
+            if type(v) == "number" then return VT.Number or "number" end
+            return VT.String or "string"
+        end
+        local order = "new"
+        local function proxy(cat, variable, default, label, get, set)
+            local ok, setting
+            if order == "new" then
+                ok, setting = call(S.RegisterProxySetting, cat, variable, varType(default), label, default, get, set)
+            else
+                ok, setting = call(S.RegisterProxySetting, cat, variable, {}, varType(default), label, default, get, set)
+            end
+            if ok and type(setting) == "table" then return setting end
+            return nil
+        end
+        local function readsBack(setting)
+            if not setting then return false end
+            local ok, v = method(setting, "GetValue")
+            return ok and v == true
+        end
+        local function yes() return true end
+        local function nothing() end
+        if not readsBack(proxy(parent, prefix .. "probe", false, title, yes, nothing)) then
+            order = "old"
+            if not readsBack(proxy(parent, prefix .. "probe2", false, title, yes, nothing)) then return nil end
+        end
+
+        local made = 0
+        local function add(layout, init)
+            if type(layout) ~= "table" or type(init) ~= "table" then return false end
+            return (method(layout, "AddInitializer", init)) == true
+        end
+        local function control(cat, r, setting)
+            if r.kind == "toggle" then return call(checkbox, cat, setting, r.tip) end
+            if r.kind == "number" then
+                local okO, opts = call(S.CreateSliderOptions, r.min, r.max, r.step)
+                if not okO or type(opts) ~= "table" then return false end
+                local M = env.MinimalSliderWithSteppersMixin
+                if type(M) == "table" and type(M.Label) == "table" and M.Label.Right ~= nil then
+                    method(opts, "SetLabelFormatter", M.Label.Right)
+                end
+                return call(S.CreateSlider, cat, setting, opts, r.tip)
+            end
+            if r.kind == "choice" then
+                local function options()
+                    local okC, box = call(S.CreateControlTextContainer)
+                    if not okC or type(box) ~= "table" then return {} end
+                    for _, choice in ipairs(type(r.choices) == "table" and r.choices or {}) do
+                        method(box, "Add", choice.value, choice.label)
+                    end
+                    local okD, data = method(box, "GetData")
+                    if okD and type(data) == "table" then return data end
+                    return {}
+                end
+                return call(dropdown, cat, setting, options, r.tip)
+            end
+            return false
+        end
+        local function rowsInto(cat, layout, rows)
+            for _, r in ipairs(type(rows) == "table" and rows or {}) do
+                if type(r) ~= "table" then
+                    -- not a row
+                elseif r.kind == "header" then
+                    local ok, init = call(env.CreateSettingsListSectionHeaderInitializer, r.text)
+                    if ok then add(layout, init) end
+                elseif r.kind == "button" then
+                    local run = r.run
+                    local ok, init = call(env.CreateSettingsButtonInitializer, r.label, r.text, function()
+                        if type(run) == "function" then pcall(run) end
+                    end, r.tip, true)
+                    if ok and add(layout, init) then made = made + 1 end
+                elseif type(r.key) == "string" and type(r.get) == "function" and type(r.set) == "function" then
+                    local get, set = r.get, r.set
+                    local setting = proxy(cat, prefix .. r.key, r.default, r.label, function()
+                        local ok, v = pcall(get)
+                        if ok and v ~= nil then return v end
+                        return r.default
+                    end, function(v)
+                        if hidden(v) then return end
+                        pcall(set, v)
+                    end)
+                    if setting then
+                        local ok, init = control(cat, r, setting)
+                        if ok and type(init) == "table" then
+                            made = made + 1
+                            local can = r.can
+                            if type(can) == "function" then
+                                method(init, "AddModifyPredicate", function()
+                                    local okC, may = pcall(can)
+                                    return okC and may == true
+                                end)
+                            end
+                            if type(r.tags) == "table" and #r.tags > 0 then
+                                method(init, "AddSearchTags", unpack(r.tags))
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        local byId = {}
+        rowsInto(parent, parentLayout, spec.rows)
+        for _, topic in ipairs(type(spec.topics) == "table" and spec.topics or {}) do
+            if type(topic) == "table" then
+                local ok, sub, layout = call(S.RegisterVerticalLayoutSubcategory, parent, tostring(topic.name))
+                if ok and type(sub) == "table" then
+                    if topic.id ~= nil then byId[topic.id] = sub end
+                    rowsInto(sub, layout, topic.rows)
+                end
+            end
+        end
+        if made == 0 then return nil end
+        call(S.RegisterAddOnCategory, parent)
+
+        local h = {}
+        function h.open(topicId)
+            local cat = topicId ~= nil and byId[topicId] or parent
+            local id = cat
+            local okI, got = method(cat, "GetID")
+            if okI and got ~= nil then id = got end
+            return (call(S.OpenToCategory, id)) == true
+        end
+        function h.count() return made end
+        function h.order() return order end
+        return h
+    end
+
     -- ------------------------------------------------------------ end N57
 
     -- ------------------------------------------------------------ N67

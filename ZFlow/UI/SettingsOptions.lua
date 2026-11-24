@@ -82,7 +82,10 @@ O.DESC_MAX = 56
 -- A topic of more rows than this is headed by section.
 O.SECTIONS_OVER = 10
 -- The entry in the game's Options > AddOns: one line and one button.
-O.ENTRY_LINE = "The settings are in a window of their own."
+O.ENTRY_LINE = "The game's Options has no setting rows for add-ons here, so the settings are in a window of their own. Nothing else changed."
+-- The first thing that window says when it is the fallback (lead section
+-- 410): why it is not the game's Options, and that nothing else changed.
+O.FALLBACK = "The game's Options has no setting rows for add-ons here, so the settings are in this window. Nothing else changed."
 O.ENTRY_OPEN = "open"
 O.ENTRY_FAILED = "the settings window could not be shown"
 -- Where the window's place is saved, for the account:
@@ -245,6 +248,9 @@ end
 function O.Declare(k)
     local api = {}
     local page, entry, ctx, none
+    -- Lead section 410: the settings as the game's own rows, when the
+    -- client has them; this window is then only for what has no such row.
+    local native, toldFallback
     local cancels, watched = {}, {}
     -- status: the last thing said about a change (for a reader and a test);
     -- notice: what of it the window shows above the rows (a plain "Saved"
@@ -279,6 +285,9 @@ function O.Declare(k)
         if statusText then
             status, notice = statusText, statusText
             if quiet then notice = "" end
+        elseif not native and not toldFallback and status == nil and view.loaded then
+            toldFallback = true
+            status, notice = O.FALLBACK, O.FALLBACK
         elseif not view.loaded then
             status, notice = O.NOT_LOADED, O.NOT_LOADED
         end
@@ -398,7 +407,7 @@ function O.Declare(k)
         return page
     end
 
-    function api.open(to)
+    local function ownOpen(to)
         if type(to) == "table" then
             if to.topic ~= nil then ns.SettingsPage.Goto(k, to.topic) end
             if to.query ~= nil then ns.SettingsPage.Find(k, to.query) end
@@ -425,6 +434,52 @@ function O.Declare(k)
         end
         if opened ~= true then return false end
         return true
+    end
+
+    -- Lead section 410: the minimap button and the slash word come here.
+    -- With the game's own rows the game's Options opens at the add-on's
+    -- entry (at a topic's, when one was asked for); a search, and a client
+    -- without those rows, get the window above.
+    function api.open(to)
+        if not native or not ctx or (type(to) == "table" and to.query ~= nil) then return ownOpen(to) end
+        -- A search already on (the slash word's "settings <words>") is
+        -- shown in the window too: the game's Options has its own search.
+        if type(to) ~= "table" and ns.SettingsPage.State(k).query ~= nil then return ownOpen(to) end
+        local lock
+        if type(ctx.client.combatLockdown) == "function" then lock = ctx.client.combatLockdown() end
+        if lock ~= false then
+            if lock == true then return false, O.LOCKED end
+            return false, O.LOCK_UNKNOWN
+        end
+        local topic
+        if type(to) == "table" and to.topic ~= nil then
+            topic = to.topic
+            ns.SettingsPage.Goto(k, topic)
+        end
+        local ok, opened = pcall(native.open, topic)
+        if not ok then k.problems:add(O.NAME, "open", opened) end
+        if ok and opened == true then return true end
+        return ownOpen(to)
+    end
+    -- A row of the game's Options was changed: the one checked set, and
+    -- a refusal said in chat (the game's row has no line for it).
+    local function nativeSet(key, value)
+        local ok, why = act(key, value)
+        if not ok and ctx and type(ctx.client.print) == "function" then
+            local id = k.id or ns.id
+            local row = type(key) == "string" and k.settings:row(key) or nil
+            local name = row and row.label or key
+            pcall(ctx.client.print, tostring(id.title) .. ": " .. tostring(name) .. " - " .. tostring(why))
+        end
+        return ok, why
+    end
+    local function nativeAct(key)
+        local ok, said = nav("action", key)
+        if said ~= nil and ctx and type(ctx.client.print) == "function" then
+            local id = k.id or ns.id
+            pcall(ctx.client.print, tostring(id.title) .. ": " .. tostring(said))
+        end
+        return ok, said
     end
 
     -- The add-on's entry in the game's Options > AddOns: one line and the
@@ -473,7 +528,13 @@ function O.Declare(k)
         start = function(c)
             ctx = c
             if keys then keys.attach(c.client, function(text) draw(text) end) end
-            ensureEntry()
+            if type(ns.SettingsNative) == "table" then
+                native = ns.SettingsNative.Attach(k, c, {
+                    set = nativeSet, act = nativeAct, own = ownOpen, keys = keys ~= nil,
+                })
+            end
+            -- The one-button entry only where the game has no rows for us.
+            if not native then ensureEntry() end
             -- A value changed elsewhere (the setting word) shows at once in
             -- an open window: draw() follows every row it has drawn.
             if ensure() then watch() end
