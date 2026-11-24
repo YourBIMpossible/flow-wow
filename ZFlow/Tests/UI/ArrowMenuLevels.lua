@@ -101,7 +101,7 @@ return {
         local top = M.Level(items)
         local keys = {}
         for i, r in ipairs(top) do keys[i] = r.sep and "-" or r.key end
-        t.eq(keys, { "layout", "show", "style", "dungeons", "route", "-", "settings.travel", "settings", "feedback" })
+        t.eq(keys, { "step", "layout", "show", "style", "dungeons", "-", "settings.travel", "settings", "feedback" })
         t.eq(rowAt(top, "dungeons").text, T.MENU.dungeons, "lead section 318: the Dungeon Quests window")
         t.eq(M.Action("dungeons", state()), { window = "dungeonWindow" })
         t.eq(rowAt(top, "feedback").text, T.MENU.feedback, "row N73: the feedback window")
@@ -152,7 +152,7 @@ return {
         t.ok(type(q.enter) == "function" and type(q.pickRow) == "function", "the fake arrow has submenu rows")
         if type(q.enter) ~= "function" then return end
         q.click("right")
-        t.eq(#q.menuItems, 9, "seven rows, the Dungeon quests row (lead section 318) and the Route row (387 R3)")
+        t.eq(#q.menuItems, 9, "the step row (lead section 387), seven rows and the Dungeon quests row (lead section 318)")
         t.eq(q.menuDepth, 0)
         t.eq(q.pickRow("separate"), false, "not offered on the top level")
         t.eq(q.enter("settings"), false, "not a submenu row")
@@ -168,7 +168,7 @@ return {
         q.click("right")
         t.eq(q.enter("show"), true)
         t.eq(q.pickRow(M.BACK), true)
-        t.eq(#q.menuItems, 9, "the top level again (with the Dungeon quests and Route rows, 318, 387 R3)")
+        t.eq(#q.menuItems, 9, "the top level again (with the step row, lead section 387, and the Dungeon quests row, lead section 318)")
         t.ok(rowAt(q.menuItems, "layout") ~= nil)
         t.eq(k.problems:count(), 0)
     end,
