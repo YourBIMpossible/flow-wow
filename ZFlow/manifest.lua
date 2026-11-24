@@ -285,6 +285,9 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
+    -- R4, R5: the route beside the quest log, and its marks and zone card on the world map.
+    "UI/RouteList.lua",
+    "UI/MapRoute.lua",
     -- Old-Flow parity R6: your class buffs with the time left, under the player frame (after the class packs and the kit).
     "UI/BuffStrip.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).

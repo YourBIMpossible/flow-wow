@@ -37,7 +37,7 @@ local _, ns = ...
 --     never a made-up number. An objective stop carries it as stop.need,
 --     read again with the log; the step and the list say it in place of the
 --     raw count.
--- Module "tripRoute" provides Step, Plan, Run, Skip, Off, Lines.
+-- Module "tripRoute" provides Step, Plan, Run, Skip, Off, Lines, View.
 -- Not tested in game.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -489,6 +489,28 @@ function T.Declare(k, diag)
         return { kind = route.kind, label = route.label, stops = stops }
     end
 
+    -- Look only (UI/RouteList.lua, UI/MapRoute.lua): a copy of every stop from
+    -- the current one on, held ones too, and what was left off the route, or
+    -- nil with no route. Changes nothing.
+    function api.View()
+        if not route then return nil end
+        local stops, left = {}, {}
+        for i = at, #route.stops do
+            local s = route.stops[i]
+            if not s.gone then
+                stops[#stops + 1] = { quest = s.quest, objective = s.objective, turnIn = s.turnIn, kind = s.kind,
+                                      label = s.label, detail = s.detail, held = s.held,
+                                      place = { map = s.place.map, x = s.place.x, y = s.place.y } }
+            end
+        end
+        for _, l in ipairs(type(route.left) == "table" and route.left or {}) do
+            if type(l) == "table" then
+                left[#left + 1] = { quest = l.quest, label = l.label, detail = l.detail, why = l.why }
+            end
+        end
+        return { kind = route.kind, label = route.label, note = route.note, stops = stops, left = left }
+    end
+
     local function say(lines)
         for _, line in ipairs(lines) do tell(line) end
     end
@@ -537,7 +559,7 @@ function T.Declare(k, diag)
         name = T.NAME,
         needs = { "client", "store", "settings" },
         provides = { Step = api.Step, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
-                     Lines = api.Lines, Current = api.Current },
+                     Lines = api.Lines, Current = api.Current, View = api.View },
         start = function(c) ctx = c end,
         stop = function() route, at = nil, 1 end,
     })

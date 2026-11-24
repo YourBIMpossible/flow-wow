@@ -12443,6 +12443,255 @@ function ns.make.client(env)
         end
         return out
     end
+    -- --------------------------------- route beside the quest log and on the map
+    -- The seams UI/RouteList.lua and UI/MapRoute.lua draw through. All of
+    -- it is a first guess, not seen on 16001: QuestLogFrame and its
+    -- IsShown / GetRight / GetTop / GetHeight; ToggleWorldMap, ShowUIPanel
+    -- and WorldMapFrame:SetMapID; C_Map.GetMapInfo and C_Map.GetMapLevels;
+    -- the canvas WorldMapFrame.ScrollContainer.Child (as c.mapPins above),
+    -- the portrait mask picture, GameTooltip, TooltipBackdropTemplate.
+    -- Needs a game test.
+
+    local function finiteNumber(v)
+        return v ~= nil and not hidden(v) and type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+    end
+
+    -- c.questLogFrame() -> { shown, right, top, height } or nil when the
+    -- game has no quest log frame or it will not say. right and top are
+    -- the frame's own edges (screen units, from the bottom left); they
+    -- are nil while it is hidden or does not answer plain numbers.
+    function c.questLogFrame()
+        local f = env.QuestLogFrame
+        if f == nil then return nil end
+        local okS, shown = method(f, "IsShown")
+        if not okS or hidden(shown) then return nil end
+        local out = { shown = shown == true }
+        if not out.shown then return out end
+        local okR, right = method(f, "GetRight")
+        local okT, top = method(f, "GetTop")
+        local okH, height = method(f, "GetHeight")
+        if okR and finiteNumber(right) then out.right = right end
+        if okT and finiteNumber(top) then out.top = top end
+        if okH and finiteNumber(height) then out.height = height end
+        return out
+    end
+
+    -- c.showMap(map) -> true when the world map was asked to show that
+    -- uiMapID. The world map is opened first when it is closed. Nothing is
+    -- done unless InCombatLockdown answers a plain false.
+    function c.showMap(map)
+        if not finiteNumber(map) then return false end
+        local okLock, locked = call(env.InCombatLockdown)
+        if not okLock or hidden(locked) or locked ~= false then return false end
+        local wm = env.WorldMapFrame
+        if wm == nil then return false end
+        local okS, shown = method(wm, "IsShown")
+        if not okS or hidden(shown) then return false end
+        if shown ~= true then
+            local opened = false
+            if type(env.ToggleWorldMap) == "function" then opened = call(env.ToggleWorldMap) end
+            if not opened and type(env.ShowUIPanel) == "function" then opened = call(env.ShowUIPanel, wm) end
+            if not opened then return false end
+        end
+        local okM = method(wm, "SetMapID", map)
+        return okM == true
+    end
+
+    -- c.mapInfo(map) -> { name, low, high } or nil when the game will not
+    -- say anything about that uiMapID. name: the game's own name for the
+    -- map. low, high: the levels the game itself gives for it; nil when it
+    -- gives none (never 0).
+    function c.mapInfo(map)
+        if not finiteNumber(map) then return nil end
+        local cm = env.C_Map
+        if type(cm) ~= "table" then return nil end
+        local out = {}
+        local okI, info = call(cm.GetMapInfo, map)
+        if okI and type(info) == "table" and type(info.name) == "string" and not hidden(info.name)
+            and info.name ~= "" then
+            out.name = info.name
+        end
+        local okL, low, high = call(cm.GetMapLevels, map)
+        if okL and finiteNumber(low) and finiteNumber(high) and low > 0 and high >= low then
+            out.low, out.high = low, high
+        end
+        if out.name == nil and out.low == nil then return nil end
+        return out
+    end
+
+    -- c.routePins() -> h, or nil when there is no world map, no canvas or
+    -- no frame could be made. Round numbered marks over the map's canvas,
+    -- made as needed and kept; each shows a tooltip under the mouse.
+    --   h.map() -> the uiMapID the world map shows, or nil (as c.mapPins)
+    --   h.draw(pins)   pins = { { n, x, y, text, sub, now } }: x, y shares
+    --       (x right, y down) of the shown map; n the number written on
+    --       the mark; text, sub the tooltip's lines; now marks the stop
+    --       the arrow points at. Marks past the count are hidden.
+    --   h.clear()   hides them all
+    -- The canvas's own scale is not read (as c.mapPins): the marks may
+    -- draw small or large when the map is zoomed.
+    function c.routePins()
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil end
+        local okC, canvas = pcall(function() return wm.ScrollContainer.Child end)
+        if not okC or canvas == nil then return nil end
+        local ok, host = call(env.CreateFrame, "Frame", nil, canvas)
+        if not ok or host == nil then return nil end
+        method(host, "SetAllPoints", canvas)
+        method(host, "SetFrameStrata", "HIGH")
+        local marks, count = {}, 0
+        local SIZE = 22
+
+        local function make()
+            local okB, b = call(env.CreateFrame, "Button", nil, host)
+            if not okB or b == nil then return false end
+            method(b, "SetSize", SIZE, SIZE)
+            local m = { button = b }
+            local okD, disc = method(b, "CreateTexture", nil, "BACKGROUND")
+            if okD and disc ~= nil then
+                method(disc, "SetAllPoints", b)
+                method(disc, "SetTexture", "Interface\\CharacterFrame\\TempPortraitAlphaMask")
+                m.disc = disc
+            end
+            local okF, fs = method(b, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+            if okF and fs ~= nil then
+                method(fs, "SetPoint", "CENTER", b, "CENTER", 0, 0)
+                m.label = fs
+            end
+            method(b, "SetScript", "OnEnter", function()
+                local tip = env.GameTooltip
+                if tip == nil or m.text == nil then return end
+                method(tip, "SetOwner", b, "ANCHOR_RIGHT")
+                method(tip, "SetText", m.text)
+                if m.sub ~= nil then method(tip, "AddLine", m.sub, 1, 1, 1, true) end
+                method(tip, "Show")
+            end)
+            method(b, "SetScript", "OnLeave", function()
+                local tip = env.GameTooltip
+                if tip ~= nil then method(tip, "Hide") end
+            end)
+            return m
+        end
+
+        local h = {}
+        function h.map()
+            local okS, shown = method(wm, "IsShown")
+            if not okS or shown ~= true then return nil end
+            local okM, map = method(wm, "GetMapID")
+            if not okM or not finiteNumber(map) then return nil end
+            return map
+        end
+        function h.clear()
+            for i = 1, count do if marks[i] then method(marks[i].button, "Hide") end end
+            count = 0
+        end
+        function h.draw(pins)
+            local okW, w = method(canvas, "GetWidth")
+            local okH, ht = method(canvas, "GetHeight")
+            if not okW or not okH or not finiteNumber(w) or not finiteNumber(ht) or w <= 0 or ht <= 0 then
+                h.clear()
+                return false
+            end
+            local n = 0
+            for _, p in ipairs(type(pins) == "table" and pins or {}) do
+                if type(p) == "table" and finiteNumber(p.x) and finiteNumber(p.y) then
+                    n = n + 1
+                    local m = marks[n]
+                    if m == nil then
+                        m = make()
+                        marks[n] = m
+                    end
+                    if m then
+                        m.text = type(p.text) == "string" and p.text or nil
+                        m.sub = type(p.sub) == "string" and p.sub ~= "" and p.sub or nil
+                        if m.disc then
+                            if p.now == true then
+                                method(m.disc, "SetVertexColor", 0.1, 0.45, 0.1, 0.95)
+                            else
+                                method(m.disc, "SetVertexColor", 0.1, 0.1, 0.1, 0.9)
+                            end
+                        end
+                        if m.label then method(m.label, "SetText", tostring(p.n or "")) end
+                        method(m.button, "ClearAllPoints")
+                        method(m.button, "SetPoint", "CENTER", canvas, "TOPLEFT", p.x * w, -p.y * ht)
+                        method(m.button, "Show")
+                    end
+                end
+            end
+            for i = n + 1, count do if marks[i] then method(marks[i].button, "Hide") end end
+            count = n
+            return true
+        end
+        return h
+    end
+
+    -- c.mapCard() -> h, or nil when there is no world map or no frame
+    -- could be made. One small card in the map's top left corner, in the
+    -- game's tooltip look, as wide and tall as its words.
+    --   h.show({ title, lines = { text, ... } })   draws it
+    --   h.hide()
+    function c.mapCard()
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil end
+        local okC, area = pcall(function() return wm.ScrollContainer end)
+        if not okC or area == nil then area = wm end
+        local ok, f = call(env.CreateFrame, "Frame", nil, wm, "TooltipBackdropTemplate")
+        if not ok or f == nil then
+            ok, f = call(env.CreateFrame, "Frame", nil, wm)
+            if not ok or f == nil then return nil end
+            local okBg, bg = method(f, "CreateTexture", nil, "BACKGROUND")
+            if okBg and bg ~= nil then
+                method(bg, "SetAllPoints", f)
+                method(bg, "SetColorTexture", 0, 0, 0, 0.8)
+            end
+        end
+        method(f, "SetFrameStrata", "HIGH")
+        method(f, "SetPoint", "TOPLEFT", area, "TOPLEFT", 10, -10)
+        method(f, "Hide")
+        local PAD, GAP = 10, 3
+        local strings = {}
+        local function str(i)
+            if strings[i] == nil then
+                local okF, fs = method(f, "CreateFontString", nil, "OVERLAY",
+                    i == 1 and "GameFontNormal" or "GameFontHighlightSmall")
+                strings[i] = okF and fs or false
+                if strings[i] then method(strings[i], "SetJustifyH", "LEFT") end
+            end
+            return strings[i]
+        end
+
+        local h = {}
+        function h.hide() method(f, "Hide") end
+        function h.show(card)
+            if type(card) ~= "table" then
+                h.hide()
+                return false
+            end
+            local words = { tostring(card.title or "") }
+            for _, l in ipairs(type(card.lines) == "table" and card.lines or {}) do words[#words + 1] = tostring(l) end
+            local width, y = 0, PAD
+            for i, text in ipairs(words) do
+                local fs = str(i)
+                if fs then
+                    method(fs, "SetText", text)
+                    method(fs, "ClearAllPoints")
+                    method(fs, "SetPoint", "TOPLEFT", f, "TOPLEFT", PAD, -y)
+                    method(fs, "Show")
+                    local okW, sw = method(fs, "GetStringWidth")
+                    local okH, sh = method(fs, "GetStringHeight")
+                    if okW and finiteNumber(sw) and sw > width then width = sw end
+                    y = y + ((okH and finiteNumber(sh) and sh > 0) and sh or 12) + GAP
+                end
+            end
+            for i = #words + 1, #strings do if strings[i] then method(strings[i], "Hide") end end
+            if width <= 0 then width = 160 end
+            method(f, "SetSize", width + PAD * 2, y - GAP + PAD)
+            method(f, "Show")
+            return true
+        end
+        return h
+    end
+    -- ----------------------------- end route beside the quest log and on the map
     -- Lead section 382 (Nav/ProfFeed.lua): the name of the continent a map
     -- lies on, for "Next time you are in <continent>". C_Map.GetMapInfo up
     -- the parents to the first of Enum.UIMapType.Continent (2 when the enum
