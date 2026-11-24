@@ -36,6 +36,7 @@ N.CROSSING_WAIT_MIN = 5      -- seconds: shorter still time is not a wait
 N.CROSSING_WAIT_MAX = 600    -- seconds: longer is away from the keys, not a wait
 N.CROSSING_STILL = 0.0005    -- map share: this little a move is standing still
 N.CROSSING_AT_BOARD = 30     -- yards: this close to the boarding place is standing at it (a first guess)
+N.CROSSING_DOCK_REACH = 200  -- yards: a wait read farther than this from the last spot before the crossing is no wait (a first guess)
 N.CROSSING_WAIT_UNKNOWN = "Wait here for it: when it leaves is not known yet."
 
 local WHAT = { boat = "boat", zeppelin = "zeppelin" }
@@ -99,16 +100,27 @@ function N.CrossingStill(run, here, now, name)
     local fresh = { cont = here.cont, map = here.map, x = here.x, y = here.y,
                     name = named(name) and name or nil, since = now }
     if type(run) ~= "table" or not num(run.since) then return fresh, nil end
-    return fresh, { cont = run.cont, name = run.name, secs = now - run.since }
+    return fresh, { cont = run.cont, map = run.map, x = run.x, y = run.y, name = run.name, secs = now - run.since }
 end
 
 -- Lead section 473: the still run kept as the boat's wait is the wait only
 -- while the player is still where it was read. Both place words known and
 -- different (the stop was in town, then the player walked to the dock):
--- it is no wait, nil. Words not known keep it (nothing tells them apart).
-function N.CrossingBoardKept(board, name)
+-- it is no wait, nil. Words not known: at the crossing, "at" (the last
+-- spot before it) and "apart" (yards between two spots) tell them apart;
+-- read farther than N.CROSSING_DOCK_REACH from "at" is no wait. Only at
+-- the crossing: on board the boat moves, so a spot read while sailing
+-- would drop a real wait. Distance not readable keeps it.
+function N.CrossingBoardKept(board, name, at, apart)
     if type(board) ~= "table" then return nil end
-    if named(board.name) and named(name) and board.name ~= name then return nil end
+    if named(board.name) and named(name) then
+        if board.name ~= name then return nil end
+        return board
+    end
+    if type(at) == "table" and type(apart) == "function" then
+        local ok, d = pcall(apart, board, at)
+        if ok and num(d) and d > N.CROSSING_DOCK_REACH then return nil end
+    end
     return board
 end
 

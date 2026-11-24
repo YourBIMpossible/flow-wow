@@ -545,11 +545,13 @@ function Crossings.Declare(k)
         local before = last
         last = here
         if before == nil or before.cont == here.cont then return nil end
+        local apart = N.CrossingApart(function(map) return ask(client, "mapSize", map) end)
         local boarded = board
+        if boarded and N.CrossingBoardKept then boarded = N.CrossingBoardKept(boarded, nil, before, apart) end
         board = nil
         local okBind, bind = pcall(ctx.store.get, ctx.store, "char", Crossings.BIND)
         local list, key, what = N.CrossingSeen(saved(), before, here, {
-            apart = N.CrossingApart(function(map) return ask(client, "mapSize", map) end),
+            apart = apart,
             bind = okBind and type(bind) == "table" and bind or nil,
         })
         if key == nil then return nil, what end
