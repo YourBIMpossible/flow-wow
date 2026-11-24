@@ -22,7 +22,10 @@ local function snap(over)
     return s
 end
 
-local function spellOf(s) return type(s) == "table" and s.spell or nil end
+local function spellOf(s)
+    if type(s) ~= "table" then return nil end
+    return s.spell
+end
 
 -- Step
 
