@@ -3,8 +3,7 @@ local _, ns = ...
 -- The rotation icon (WOW-ROTATION-ICON, G27 core): one icon that shows the
 -- spell the rotation driver suggests, with that spell's own texture.
 --
--- It shows; it presses nothing. No secure action, no key, no action-bar
--- glow. It is on screen only while "Suggest the next spell" is on and the
+-- It shows; it presses nothing. No secure action, no key. It is on screen only while "Suggest the next spell" is on and the
 -- driver has a suggestion whose texture the client gave. A spell the
 -- client gives no id or no texture for is not shown: no texture is made up.
 --
@@ -31,6 +30,12 @@ local _, ns = ...
 -- "8s" or "2m" (I.CooldownText). Ready, the global cooldown only, or not
 -- known: no text. A look-only suggestion's words keep the line (I.Caption).
 -- The text follows the driver's ticks; nothing else is timed.
+--
+-- Action bar glow (FLOW-PARITY D-06, Flow Modules/Rotation/Display.lua:2,
+-- :151): while the icon shows a spell, the action bar buttons that hold
+-- it glow (client.barGlow(name)); hidden, a look-only suggestion (another
+-- player's), or no spell: no glow. Asked only when the spell changes.
+-- Display only: it changes nothing a button casts.
 --
 -- Not tested in game: client.icon, client.spellTexture, the tint, the
 -- caption and the tooltip on the icon (client.hoverTip) are first guesses.
@@ -225,6 +230,7 @@ end
 
 function I.Declare(k)
     local icon
+    local unglow -- D-06: clears the bar glow; set at start
     local api = {}
     function api.handle() return icon end
 
@@ -273,6 +279,15 @@ function I.Declare(k)
                 icon.show(false)
             end
 
+            -- D-06: the spell whose bar buttons glow now; false: not asked yet.
+            local glowing = false
+            local function glow(spell)
+                if spell == glowing then return end
+                glowing = spell
+                if type(client.barGlow) == "function" then pcall(client.barGlow, spell) end
+            end
+            unglow = function() glow(nil) end
+
             hide()
             local shownSpell = nil
             if type(client.hoverTip) == "function" then
@@ -308,6 +323,7 @@ function I.Declare(k)
                 shownSpell = nil
                 if not tex or held or says(client, "petBattle") or says(client, "vehicle") then
                     hide()
+                    glow(nil)
                     if not tex and not held and not emptySaid and k.settings:get(D.SETTING) == true
                         and I.NothingToSuggest(client, view)
                         and type(client.inCombat) == "function" and client.inCombat() == true
@@ -329,12 +345,15 @@ function I.Declare(k)
                     -- the new suggestion in a fight while the locked button
                     -- keeps what it had, out of range or another player's.
                     fade(I.OnButton(view))
+                    glow(I.Mark(view) ~= "look" and shownSpell or nil)
                 else
                     hide()
+                    glow(nil)
                 end
             end)
         end,
         stop = function()
+            if unglow then unglow() end
             if icon then
                 icon.setTexture(nil)
                 icon.show(false)

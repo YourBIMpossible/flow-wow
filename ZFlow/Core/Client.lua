@@ -13380,6 +13380,130 @@ function ns.make.client(env)
         if not pushed then return nil, "raised" end
         return true
     end
+
+    -- FLOW-PARITY D-06 (Flow Modules/Rotation/Display.lua:151-225): a glow
+    -- on every action bar button that holds the suggested spell.
+    --   c.barGlow(name) -> number of buttons glowing, or nil when the bars
+    --   cannot be read (no HasAction / GetActionInfo). nil or "" clears.
+    -- The bars are scanned at every call, as Flow scans them: buttons
+    -- ActionButton1..12 and the MultiBar rows, the slot from btn.action
+    -- or the "action" attribute, the spell's name from C_Spell.GetSpellInfo
+    -- (or GetSpellInfo). The glow is a plain frame on the button, four
+    -- orange edges (Rotation/Pulse.lua's colour) with a fade; it is made
+    -- the first time a button needs it. Display only: no attribute is set,
+    -- nothing is clicked or cast. A first guess, not seen in game.
+    do
+        local BAR_PREFIXES = {
+            "ActionButton", "MultiBarBottomLeftButton", "MultiBarBottomRightButton",
+            "MultiBarRightButton", "MultiBarLeftButton",
+            "MultiBar5Button", "MultiBar6Button", "MultiBar7Button",
+        }
+        local GLOW = { 1, 0.5, 0 }
+        local glows = setmetatable({}, { __mode = "k" })
+
+        local function spellName(id)
+            local group = env.C_Spell
+            if type(group) == "table" and type(group.GetSpellInfo) == "function" then
+                local ok, info = call(group.GetSpellInfo, id)
+                if ok and type(info) == "table" and not hidden(info) then
+                    local name = info.name
+                    if type(name) == "string" and not hidden(name) then return name end
+                end
+                return nil
+            end
+            local ok, name = call(env.GetSpellInfo, id)
+            if ok and type(name) == "string" and not hidden(name) then return name end
+            return nil
+        end
+
+        local function glowOn(btn)
+            local g = glows[btn]
+            if g then return g end
+            local ok, f = call(env.CreateFrame, "Frame", nil, btn)
+            if not ok or f == nil then return nil end
+            method(f, "SetPoint", "TOPLEFT", btn, "TOPLEFT", -3, 3)
+            method(f, "SetPoint", "BOTTOMRIGHT", btn, "BOTTOMRIGHT", 3, -3)
+            local okL, level = method(btn, "GetFrameLevel")
+            if okL and type(level) == "number" then method(f, "SetFrameLevel", level + 10) end
+            local sides = {
+                { "TOPLEFT", "TOPRIGHT", true }, { "BOTTOMLEFT", "BOTTOMRIGHT", true },
+                { "TOPLEFT", "BOTTOMLEFT", false }, { "TOPRIGHT", "BOTTOMRIGHT", false },
+            }
+            for _, side in ipairs(sides) do
+                local okT, tex = method(f, "CreateTexture", nil, "OVERLAY")
+                if okT and tex ~= nil then
+                    method(tex, "SetColorTexture", GLOW[1], GLOW[2], GLOW[3], 1)
+                    method(tex, "SetPoint", side[1], f, side[1], 0, 0)
+                    method(tex, "SetPoint", side[2], f, side[2], 0, 0)
+                    method(tex, side[3] and "SetHeight" or "SetWidth", 3)
+                end
+            end
+            local okA, anim = method(f, "CreateAnimationGroup")
+            if okA and anim ~= nil then
+                method(anim, "SetLooping", "BOUNCE")
+                local okF, fade = method(anim, "CreateAnimation", "Alpha")
+                if okF and fade ~= nil then
+                    method(fade, "SetFromAlpha", 1)
+                    method(fade, "SetToAlpha", 0.35)
+                    method(fade, "SetDuration", 0.45)
+                end
+            else
+                anim = nil
+            end
+            g = { frame = f, anim = anim }
+            method(f, "Hide")
+            glows[btn] = g
+            return g
+        end
+
+        local function off(g)
+            if g.anim then method(g.anim, "Stop") end
+            method(g.frame, "Hide")
+        end
+
+        local function slotOf(btn)
+            local slot = btn.action
+            if type(slot) ~= "number" then
+                local okS, a = method(btn, "GetAttribute", "action")
+                slot = okS and a or nil
+            end
+            if type(slot) ~= "number" or hidden(slot) then return nil end
+            return slot
+        end
+
+        local function holds(btn, name)
+            local okV, visible = method(btn, "IsVisible")
+            if not okV or not visible then return false end
+            local slot = slotOf(btn)
+            if not slot then return false end
+            local okH, has = call(env.HasAction, slot)
+            if not okH or not has or hidden(has) then return false end
+            local okI, kind, id = call(env.GetActionInfo, slot)
+            if not okI or kind ~= "spell" or type(id) ~= "number" or hidden(id) then return false end
+            return spellName(id) == name
+        end
+
+        function c.barGlow(name)
+            for _, g in pairs(glows) do off(g) end
+            if type(name) ~= "string" or name == "" then return 0 end
+            if type(env.HasAction) ~= "function" or type(env.GetActionInfo) ~= "function" then return nil end
+            local n = 0
+            for _, prefix in ipairs(BAR_PREFIXES) do
+                for i = 1, 12 do
+                    local btn = env[prefix .. i]
+                    if type(btn) == "table" and holds(btn, name) then
+                        local g = glowOn(btn)
+                        if g then
+                            method(g.frame, "Show")
+                            if g.anim then method(g.anim, "Play") end
+                            n = n + 1
+                        end
+                    end
+                end
+            end
+            return n
+        end
+    end
     return c
 end
 

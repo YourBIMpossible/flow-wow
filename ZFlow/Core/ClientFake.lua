@@ -4916,6 +4916,23 @@ function ns.make.fakeClient(opts)
         c.sharedQuests[#c.sharedQuests + 1] = id
         return true
     end
+
+    -- FLOW-PARITY D-06: the action bar glow, as the real client's
+    -- c.barGlow(name): c.barGlowing is the spell glowing now (nil: none),
+    -- c.barGlows counts the calls. Every bar button is taken to hold the
+    -- spell (1 glowing). c.setBarGlowFails(on): the call raises while on.
+    c.barGlows = 0
+    function c.setBarGlowFails(on) s.barGlowFails = on and true or nil end
+    function c.barGlow(name)
+        c.barGlows = c.barGlows + 1
+        if s.barGlowFails then error("bar glow failed (test)") end
+        if type(name) ~= "string" or name == "" then
+            c.barGlowing = nil
+            return 0
+        end
+        c.barGlowing = name
+        return 1
+    end
     return c
 end
 

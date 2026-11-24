@@ -49,7 +49,9 @@ local KIND = {
              -- what the caller's act does.
              "iconRow",
              -- S20: the per-role badges on the merchant's item buttons.
-             "markMerchantSpecs" },
+             "markMerchantSpecs",
+             -- FLOW-PARITY D-06: the glow on the bar button holding the suggested spell.
+             "barGlow" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.
