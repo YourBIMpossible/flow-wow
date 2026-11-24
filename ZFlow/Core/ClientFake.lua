@@ -359,6 +359,10 @@ function ns.make.fakeClient(opts)
         if type(id) ~= "number" or not s.cooldowns then return nil end
         return s.cooldowns[id]
     end
+    function c.spellCooldownLeft(id)
+        if type(id) ~= "number" or not s.cooldownLeft then return nil end
+        return s.cooldownLeft[id]
+    end
     function c.facing() return s.facing end
     -- The quest log: a copy of what setQuestLog was given, or nil.
     function c.questLog()
@@ -1031,6 +1035,12 @@ function ns.make.fakeClient(opts)
     function c.setSpellCooldown(id, on)
         s.cooldowns = s.cooldowns or {}
         s.cooldowns[id] = on
+    end
+    -- Seconds left on one spell's cooldown; nil for not known. A spell
+    -- never set is not known.
+    function c.setSpellCooldownLeft(id, left)
+        s.cooldownLeft = s.cooldownLeft or {}
+        s.cooldownLeft[id] = left
     end
     -- Radians, 0 = north; nil for not known.
     function c.setFacing(f) s.facing = f end
