@@ -96,7 +96,8 @@ local function line(text) return ns.id.title .. ": " .. text end
 tests["gear tooltip score: a score per role, the chosen role first, then vs the worn slot"] = function(t)
     local c = boot({ role = "tank" })
     local lines = hover(c, STRONG)
-    t.eq(lines[1], "Upgrade for your head piece (+7.3, dps)", "the verdict stays the first line")
+    t.eq(lines[1], "Upgrade for your head piece (+2.8, tank)", "the chosen role's verdict is the first line")
+    t.eq(at(lines, "Upgrade for your head piece (+7.3, dps)"), nil, "G31: no verdict for a role not chosen")
     local score = at(lines, "Score 6 (tank), 10 (dps)")
     local vs = at(lines, "vs your head piece: 3.2 (tank), 2.7 (dps)")
     t.ok(score ~= nil, "no score line: " .. table.concat(lines, " | "))
@@ -165,6 +166,7 @@ tests["gear tooltip score: the role changes - the score line follows it"] = func
     t.ok(at(hover(c, STRONG), "Score 10 (dps), 6 (tank)") ~= nil, "dps first")
     t.eq(addon.settings:set("spec.role", "tank"), true)
     local lines = hover(c, STRONG)
+    t.eq(lines[1], "Upgrade for your head piece (+2.8, tank)", "G31: the verdict follows the role too")
     t.ok(at(lines, "Score 6 (tank), 10 (dps)") ~= nil, "tank first: " .. table.concat(lines, " | "))
     t.ok(at(lines, "vs your head piece: 3.2 (tank), 2.7 (dps)") ~= nil, "vs, tank first")
 end

@@ -114,12 +114,8 @@ end
 
 local function namesOf(k)
     local client = k.client
-    if type(client) ~= "table" or type(client.itemInfo) ~= "function" then return nil end
-    return function(key)
-        local ok, info = pcall(client.itemInfo, ns.Items.Id(key) or key)
-        if ok and type(info) == "table" then return info.name end
-        return nil
-    end
+    -- Coloured by the item's quality (ItemPresent.Tint).
+    return ns.ItemPresent.Names(type(client) == "table" and client.itemInfo or nil)
 end
 
 local function listLines(entries)

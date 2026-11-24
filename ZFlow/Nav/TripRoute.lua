@@ -30,6 +30,13 @@ local _, ns = ...
 --     lists it as a held line with its reason, and it is walked again once
 --     it is ready.
 --   T.Lines(route, at) -> lines
+--   T.Need(text, done) -> line or nil   (S43, lead section 391 item 4) how
+--     many of the thing an objective still needs, read from the quest log's
+--     own objective text ("Gnoll Paw: 4/8" -> "You still need 4 of Gnoll
+--     Paw."). Nil when the objective is done or its count cannot be read:
+--     never a made-up number. An objective stop carries it as stop.need,
+--     read again with the log; the step and the list say it in place of the
+--     raw count.
 -- Module "tripRoute" provides Step, Plan, Run, Skip, Off, Lines.
 -- Not tested in game.
 ns.Nav = ns.Nav or {}
@@ -57,6 +64,9 @@ T.HEADER = "Route: %d stops (%s)"
 T.RUN_SAID = "Run planned: %d stops; the arrow walks it."
 T.HELD_LINE = "Turn-in held: %s"
 T.HELD_NOT_COMPLETE = "not complete any more"
+T.LEFT = "%s left the route: its quest is no longer in your log."
+T.NEED_ONE = "You still need 1 %s."
+T.NEED_MANY = "You still need %d of %s."
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -102,15 +112,41 @@ local function spotOf(places, id, i)
     return type(p.objectives) == "table" and p.objectives[i] or nil
 end
 
+function T.Need(text, done)
+    if done == true or type(text) ~= "string" then return nil end
+    local name, have, want = text:match("^%s*(.-)%s*:%s*(%d+)%s*/%s*(%d+)%s*$")
+    if not name then
+        have, want, name = text:match("^%s*(%d+)%s*/%s*(%d+)%s+(.-)%s*$")
+    end
+    have, want = tonumber(have), tonumber(want)
+    if not (name and name ~= "" and have and want) then return nil end
+    local still = want - have
+    if still <= 0 then return nil end
+    if still == 1 then return T.NEED_ONE:format(name) end
+    return T.NEED_MANY:format(still, name)
+end
+
+-- The need line of a stop's objective in these rows, or nil.
+local function needOf(stop, rows)
+    if type(stop) ~= "table" or stop.turnIn or stop.objective == nil or stop.kind ~= nil then return nil end
+    for _, row in ipairs(type(rows) == "table" and rows or {}) do
+        if type(row) == "table" and row.id == stop.quest then
+            local o = type(row.objectives) == "table" and row.objectives[stop.objective] or nil
+            return type(o) == "table" and T.Need(o.text, o.done) or nil
+        end
+    end
+    return nil
+end
+
 function T.Stops(rows, places, here)
     local Q = N.QuestSource
     local stops, left = {}, {}
     here = type(here) == "table" and here or {}
-    local function add(row, i, detail)
+    local function add(row, i, detail, need)
         local pt = pointOf(spotOf(places, row.id, i), here)
         if pt then
             stops[#stops + 1] = { quest = row.id, objective = i, turnIn = i == nil, label = row.title,
-                                  detail = detail, place = { map = pt.map, x = pt.x, y = pt.y } }
+                                  detail = detail, need = need, place = { map = pt.map, x = pt.x, y = pt.y } }
         else
             left[#left + 1] = { quest = row.id, label = row.title, detail = detail, why = T.NOT_HERE }
         end
@@ -128,7 +164,7 @@ function T.Stops(rows, places, here)
             else
                 for i, o in ipairs(type(row.objectives) == "table" and row.objectives or {}) do
                     if type(o) == "table" and o.done ~= true then
-                        add(row, i, type(o.text) == "string" and o.text or nil)
+                        add(row, i, type(o.text) == "string" and o.text or nil, T.Need(o.text, o.done))
                     end
                 end
             end
@@ -196,21 +232,40 @@ function T.Held(stop, rows)
     return nil
 end
 
+-- Lead section 375: whether the stop's quest is still in the log (rows
+-- read); a stop with no quest is.
+function T.InLog(stop, rows)
+    if type(stop) ~= "table" or stop.quest == nil or type(rows) ~= "table" then return true end
+    for _, row in ipairs(rows) do
+        if type(row) == "table" and row.id == stop.quest then return true end
+    end
+    return false
+end
+
 function T.Lines(route, at)
     if type(route) ~= "table" or type(route.stops) ~= "table" then return {} end
-    local lines = { T.HEADER:format(#route.stops, tostring(route.label or N.ROUTE_STRAIGHT)) }
+    local shown = 0
+    for _, s in ipairs(route.stops) do
+        if not s.left then shown = shown + 1 end
+    end
+    local lines = { T.HEADER:format(shown, tostring(route.label or N.ROUTE_STRAIGHT)) }
     local held = {}
     for i, s in ipairs(route.stops) do
-        if s.held and not s.gone then
+        if s.held and not s.gone and not s.left then
             held[#held + 1] = "  " .. tostring(s.label) .. " - " .. T.HELD_LINE:format(tostring(s.held))
         end
         local dist = (finite(s.leg) and route.yards ~= false) and (tostring(math.floor(s.leg + 0.5)) .. " yd")
             or T.NO_DISTANCE
         local parts = { tostring(s.label) }
-        if s.detail ~= nil then parts[#parts + 1] = tostring(s.detail) end
+        if s.need ~= nil then
+            parts[#parts + 1] = tostring(s.need)
+        elseif s.detail ~= nil then
+            parts[#parts + 1] = tostring(s.detail)
+        end
         parts[#parts + 1] = dist
         if s.gone then parts[#parts + 1] = "done" end
-        if not (s.held and not s.gone) then
+        -- A stop whose quest left the log is off the list (lead section 375).
+        if not s.left and not (s.held and not s.gone) then
             lines[#lines + 1] = (i == at and "> " or "") .. i .. ". " .. table.concat(parts, " - ")
         end
     end
@@ -301,6 +356,7 @@ function T.Declare(k, diag)
         local stops = {}
         for i, s in ipairs(run.steps) do
             stops[i] = { kind = s.kind or "run", quest = s.quest, label = s.label, detail = s.detail,
+                         logQuest = s.logQuest == true or nil,
                          place = { map = s.place.map, x = s.place.x, y = s.place.y } }
         end
         local yards = runLegs(stops, client())
@@ -308,8 +364,8 @@ function T.Declare(k, diag)
         for _, name in ipairs(type(run.left) == "table" and run.left or {}) do
             left[#left + 1] = { label = tostring(name), why = "giver's place not known" }
         end
-        route, at = { kind = "run", stops = stops, yards = yards, label = tostring(run.title or N.ROUTE_STRAIGHT),
-                      left = left }, 1
+        route, at, readAt = { kind = "run", stops = stops, yards = yards,
+                              label = tostring(run.title or N.ROUTE_STRAIGHT), left = left }, 1, nil
         return T.RUN_SAID:format(#stops)
     end
 
@@ -339,21 +395,53 @@ function T.Declare(k, diag)
         return d < (yards and T.ARRIVE_YARDS or T.ARRIVE_SHARE)
     end
 
+    local function tell(line)
+        local c = client()
+        if type(c) ~= "table" or type(c.print) ~= "function" then return end
+        local id = k.id or ns.id
+        c.print(id.title .. ": " .. tostring(line))
+    end
+
+    -- Lead section 375: a stop whose quest left the log (abandoned or handed
+    -- in, in any order) leaves the route, one line per quest. On a run only
+    -- the trip hand-in stops (logQuest) are checked: pick-up givers are not
+    -- in the log yet. Answers whether any left.
+    local function dropLeft(rows)
+        local told, any = {}, false
+        for _, s in ipairs(route.stops) do
+            local check = route.kind == "quests" or s.logQuest == true
+            if check and not s.gone and not T.InLog(s, rows) then
+                s.gone, s.left, any = true, true, true
+                if not told[s.quest] then
+                    told[s.quest] = true
+                    tell(T.LEFT:format(tostring(s.label)))
+                end
+            end
+        end
+        return any
+    end
+
     function api.Step()
         if not route or not on() then return nil end
         local c = client()
+        local now = ask(c, "now")
+        local rows
+        if not finite(now) or not finite(readAt) or now - readAt >= T.REREAD then
+            readAt = now
+            rows = N.QuestLogRows(c)
+        end
+        if rows and dropLeft(rows) and route.kind == "run" then
+            local trip = k.use and k.use("trip")
+            if trip and type(trip.Prune) == "function" then pcall(trip.Prune, rows) end
+        end
         if route.kind == "quests" then
-            local now = ask(c, "now")
-            if not finite(now) or not finite(readAt) or now - readAt >= T.REREAD then
-                readAt = now
-                local rows = N.QuestLogRows(c)
-                if rows then
-                    for _, s in ipairs(route.stops) do
-                        if not T.Live(s, rows) then
-                            s.gone = true
-                        else
-                            s.held = T.Held(s, rows)
-                        end
+            if rows then
+                for _, s in ipairs(route.stops) do
+                    if not T.Live(s, rows) then
+                        s.gone = true
+                    else
+                        s.held = T.Held(s, rows)
+                        if not s.turnIn then s.need = needOf(s, rows) end
                     end
                 end
             end
@@ -376,7 +464,8 @@ function T.Declare(k, diag)
             end
         end
         if not s then return nil end
-        return { quest = s.quest, objective = s.objective, turnIn = s.turnIn, label = s.label, detail = s.detail,
+        return { quest = s.quest, objective = s.objective, turnIn = s.turnIn, label = s.label,
+                 detail = s.need or s.detail, need = s.need,
                  place = { map = s.place.map, x = s.place.x, y = s.place.y } }
     end
 
@@ -392,7 +481,7 @@ function T.Declare(k, diag)
         for i = at, #route.stops do
             local s = route.stops[i]
             if not s.gone and not s.held then
-                stops[#stops + 1] = { label = s.label, detail = s.detail,
+                stops[#stops + 1] = { label = s.label, detail = s.detail, quest = s.quest,
                                       place = { map = s.place.map, x = s.place.x, y = s.place.y } }
             end
         end
@@ -401,10 +490,7 @@ function T.Declare(k, diag)
     end
 
     local function say(lines)
-        local c = client()
-        if type(c) ~= "table" or type(c.print) ~= "function" then return end
-        local id = k.id or ns.id
-        for _, line in ipairs(lines) do c.print(id.title .. ": " .. tostring(line)) end
+        for _, line in ipairs(lines) do tell(line) end
     end
 
     function api.Word(rest)

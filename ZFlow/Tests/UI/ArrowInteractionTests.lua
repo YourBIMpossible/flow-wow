@@ -261,15 +261,18 @@ return {
         t.eq(k.problems:count(), 0)
     end,
 
-    ["hover: stacked, the quest arrow's tooltip carries the needle's lines"] = function(t)
+    ["hover: stacked, each arrow has its own tooltip with its own lines"] = function(t)
         local k, c = start()
         if not has(t, c) then return end
-        local q = c.arrows[1]
-        t.eq(c.arrows[2].under, true, "the needle is under the quest arrow and takes no mouse")
+        local q, p = c.arrows[1], c.arrows[2]
+        t.eq(p.under, false, "the profession arrow is over the quest arrow, not under it, and takes the mouse")
         q.hover(true)
         t.ok(hasLine(q.tipLines, "Demo: north"))
-        t.ok(hasLine(q.tipLines, "Profession arrow"))
-        t.ok(hasLine(q.tipLines, "Demo: east"))
+        t.ok(not hasLine(q.tipLines, "Demo: east"), "the quest arrow's tooltip is the quest step's alone")
+        q.hover(false)
+        p.hover(true)
+        t.ok(hasLine(p.tipLines, "Profession arrow"))
+        t.ok(hasLine(p.tipLines, "Demo: east"))
         t.eq(k.problems:count(), 0)
     end,
 

@@ -266,4 +266,44 @@ tests["hunter chooser: the engage step never asks for a swing"] = function(t)
     t.ok(got == nil or got.engage ~= true, "no engage suggestion")
 end
 
+-- N52 HUNTER-3/4 (lead section 233, P-CLASS-A; section 373 item 7): Rapid
+-- Fire, Aimed Shot and Concussive Shot as advice. Shown only: nothing is
+-- cast or pressed. A fight with the mark, the sting and Auto Shot on.
+local MORE = { "Rapid Fire", "Aimed Shot", "Concussive Shot" }
+local function withMore(extra)
+    local known = {}
+    for _, name in ipairs(ALL) do known[#known + 1] = name end
+    for _, name in ipairs(extra) do known[#known + 1] = name end
+    return known
+end
+local FIGHT = { hostile = true, inCombat = true,
+                targetDebuffs = { ["Hunter's Mark"] = true, ["Serpent Sting"] = true },
+                current = { ["Auto Shot"] = true } }
+
+tests["hunter HUNTER-4: Rapid Fire is asked for first while it is ready"] = function(t)
+    t.eq(pick(FIGHT, withMore(MORE)), "Rapid Fire")
+    t.eq(pick(FIGHT, withMore(MORE), "aoe"), "Rapid Fire", "in the aoe list too")
+end
+
+tests["hunter HUNTER-4: Aimed Shot comes before Arcane Shot when known"] = function(t)
+    t.eq(pick(FIGHT, withMore({ "Aimed Shot" })), "Aimed Shot")
+    t.eq(pick(FIGHT), "Arcane Shot", "not known: Arcane Shot, as before")
+end
+
+tests["hunter HUNTER-3: Concussive Shot slows a target in melee reach, once"] = function(t)
+    t.eq(pick(FIGHT, withMore({ "Concussive Shot" })), "Concussive Shot")
+    local slowed = { hostile = true, inCombat = true, current = { ["Auto Shot"] = true },
+                     targetDebuffs = { ["Hunter's Mark"] = true, ["Serpent Sting"] = true, ["Concussive Shot"] = true } }
+    t.ok(pick(slowed, withMore({ "Concussive Shot" })) ~= "Concussive Shot", "already slowed: not again")
+    local unread = { hostile = true, inCombat = true, current = { ["Auto Shot"] = true }, targetDebuffs = "nil" }
+    t.ok(pick(unread, withMore({ "Concussive Shot" })) ~= "Concussive Shot", "debuffs not read: not asked")
+end
+
+tests["hunter HUNTER-3: Concussive Shot waits for melee reach to be read as yes"] = function(t)
+    local s = snap(FIGHT, withMore({ "Concussive Shot" }))
+    s.spells["Raptor Strike"].inRange = false
+    local got = ns.Choose(s, hunter())
+    t.ok(not got or got.spell ~= "Concussive Shot", "out of reach: not asked")
+end
+
 return tests

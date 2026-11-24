@@ -5,12 +5,13 @@ local _, ns = ...
 -- one line saying what it is. Behaviour from legacy Flow's
 -- Modules/Reveal.lua, built in this add-on's shape:
 --   arrow    walked R.WALK yards from where they stood, or a quest accepted
---   tracker  this add-on has no tracker yet: the stage is skipped (asked
---            about, it answers "shown") until one exists
+--   tracker  the route window (UI/RouteTracker.lua): R.TRACKER_AFTER
+--            seconds after the arrow came in, or a quest accepted. Held
+--            back, it does not open by itself; its word still opens it.
 --   icon     a live hostile target, or a fight starts
 --   advice   a level up, or R.ADVICE_AFTER seconds after the arrow came in
---            (measured on the client clock and saved with the stages, so
---            a reload keeps the wait; with no clock, this session's time)
+-- Both waits are measured on the client clock and saved with the stages,
+-- so a reload keeps them; with no clock, on this session's time.
 -- The stages are kept per character at R.PATH (char). A character with
 -- none kept yet is decided once: when the account's saved table was not
 -- there before this login (a new install), the stages; else (a player who
@@ -41,8 +42,9 @@ R.PATH = "state.reveal"
 R.EVENT = "reveal.changed"
 R.STAGES = { "arrow", "tracker", "icon", "advice" }
 -- Stages whose surface this add-on does not have yet, and what is said.
-R.ABSENT = { tracker = "no tracker yet" }
+R.ABSENT = {}
 R.WALK = 10            -- yards walked before the arrow comes in (legacy)
+R.TRACKER_AFTER = 20   -- seconds after the arrow before the route window (legacy)
 R.ADVICE_AFTER = 600   -- seconds after the arrow before the advice (legacy)
 R.ARROW_AT = "arrowAt" -- saved with the stages: the client clock (seconds) when the arrow came in
 R.EVERY = 0.5         -- seconds between looks at the walk and the clock
@@ -51,6 +53,7 @@ R.EVERY = 0.5         -- seconds between looks at the walk and the clock
 function R.Hints()
     return {
         arrow = "this arrow points to your next step. Follow it; right-click it for its menu.",
+        tracker = "the route window lists the next stops of your route, in walking order.",
         icon = "this icon shows what to press in a fight.",
         advice = "this panel lists ways to improve your character.",
     }
@@ -202,12 +205,14 @@ function R.Declare(k, diag)
                 at = wall
                 k.store:set("char", R.PATH .. "." .. R.ARROW_AT, wall)
             end
+            if d.tracker ~= true and wall - at > R.TRACKER_AFTER then api.Show("tracker") end
             if d.advice ~= true and wall - at > R.ADVICE_AFTER then api.Show("advice") end
             return
         end
         -- No clock: this session's time, not saved.
         if type(now) ~= "number" then return end
         if type(arrowAt) ~= "number" then arrowAt = now end
+        if d.tracker ~= true and now - arrowAt > R.TRACKER_AFTER then api.Show("tracker") end
         if d.advice ~= true and now - arrowAt > R.ADVICE_AFTER then api.Show("advice") end
     end
 
@@ -244,7 +249,7 @@ function R.Declare(k, diag)
 
     k:Setting({ key = R.SETTING, scope = "account", type = "bool", default = false,
         label = "New player: show pieces one at a time", group = "general",
-        help = "On: on a new install the arrow, the fight icon and the advice panel come in one at a time "
+        help = "On: on a new install the arrow, the route window, the fight icon and the advice panel come in one at a time "
             .. "as you start to play. Off (the default) shows everything at once.",
         synonyms = { "reveal", "new player", "stages", "intro", "one at a time", "tour" } })
 
@@ -260,7 +265,10 @@ function R.Declare(k, diag)
         needs = { "client", "store", "settings", "bus" },
         provides = { Revealed = api.Revealed, Show = api.Show },
         events = {
-            QUEST_ACCEPTED = function() api.Show("arrow") end,
+            QUEST_ACCEPTED = function()
+                api.Show("arrow")
+                api.Show("tracker")
+            end,
             PLAYER_TARGET_CHANGED = function() target() end,
             PLAYER_REGEN_DISABLED = function() api.Show("icon") end,
             PLAYER_LEVEL_UP = function() api.Show("advice") end,

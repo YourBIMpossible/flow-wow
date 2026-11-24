@@ -3,7 +3,7 @@ local _, ns = ...
 -- on a fake client. A new player's surfaces come in one at a time, each on
 -- its own trigger, as legacy Flow's Modules/Reveal.lua did:
 --   arrow    walked 10 yards from where they stood, or a quest accepted
---   tracker  no tracker in this add-on yet: the stage is skipped
+--   tracker  the route window: 20 seconds after the arrow, or a quest accepted
 --   icon     a live hostile target, or a fight starts
 --   advice   a level up, or ten minutes after the arrow came in
 -- The stages are saved per character. "reveal all" shows everything now,
@@ -127,17 +127,17 @@ local function walk(c, yards)
     c.advance(1, 4)
 end
 
-tests["reveal 236: a new player sees no arrow, icon or advice at login; the tracker stage is skipped"] = function(t)
+tests["reveal 236: a new player sees no arrow, route window, icon or advice at login"] = function(t)
     local c, addon = boot()
     t.eq((addon:ModuleState(R.NAME)), "started")
     t.eq(arrowShown(c), false, "no arrow yet")
     t.eq(iconShown(c, addon), false, "no icon yet")
     t.eq(adviceShown(c, addon), false, "no advice panel yet")
-    t.eq(addon.revealed("tracker"), true, "no tracker here: nothing to hold back")
+    t.eq(addon.revealed("tracker"), false, "the route window waits for its own trigger")
     t.eq(addon.store:get("char", R.PATH), {}, "the character's stages: none yet")
     local lines = said(c, R.WORD)
     t.ok(anyHas(lines, "arrow (not yet)"), "the status names the arrow: " .. table.concat(lines, " / "))
-    t.ok(anyHas(lines, "tracker (no tracker yet)"), "the tracker stage says it is skipped")
+    t.ok(anyHas(lines, "tracker (not yet)"), "the status names the route window")
     t.eq(revealProblems(addon), 0)
 end
 
@@ -201,6 +201,82 @@ tests["reveal 236: a reload keeps the revealed stages"] = function(t)
     t.eq(arrowShown(c2), true, "the arrow is still in")
     t.eq(addon2.revealed("icon"), false, "the icon still waits")
     t.eq(iconShown(c2, addon2), false)
+end
+
+tests["reveal C5: accepting a quest brings the route window's stage in, with one line"] = function(t)
+    local c, addon = boot()
+    local from = #c.printed
+    c.fire("QUEST_ACCEPTED", 1, 303)
+    t.eq(addon.revealed("tracker"), true)
+    t.eq(addon.store:get("char", R.PATH .. ".tracker"), true, "saved for the character")
+    t.ok(anyHas(printedSince(c, from), "route window lists the next stops"), "one line says what it is")
+    t.eq(addon.revealed("advice"), false, "the advice still waits")
+end
+
+tests["reveal C5: the route window's stage comes in 20 seconds after the arrow, on the saved clock"] = function(t)
+    local T = 70000
+    local c, addon = boot({ early = function(c0) c0.setClock(T) end })
+    walk(c, 11)
+    t.eq(addon.revealed("arrow"), true, "walked: the arrow at T")
+    t.eq(addon.revealed("tracker"), false, "the route window not yet")
+    local account, char = c.saved(ns.id.accountDB), c.saved(ns.id.charDB)
+    local c2, addon2 = boot({ account = account, char = char, early = function(c0) c0.setClock(T + 15) end })
+    t.eq(addon2.revealed("tracker"), false, "reloaded at T+15 s: not yet")
+    c2.setClock(T + R.TRACKER_AFTER + 1)
+    c2.advance(1, 4)
+    t.eq(addon2.revealed("tracker"), true, "T+21 s: the route window's stage")
+    t.eq(addon2.revealed("advice"), false)
+end
+
+tests["reveal C5: with no clock, the route window's stage comes in after 20 seconds of this session"] = function(t)
+    local c, addon = boot()
+    walk(c, 11)
+    t.eq(addon.revealed("tracker"), false)
+    c.advance(R.TRACKER_AFTER + 2, 12)
+    t.eq(addon.revealed("tracker"), true)
+end
+
+tests["reveal C5: held back, the route window does not open by itself; its word opens it; then it does"] = function(t)
+    local c, addon = boot()
+    local RT = ns.RouteTracker
+    local function shown()
+        local w = c.kitWindows()[RT.ID]
+        return w ~= nil and w.shown == true
+    end
+    addon.store:set("char", ns.Nav.SERVICES, {
+        ["svc:1"] = { name = "Bob", map = 1411, x = 0.8, y = 0.5, kinds = { vendor = true } },
+        ["svc:2"] = { name = "Inna", map = 1411, x = 0.5, y = 0.6, kinds = { innkeeper = true } },
+    })
+    for _, w in ipairs({ "trip add vendor", "trip add inn", "trip go" }) do
+        c.slashes[ns.id.slash](w)
+        c.advance(2, 10)
+    end
+    t.eq(addon.revealed("tracker"), false, "the stage is still held")
+    t.eq(shown(), false, "a route is planned, the window stays away")
+    c.slashes[ns.id.slash](RT.WORD)
+    t.eq(shown(), true, "its word opens it all the same")
+    addon.routeTracker.Close()
+    c.advance(2, 10)
+    t.eq(shown(), false, "closed, and still held: it stays closed")
+    c.fire("QUEST_ACCEPTED", 1, 303)
+    c.advance(2, 10)
+    t.eq(addon.revealed("tracker"), true)
+    t.eq(shown(), true, "the stage came in: the window opens by itself")
+    t.eq(revealProblems(addon), 0)
+end
+
+tests["reveal C5: with staging off (the default) the route window opens with a route as before"] = function(t)
+    local c, addon = boot({ staged = false })
+    addon.store:set("char", ns.Nav.SERVICES, {
+        ["svc:1"] = { name = "Bob", map = 1411, x = 0.8, y = 0.5, kinds = { vendor = true } },
+        ["svc:2"] = { name = "Inna", map = 1411, x = 0.5, y = 0.6, kinds = { innkeeper = true } },
+    })
+    for _, w in ipairs({ "trip add vendor", "trip add inn", "trip go" }) do
+        c.slashes[ns.id.slash](w)
+        c.advance(2, 10)
+    end
+    local w = c.kitWindows()[ns.RouteTracker.ID]
+    t.eq(w ~= nil and w.shown, true)
 end
 
 -- RV-1 (lead section 274): when the arrow came in is saved with the
