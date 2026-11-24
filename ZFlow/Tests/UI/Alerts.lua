@@ -134,6 +134,11 @@ tests["alerts: prompts there at login say nothing; one after login does"] = func
     if not A then t.ok(false, "ns.Alerts"); return end
     local k, c, advisor = start({ atStart = { { "setup.keys", "Set your keys." } } })
     k.settings:set(A.SETTING, true)
+    -- P-QOL (qol-5): the ways-to-improve list (alerts.list, on by default)
+    -- is its own line A.LIST_LOGIN seconds after login, as Flow had it; it
+    -- is not a prompt said as a change. This test is about prompts, so the
+    -- list is off here; Tests/UI/AlertsList.lua covers the list.
+    k.settings:set(A.LIST, false)
     local from = #c.printed + 1
     advisor.Add("l6d.bank", "Bank your reagents.", 1)
     t.eq(lines(c, from), {}, "still at login: nothing said")
