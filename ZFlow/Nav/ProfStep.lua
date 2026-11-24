@@ -616,6 +616,22 @@ local function bankCounts(store)
     return b.counts
 end
 
+-- Lead section 414: the readings at the skill the game has now
+-- (Items/ProfPlan.lua's P.Readings), and the stations with the places a
+-- craft succeeded at (Items/CraftSpots.lua). Both load after this file.
+local function readingsNow(client, store)
+    local got = saved(store, "char", "learned.facts.profSkill")
+    local P = ns.ProfPlan
+    if type(P) == "table" and type(P.Readings) == "function" then return P.Readings(client, got) end
+    return got
+end
+
+local function stationsSeen(store)
+    local CS = ns.CraftSpots
+    if type(CS) == "table" and type(CS.All) == "function" then return CS.All(store) end
+    return saved(store, "account", N.PROF_STATIONS_PATH)
+end
+
 function N.ProfNextFrom(client, store, nodeSource)
     local nodes, state
     if type(nodeSource) == "table" then
@@ -630,7 +646,7 @@ function N.ProfNextFrom(client, store, nodeSource)
     end
     return N.ProfNext({
         professions = ask(client, "professions"),
-        readings = saved(store, "char", "learned.facts.profSkill"),
+        readings = readingsNow(client, store),
         npcs = saved(store, "account", "learned.places.npcs"),
         tierSeen = saved(store, "char", "learned.facts.tierSeen"),
         here = {
@@ -643,7 +659,7 @@ function N.ProfNextFrom(client, store, nodeSource)
         nodeState = state or "absent",
         book = saved(store, "char", "learned.facts.recipeBook"),
         colours = saved(store, "char", "learned.recipeColors"),
-        stations = saved(store, "account", N.PROF_STATIONS_PATH),
+        stations = stationsSeen(store),
         bags = bagCounts(client),
         bank = bankCounts(store),
     })
@@ -667,6 +683,14 @@ function N.ProfChoose(picked, pick, older)
     if type(rank) ~= "number" then return picked end
     if rank <= 3 then return picked end
     if type(older) == "table" and type(older.place) == "table" then return older end
+    -- Lead section 419: "any trainer", said only because every known recipe
+    -- was outgrown and no trainer was seen, leaves it to the older step's
+    -- words, which name the craft or say why nothing gives a point.
+    local step = pick.step
+    if type(older) == "table" and type(step) == "table" and step.kind == "learn_recipe"
+        and step.outgrown == true then
+        return older
+    end
     local training = type(pick.step) == "table" and pick.step.kind == "train_tier"
     if rank <= 5 and not (training and type(older) == "table") then return picked end
     if type(older) == "table" then return older end
