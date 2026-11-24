@@ -14,7 +14,10 @@ local _, ns = ...
 --   N.CrossingName(placeText) -> the sub-zone, else the zone, else nil
 --   N.CrossingTake(how, fromName, toName) -> line or nil
 --   N.CrossingWaitLine(how, seconds) -> line or nil
---   N.CrossingHint(how, fromName, toName, seconds) -> line or nil
+--   N.CrossingHint(how, fromName, toName, seconds, atBoard) -> line or nil
+--        atBoard: the player stands where it is boarded (FLOW-PARITY B-03);
+--        with no wait known it says to wait there, and that when it leaves
+--        is not known: no minutes are made up.
 --   N.CrossingStill(run, here, now, name) -> run, ended or nil
 --        run = { cont, map, x, y, name, since }; ended = { cont, name, secs }
 --   N.CrossingNameTrip(old, list, key, before, board, landName) -> list
@@ -32,6 +35,8 @@ local N = ns.Nav
 N.CROSSING_WAIT_MIN = 5      -- seconds: shorter still time is not a wait
 N.CROSSING_WAIT_MAX = 600    -- seconds: longer is away from the keys, not a wait
 N.CROSSING_STILL = 0.0005    -- map share: this little a move is standing still
+N.CROSSING_AT_BOARD = 30     -- yards: this close to the boarding place is standing at it (a first guess)
+N.CROSSING_WAIT_UNKNOWN = "Wait here for it: when it leaves is not known yet."
 
 local WHAT = { boat = "boat", zeppelin = "zeppelin" }
 local AT = { boat = "dock", zeppelin = "tower" }
@@ -69,10 +74,11 @@ function N.CrossingWaitLine(how, seconds)
     return string.format("The %s leaves about every %s: wait %s.", what, every, ON[how])
 end
 
-function N.CrossingHint(how, fromName, toName, seconds)
+function N.CrossingHint(how, fromName, toName, seconds, atBoard)
     local take = N.CrossingTake(how, fromName, toName)
-    if take == nil then return nil end
     local wait = N.CrossingWaitLine(how, seconds)
+    if wait == nil and atBoard == true then wait = N.CROSSING_WAIT_UNKNOWN end
+    if take == nil then return wait end
     if wait == nil then return take end
     return take .. " " .. wait
 end

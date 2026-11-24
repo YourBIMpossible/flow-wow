@@ -95,4 +95,41 @@ tests["boat docks: trips with no place words say no dock and no wait"] = functio
     end
 end
 
+-- FLOW-PARITY B-03: quick trips leave no wait known. Back at the dock the
+-- hint says to wait there and that when it leaves is not known: no minutes
+-- are made up. Away from the dock it says nothing about waiting.
+tests["boat docks: at the dock with no wait known, wait here; the time stays unknown"] = function(t)
+    local c = start()
+    local function dock()
+        c.setPlaceText("Wetlands", "Menethil Harbor"); c.setZone(0, 1437); c.setPosition(1437, 0.1, 0.5); c.advance(1, 4)
+    end
+    local function over()
+        c.setPlaceText("Darkshore", "Auberdine"); c.setZone(1, 1439); c.setPosition(1439, 0.3, 0.4); c.advance(1, 4)
+    end
+    dock(); over(); dock(); over(); dock()
+    c.setPlaceText("Wetlands", nil); c.setPosition(1437, 0.5, 0.5); c.advance(2, 4)
+    local away = shown(c)
+    t.eq(away and away[1], "Crossing to Auberdine")
+    t.eq(away and away[3], "Take the boat or zeppelin at Menethil Harbor to Auberdine.", "away: no wait words")
+
+    c.setPlaceText("Wetlands", "Menethil Harbor"); c.setPosition(1437, 0.1, 0.5); c.advance(2, 4)
+    local at = shown(c)
+    t.eq(at and at[3], "Take the boat or zeppelin at Menethil Harbor to Auberdine. " .. ns.Nav.CROSSING_WAIT_UNKNOWN)
+    t.eq(ns.Nav.CROSSING_WAIT_UNKNOWN, "Wait here for it: when it leaves is not known yet.")
+    for _, line in ipairs(at or {}) do
+        t.ok(not line:find("minute", 1, true), "no made-up minutes: " .. line)
+    end
+end
+
+tests["boat docks: the wait words are pure and never guess a time"] = function(t)
+    local N = ns.Nav
+    t.eq(N.CrossingHint(nil, "Menethil Harbor", "Auberdine", nil, true),
+        "Take the boat or zeppelin at Menethil Harbor to Auberdine. " .. N.CROSSING_WAIT_UNKNOWN)
+    t.eq(N.CrossingHint(nil, nil, nil, nil, true), N.CROSSING_WAIT_UNKNOWN, "no names: the wait words alone")
+    t.eq(N.CrossingHint(nil, nil, nil, nil, false), nil)
+    t.eq(N.CrossingHint("boat", "Menethil Harbor", "Auberdine", 180, true),
+        "Take the boat at Menethil Harbor's dock to Auberdine. The boat leaves about every 3 minutes: wait on the dock.",
+        "a wait learned wins over the unknown words")
+end
+
 return tests

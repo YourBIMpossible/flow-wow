@@ -335,8 +335,11 @@ function N.CrossingSteps(input)
                 details = details,
                 -- S32 (Nav/CrossingWords.lua): only a crossing learned from
                 -- the player's trips says its dock, landing and wait.
+                -- B-03: standing at the boarding place with no wait known
+                -- says to wait there; the time stays unknown.
                 hint = (best.crossing.seen ~= nil and N.CrossingHint)
-                    and N.CrossingHint(best.how, best.from.name, best.to.name, best.from.wait) or nil,
+                    and N.CrossingHint(best.how, best.from.name, best.to.name, best.from.wait,
+                        num(best.toBoard) and best.toBoard <= (N.CROSSING_AT_BOARD or 0)) or nil,
             }
         end
     end
