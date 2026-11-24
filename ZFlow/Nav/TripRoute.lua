@@ -440,7 +440,7 @@ function T.Declare(k, diag)
         for i = at, #route.stops do
             local s = route.stops[i]
             if not s.gone and not s.held then
-                stops[#stops + 1] = { label = s.label, detail = s.detail,
+                stops[#stops + 1] = { label = s.label, detail = s.detail, quest = s.quest,
                                       place = { map = s.place.map, x = s.place.x, y = s.place.y } }
             end
         end
