@@ -9,7 +9,7 @@ local _, ns = ...
 --   steps, why = ProfPlan.Plan(input)        pure
 --   list       = ProfPlan.Candidates(input)  pure
 --   api        = ProfPlan.Declare(k)
---     api.plan(profession) -> steps, why, read from the client and store
+--     api.plan(profession) -> steps, why, say, read from the client and store
 --   ns.use(ProfPlan.NAME) -> { Plan = api.plan }
 --
 -- input = {
@@ -28,7 +28,9 @@ local _, ns = ...
 -- step = { kind, text, item, count, target, recipe, npc, station }, kind one
 -- of learn_recipe, train_tier, make_part, take_bank, go_station, craft, in
 -- that order. why (with no steps): "no reading", "no recipe" (nothing gives
--- a point and nothing can be learned at this skill) or "no materials".
+-- a point and nothing can be learned at this skill), "no colours" (the
+-- window's colours were never read) or "no materials"; say is then the one
+-- thing a new player does next, in plain words (section 383).
 --
 -- Only orange (sure) and yellow (maybe) give a point. Sure comes first,
 -- then the cheapest by known prices (unpriced last), then by name.
@@ -45,6 +47,16 @@ local P = ns.ProfPlan
 
 P.NAME = "profPlan"
 P.NODE_SOURCE = "gatherMateSource"
+-- Section 383: a material whose name is not read yet; never its number.
+P.UNNAMED = "of the materials"
+-- Section 383: the one thing to do when the plan is empty, by reason.
+P.SAY = {
+    ["no reading"] = "Open your %s window once",
+    ["no colours"] = "Open your %s window once",
+    ["no materials"] = "Get the materials for %s",
+    ["no recipe"] = "Visit a %s trainer for new recipes",
+}
+P.SAY_NO_PROF = "Open a profession window once"
 P.SMELT_PROF = "Mining"
 P.SMELT_STATION = "forge"
 P.CHANCE = { optimal = "sure", medium = "maybe" }
@@ -79,7 +91,7 @@ end
 local function itemName(input, item)
     local n = call(input.name, item)
     if type(n) == "string" and n ~= "" then return n end
-    return "item " .. tostring(item)
+    return P.UNNAMED
 end
 
 local function sortedKeys(t)
@@ -298,8 +310,24 @@ local function sourced(input)
     return type(ns.ProfSources) == "table" and (input.nodes ~= nil or input.vendorPrice ~= nil)
 end
 
+-- Was any recipe colour of this profession read?
+local function coloursRead(input)
+    if type(input.colours) ~= "table" then return false end
+    for name, r in pairs(input.book) do
+        if type(r) == "table" and r.profession == input.prof and type(input.colours[name]) == "table" then
+            return true
+        end
+    end
+    return false
+end
+
+local function empty(why, input, about)
+    if type(input) ~= "table" or type(input.prof) ~= "string" then return {}, why, P.SAY_NO_PROF end
+    return {}, why, string.format(P.SAY[why], about or input.prof)
+end
+
 function P.Plan(input)
-    if not usable(input) then return {}, "no reading" end
+    if not usable(input) then return empty("no reading", input) end
     if input.skill >= input.max then return { tierStep(input) } end
     local list = P.Candidates(input)
     for _, c in ipairs(list) do
@@ -310,10 +338,11 @@ function P.Plan(input)
         local steps = sourcedSteps(input, list[1])
         if steps then return steps end
     end
-    if #list > 0 then return {}, "no materials" end
+    if #list > 0 then return empty("no materials", input, list[1].recipe) end
+    if not coloursRead(input) then return empty("no colours", input) end
     local learn = learnStep(input)
     if learn then return { learn } end
-    return {}, "no recipe"
+    return empty("no recipe", input)
 end
 
 -- Live reads -------------------------------------------------------------
@@ -417,7 +446,7 @@ function P.Declare(k)
     local api = {}
     local ctx
     function api.plan(prof)
-        if not ctx then return {}, "no reading" end
+        if not ctx then return {}, "no reading", P.SAY_NO_PROF end
         local source
         if type(ctx.use) == "function" then
             local ok, s = pcall(ctx.use, P.NODE_SOURCE)

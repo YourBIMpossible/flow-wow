@@ -24,6 +24,8 @@ local _, ns = ...
 ns.ProfSources = {}
 local S = ns.ProfSources
 
+-- Section 383: a material whose name is not read yet; never its number.
+S.UNNAMED = "of the materials"
 S.ORE_SUFFIXES = { " Vein", " Deposit" }
 
 local function whole(n)
@@ -70,7 +72,7 @@ function S.For(input, item, count)
     if not whole(count) then return nil end
     if type(input) ~= "table" then input = {} end
     local name = call(input.name, item)
-    if type(name) ~= "string" or name == "" then name = "item " .. tostring(item) end
+    if type(name) ~= "string" or name == "" then name = S.UNNAMED end
     local node = nearestNode(input, name)
     if node then
         return { kind = "gather", item = item, count = count,
