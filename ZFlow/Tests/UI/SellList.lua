@@ -12,6 +12,10 @@ local _, ns = ...
 
 local L = ns.SellList
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local INFO = {
     [97] = { name = "Broken Fang", quality = 0, sellPrice = 4 },
@@ -76,7 +80,7 @@ end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l == text then return true end
+        if plain(l) == text then return true end
     end
     return false
 end
@@ -196,8 +200,9 @@ tests["sell list panel: look only - no buttons, no clicks, only the two reads"] 
     end }), nil, nil, { status = ns.Reservations.NONE })
     t.ok(type(lines) == "table" and #lines > 0, "a listing")
     -- Plus the skill rank read for the skill boosters (lead section 337 item 2).
-    t.eq(called, { bagItems = true, itemInfo = true, ["other:skillRanks"] = true },
-        "the bag read, the item read and the skill rank read, nothing else")
+    -- Plus the professions read for the materials kept for a profession.
+    t.eq(called, { bagItems = true, itemInfo = true, ["other:skillRanks"] = true, ["other:professions"] = true },
+        "the bag read, the item read, the skill rank read and the professions read, nothing else")
     for name in pairs(L) do
         local n = tostring(name):lower()
         t.ok(not (n:find("^sell$") or n:find("buy") or n:find("click")), "no acting function: " .. n)
@@ -228,6 +233,13 @@ tests["sell list lines: none changes nothing"] = function(t)
     -- Lead section 226: a missing evaluation is unavailable (SR-3), so the
     -- plain list is the one made with an explicit none on both sides.
     t.eq(L.Lines(c, nil, L.Held(r), r), L.Lines(c, nil, nil, r))
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

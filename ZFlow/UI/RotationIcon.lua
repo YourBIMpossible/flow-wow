@@ -26,8 +26,14 @@ local _, ns = ...
 -- (Rotation/FlowButton.lua). The Flow button's default place stands well
 -- below this icon (FB.DEFAULT_POINT), so the two never stand side by side.
 --
--- Not tested in game: client.icon, client.spellTexture, the tint and the
--- tooltip on the icon (client.hoverTip) are first guesses.
+-- Cooldown text (G27): while the suggested spell has seconds of cooldown
+-- left (client.spellCooldownLeft), the line under the icon says how long,
+-- "8s" or "2m" (I.CooldownText). Ready, the global cooldown only, or not
+-- known: no text. A look-only suggestion's words keep the line (I.Caption).
+-- The text follows the driver's ticks; nothing else is timed.
+--
+-- Not tested in game: client.icon, client.spellTexture, the tint, the
+-- caption and the tooltip on the icon (client.hoverTip) are first guesses.
 local I = {}
 ns.RotationIcon = I
 
@@ -81,6 +87,58 @@ function I.Words(view)
     if type(who) ~= "string" or who == "" then who = s.unit end
     if type(who) ~= "string" or who == "" then return spell end
     return spell .. " on " .. who
+end
+
+-- Lead section 409 item 2: true when the Flow button shows this view's
+-- spell or item itself (Rotation/FlowButton.lua api.picture), and the icon
+-- adds no mark (out of range, or a spell for another player).
+function I.OnButton(view)
+    if I.Mark(view) ~= nil then return false end
+    local fb = ns.flowButton
+    if type(fb) ~= "table" or type(fb.picture) ~= "function" then return false end
+    local ok, shown = pcall(fb.picture, view)
+    if not ok or shown == nil then return false end
+    local spell = I.Spell(view)
+    if spell ~= nil then
+        if shown == spell then return true end
+        local A = ns.cast and ns.cast.ATTACK
+        return type(A) == "table" and A[shown] == true and A[spell] == true
+    end
+    local item = I.Item(view)
+    return item ~= nil and shown == "item:" .. item
+end
+
+-- G27: below this many seconds left the text is not shown, so the global
+-- cooldown after every cast does not flash a number under the icon.
+I.MIN_LEFT = 1.5
+
+-- The cooldown text for seconds left: "8s" up to a minute, then "2m",
+-- rounded up (the spell is not ready at 7.2). nil when left is not a
+-- finite number above I.MIN_LEFT.
+function I.CooldownText(left)
+    if type(left) ~= "number" or left ~= left or left == math.huge or left <= I.MIN_LEFT then return nil end
+    if left <= 60 then return math.ceil(left) .. "s" end
+    return math.ceil(left / 60) .. "m"
+end
+
+-- The line under the icon for a view and the suggested spell's seconds
+-- left: the look-only words first (I.Words), else the cooldown text, else nil.
+function I.Caption(view, left)
+    local words = I.Words(view)
+    if words then return words end
+    if not I.Spell(view) then return nil end
+    return I.CooldownText(left)
+end
+
+-- The suggested spell's seconds of cooldown left, or nil when not known.
+local function cooldownLeft(client, spell)
+    if type(spell) ~= "string" or type(client.spellId) ~= "function"
+        or type(client.spellCooldownLeft) ~= "function" then return nil end
+    local okId, id = pcall(client.spellId, spell)
+    if not okId or type(id) ~= "number" then return nil end
+    local ok, left = pcall(client.spellCooldownLeft, id)
+    if not ok then return nil end
+    return left
 end
 
 local refused = setmetatable({}, { __mode = "k" })
@@ -205,6 +263,9 @@ function I.Declare(k)
             local function caption(words)
                 if type(icon.caption) == "function" then pcall(icon.caption, words) end
             end
+            local function fade(on)
+                if type(icon.fade) == "function" then pcall(icon.fade, on) end
+            end
             local function hide()
                 caption(nil)
                 mark(nil)
@@ -259,8 +320,15 @@ function I.Declare(k)
                 if icon.setTexture(tex) then
                     shownSpell = I.Spell(view)
                     mark(I.Mark(view))
-                    caption(I.Words(view))
+                    caption(I.Caption(view, cooldownLeft(client, shownSpell)))
                     icon.show(true)
+                    -- Lead section 409 item 2: one picture for the next
+                    -- spell. While the Flow button shows this same spell
+                    -- the icon stays on but draws nothing beside it; it is
+                    -- seen only for what the button does not show, such as
+                    -- the new suggestion in a fight while the locked button
+                    -- keeps what it had, out of range or another player's.
+                    fade(I.OnButton(view))
                 else
                     hide()
                 end

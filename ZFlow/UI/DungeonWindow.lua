@@ -4,7 +4,8 @@
 -- Nav/DungeonStates.lua, "Not for you" folded, one line per quest with its
 -- level, "Step n of m" and "Available at Level X". Show on map sets the
 -- player's own waypoint (Nav/Waypoint.lua) at the dungeon's entrance.
--- Bosses: this account's own seen loot (Nav/DungeonRead.lua R.Loot).
+-- Bosses: every boss of the dungeon and what it can drop, with the drops
+-- this account saw marked (Nav/DungeonRead.lua R.Loot, lead DISPATCH 426).
 -- Each dungeon in the list carries its level range; a summary line above
 -- the tabs names the picked one, its range and its quest count.
 -- Every empty pane says what is missing and how to get it.
@@ -46,6 +47,10 @@ W.DROPS = "learned.drops"          -- character, Items/Drops.lua
 -- Where the window was left, account wide: { point, width, height }
 -- (Twin review 18:06, F1). Read back through ns.Kit.Place.
 W.PATH = "layout.dungeonWindow"
+-- Bosses tab: item names not read yet are asked again this many times, this
+-- many seconds apart, for each dungeon picked.
+W.READ_TRIES = 5
+W.READ_WAIT = 1
 
 -- The tone a group's lines are drawn in (the kit's three words).
 local TONE = { log = "good", later = "warn", notforyou = "bad" }
@@ -67,8 +72,8 @@ function W.Declare(k, diag)
     local api = {}
     local ctx, handle
     local st
-    local view = { search = "", pick = nil, tab = 1, folded = {}, said = nil }
-    local cancelStep
+    local view = { search = "", pick = nil, tab = 1, folded = {}, said = nil, reads = 0 }
+    local cancelStep, cancelRead
     local render
 
     local R, S = ns.DungeonRead, ns.DungeonStates
@@ -170,7 +175,7 @@ function W.Declare(k, diag)
                 if not folded then
                     for _, r in ipairs(g.rows) do
                         rows[#rows + 1] = { kind = "line", text = r.name, icon = iconOf(g.id),
-                            sub = join(r.chain, r.note),
+                            sub = join(join(r.chain, r.note), r.next),
                             right = r.level and ("Level " .. tostring(r.level)) or nil, tone = TONE[g.id] }
                     end
                 end
@@ -187,16 +192,30 @@ function W.Declare(k, diag)
             out[#out + 1] = empty(loot.why)
             return
         end
+        -- Lead DISPATCH 426: every boss with what it can drop, before the
+        -- first kill. A drop this account saw is marked, never counted as
+        -- the heading; a boss with no list says so in plain words.
         local rows = {}
         for _, b in ipairs(loot.bosses) do
-            rows[#rows + 1] = { kind = "section", text = tostring(b.name or "A boss")
-                .. " (" .. tostring(b.kills) .. (b.kills == 1 and " kill)" or " kills)") }
+            rows[#rows + 1] = { kind = "section", text = tostring(b.name or R.BOSS_UNNAMED) }
+            if #b.items == 0 then
+                rows[#rows + 1] = { kind = "line", text = R.BOSS_NO_DATA[1], sub = R.BOSS_NO_DATA[2] }
+            end
             for _, it in ipairs(b.items) do
                 rows[#rows + 1] = { kind = "itemLine", name = it.name, quality = it.quality, icon = it.icon,
-                    item = it.item, note = "seen " .. tostring(it.times) .. (it.times == 1 and " time" or " times") }
+                    item = it.item, note = it.seen and R.SEEN or nil }
             end
         end
         out[#out + 1] = { kind = "scroll", key = "bosses", children = rows }
+        -- Items the client had not read yet get their names a moment later:
+        -- drawn again a few times, then left as they are.
+        if loot.unread > 0 and view.reads < W.READ_TRIES and not cancelRead and ctx and ctx.sched then
+            view.reads = view.reads + 1
+            cancelRead = ctx.sched:after(W.NAME, W.READ_WAIT, function()
+                cancelRead = nil
+                if view.tab == 2 and render then render() end
+            end)
+        end
     end
 
     local function mapPane(d, out)
@@ -228,7 +247,7 @@ function W.Declare(k, diag)
             local sel, d = picked(list)
             children[#children + 1] = { kind = "topicList", key = "dungeons", items = names, selected = sel,
                 onSelect = function(i)
-                    if list[i] then view.pick, view.said = list[i].key, nil end
+                    if list[i] then view.pick, view.said, view.reads = list[i].key, nil, 0 end
                     render()
                 end }
             -- Lead DISPATCH 343: as the journal's, the dungeon's name with
@@ -324,6 +343,8 @@ function W.Declare(k, diag)
         stop = function()
             if cancelStep then cancelStep() end
             cancelStep = nil
+            if type(cancelRead) == "function" then cancelRead() end
+            cancelRead = nil
             if handle then handle.close() end
         end,
     })

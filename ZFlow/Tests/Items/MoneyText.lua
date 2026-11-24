@@ -6,6 +6,10 @@ local _, ns = ...
 
 local P, Present, Sell = ns.Prices, ns.ItemPresent, ns.ItemSell
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 tests["money text: zero is 0c, and nothing is never shown as a price"] = function(t)
     t.eq(P.Coin(0), "0c")
@@ -68,6 +72,13 @@ tests["money text: the price texts, the sell list and the plan all use it"] = fu
         t.eq(Present.SourceText({ from = "vendor", count = 2, basis = "observed", cost = 120, text = "60c" }),
             "buy 2 from a merchant at 60c each (<120>)", "a plan row's merchant part")
     end)
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

@@ -95,14 +95,14 @@ T["a craft at a station: a forge serves an anvil, a fire does not, and another m
     t.eq(step and step.place, { cont = 1, map = 1411, x = 0.7, y = 0.5 }, "the forge")
     t.eq(step and step.label, "Blacksmithing forge", "named as what was seen there")
     step = N.ProfNext(input({ stations = { at("fire", 0.51, 0.5), at("anvil", 0.52, 0.5, 1412) } }))
-    t.eq(step, { still = true, lines = { BUCKLE } }, "no anvil or forge on this map: the craft as text, as before")
+    t.eq(step, { still = true, doable = true, lines = { BUCKLE } }, "no anvil or forge on this map: the craft as text, as before")
 end
 
 T["a craft at a station: no station seen, or a list that is not one, is text as before"] = function(t)
     for what, stations in pairs({ none = false, empty = {}, text = "anvil", holes = { 7, "x", { kind = "anvil" },
         { kind = "anvil", map = 1411, x = 2, y = 0.5 }, { kind = "anvil", map = 1411, x = 0.5 } } }) do
         local step = N.ProfNext(input({ stations = stations or nil }))
-        t.eq(step, { still = true, lines = { BUCKLE } }, what)
+        t.eq(step, { still = true, doable = true, lines = { BUCKLE } }, what)
     end
 end
 
@@ -129,7 +129,7 @@ end
 T["a craft at a station: where the player is not known, there is no station to choose"] = function(t)
     local i = input({ stations = { at("anvil", 0.6, 0.5) } })
     i.here.position = nil
-    t.eq(N.ProfNext(i), { still = true, lines = { BUCKLE } })
+    t.eq(N.ProfNext(i), { still = true, doable = true, lines = { BUCKLE } })
 end
 
 T["a craft at a station: a placed craft comes before a craft that is only text"] = function(t)

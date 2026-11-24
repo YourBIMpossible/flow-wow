@@ -120,6 +120,9 @@ SellList.PRICES_UNKNOWN = "Prices not known"
 SellList.ITEMS_UNREAD_HEAD = "Items not read yet"
 SellList.ITEMS_UNREAD_HOW = "Reopen the merchant window to list them."
 SellList.NOTHING = "Nothing to sell."
+-- The bags read as holding no item at all (owner, 2026-11-23): said apart
+-- from bags that hold only things not to sell.
+SellList.BAGS_EMPTY = "No items were found in your bags. If they are not empty, reopen the merchant window."
 SellList.UNKNOWN_HEAD = "Reservations not known"
 SellList.UNKNOWN_HOW = "Nothing is offered for sale until what your goals hold is known."
 SellList.UNREAD_HEAD = "Can't list what to sell"
@@ -202,6 +205,18 @@ function SellList.Listing(client, store, grants, r)
     context.sets = ns.GearSets and ns.GearSets.Facts(store) or nil
     -- P-INV G6: skill boosters are kept while the skill can rise.
     if type(ns.SkillBoosters) == "table" then context.boosters = ns.SkillBoosters.Facts(client, bag) end
+    -- Lead section 416 item 3: what the profession plans' steps name as a
+    -- material is kept (Disposition's professionMaterial), never sold.
+    if type(ns.ProfPlan) == "table" and type(ns.ProfPlan.Materials) == "function" then
+        local ok, mats = pcall(ns.ProfPlan.Materials, client, store)
+        if ok and type(mats) == "table" then context.materials = mats end
+    end
+    -- Lead section 418 item 4: gathered goods of a profession the player
+    -- has (by item class and subclass) are kept too.
+    if type(ns.ProfPlan) == "table" and type(ns.ProfPlan.Gathered) == "function" then
+        local ok, mats = pcall(ns.ProfPlan.Gathered, client, store, stacks, context.materials)
+        if ok and type(mats) == "table" then context.materials = mats end
+    end
     local out = { stacks = stacks, kept = ns.SellView.Kept(bag, context), notRead = 0 }
     -- Items whose facts were not read yet (no name, quality or price),
     -- counted once per item: two stacks of one item are one item.
@@ -252,7 +267,7 @@ function SellList.Others(bag, listing, book)
             rows[#rows + 1] = {
                 key = item.key,
                 name = type(item.name) == "string" and item.name ~= "" and item.name or nil,
-                count = item.count, reason = SellList[why], why = why,
+                count = item.count, quality = item.quality, reason = SellList[why], why = why,
             }
         end
     end
@@ -330,7 +345,7 @@ function SellList.OtherLines(lines, listing)
     for _, o in ipairs(others) do
         local name = o.name
         if type(name) ~= "string" or name == "" then name = ns.ItemPresent.Name(o.key) end
-        lines[#lines + 1] = tostring(name) .. ": " .. tostring(o.reason)
+        lines[#lines + 1] = tostring(ns.ItemPresent.Tint(name, o.quality)) .. ": " .. tostring(o.reason)
     end
     return lines
 end
@@ -438,8 +453,9 @@ function SellList.TreeOf(listing, client, id, action)
     elseif #rows == 0 then
         title = Present.NOTHING_TO_SELL
         total = 0
-        body[#body + 1] = { kind = "empty", text = SellList.NOTHING,
-            how = "Bags hold nothing " .. tostring(id.title) .. " would sell." }
+        local how = "Bags hold nothing " .. tostring(id.title) .. " would sell."
+        if type(listing.stacks) == "table" and #listing.stacks == 0 then how = SellList.BAGS_EMPTY end
+        body[#body + 1] = { kind = "empty", text = SellList.NOTHING, how = how }
     else
         title = plural(#rows, "item", "items") .. " to sell"
         total = 0

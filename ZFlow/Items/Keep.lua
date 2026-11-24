@@ -40,15 +40,8 @@ end
 
 local function nameOf(k, key)
     local client = k.client
-    local names
-    if type(client) == "table" and type(client.itemInfo) == "function" then
-        names = function(item)
-            local ok, info = pcall(client.itemInfo, ns.Items.Id(item) or item)
-            if ok and type(info) == "table" then return info.name end
-            return nil
-        end
-    end
-    return ns.ItemPresent.Name(key, names)
+    -- Coloured by the item's quality (ItemPresent.Tint).
+    return ns.ItemPresent.Name(key, ns.ItemPresent.Names(type(client) == "table" and client.itemInfo or nil))
 end
 
 -- The saved list, with every entry under its item key. nil when the
@@ -87,7 +80,9 @@ function Keep.Run(k, rest)
         local names = {}
         for key in pairs(list) do names[#names + 1] = nameOf(k, key) end
         if #names == 0 then return { Keep.EMPTY }, false end
-        table.sort(names)
+        table.sort(names, function(a, b)
+            return ns.ItemPresent.Plain(a) < ns.ItemPresent.Plain(b)
+        end)
         local lines = { ns.ItemPresent.KeepText("header", #names) }
         for i = 1, #names do lines[#lines + 1] = names[i] end
         return lines, false

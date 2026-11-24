@@ -35,9 +35,19 @@
 -- Prompts may be added before the advisor starts (while files load); they
 -- show when it starts.
 --
---   Advisor.Declare(k) -> api        declares the module on kernel k
---     api.Add, api.Remove, api.List  as above, for that kernel
---   ns.use("advisor") -> { Add, Remove, List, Watch }
+--   Advisor.Open() -> true | false, reason (G32)
+--               the player asked to see the panel (the minimap menu's
+--               advice row, "<slash> advice"). Shown even with no prompt,
+--               as Advisor.NONE, and even while a new player's reveal holds
+--               it back. Refused with Advisor.OFF while the setting is off.
+--               Closing the window ends the ask. On the plain panel
+--               (no close button) a second Open while it shows hides it.
+--
+--   Advisor.Declare(k, diag) -> api  declares the module on kernel k; with
+--               diag (Core/Diag.lua's Start result) it adds the slash word
+--               Advisor.WORD
+--     api.Add, api.Remove, api.List, api.Open  as above, for that kernel
+--   ns.use("advisor") -> { Add, Remove, List, Watch, Open }
 --
 -- The panel shows at most Advisor.MAX_SHOWN prompts, then "and N more".
 --
@@ -64,7 +74,23 @@ Advisor.DEFAULT_POINT = { "TOPRIGHT", "TOPRIGHT", -220, -200 }
 -- also the plain panel's first line. Advisor.TITLE is the words after it.
 Advisor.TITLE = "Advice"
 Advisor.KIT_ID = "Advisor"
-Advisor.KIT_WIDTH, Advisor.KIT_HEIGHT = 320, 220
+Advisor.KIT_WIDTH = 320
+-- G32: the panel opened on purpose.
+Advisor.NONE = "No advice right now."
+Advisor.OFF = "the advice panel is turned off in the settings (Advisor panel)."
+Advisor.NOT_READY = "the advice panel is not ready yet."
+Advisor.WORD = "advice"
+Advisor.HELP = "show the advice panel, even when it has nothing to say"
+
+-- Advisor.KitHeight(lines) -> the height of a kit window of that many
+-- one-row lines: the title bar, the padding above and below, the lines.
+-- Lead section 408: the window is as tall as its lines. The client fits it
+-- at every draw (a wrapped line is taller); this is where it starts.
+function Advisor.KitHeight(lines)
+    local size = ns.Kit.look.size
+    if type(lines) ~= "number" or lines < 1 then lines = 1 end
+    return size.title + 2 * size.pad + lines * size.lineHeight
+end
 
 local function isFinite(n)
     return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
@@ -87,24 +113,28 @@ end
 -- close it: advice should not go with every Escape.
 function Advisor.View(lines, title)
     if type(title) ~= "string" or title == "" then title = Advisor.Title() end
+    -- Lead section 408: the title stands in the title bar only (no header
+    -- part repeats it), a long line wraps and is never cut, and the window
+    -- is as tall as its lines.
     local view = { id = Advisor.KIT_ID, title = title, children = {},
-        width = Advisor.KIT_WIDTH, height = Advisor.KIT_HEIGHT, point = Advisor.DEFAULT_POINT,
-        escape = false }
+        width = Advisor.KIT_WIDTH, point = Advisor.DEFAULT_POINT,
+        escape = false, fit = true }
     local kids = view.children
-    kids[1] = { kind = "header", title = title }
-    if type(lines) ~= "table" then return view end
-    for i = 1, #lines do
-        local text = lines[i]
-        if type(text) == "string" and text:find("%S") then
-            kids[#kids + 1] = { kind = "line", key = "prompt" .. i, text = text }
+    if type(lines) == "table" then
+        for i = 1, #lines do
+            local text = lines[i]
+            if type(text) == "string" and text:find("%S") then
+                kids[#kids + 1] = { kind = "line", key = "prompt" .. i, text = text, wrap = true }
+            end
         end
     end
+    view.height = Advisor.KitHeight(#kids)
     return view
 end
 
 -- Declares the module on kernel k. Usable at once: prompts added before the
 -- module starts are kept and shown when it starts.
-function Advisor.Declare(k)
+function Advisor.Declare(k, diag)
     local api = {}
     local entries = {}         -- { id, text, priority, seq }
     local seq = 0
@@ -112,6 +142,9 @@ function Advisor.Declare(k)
     -- closed: the player closed the window; a new prompt opens it again.
     local host, ctx, cancelWatch
     local closed = false
+    -- asked: the player opened the panel on purpose (G32); the window then
+    -- shows with no prompt and is not held back. Closing it ends the ask.
+    local asked = false
     local watchers = {}        -- by token: fn(id, text)
     local watchSeq = 0
 
@@ -139,14 +172,15 @@ function Advisor.Declare(k)
 
     local function render()
         if not host then return end
-        if #entries == 0 then closed = false end
-        if not enabled() or #entries == 0 or held() then
+        if #entries == 0 and not asked then closed = false end
+        if not enabled() or (not asked and (#entries == 0 or held())) then
             host.show(false)
             return
         end
         local list = sorted()
         local lines = {}
         for i = 1, math.min(#list, Advisor.MAX_SHOWN) do lines[i] = list[i].text end
+        if #list == 0 then lines[1] = Advisor.NONE end
         if #list > Advisor.MAX_SHOWN then
             lines[#lines + 1] = "and " .. (#list - Advisor.MAX_SHOWN) .. " more"
         end
@@ -222,6 +256,34 @@ function Advisor.Declare(k)
         return out
     end
 
+    function api.Open()
+        if not host or not ctx then return false, Advisor.NOT_READY end
+        if not enabled() then return false, Advisor.OFF end
+        -- The plain panel has no close button: asked again while it shows
+        -- on purpose, it hides, as a closed kit window does.
+        if asked and host.plain() and host.shown() then
+            asked = false
+            closed = true
+            host.show(false)
+            return true
+        end
+        asked = true
+        closed = false
+        render()
+        return true
+    end
+
+    if diag and type(diag.commands) == "table" then
+        diag.commands[Advisor.WORD] = function()
+            local ok, why = api.Open()
+            if not ok and type(k.client) == "table" and type(k.client.print) == "function" then
+                k.client.print((k.id or ns.id).title .. ": " .. tostring(why))
+            end
+            return ok
+        end
+        if type(diag.help) == "table" then diag.help[Advisor.WORD] = Advisor.HELP end
+    end
+
     local function stop()
         if cancelWatch then
             cancelWatch()
@@ -233,7 +295,8 @@ function Advisor.Declare(k)
     k:Module({
         name = Advisor.NAME,
         needs = { "client", "store", "settings" },
-        provides = { Add = api.Add, Remove = api.Remove, List = api.List, Watch = api.Watch },
+        provides = { Add = api.Add, Remove = api.Remove, List = api.List, Watch = api.Watch,
+            Open = api.Open },
         start = function(c)
             ctx = c
             -- Follow the setting while running: turning it off hides the
@@ -268,7 +331,10 @@ function Advisor.Declare(k)
                 }
             end
             host = ns.KitHost.New(k, c.client, { name = id.framePrefix .. "AdvisorKit", panel = plain,
-                onClose = function() closed = true end })
+                onClose = function()
+                    closed = true
+                    asked = false
+                end })
             render()
         end,
         stop = stop,
@@ -277,8 +343,9 @@ function Advisor.Declare(k)
 end
 
 -- The addon's own: declared when this file loads, started at login.
-ns.advisor = Advisor.Declare(ns)
+ns.advisor = Advisor.Declare(ns, ns.diag)
 Advisor.Add = ns.advisor.Add
 Advisor.Remove = ns.advisor.Remove
 Advisor.List = ns.advisor.List
 Advisor.Watch = ns.advisor.Watch
+Advisor.Open = ns.advisor.Open

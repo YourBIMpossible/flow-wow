@@ -82,6 +82,10 @@ FB.DEFAULT_POINT = { "CENTER", "CENTER", 0, -270 } -- authored: well under the r
 FB.SELF_DEFAULT_POINT = { "CENTER", "CENTER", 100, -270 }
 FB.FLOW_NAME = "Flow button"
 FB.SELF_NAME = "Buff button, for your self buffs"
+-- Lead section 409 item 4: the word under each button, so the two are told
+-- apart without hovering.
+FB.FLOW_WORD = "Flow"
+FB.SELF_WORD = "Buffs"
 FB.SELF_LABEL = "Show the self buff button"
 FB.DOCK_LABEL = "Keep the self button under the Flow button"
 FB.PARTS = { "type", "spell", "unit", "item" }
@@ -324,7 +328,7 @@ function FB.Declare(k)
 
     -- One button: made once, out of a fight; set through a KeyFrame.
     local function unit(which, frame, sizeOf, pointOf, layoutKey)
-        local u = { which = which, why = "", hold = nil, wanted = nil }
+        local u = { which = which, why = "", hold = nil, wanted = nil, lastTex = nil }
         local row, kf, face, iconSig
         local name = ns.id.framePrefix .. frame
         local madeSaid = false
@@ -339,25 +343,62 @@ function FB.Declare(k)
             if face then pcall(face.empty, on) end
         end
 
+        -- Lead section 409 item 1: the look of a face set after plain.
+        -- nil: the plain face; "picture": dimmed, no "?"; "gone": nothing.
+        local function dim(mode)
+            if face and type(face.dim) == "function" then pcall(face.dim, mode) end
+        end
+
+        -- Lead section 415: the empty buff button takes no mouse; holding
+        -- a buff it does. Changed only while the lock reads a plain false;
+        -- in a fight it stays as it was (what it holds cannot change then
+        -- either). The Flow button always takes the mouse (hover line).
+        local function mouse(on)
+            if which ~= "self" or not face or type(face.mouse) ~= "function" then return end
+            if lockdown() ~= false then return end
+            pcall(face.mouse, on)
+        end
+
         -- The icon of what it holds; the plain face with nothing held, or
         -- no icon read.
+        -- Lead section 409 item 1: the self button holding nothing shows
+        -- the last buff it held, dimmed, never a "?"; having held none, it
+        -- draws nothing. Look only: the click still casts nothing.
         local function icon(e)
             if not row then return end
             local tex = nil
             if e ~= nil then tex = texture(client, e) end
+            local mode = nil
+            -- Lead section 415: the Flow button too: the last spell dimmed,
+            -- or, never having held one, its plain word "Flow"; a held
+            -- spell with no icon read shows the word. Never a "?".
+            local none = "gone"
+            if which == "flow" then none = "word" end
+            if e == nil then
+                tex = u.lastTex
+                mode = "picture"
+                if tex == nil then mode = none end
+            end
+            mouse(e ~= nil)
             if tex == nil or type(row.icon) ~= "function" then
+                if mode == nil then mode = "word" end
                 plain(true)
+                dim(mode)
                 return
             end
             if tostring(tex) ~= iconSig then
                 local ok, given = pcall(row.icon, 1, tex)
                 if not ok or given == false then
                     plain(true)
+                    if mode ~= nil then mode = none else mode = "word" end
+                    dim(mode)
                     return
                 end
                 iconSig = tostring(tex)
             end
+            if e ~= nil then u.lastTex = tex end
             plain(false)
+            dim(mode)
         end
 
         local function after(st)
@@ -404,12 +445,17 @@ function FB.Declare(k)
             row = made
             u.place()
             if type(client.buttonFace) == "function" then
-                local okFace, got = pcall(client.buttonFace, { button = name .. "1" })
+                local word = FB.FLOW_WORD
+                if which == "self" then word = FB.SELF_WORD end
+                local okFace, got = pcall(client.buttonFace, { button = name .. "1", label = word })
                 if okFace and type(got) == "table" and type(got.empty) == "function" then face = got end
             end
             plain(true)
+            if which == "self" then dim("gone"); mouse(false) else dim("word") end
             local size = sizeOf()
-            ns.MoveHandle.Attach(k, client, { target = name, width = size, height = size, save = moved })
+            -- Lead section 409 item 3: the grip's yellow bar is drawn only
+            -- while the mouse is over it or the button (quiet).
+            ns.MoveHandle.Attach(k, client, { target = name, width = size, height = size, save = moved, quiet = true })
             if type(client.hoverTip) == "function" then
                 local function line()
                     if which == "flow" then return FB.Tip(which, u.why, u.hold, suggestedNow()) end
@@ -451,6 +497,16 @@ function FB.Declare(k)
     function api.status() return { flow = units.flow.status(), self = units.self.status() } end
     -- Lead section 340: the spell or item the Flow button holds now (set on
     -- the button), or nil: off, not made, or holding nothing.
+    -- Lead section 409 item 2: the spell or item whose picture the Flow
+    -- button shows after this driver view: out of a fight what it is about
+    -- to hold, in one what it holds. nil: off, not made, or nothing.
+    function api.picture(view)
+        if setting(FB.SETTING) ~= true or not units.flow.made() then return nil end
+        local h = units.flow.hold
+        if lockdown() == false then h = FB.FlowPick(view) end
+        if type(h) ~= "table" then return nil end
+        return h.spell or h.item
+    end
     function api.held()
         if setting(FB.SETTING) ~= true or not units.flow.made() then return nil end
         local h = units.flow.hold

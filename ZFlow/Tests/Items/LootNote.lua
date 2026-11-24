@@ -10,6 +10,10 @@ local _, ns = ...
 
 local N, Present = ns.LootNote, ns.ItemPresent
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local INFO = {
     [97] = { name = "Broken Fang", quality = 0, sellPrice = 4 },
@@ -93,7 +97,7 @@ end
 local function notes(c)
     local out = {}
     for _, p in ipairs(c.printed) do
-        if p:find("Junk:", 1, true) or p:find("To sell:", 1, true) then out[#out + 1] = p end
+        if plain(p):find("Junk:", 1, true) or plain(p):find("To sell:", 1, true) then out[#out + 1] = p end
     end
     return out
 end
@@ -184,6 +188,13 @@ tests["loot note: look only - it never loots, skips, sells or deletes"] = functi
     local only = setmetatable({}, { __index = function(_, name) called[name] = true return nil end })
     t.eq(N.FromClient(only, nil, "you:item:97:2"), nil, "a client with no reads: nothing")
     t.eq(called, { ownLoot = true }, "it asked for the own-loot read and nothing else")
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

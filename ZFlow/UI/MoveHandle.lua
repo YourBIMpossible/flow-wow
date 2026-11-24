@@ -16,7 +16,7 @@ MH.GRIP = 10 -- pixels: the width of the grip
 
 -- MH.Attach(k, client, spec) -> handle or nil. spec = { target (frame
 -- name), width, height (the frame, to keep it on the screen), place(point),
--- save(point) }. nil when the client has no grip or no such frame.
+-- save(point), quiet (lead section 409: the bar drawn only on hover) }. nil when the client has no grip or no such frame.
 function MH.Attach(k, client, spec)
     if type(client) ~= "table" or type(client.moveHandle) ~= "function" then return nil end
     if type(spec) ~= "table" or type(spec.target) ~= "string" then return nil end
@@ -35,6 +35,7 @@ function MH.Attach(k, client, spec)
     end
     local ok, handle = pcall(client.moveHandle, {
         target = spec.target, width = MH.GRIP, height = spec.height, onMoved = onMoved,
+        quiet = spec.quiet == true or nil,
     })
     if not ok or type(handle) ~= "table" then return nil end
     local guides = nil

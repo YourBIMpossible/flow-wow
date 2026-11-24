@@ -218,6 +218,39 @@ tests["auto attack: the lock is on before the fight starts: Attack stays, a diag
     nothingWritten(t, c)
 end
 
+-- SE6-1 (fix): the swing starts (PLAYER_ENTER_COMBAT, first guess: the
+-- auto-attack start event, handled before the lock) and only then the fight
+-- starts with the lock already on. Attack came off at the swing, so the key
+-- is not left on Attack for the fight, and no waited mark.
+tests["auto attack: the swing starts, then the fight starts with the lock on: Attack is already off the key"] = function(t)
+    local c, addon = start()
+    pull(c)
+    t.eq(attr(c, "spell"), "Attack", "the key holds Attack before the press")
+    c.setCurrentSpell(ATTACK_ID, true)
+    c.fire("PLAYER_ENTER_COMBAT")
+    t.ok(attr(c, "spell") ~= "Attack", "Attack came off the key as the swing started")
+    c.setLockdown(true)
+    c.setCombat(true)
+    t.ok(onKey(c)["Attack"] == nil, "the fight starts with no Attack on the key")
+    c.advance(1, 5)
+    t.ok(onKey(c)["Attack"] == nil, "still no Attack on the key in the fight")
+    t.eq(addon.diag.timing.KEYS_FIGHT_START_WAITED, nil, "nothing waited: no mark")
+    nothingWritten(t, c)
+end
+
+-- SE6-1: the swing start is seen with the lock already on: nothing is set
+-- and the waited mark says so.
+tests["auto attack: the swing starts with the lock on: nothing set, the waited mark"] = function(t)
+    local c, addon = start()
+    pull(c)
+    c.setCurrentSpell(ATTACK_ID, true)
+    c.setLockdown(true)
+    c.fire("PLAYER_ENTER_COMBAT")
+    t.eq(attr(c, "spell"), "Attack", "the lock was on: nothing could be set")
+    t.ok(type(addon.diag.timing.KEYS_FIGHT_START_WAITED) == "table", "the waited mark")
+    nothingWritten(t, c)
+end
+
 -- SE6-1: the usual order leaves no mark.
 tests["auto attack: the fight starts before the lock: no waited mark"] = function(t)
     local c, addon = start()

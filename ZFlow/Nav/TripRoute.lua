@@ -30,6 +30,14 @@ local _, ns = ...
 --     lists it as a held line with its reason, and it is walked again once
 --     it is ready.
 --   T.Lines(route, at) -> lines
+-- Pick-ups (lead section 375 item 7, TN-1): with the pick-up setting on,
+-- quests the player can take now whose giver stands on this map
+-- (Nav/RoutePickups.lua, read once per plan, the nearest few) join the
+-- quest route as optional stops "Pick up: <quest> (<giver>)", kept only
+-- when on the way (N.RoutePlan's optional rule, TN-2), else listed as
+-- skipped. A pick-up stop drops out once its quest is in the log. Why
+-- there are none (no Questie) is one line under the route.
+--   T.Plan(rows, places, here, legs, pickups, note)
 --   T.Need(text, done) -> line or nil   (S43, lead section 391 item 4) how
 --     many of the thing an objective still needs, read from the quest log's
 --     own objective text ("Gnoll Paw: 4/8" -> "You still need 4 of Gnoll
@@ -37,7 +45,7 @@ local _, ns = ...
 --     never a made-up number. An objective stop carries it as stop.need,
 --     read again with the log; the step and the list say it in place of the
 --     raw count.
--- Module "tripRoute" provides Step, Plan, Run, Skip, Off, Lines.
+-- Module "tripRoute" provides Step, Plan, Run, Skip, Off, Lines, View.
 -- Not tested in game.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -56,6 +64,9 @@ T.WHY_NO_MAP = "Your map is not known yet; try again in a moment."
 T.WHY_NO_LOG = "Your quest log could not be read."
 T.WHY_NONE = "No quest step on this map has a known place: no route."
 T.WHY_OFF = "Routes are switched off in the settings."
+-- Not under "quest.route": that path is a setting itself, and a path may
+-- not sit under another setting's.
+T.PICKUP_SETTING = "quest.routePickups"
 T.NOT_HERE = "not on this map"
 T.NO_DISTANCE = "distance not known"
 T.DONE = "Route done."
@@ -65,6 +76,10 @@ T.RUN_SAID = "Run planned: %d stops; the arrow walks it."
 T.HELD_LINE = "Turn-in held: %s"
 T.HELD_NOT_COMPLETE = "not complete any more"
 T.LEFT = "%s left the route: its quest is no longer in your log."
+T.UNDER_MINUTE = "under a minute"    -- S34: a leg's time on its step
+T.ONE_MINUTE = "about 1 minute"
+T.MINUTES = "about %d minutes"
+T.UNDER_SECS = 45                     -- seconds: shorter legs are "under a minute"
 T.NEED_ONE = "You still need 1 %s."
 T.NEED_MANY = "You still need %d of %s."
 
@@ -173,36 +188,81 @@ function T.Stops(rows, places, here)
     return stops, left
 end
 
-function T.Plan(rows, places, here, legs)
+-- S34 (lead dispatch section 395 item 2): a leg's seconds. A leg is in
+-- yards at a run (N.Legs.RUN yards a second): the straight line, or the
+-- player's own timed trip (flight or boat wait included) turned into such
+-- yards by N.Legs.YardsOf, so ordering by yards is ordering by seconds.
+function T.Seconds(yards)
+    if not finite(yards) or yards < 0 then return nil end
+    local L = N.Legs
+    local speed = type(L) == "table" and finite(L.RUN) and L.RUN > 0 and L.RUN or 7
+    return yards / speed
+end
+
+-- The words for a leg's seconds, or nil when they are not known.
+function T.TimeWords(secs)
+    if not finite(secs) or secs < 0 then return nil end
+    if secs < T.UNDER_SECS then return T.UNDER_MINUTE end
+    local m = math.max(1, math.floor(secs / 60 + 0.5))
+    if m == 1 then return T.ONE_MINUTE end
+    return T.MINUTES:format(m)
+end
+
+function T.Plan(rows, places, here, legs, pickups, note)
     here = type(here) == "table" and here or {}
     if here.map == nil then return nil, T.WHY_NO_MAP end
     local stops, left = T.Stops(rows, places, here)
-    if #stops == 0 then return nil, T.WHY_NONE end
+    pickups = type(pickups) == "table" and pickups or {}
+    if #stops == 0 and #pickups == 0 then return nil, T.WHY_NONE end
     local w, h, yards = scale(here)
-    -- No more than the planner takes: the nearest ones.
-    if #stops > N.ROUTE_MAX and finite(here.x) and finite(here.y) then
+    -- No more than the planner takes: the nearest ones, room kept for the pick-ups.
+    local room = N.ROUTE_MAX - #pickups
+    if #stops > room and finite(here.x) and finite(here.y) then
         local function far(s)
             local dx, dy = (s.place.x - here.x) * w, (s.place.y - here.y) * h
             return dx * dx + dy * dy
         end
         table.sort(stops, function(a, b) return far(a) < far(b) end)
-        for i = #stops, N.ROUTE_MAX + 1, -1 do stops[i] = nil end
+        for i = #stops, room + 1, -1 do stops[i] = nil end
+    end
+    local optional = {}
+    for _, p in ipairs(pickups) do
+        if type(p) == "table" and type(p.place) == "table" and #stops < N.ROUTE_MAX then
+            stops[#stops + 1] = { kind = "pickup", quest = p.quest, label = tostring(p.label),
+                                  place = { map = p.place.map, x = p.place.x, y = p.place.y } }
+            optional[#stops] = true
+        end
     end
     local list = {}
     for i, s in ipairs(stops) do list[i] = s.place end
-    local route, why = N.RoutePlan(list, here.map, { w = w, h = h }, here, yards and legs or nil)
+    local route, why = N.RoutePlan(list, here.map, { w = w, h = h }, here, yards and legs or nil, nil, optional)
     if not route then return nil, tostring(why) end
     local ordered = {}
     for i, rs in ipairs(route.stops) do
         local s = stops[rs.index]
         s.leg = yards and rs.leg or nil
+        s.secs = s.leg and T.Seconds(s.leg) or nil
         ordered[i] = s
     end
-    return { kind = "quests", stops = ordered, yards = yards, label = route.label, left = left }
+    for _, l in ipairs(type(route.left) == "table" and route.left or {}) do
+        local s = type(l) == "table" and stops[l.index] or nil
+        if s and s.kind == "pickup" then
+            left[#left + 1] = { quest = s.quest, label = s.label, why = N.RoutePickups.SKIPPED }
+        end
+    end
+    if #ordered == 0 then return nil, T.WHY_NONE end
+    return { kind = "quests", stops = ordered, yards = yards, label = route.label, left = left, note = note }
 end
 
 function T.Live(stop, rows)
     if type(stop) ~= "table" then return false end
+    if stop.kind == "pickup" then
+        -- TN-1: a pick-up is done once its quest is in the log.
+        for _, row in ipairs(type(rows) == "table" and rows or {}) do
+            if type(row) == "table" and row.id == stop.quest then return false end
+        end
+        return true
+    end
     if stop.quest == nil or stop.kind ~= nil then return true end
     for _, row in ipairs(type(rows) == "table" and rows or {}) do
         if type(row) == "table" and row.id == stop.quest then
@@ -263,6 +323,9 @@ function T.Lines(route, at)
             parts[#parts + 1] = tostring(s.detail)
         end
         parts[#parts + 1] = dist
+        local secs = route.yards ~= false and (finite(s.secs) and s.secs or (finite(s.leg) and T.Seconds(s.leg))) or nil
+        local time = secs and T.TimeWords(secs)
+        if time then parts[#parts + 1] = time end
         if s.gone then parts[#parts + 1] = "done" end
         -- A stop whose quest left the log is off the list (lead section 375).
         if not s.left and not (s.held and not s.gone) then
@@ -270,6 +333,7 @@ function T.Lines(route, at)
         end
     end
     for _, line in ipairs(held) do lines[#lines + 1] = line end
+    if route.note ~= nil then lines[#lines + 1] = "  " .. tostring(route.note) end
     for _, l in ipairs(type(route.left) == "table" and route.left or {}) do
         local what = type(l) == "table" and (tostring(l.label) .. (l.detail and (" - " .. tostring(l.detail)) or "")
             .. " - " .. tostring(l.why or T.NOT_HERE)) or tostring(l)
@@ -313,6 +377,13 @@ function T.Declare(k, diag)
         return not (ok and v == false)
     end
 
+    local function pickupsOn()
+        local s = ctx and ctx.settings
+        if type(s) ~= "table" or type(s.get) ~= "function" then return true end
+        local ok, v = pcall(s.get, s, T.PICKUP_SETTING)
+        return not (ok and v == false)
+    end
+
     local function hereNow()
         local c = client()
         local pos = ask(c, "position")
@@ -343,8 +414,18 @@ function T.Declare(k, diag)
             local ok, fn = pcall(L.Planner, here.map)
             if ok and type(fn) == "function" then legs = fn end
         end
-        local r, why = T.Plan(rows, places or {}, here, legs)
-        if not r then return nil, why end
+        -- TN-1: the pick-ups, read once per plan.
+        local pickups, note
+        local RP = N.RoutePickups
+        if RP and pickupsOn() then
+            local log = {}
+            for _, row in ipairs(rows) do
+                if type(row) == "table" and row.id ~= nil then log[row.id] = true end
+            end
+            pickups, note = RP.Read(c, here, log)
+        end
+        local r, why = T.Plan(rows, places or {}, here, legs, pickups, note)
+        if not r then return nil, why, note end
         route, at, readAt = r, 1, ask(c, "now")
         return r
     end
@@ -362,7 +443,12 @@ function T.Declare(k, diag)
         local yards = runLegs(stops, client())
         local left = {}
         for _, name in ipairs(type(run.left) == "table" and run.left or {}) do
-            left[#left + 1] = { label = tostring(name), why = "giver's place not known" }
+            if type(name) == "table" then
+                -- TN-2: a stop the trip skipped comes with its own why.
+                left[#left + 1] = { label = tostring(name.label), detail = name.detail, why = tostring(name.why) }
+            else
+                left[#left + 1] = { label = tostring(name), why = "giver's place not known" }
+            end
         end
         route, at, readAt = { kind = "run", stops = stops, yards = yards,
                               label = tostring(run.title or N.ROUTE_STRAIGHT), left = left }, 1, nil
@@ -481,12 +567,34 @@ function T.Declare(k, diag)
         for i = at, #route.stops do
             local s = route.stops[i]
             if not s.gone and not s.held then
-                stops[#stops + 1] = { label = s.label, detail = s.detail,
+                stops[#stops + 1] = { label = s.label, detail = s.detail, quest = s.quest,
                                       place = { map = s.place.map, x = s.place.x, y = s.place.y } }
             end
         end
         if #stops == 0 then return nil end
         return { kind = route.kind, label = route.label, stops = stops }
+    end
+
+    -- Look only (UI/RouteList.lua, UI/MapRoute.lua): a copy of every stop from
+    -- the current one on, held ones too, and what was left off the route, or
+    -- nil with no route. Changes nothing.
+    function api.View()
+        if not route then return nil end
+        local stops, left = {}, {}
+        for i = at, #route.stops do
+            local s = route.stops[i]
+            if not s.gone then
+                stops[#stops + 1] = { quest = s.quest, objective = s.objective, turnIn = s.turnIn, kind = s.kind,
+                                      label = s.label, detail = s.detail, held = s.held,
+                                      place = { map = s.place.map, x = s.place.x, y = s.place.y } }
+            end
+        end
+        for _, l in ipairs(type(route.left) == "table" and route.left or {}) do
+            if type(l) == "table" then
+                left[#left + 1] = { quest = l.quest, label = l.label, detail = l.detail, why = l.why }
+            end
+        end
+        return { kind = route.kind, label = route.label, note = route.note, stops = stops, left = left }
     end
 
     local function say(lines)
@@ -505,13 +613,24 @@ function T.Declare(k, diag)
             return
         end
         if word == "new" or not route then
-            local r, why = api.Plan()
+            local r, why, note = api.Plan()
             if not r then
-                say({ why })
+                -- One line with nothing planned (Tests/E2E/TripEdges.lua): why
+                -- there are no pick-ups follows on the same line.
+                say({ note and (tostring(why) .. " " .. tostring(note)) or why })
                 return
             end
         end
         say(api.Lines() or { T.DONE })
+        -- S30 (Nav/FlightStep.lua): a flight path to learn that is within
+        -- reach is said under the list. Words only.
+        if route and ctx then
+            local okUse, flightStep = pcall(ctx.use, "flightStep")
+            if okUse and type(flightStep) == "table" and type(flightStep.Line) == "function" then
+                local okLine, line = pcall(flightStep.Line)
+                if okLine and type(line) == "string" then tell(line) end
+            end
+        end
     end
 
     if diag and type(diag.commands) == "table" then
@@ -524,11 +643,16 @@ function T.Declare(k, diag)
         help = "Shows when you plan a route with the route word or Plan the run: the quest arrow walks its stops in order.",
         synonyms = { "route", "quest", "dungeon", "run", "order", "plan" } })
 
+    k:Setting({ key = T.PICKUP_SETTING, scope = "account", type = "bool", default = true,
+        label = "Add quests to pick up on the way", group = "travel.route",
+        help = "Acts when you plan a quest route with the route word: quests you can take now whose giver stands on this map (from Questie) are added as stops when on the way, else listed as skipped. Nothing is accepted for you.",
+        synonyms = { "route", "pick", "pickup", "giver", "new", "quest" } })
+
     k:Module({
         name = T.NAME,
         needs = { "client", "store", "settings" },
         provides = { Step = api.Step, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
-                     Lines = api.Lines, Current = api.Current },
+                     Lines = api.Lines, Current = api.Current, View = api.View },
         start = function(c) ctx = c end,
         stop = function() route, at = nil, 1 end,
     })

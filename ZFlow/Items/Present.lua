@@ -64,6 +64,50 @@ local function estimateText(copper)
     return c and ("about " .. c .. " (estimate)") or nil
 end
 
+-- An item's name in the colour of its quality, for a chat line or a line of
+-- a window: the ONE place a name is coloured as text (an itemLine of the kit
+-- colours its own name, from the same table: Kit.Quality). quality is the
+-- game's 0 (poor) to 5 (legendary); anything else, or a name that already
+-- carries a colour, comes back as it was: a colour is never guessed.
+--   Present.Tint(name, quality) -> text
+--   Present.Plain(text) -> the text with no colour codes (to sort or compare)
+--   Present.Names(itemInfo) -> function(key) -> coloured name | nil, the
+--     `names` every text builder here takes; itemInfo is client.itemInfo.
+function Present.Tint(name, quality)
+    if type(name) ~= "string" or name == "" then return name end
+    if type(quality) ~= "number" or type(ns.Kit) ~= "table" or type(ns.Kit.Quality) ~= "function" then return name end
+    if name:find("|c", 1, true) then return name end
+    local c = ns.Kit.Quality(quality)
+    if type(c) ~= "table" or c.known ~= true or type(c.hex) ~= "string" then return name end
+    return "|cff" .. c.hex .. name .. "|r"
+end
+
+function Present.Plain(text)
+    if type(text) == "table" then
+        local out = {}
+        for k, v in pairs(text) do out[k] = Present.Plain(v) end
+        return out
+    end
+    if type(text) ~= "string" then return text end
+    return (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+end
+
+function Present.Names(itemInfo)
+    if type(itemInfo) ~= "function" then return nil end
+    return function(key)
+        local ok, info = pcall(itemInfo, ns.Items.Id(key) or key)
+        if not ok or type(info) ~= "table" then return nil end
+        return Present.Tint(info.name, info.quality)
+    end
+end
+
+-- A row's own name (coloured when the row carries its quality), else the
+-- name read for its key.
+local function shown(r, names)
+    if type(r.name) == "string" and r.name ~= "" then return Present.Tint(r.name, r.quality) end
+    return Present.Name(r.key, names)
+end
+
 -- The name of an item for the player.
 function Present.Name(key, names)
     local name
@@ -84,7 +128,7 @@ end
 Present.VENDOR_PRICE_UNKNOWN = "price unknown—check vendor"
 
 function Present.LootNoteText(entry, part)
-    local name = type(entry.name) == "string" and entry.name ~= "" and entry.name or Present.Name(entry.key)
+    local name = shown(entry)
     local head = (type(part) == "table" and part.reason == "junk") and "Junk: " or "To sell: "
     if isCount(entry.count) and entry.count > 0 then name = entry.count .. " x " .. name end
     local price = Present.VENDOR_PRICE_UNKNOWN
@@ -161,7 +205,7 @@ function Present.DropLines(entry, names, minSamples)
     end
     table.sort(rows, function(a, b)
         if a.times ~= b.times then return a.times > b.times end
-        return a.name < b.name
+        return Present.Plain(a.name) < Present.Plain(b.name)
     end)
     local enough = isCount(minSamples) and looted >= minSamples
     for _, r in ipairs(rows) do
@@ -257,7 +301,7 @@ end
 
 -- One row of ItemSell.List, as a text.
 function Present.SellRowText(r, names)
-    local name = type(r.name) == "string" and r.name ~= "" and r.name or Present.Name(r.key, names)
+    local name = shown(r, names)
     local head = isCount(r.count) and (r.count .. " x " .. name) or (name .. " (how many not known)")
     return head .. ": " .. Present.SellPriceText(r)
 end
@@ -266,8 +310,7 @@ end
 -- what a vendor pays; a second only when a merchant was seen selling it.
 function Present.PriceLines(result, names)
     local Prices = ns.Prices
-    local name = type(result.name) == "string" and result.name ~= "" and result.name
-        or Present.Name(result.key, names)
+    local name = shown(result, names)
     local sell = type(result.sell) == "table" and result.sell or {}
     local first
     if sell.unsellable then
@@ -315,8 +358,7 @@ end
 
 -- One row of SellView.Kept, as a text.
 function Present.KeptText(k, names)
-    local name = type(k.name) == "string" and k.name ~= "" and k.name or Present.Name(k.key, names)
-    return name .. ": " .. tostring(k.reason or "kept")
+    return shown(k, names) .. ": " .. tostring(k.reason or "kept")
 end
 
 -- The never-sell command's words (L6-G, Items/Keep.lua).
@@ -437,7 +479,7 @@ function Present.BankUnreadText(unread, alone)
 end
 
 local function bankHead(r, names)
-    local name = type(r.name) == "string" and r.name ~= "" and r.name or Present.Name(r.key, names)
+    local name = shown(r, names)
     return isCount(r.count) and (r.count .. " x " .. name) or name
 end
 
@@ -486,7 +528,7 @@ function Present.BankPrompt(pick)
     for i = 1, math.min(n, Present.BANK_PROMPT_NAMED) do
         local r = pick.rows[i]
         local name = Present.BANK_PROMPT_UNNAMED
-        if type(r) == "table" and type(r.name) == "string" and r.name ~= "" then name = r.name end
+        if type(r) == "table" and type(r.name) == "string" and r.name ~= "" then name = Present.Tint(r.name, r.quality) end
         if type(r) == "table" and isCount(r.count) then name = name .. " x" .. r.count end
         parts[#parts + 1] = name
     end
