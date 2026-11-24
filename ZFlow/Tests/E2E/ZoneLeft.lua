@@ -112,4 +112,49 @@ tests["zone left: nothing left behind, or the setting off: nothing is said on le
     t.eq(said(c, "unfinished in the zone behind you"), nil, "the setting is off")
 end
 
+-- The zone named (client.mapName): the same lines with the zone's name in
+-- them. Made-up names.
+local function named(log)
+    local c, addon = boot(log)
+    c.setMapName(MAP, "Westfall"); c.setMapName(NEXT, "Duskwood")
+    return c, addon
+end
+
+tests["zone left: where the client names the map, the word names the zone"] = function(t)
+    local c, addon = named()
+    local before, base = #c.printed, problems(addon)
+    c.slashes[ns.id.slash]("zone")
+    t.ok(said(c, "Still worth doing in Westfall before you leave: 2 quests", before) ~= nil)
+    t.ok(said(c, "Boars: 1 step left here", before) ~= nil)
+    t.eq(said(c, "Still worth doing here", before), nil)
+    t.eq(problems(addon), base, "nothing new went wrong")
+    c = named({ FAR })
+    before = #c.printed
+    c.slashes[ns.id.slash]("zone")
+    t.ok(said(c, "Nothing is left for your quests in Westfall: you can move on.", before) ~= nil)
+end
+
+tests["zone left: crossing names the zone that was left, not the one entered"] = function(t)
+    local c, addon = named()
+    local before, base = #c.printed, problems(addon)
+    cross(c)
+    t.ok(said(c, "You left 2 quests unfinished in Westfall: Boars, Herbs. Go back for them, or carry on.", before) ~= nil)
+    t.eq(said(c, "Duskwood", before), nil)
+    t.eq(problems(addon), base, "nothing new went wrong")
+end
+
+tests["zone left: a name that is not a plain short string is not said"] = function(t)
+    local Z = ns.Nav.ZoneLeft
+    t.eq(Z.Named("Westfall"), "Westfall")
+    for _, bad in ipairs({ "", "50%s", "|cffff0000Red", "two" .. string.char(10) .. "lines", string.rep("x", Z.NAME_MAX + 1) }) do
+        t.eq(Z.Named(bad), nil, bad)
+    end
+    t.eq(Z.Named(7), nil)
+    t.eq(Z.Lines({}, 0, "50%s")[1], Z.NONE)
+    t.eq(Z.Lines({ { title = "Boars", steps = 1 } }, 0, "Westfall")[1], "Still worth doing in Westfall before you leave: 1 quest")
+    t.eq(Z.Notice({ { title = "Boars" } }, "Westfall"), "You left 1 quest unfinished in Westfall: Boars. Go back for it, or carry on.")
+    t.eq(Z.Notice({ { title = "Boars" } }, nil), Z.LEFT_ONE:format("Boars"))
+    t.eq(Z.Notice({}, "Westfall"), nil)
+end
+
 return tests
