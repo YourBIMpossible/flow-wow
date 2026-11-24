@@ -43,14 +43,39 @@ local PLAN = {
     materials = { { name = "Test Bar", need = 20, net = 4 } },
 }
 
-tests["e2e: the profession window opens the path panel, which says the path is not computed yet"] = function(t)
+-- Plexy's HOLD on b9cbd30f: the real Items/ProfPath.lua, no stand-in.
+-- Red before the fix: the real path had no skill, max, ranges or materials,
+-- so the panel said "path not computed yet" and the old dock was hidden.
+tests["e2e: the real profession path draws a bracket line and unfolds to brackets"] = function(t)
     local c = start()
     c.fire("TRADE_SKILL_SHOW")
     local w = window(c)
     t.ok(w ~= nil and w.shown == true, "the path panel is shown with the profession window")
+    if not w then return end
     local head = part(w, "head")
+    t.ok(head ~= nil and tostring(head.text):find("^Blacksmithing 50/75: 50%-%d+ %S") ~= nil,
+        "the line names the current bracket: " .. tostring(head and head.text))
+    t.ok(c.kitClick(ID, "head"), "the line unfolds")
+    t.ok(part(window(c), "range1") ~= nil, "open: the real brackets are listed")
+    local dock = c.kitWindows()["ProfDock"]
+    t.ok(dock == nil or dock.shown == false, "the path is shown, so the old dock steps aside")
+end
+
+tests["e2e: with no path the panel says so and the old dock stays"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true } })
+    c.setSaved(ns.id.charDB, {})
+    c.setScreen(1024, 768)
+    c.setRecipes({ profession = 164, name = "Blacksmithing", skill = 50, max = 75, recipes = {} })
+    local addon = ns.offline.addon(c)
+    addon.ProfPath.Path = function() return nil, "no data" end
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.fire("TRADE_SKILL_SHOW")
+    local head = part(window(c), "head")
     t.ok(head ~= nil and tostring(head.text):find("path not computed yet", 1, true) ~= nil,
         "one line, never blank")
+    local dock = c.kitWindows()["ProfDock"]
+    t.ok(dock ~= nil and dock.shown == true, "no path yet: the old dock is still there")
 end
 
 tests["e2e: with a plan it unfolds, a click picks a bracket, and a drag is kept"] = function(t)
