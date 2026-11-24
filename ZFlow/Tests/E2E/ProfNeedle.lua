@@ -160,11 +160,23 @@ tests["prof needle: the trainer when capped comes first, then a node, then a cra
 
     local c2 = start({ professions = { "Mining", "Tailoring" }, nodes = { COPPER }, book = BOOK, colours = colours,
         skill = { Mining = { skill = 30, max = 75 }, Tailoring = { skill = 50, max = 75 } } })
-    t.eq(c2.arrows[2].lines and c2.arrows[2].lines[1], "Copper Vein", "not capped: the node before the craft")
+    -- The stack (sections 382, 388): the needle still takes the node before
+    -- the craft; the lines are now the profession, then the whole step with
+    -- the vein named in it.
+    local l2 = c2.arrows[2].lines or {}
+    t.eq(l2[1], "Mining", "not capped: the node before the craft")
+    t.ok(type(l2[2]) == "string" and l2[2]:find("Copper Vein", 1, true) ~= nil,
+        "the step names the vein: " .. tostring(l2[2]))
+    c2.advance(0.1, 2)
+    t.ok(type(c2.arrows[2].drawn) == "table" and c2.arrows[2].drawn.body ~= 0, "the needle is drawn")
 
     local c3 = start({ professions = { "Mining", "Tailoring" }, book = BOOK, colours = colours,
         skill = { Mining = { skill = 30, max = 75 }, Tailoring = { skill = 50, max = 75 } } })
-    textOnly(t, c3, { fmt(N.PROF_CRAFT_SURE, "Bolt of Linen Cloth", "Tailoring") }, "no node: the craft")
+    -- No node, and no cloth in the bags: the old line said "Make Bolt of
+    -- Linen Cloth", a craft this character cannot make. The one step is now
+    -- the point it can get: any ore vein. (With the materials in the bags
+    -- the craft comes first: Tests/E2E/ProfFeedRealPlan.lua.)
+    textOnly(t, c3, { "Mine any ore vein you find (Mining 30 of 75)" }, "no node, no materials: the vein")
 end
 
 -- Passes before: a guard that a character with no profession sees nothing.
@@ -233,8 +245,12 @@ end
 tests["prof guide: a gatherer with no node and a capped crafter each get their line"] = function(t)
     local c = start({ professions = { "Herbalism", "Tailoring" },
         skill = { Herbalism = { skill = 20, max = 75 }, Tailoring = { skill = 75, max = 75 } } })
-    textOnly(t, c, { fmt(N.PROF_WHY_GM_ABSENT, "Herbalism"), fmt(N.PROF_WHY_TRAINER, "Tailoring", 75, "Tailoring") },
-        "Herbalism with no GatherMate2, Tailoring capped with no trainer known")
+    -- The stack (section 382): one step across the professions, the next
+    -- point it can get. Herbs need no node source to be picked, so the line
+    -- says to pick them; it no longer asks for a node add-on, and the capped
+    -- profession (no point until trained) waits its turn.
+    textOnly(t, c, { "Pick any herb you find (Herbalism 20 of 75)" },
+        "Herbalism with no node known, Tailoring capped")
 end
 
 -- Lead section 341 (zflow-prof-guide): a craft step had no place, so a

@@ -27,6 +27,8 @@ local _, ns = ...
 --     the keep rules ported from Flow (L6-B) read, each only when given:
 --     sets       = { [key] = { "Feral", ... } }     sets you keep it in
 --     materials  = { [key] = { { prof, what }, ... } }  professions that use it
+--     everMaterials = { [key] = "Tailoring" }  a material of a profession
+--                  you ever had: never sold
 --     bagSize    = { [key] = slots }; wornBags = { slots, ... } (0: empty slot)
 --     recipes    = { [key] = { prof, rank, need, known } }
 --     gearRead   = true once gear is read; gear = { [key] = { canUse,
@@ -180,7 +182,13 @@ Disposition.RULES = {
         return { action = "keep", reason = "in your " .. table.concat(out, " / ") .. " set", basis = "fact" }
     end },
     -- Grey items with a known price. A price that isn't known decides nothing.
-    { key = "junk", order = 20, check = function(i)
+    -- A material of any profession you have, or ever had, is never sold:
+    -- it goes to the auction house (owner 11-20, DISPATCH 382).
+    -- everMaterials = { [key] = "Tailoring" } covers professions past it.
+    { key = "junk", order = 20, check = function(i, c)
+        if factOf(c, "materials", i.key) ~= nil or factOf(c, "everMaterials", i.key) ~= nil then
+            return nil
+        end
         if i.quality == 0 and isCount(i.sellPrice) and i.sellPrice > 0 then
             return { action = "sell", reason = "junk", basis = "recommendation" }
         end
