@@ -357,5 +357,7 @@ return {
     "Nav/FollowAdvice.lua",
     -- N43 (P-TRIP route display): the current step's area on the minimap (after TripRoute, MinimapPin).
     "UI/RouteArea.lua",
+    -- E-27: the inventory word, every bag item with its verdict (after SellList, Reservations, Diag).
+    "UI/InventoryList.lua",
     },
 }
