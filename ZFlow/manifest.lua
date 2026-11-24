@@ -287,5 +287,7 @@ return {
     "UI/ProfDock.lua",
     -- Lead section 382 (C2 P-COACH): one profession step for the needle (after ProfStep, Legs, ProfPlan, ProfSources).
     "Nav/ProfFeed.lua",
+    -- Lead section 406 item 3: recipe facts for the profession plan, seen in game then shipped (read by ProfPlan at call time).
+    "Items/RecipeFacts.lua",
     },
 }

@@ -232,3 +232,4 @@ Items\ProfPlan.lua
 Items\ProfSources.lua
 UI\ProfDock.lua
 Nav\ProfFeed.lua
+Items\RecipeFacts.lua

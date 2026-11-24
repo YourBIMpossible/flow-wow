@@ -586,6 +586,14 @@ function P.Input(client, store, prof, nodeSource)
     local stations = saved(store, "account", "learned.keyStations")
     local target
     if kind then target = stationTarget(stations, kind, pos) end
+    -- Lead section 406 item 3: recipe facts through one interface (seen in
+    -- game, then the shipped table); seen only when it is not loaded.
+    local facts
+    if ns.RecipeFacts then facts = ns.RecipeFacts.Read(store) end
+    if type(facts) ~= "table" then
+        facts = { book = saved(store, "char", "learned.facts.recipeBook"),
+            trainerLists = saved(store, "char", "learned.trainerLists") }
+    end
     local nodes
     if type(nodeSource) == "table" and type(nodeSource.Nodes) == "function" then
         local ok, list = pcall(nodeSource.Nodes)
@@ -613,7 +621,7 @@ function P.Input(client, store, prof, nodeSource)
         end,
         skill = get(r, "skill"),
         max = get(r, "max"),
-        book = saved(store, "char", "learned.facts.recipeBook"),
+        book = facts.book,
         colours = saved(store, "char", "learned.recipeColors"),
         bags = bags or {},
         bank = bank,
@@ -634,7 +642,7 @@ function P.Input(client, store, prof, nodeSource)
             local info = ask(client, "itemInfo", item)
             return get(info, "name")
         end,
-        trainerLists = saved(store, "char", "learned.trainerLists"),
+        trainerLists = facts.trainerLists,
         npcs = saved(store, "account", "learned.places.npcs"),
         contOf = function(map) return ask(client, "mapCont", map) end,
         station = kind,
