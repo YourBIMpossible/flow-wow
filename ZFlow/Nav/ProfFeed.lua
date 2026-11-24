@@ -437,6 +437,20 @@ function F.Declare(k, diag)
         return nil
     end
 
+    -- Lead section 450, "Arrow": once the player has picked a range in the
+    -- path panel, the steps are the live plan's tasks for that range. With
+    -- nothing picked those tasks are the planner's own steps, so the planner
+    -- is asked as before (and a profession with no path has only that).
+    function api.plan(prof)
+        local path = api.path(prof)
+        if type(path) == "table" and path.planned == true and path.picked == true then
+            return path.tasks, path.taskWhy, path.say
+        end
+        local plan = planOf()
+        if plan then return plan(prof) end
+        return {}, "no reading"
+    end
+
     function api.rev(prof)
         local path = api.path(prof)
         if type(path) == "table" and type(path.rev) == "number" then return path.rev end
@@ -454,7 +468,7 @@ function F.Declare(k, diag)
         return F.Pick({
             names = names(),
             readings = api.readings(),
-            plan = planOf(),
+            plan = api.plan,
             cont = cont,
             cost = cost,
             reached = reached,

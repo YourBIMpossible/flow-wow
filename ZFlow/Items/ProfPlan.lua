@@ -786,6 +786,17 @@ function P.Plan(input)
         return { tierStep(input) }
     end
     local list = P.Candidates(input)
+    -- Lead section 450: the range the player picked in the path panel
+    -- (input.want, a recipe). When it gives a point now it is the only one
+    -- planned; when it does not, the plan is the usual one.
+    if type(input.want) == "string" then
+        for _, c in ipairs(list) do
+            if c.recipe == input.want then
+                list = { c }
+                break
+            end
+        end
+    end
     for _, c in ipairs(list) do
         local steps = craftSteps(input, c)
         if steps then return thenLine(input, list, c, steps) end

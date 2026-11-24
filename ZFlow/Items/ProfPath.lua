@@ -265,6 +265,27 @@ local function bankSeenOf(input)
     return type(input.bank) == "table"
 end
 
+-- Lead section 450, "Selected": the range the player picked (input.pick,
+-- { recipe, from }), found again by its recipe as the skill moves; else the
+-- first range with a recipe, so with a point to give. index, picked.
+local function selectedOf(ranges, pick)
+    if type(pick) == "table" and type(pick.recipe) == "string" then
+        local first
+        for i, r in ipairs(ranges) do
+            if r.recipe == pick.recipe then
+                if r.from == pick.from then return i, true end
+                if first == nil then first = i end
+            end
+        end
+        if first ~= nil then return first, true end
+    end
+    for i, r in ipairs(ranges) do
+        if r.recipe ~= nil then return i, false end
+    end
+    if ranges[1] then return 1, false end
+    return nil, false
+end
+
 local function contract(input, path)
     local parts = { tostring(input.skill), tostring(input.max) }
     local at = {}
@@ -283,7 +304,8 @@ local function contract(input, path)
         parts[#parts + 1] = table.concat({ b.from, b.to, tostring(b.recipe), b.count, tostring(b.colour),
             colourFrom, range.learnAt.kind }, ":")
     end
-    if path.ranges[1] then path.selected = 1 end
+    path.selected, path.picked = selectedOf(path.ranges, input.pick)
+    parts[#parts + 1] = "selected:" .. tostring(path.selected) .. ":" .. tostring(path.picked)
     local seen = bankSeenOf(input)
     for _, m in ipairs(path.mats) do
         local row = { item = m.item, name = m.name or nameOf(input, m.item), need = m.need, bags = m.bags,
@@ -399,6 +421,69 @@ function ProfPath.FromPlanInput(p)
         name = p.name }
 end
 
+-- Lead section 450, "Selected": the player's pick is kept for the character,
+-- one per profession, as the range's recipe and where it started.
+ProfPath.PICKS = "layout.profPathPick"
+
+local function picks(store)
+    if type(store) ~= "table" or type(store.get) ~= "function" then return {} end
+    local ok, v = pcall(store.get, store, "char", ProfPath.PICKS)
+    if ok and type(v) == "table" then return v end
+    return {}
+end
+
+-- The saved pick of a profession, { recipe, from }, or nil.
+function ProfPath.Picked(store, prof)
+    local p = picks(store)[prof]
+    if type(p) == "table" and type(p.recipe) == "string" then return { recipe = p.recipe, from = p.from } end
+    return nil
+end
+
+-- Keep the range the player picked (a range of the plan); nil forgets it.
+-- true when it was saved.
+function ProfPath.Select(store, prof, range)
+    if type(prof) ~= "string" or type(store) ~= "table" or type(store.set) ~= "function" then return false end
+    local all = picks(store)
+    if type(range) == "table" and type(range.recipe) == "string" then
+        all[prof] = { recipe = range.recipe, from = range.from }
+    else
+        all[prof] = nil
+    end
+    local ok = pcall(store.set, store, "char", ProfPath.PICKS, all)
+    return ok
+end
+
+-- Lead section 450, "Task": the selected range's steps, in ProfPlan's kinds,
+-- each with what is left of it. With nothing picked they are the planner's
+-- own steps. A picked recipe the player does not know yet is learned first
+-- (where is not known here, so the step has no place); a picked recipe that
+-- gives a point now is the one the planner plans.
+local function tasksOf(P, planInput, path)
+    local range = path.ranges[path.selected]
+    local b = path.brackets[path.selected]
+    if path.picked ~= true or type(range) ~= "table" then return P.Plan(planInput) end
+    if type(b) == "table" and b.learn == true then
+        local where = "a trainer"
+        if range.learnAt.kind == "recipe" then where = "its recipe" end
+        return { { kind = "learn_recipe", recipe = range.recipe, npc = range.learnAt.npc,
+            item = range.learnAt.item, remaining = 1,
+            text = string.format("Learn %s from %s (%s %d of %d)", range.recipe, where, path.prof,
+                path.skill, path.max) } }
+    end
+    local wanted = {}
+    for k, v in pairs(planInput) do wanted[k] = v end
+    wanted.want = range.recipe
+    local steps, why, say = P.Plan(wanted)
+    for _, s in ipairs(steps) do
+        if s.kind == "craft" and s.recipe == range.recipe then
+            s.remaining = range.crafts
+        elseif s.remaining == nil then
+            s.remaining = s.count
+        end
+    end
+    return steps, why, say
+end
+
 -- The one live plan (lead section 450): the path panel and the arrow's feed
 -- both read it here, so one rev counts for both. The open profession
 -- window's own skill is the newest reading there is. source is ProfPlan's
@@ -406,12 +491,16 @@ end
 function ProfPath.Live(client, store, prof, source)
     if type(prof) ~= "string" or prof == "" or type(client) ~= "table" then return nil end
     local P = ns.ProfPlan
-    local input
+    local input, planInput
     if type(P) == "table" and type(P.Input) == "function" then
         local ok, v = pcall(P.Input, client, store, prof, source)
-        if ok and type(v) == "table" then input = ProfPath.FromPlanInput(v) end
+        if ok and type(v) == "table" then
+            planInput = v
+            input = ProfPath.FromPlanInput(v)
+        end
     end
     if type(input) ~= "table" then input = { prof = prof } end
+    input.pick = ProfPath.Picked(store, prof)
     local r
     for _, name in ipairs({ "recipes", "tradeSkillRows" }) do
         if type(r) ~= "table" and type(client[name]) == "function" then
@@ -421,8 +510,15 @@ function ProfPath.Live(client, store, prof, source)
     end
     if type(r) == "table" and r.name == prof and whole(r.skill) and whole(r.max) then
         input.skill, input.max = r.skill, r.max
+        if planInput then planInput.skill, planInput.max = r.skill, r.max end
     end
     local ok, path = pcall(ProfPath.Path, input)
-    if ok and type(path) == "table" then return path end
-    return nil
+    if not ok or type(path) ~= "table" then return nil end
+    if planInput and type(P.Plan) == "function" then
+        local done, tasks, why, say = pcall(tasksOf, P, planInput, path)
+        if done and type(tasks) == "table" then
+            path.tasks, path.taskWhy, path.say, path.planned = tasks, why, say, true
+        end
+    end
+    return path
 end

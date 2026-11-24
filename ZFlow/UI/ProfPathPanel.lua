@@ -275,10 +275,24 @@ function PPP.Declare(k, diag)
         draw()
     end
     function on.pick(index)
-        selected = index
         local range = model and model.plan and model.plan.ranges and model.plan.ranges[index]
+        local PATH = ns.ProfPath
+        -- The pick belongs to the plan (lead section 450): the arrow's feed
+        -- reads the same one. Only a ProfPath with no Select keeps it here.
+        if type(PATH) == "table" and type(PATH.Select) == "function" and type(range) == "table"
+            and PATH.Select(ctx.store, prof, range) then
+            selected = nil
+        else
+            selected = index
+        end
         if type(range) == "table" and text(range.recipe) then ask("selectRecipe", range.recipe) end
         draw()
+    end
+
+    -- A click on a range's row (index into the plan's ranges).
+    function api.pick(index)
+        if not ctx or not host or type(model) ~= "table" then return end
+        on.pick(index)
     end
 
     function draw()
