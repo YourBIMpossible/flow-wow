@@ -70,9 +70,12 @@ return {
     ["legacy prune: importing the same fixture a second time does not grow the import record"] = function(t)
         local account, char = Import.Merge(nil, nil, Import.FromFlow(legacyDb(), legacyCharDb()))
         t.eq(#account.imports, 1)
-        local again, againChar = Import.Merge(account, char, Import.FromFlow(legacyDb(), legacyCharDb()))
+        local again, againChar, second = Import.Merge(account, char, Import.FromFlow(legacyDb(), legacyCharDb()))
         t.eq(#again.imports, 1, "the same import is recorded once")
-        t.eq(again.imports[1].merge.added, 0, "the kept record is the newest run's")
+        -- The kept record is the second run's: it carries that run's own counts. Not
+        -- "added is 0": Merge seeds empty sections and fill reports an empty table
+        -- met by an imported table as added on every run, with no growth (White FAIL).
+        t.eq(again.imports[1].merge, second.counts, "the kept record is the newest run's")
         local third = Import.Merge(again, againChar, Import.FromFlow(legacyDb(), legacyCharDb()))
         t.eq(#third.imports, 1)
         t.eq(leftovers(third, againChar), {}, "still nothing parked")
