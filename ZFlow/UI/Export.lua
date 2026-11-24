@@ -144,12 +144,18 @@ function X.Lines(r)
 
     -- S25: the planned route, its heading then one line a stop. No route,
     -- no route lines.
+    -- A stop is a numbered line ("2. Boars - ..." or "> 2. ..."); the
+    -- indented lines under them (held stops, why no pick-ups were added,
+    -- stops left out) are notes, not stops.
     local route = type(r.route) == "table" and r.route or {}
     if type(route[1]) == "string" then
-        add("route", { { "stops", #route - 1 }, { "text", route[1] } })
+        local stops = {}
         for i = 2, #route do
-            if type(route[i]) == "string" then add("stop", { { "i", i - 1 }, { "text", route[i] } }) end
+            local line = route[i]
+            if type(line) == "string" and line:find("^>? ?%d+%. ") then stops[#stops + 1] = line end
         end
+        add("route", { { "stops", #stops }, { "text", route[1] } })
+        for i, line in ipairs(stops) do add("stop", { { "i", i }, { "text", line } }) end
     end
 
     add("end", { { "lines", #out + 1 } })

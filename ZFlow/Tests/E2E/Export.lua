@@ -107,6 +107,11 @@ tests["export: a planned route is exported under a route heading"] = function(t)
         if l:find("^E%^stop%^") then stops = stops + 1 end
     end
     t.eq(stops, 2, "the saved lines carry the stops too")
+    -- The route also says why no pick-ups were added (an indented note line
+    -- under the stops, Nav/TripRoute.lua): a note is not a stop.
+    for _, l in ipairs(lines) do
+        t.ok(not (l:find("^E%^stop%^") and l:find("pick up", 1, true)), "a note line is not exported as a stop: " .. l)
+    end
     word(c, "route off")
     word(c, "export dump")
     t.ok(said(c, "E^route^") == nil, "the route cleared: no route lines")

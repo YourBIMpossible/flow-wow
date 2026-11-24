@@ -28,7 +28,7 @@ local _, ns = ...
 -- Setting bags.marks (account, on by default): "Marks on your bag slots".
 -- Events: BAG_UPDATE_DELAYED and PLAYER_ENTERING_WORLD, through the bus;
 -- the bag window's own redraw through client.onBagRedraw when it has one.
--- Client (first guesses, not seen in game): client.markBagSlots(marks),
+-- Client (first guesses, not seen in game): client.markBagKinds(marks),
 -- client.onBagRedraw(fn).
 
 local B = {}
@@ -212,7 +212,7 @@ function B.Declare(k)
     function api.drawn() return drawn end
 
     local function draw()
-        if ctx == nil or type(ctx.client.markBagSlots) ~= "function" then return end
+        if ctx == nil or type(ctx.client.markBagKinds) ~= "function" then return end
         local marks = {}
         if ctx.settings:get(B.SETTING) == true and type(ctx.client.bagSlots) == "function" then
             local ok, m = pcall(function()
@@ -226,7 +226,7 @@ function B.Declare(k)
                 end
             end
         end
-        local ok, n = pcall(ctx.client.markBagSlots, marks)
+        local ok, n = pcall(ctx.client.markBagKinds, marks)
         drawn = ok and type(n) == "number" and n or 0
     end
 
@@ -249,7 +249,7 @@ function B.Declare(k)
             draw()
         end,
         stop = function()
-            if ctx and type(ctx.client.markBagSlots) == "function" then pcall(ctx.client.markBagSlots, {}) end
+            if ctx and type(ctx.client.markBagKinds) == "function" then pcall(ctx.client.markBagKinds, {}) end
             ctx = nil
         end,
     })

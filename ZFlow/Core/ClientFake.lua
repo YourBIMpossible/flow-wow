@@ -393,6 +393,25 @@ function ns.make.fakeClient(opts)
     function c.questieModule(name)
         return s.questie and s.questie[name] or nil
     end
+    -- The dungeon journal: nil (as made) is a client with no journal
+    -- calls. setJournal({ [encounter] = { name =, items = { id } } }, shown)
+    -- makes one; shown: its window is open, so no loot is given.
+    function c.setJournal(map, shown) s.journal, s.journalShown = map, shown and true or nil end
+    c.journalAsks = {}
+    function c.journalBoss(instance, encounter, withLoot)
+        c.journalAsks[#c.journalAsks + 1] = { instance = instance, encounter = encounter, withLoot = withLoot }
+        if type(s.journal) ~= "table" then return nil end
+        local row = s.journal[encounter]
+        if type(row) ~= "table" then return nil end
+        local out = { name = row.name, items = {} }
+        if not withLoot then return out end
+        if s.journalShown then
+            out.shown = true
+            return out
+        end
+        for i, id in ipairs(row.items or {}) do out.items[i] = id end
+        return out
+    end
     function c.minimap()
         local r = s.minimap
         if type(r) ~= "table" then return nil end
@@ -1368,6 +1387,14 @@ function ns.make.fakeClient(opts)
     function c.merchantRepairs() return s.merchantRepairs end
     function c.setMerchantRepairs(v)
         if v == true or v == false then s.merchantRepairs = v else s.merchantRepairs = nil end
+    end
+    -- Copper, or nil for not known; given only at a merchant that repairs.
+    function c.repairCost()
+        if s.merchantRepairs ~= true then return nil end
+        return s.repairCost
+    end
+    function c.setRepairCost(v)
+        if type(v) == "number" and v >= 0 and v == math.floor(v) then s.repairCost = v else s.repairCost = nil end
     end
     function c.bindLocation() return s.bindLocation end
     function c.setBindLocation(name) s.bindLocation = type(name) == "string" and name ~= "" and name or nil end
@@ -3424,6 +3451,24 @@ function ns.make.fakeClient(opts)
         -- G14 coin: "upgrade" (the arrow) or "coin" (sell it), or nil.
         function c.rewardMarkKind() return rewardKind end
     end
+    -- G14 bag badge: the marks drawn on bag slots, as the real client's
+    -- markBagSlots(marks): c.bagMarks() is a copy of the last marks, {}
+    -- before any.
+    do
+        local bagMarks = {}
+        function c.markBagSlots(marks)
+            bagMarks = {}
+            for i, m in ipairs(type(marks) == "table" and marks or {}) do
+                bagMarks[i] = { bag = m.bag, slot = m.slot, text = m.text }
+            end
+            return #bagMarks
+        end
+        function c.bagMarks()
+            local out = {}
+            for i, m in ipairs(bagMarks) do out[i] = { bag = m.bag, slot = m.slot, text = m.text } end
+            return out
+        end
+    end
     -- S21: the value on a loot roll's item, as the real client's
     -- rollValue(rollID, text, r, g, b): true, kept per roll; no text clears
     -- it. c.rollValueOf(rollID) -> { text, r, g, b } shown now, or nil.
@@ -3822,7 +3867,7 @@ function ns.make.fakeClient(opts)
     -- and c.kitProbe, as the real client's. Nothing is drawn; a window is
     -- recorded by its id.
     --   c.kitWindows() -> { [id] = { shown, point, width, height,
-    --     parts = { { kind, path, key, text } ... in Kit.Each order } } }
+    --     parts = { { kind, path, key, text, note } ... in Kit.Each order } } }
     --     (a copy)
     -- The test's controls, each standing in for the player; each answers
     -- true when the part's own function was run, false when there is no such
@@ -3867,7 +3912,8 @@ function ns.make.fakeClient(opts)
             local size = ns.Kit.look.size
             local function one(part, live)
                 local entry = { part = part, live = live and part.enabled ~= false, checked = part.checked == true }
-                local row = { kind = part.kind, path = part.path, key = part.key, text = ns.Kit.TextOf(part) }
+                local row = { kind = part.kind, path = part.path, key = part.key, text = ns.Kit.TextOf(part),
+                    note = part.note }
                 -- Lead section 408: a line that wraps, and the rows the
                 -- fake takes it to fill (c.KIT_LETTER wide a letter: a
                 -- count, not the game's fonts).
@@ -4540,6 +4586,78 @@ function ns.make.fakeClient(opts)
     function c.trackingRaw() return evidenceCopy(s.evidenceTracking) end
     function c.setTradeSkillAnswers(r) s.evidenceTradeAnswers = evidenceCopy(r) end
     function c.tradeSkillAnswers() return evidenceCopy(s.evidenceTradeAnswers) end
+    -- The route beside the quest log and on the map, as the real client's
+    -- questLogFrame(), showMap(), mapInfo(), routePins() and mapCard().
+    --   c.setQuestLogFrame({ shown, right, top, height } or nil)
+    --   c.mapsShown: every uiMapID showMap was asked for, in order; the
+    --       world map then shows it (as c.setWorldMap).
+    --   c.setMapInfo(map, { name, low, high } or nil)
+    --   c.routePinSets[1].pins / .shown / .draws / .clears
+    --   c.mapCards[1].card / .shown / .shows / .hides
+    -- nil (or false for showMap) when setFrames(false).
+    function c.setQuestLogFrame(t)
+        s.questLogFrame = type(t) == "table"
+            and { shown = t.shown == true, right = t.right, top = t.top, height = t.height } or nil
+    end
+    function c.questLogFrame()
+        local t = s.questLogFrame
+        if s.noFrames or not t then return nil end
+        return { shown = t.shown, right = t.right, top = t.top, height = t.height }
+    end
+    c.mapsShown = {}
+    function c.showMap(map)
+        if s.noFrames or type(map) ~= "number" then return false end
+        c.mapsShown[#c.mapsShown + 1] = map
+        s.worldMap = map
+        return true
+    end
+    function c.setMapInfo(map, info)
+        s.mapInfo = s.mapInfo or {}
+        s.mapInfo[map] = type(info) == "table" and { name = info.name, low = info.low, high = info.high } or nil
+    end
+    function c.mapInfo(map)
+        local t = s.mapInfo and s.mapInfo[map]
+        if not t then return nil end
+        return { name = t.name, low = t.low, high = t.high }
+    end
+    c.routePinSets = {}
+    function c.routePins()
+        if s.noFrames then return nil end
+        local h = { pins = {}, shown = false, draws = 0, clears = 0 }
+        function h.map() return s.worldMap end
+        function h.draw(pins)
+            h.pins = copyRows(type(pins) == "table" and pins or {})
+            h.shown = #h.pins > 0
+            h.draws = h.draws + 1
+            return true
+        end
+        function h.clear()
+            h.pins, h.shown = {}, false
+            h.clears = h.clears + 1
+        end
+        c.routePinSets[#c.routePinSets + 1] = h
+        return h
+    end
+    c.mapCards = {}
+    function c.mapCard()
+        if s.noFrames then return nil end
+        local h = { shown = false, shows = 0, hides = 0 }
+        function h.show(card)
+            if type(card) ~= "table" then return false end
+            local lines = {}
+            for i, l in ipairs(type(card.lines) == "table" and card.lines or {}) do lines[i] = l end
+            h.card = { title = card.title, lines = lines }
+            h.shown = true
+            h.shows = h.shows + 1
+            return true
+        end
+        function h.hide()
+            h.shown = false
+            h.hides = h.hides + 1
+        end
+        c.mapCards[#c.mapCards + 1] = h
+        return h
+    end
     -- Lead section 382: the name of a map's continent; nil until set.
     --   c.setMapContName(map, name)   name nil: not known
     function c.mapContName(map)
@@ -4560,13 +4678,13 @@ function ns.make.fakeClient(opts)
         if type(id) ~= "number" then return nil end
         return s.questShareable and s.questShareable[id]
     end
-    -- G4 bag marks, as the real client's c.markBagSlots: what was drawn is
+    -- G4 bag marks, as the real client's c.markBagKinds: what was drawn is
     -- kept, by kind, for c.bagMarksDrawn() -> { [bag] = { [slot] = kind } }.
     -- The real client takes texture paths; a path is turned back into its
     -- kind here (Items/BagMarks.lua TEXTURE), so a test reads kinds.
     do
         local drawnMarks = {}
-        function c.markBagSlots(marks)
+        function c.markBagKinds(marks)
             drawnMarks = {}
             local kindOf = {}
             for kind, path in pairs(ns.BagMarks and ns.BagMarks.TEXTURE or {}) do kindOf[path] = kind end

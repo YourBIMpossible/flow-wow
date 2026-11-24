@@ -46,12 +46,12 @@ tests["bag marks: the combined bags view gets marks, each slot's bag from its bu
     end
     local env = { NUM_CONTAINER_FRAMES = 0, ContainerFrameCombinedBags = combined }
     local c = ns.make.client(env)
-    local n = c.markBagSlots({ [0] = { [2] = "up.tga" }, [2] = { [1] = "sell.tga" } })
+    local n = c.markBagKinds({ [0] = { [2] = "up.tga" }, [2] = { [1] = "sell.tga" } })
     t.eq(n, 2, "two marks drawn")
     t.eq(shownPath(a), nil, "bag 0 slot 1: no mark")
     t.eq(shownPath(b), "up.tga", "bag 0 slot 2 marked")
     t.eq(shownPath(c3), "sell.tga", "bag 2 slot 1 marked, the bag read from the button")
-    t.eq(c.markBagSlots({}), 0, "no marks asked: none drawn")
+    t.eq(c.markBagKinds({}), 0, "no marks asked: none drawn")
     t.eq(shownPath(b), nil, "an old mark is hidden")
 end
 
@@ -66,7 +66,7 @@ tests["bag marks: a frame with an Items list and no enumerator is walked; named 
     local env = { NUM_CONTAINER_FRAMES = 2, ContainerFrame1 = listed, ContainerFrame2 = named,
                   ContainerFrame2Item1 = y }
     local c = ns.make.client(env)
-    local n = c.markBagSlots({ [1] = { [3] = "a.tga" }, [3] = { [4] = "b.tga" } })
+    local n = c.markBagKinds({ [1] = { [3] = "a.tga" }, [3] = { [4] = "b.tga" } })
     t.eq(n, 2)
     t.eq(shownPath(x), "a.tga", "Items list: the frame's bag")
     t.eq(shownPath(y), "b.tga", "named button")
@@ -76,7 +76,7 @@ tests["bag marks: a frame that raises or has no buttons is passed over"] = funct
     local bad = setmetatable({}, { __index = function() error("no") end })
     local env = { NUM_CONTAINER_FRAMES = 1, ContainerFrameCombinedBags = bad, ContainerFrame1 = bad }
     local c = ns.make.client(env)
-    t.eq(c.markBagSlots({ [0] = { [1] = "a.tga" } }), 0)
+    t.eq(c.markBagKinds({ [0] = { [1] = "a.tga" } }), 0)
 end
 
 tests["bag marks: the combined view's redraw is followed when it can be"] = function(t)

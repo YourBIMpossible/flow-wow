@@ -27,7 +27,7 @@ local KIND = {
              "optionsPage", "guideLines", "taxiMark", "mapPins", "mapClick", "comboBar", "slotIcon",
              "markMerchantButtons", "rowPanel", "textEntry",
              -- G4: the marks on bag slots (Items/BagMarks.lua).
-             "markBagSlots",
+             "markBagKinds",
              -- N59: the info bar, and its data broker feed where the library is loaded.
              "infoBar", "broker",
              -- N57: the key-capture overlay on the settings page.
@@ -41,6 +41,8 @@ local KIND = {
              "playAlert",
              -- G14: the mark on the best quest reward choice (Gear/RewardMark.lua).
              "markRewardChoice",
+             -- G14 bag badge: the role letters on bag upgrades (Gear/BagBadge.lua).
+             "markBagSlots",
              -- S21: the Need or Greed value on a loot roll's item (Gear/RollHint.lua).
              "rollValue",
              -- S19 (P-SETS branch 2): the set icon row; a click asks only
@@ -113,6 +115,12 @@ KIND.listen[#KIND.listen + 1] = "chatWheel"
 KIND.show[#KIND.show + 1] = "setChatNameByClass"
 KIND.show[#KIND.show + 1] = "setChatTypeHeader"
 KIND.show[#KIND.show + 1] = "setEditBox"
+-- R4, R5 (lead section 387): the route beside the quest log and on the
+-- world map (UI/RouteList.lua, UI/MapRoute.lua). showMap opens the world
+-- map on a zone, only on the player's own click on a route row.
+KIND.show[#KIND.show + 1] = "routePins"
+KIND.show[#KIND.show + 1] = "mapCard"
+KIND.show[#KIND.show + 1] = "showMap"
 
 -- Every read, and whether the capture asks it (true) or not (false).
 local READS = {
@@ -127,12 +135,14 @@ local READS = {
     itemLines = false, itemTexture = false, tracking = false, anyTracking = false, professions = false,
     durability = false, lootWindow = false, windowState = false, form = true, petBattle = false,
     vehicle = false, guid = false, playerGUID = false, petGUID = false, serviceNpc = false,
-    merchantRepairs = false, bindLocation = false, hearthCooldown = false, targetRank = false,
+    merchantRepairs = false, repairCost = false, bindLocation = false, hearthCooldown = false, targetRank = false,
     frameRect = false, worldPosition = true, onTaxi = true, realm = false, modifiers = false,
     unitInfo = false, unitBuff = true, mounted = false, questItem = true, itemCount = true,
     itemUse = false, mapCorners = true, globalText = false, plates = false, canAttack = false,
     grouped = false, plateLabel = false, combo = false, comboColor = false, playerBuffs = true,
     targetDebuffs = true, formName = true, currentSpell = true, taxiNodes = true,
+    -- R4, R5: where the quest log frame stands, and a map's own name and levels.
+    questLogFrame = false, mapInfo = false,
     -- Lead section 197: the pet state the rotation reads.
     pet = true,
     -- Lead section 226: the craft bar reads (P-CRAFT); the capture asks none.
@@ -260,6 +270,8 @@ local READS = {
 -- Lead section 337 item 1: the bag stacks with their bag and slot, and one
 -- slot read again before it is sold; read by Items/SellThese.lua only, on
 -- the player click. The capture asks neither.
+-- Lead DISPATCH 426: the dungeon journal, asked by the Bosses tab and the diag word.
+READS.journalBoss = false
 READS.bagSlots = false
 READS.bagSlot = false
 -- P-QUEST (lead section 354 item 4): whether a quest can be shared; read by

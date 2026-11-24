@@ -138,7 +138,7 @@ tests["trip route: the route list says the need line in place of the raw count"]
     local route = { stops = { { label = "Paws", detail = "Gnoll Paw: 4/8", need = "You still need 4 of Gnoll Paw.",
                                 leg = 50 } }, yards = true, label = "straight" }
     local lines = T().Lines(route, 1)
-    t.eq(lines[2], "> 1. Paws - You still need 4 of Gnoll Paw. - 50 yd")
+    t.eq(lines[2], "> 1. Paws - You still need 4 of Gnoll Paw. - 50 yd - under a minute")
 end
 
 return tests
