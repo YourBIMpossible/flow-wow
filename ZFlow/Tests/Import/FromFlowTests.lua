@@ -219,7 +219,10 @@ return {
         t.eq(account.settings.rotation.panicPct, 35)
         t.eq(account.settings.quests.autoAccept, false)
         t.eq(account.settings.general.tipsBeside, true)
-        t.eq(account.settings.general.colorblind, false)
+        -- N44: Flow's colour-blind switch is the arrow's palette here
+        -- (UI/Arrow.lua arrow.palette), not a setting nothing reads.
+        t.eq(account.settings.general.colorblind, nil, "no dead setting")
+        t.eq(account.layout.arrowPalette, "standard", "colour-blind off: the standard palette")
         t.eq(account.settings.hearth.off, false)
         t.eq(account.settings.auction.watch, { [4306] = { name = "Silk Cloth", max = 900 } })
     end,
@@ -1384,5 +1387,24 @@ return {
         local kept = {}
         for _, path in ipairs(report.kept) do kept[path] = true end
         t.ok(kept["account.learned.prices.vendor.10"], "kept: the price seen in game")
+    end,
+
+    -- N44. Fails before: colorblind lands in settings.general.colorblind,
+    -- which nothing reads, and layout.arrowPalette stays unset.
+    ["import: Flow's colour-blind switch on picks the arrow's colour-blind palette"] = function(t)
+        local db = fullDb()
+        db.colorblind = true
+        local account = Import.FromFlow(db, fullCharDb()).account
+        t.eq(account.layout.arrowPalette, "colourBlind")
+        t.eq(ns.Nav.ArrowPaletteOf(account.layout.arrowPalette), ns.Nav.ArrowPaletteOf("colourBlind"),
+            "the arrow reads it back")
+        t.eq(account.settings.general and account.settings.general.colorblind, nil)
+    end,
+
+    ["import: a colour-blind value that is not true or false is noted, not guessed"] = function(t)
+        local db = fullDb()
+        db.colorblind = "yes"
+        local result = Import.FromFlow(db, fullCharDb())
+        t.eq(result.account.layout.arrowPalette, nil)
     end,
 }
