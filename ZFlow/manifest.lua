@@ -160,6 +160,8 @@ return {
         "Nav/TravelIcon.lua",
         "Nav/Leaving.lua",
         "Nav/FlightPaths.lua",
+        -- S30: that step on the quest arrow and under the route word (after FlightPaths).
+        "Nav/FlightStep.lua",
         "Nav/MapFlights.lua",
         "Nav/TaxiMark.lua",
         "Nav/Flights.lua",

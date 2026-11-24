@@ -471,6 +471,15 @@ function T.Declare(k, diag)
             end
         end
         say(api.Lines() or { T.DONE })
+        -- S30 (Nav/FlightStep.lua): a flight path to learn that is within
+        -- reach is said under the list. Words only.
+        if route and ctx then
+            local okUse, flightStep = pcall(ctx.use, "flightStep")
+            if okUse and type(flightStep) == "table" and type(flightStep.Line) == "function" then
+                local okLine, line = pcall(flightStep.Line)
+                if okLine and type(line) == "string" then tell(line) end
+            end
+        end
     end
 
     if diag and type(diag.commands) == "table" then

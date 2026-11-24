@@ -641,6 +641,16 @@ function Arrow.Start(k, diag, own)
                     from = "a profession trainer stop"
                 end
             end
+            -- Then a flight path to learn (S30, Nav/FlightStep.lua), only while
+            -- its master is a short detour away. Look only: it points.
+            local flightStep = k.use and k.use("flightStep")
+            if step == nil and flightStep and flightStep.Step then
+                local ok, fs = pcall(flightStep.Step)
+                if ok and type(fs) == "table" and type(fs.place) == "table" then
+                    step = fs
+                    from = "a flight path to learn"
+                end
+            end
             -- The player's own pin (/way, then the map pin) wins over the player's quests.
             if step == nil and quests and Arrow.QuestArrowOn(k) then
                 step = quests.step()
