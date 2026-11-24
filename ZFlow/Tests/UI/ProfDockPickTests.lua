@@ -87,6 +87,9 @@ local function start(opts)
     c.setProfessions(opts.known or { "Cooking" })
     c.setRecipes({ profession = 185, name = "Cooking", skill = 10, max = 75, recipes = {} })
     local addon = ns.offline.addon(c)
+    -- Lead section 450: the dock is what stands when the profession path
+    -- panel is turned off; with it on, the dock steps aside (Tests/E2E/ProfPathPanel.lua).
+    addon.settings:set(ns.ProfPathPanel.SETTING, false)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     return c, addon
 end

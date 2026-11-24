@@ -47,7 +47,7 @@ tests["prof path panel: a bracket says how many crafts and when to train"] = fun
     local said, right = P().RangeText(PLAN.ranges[1])
     t.eq(said, "50-60 Test Buckle")
     t.eq(right, "x10")
-    said, right = P().RangeText(PLAN.ranges[2])
+    _, right = P().RangeText(PLAN.ranges[2])
     t.eq(right, "about x18, Train at 50")
     t.eq(P().RangeText({ from = 1 }), nil)
 end
