@@ -472,7 +472,8 @@ local function coloursRead(input)
 end
 
 -- A short-materials plan whose craft cannot follow yet: per short
--- material, the source seen for it, else a step to find it. nil when
+-- material, the source seen for it (the auction house too, lead section
+-- 407 item 1), else a step to find it. nil when
 -- nothing is short.
 local function materialSteps(input, c)
     local n = math.max(1, limit(input, c))
@@ -481,7 +482,6 @@ local function materialSteps(input, c)
         local short = c.entry.mats[item] * n - have(input, item)
         if short > 0 then
             local s = sourced(input) and ns.ProfSources.For(input, item, short) or nil
-            if s and s.kind == "buy_auction" then s = nil end
             if not s then
                 local name = call(input.name, item)
                 if type(name) ~= "string" or name == "" then name = string.format(P.FIND_UNNAMED, c.recipe) end

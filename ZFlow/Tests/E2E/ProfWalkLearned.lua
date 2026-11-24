@@ -147,13 +147,14 @@ tests["prof walk learned: rank ends train the next rank in every state"] = funct
     end
 end
 
-tests["prof walk learned: no materials and no source seen names the material"] = function(t)
+-- Lead section 407 item 1: a short material with no vendor or node seen is
+-- bought at the auction house; finding it is for no source read at all.
+tests["prof walk learned: no materials and no vendor seen buys at the auction house"] = function(t)
     local addon = start("Tailoring", "ladder, none")
     addon.store:set("char", "learned.facts.profSkill", { Tailoring = { skill = 40, max = 75 } })
     local steps = addon.profPlan.plan("Tailoring")
-    t.eq(steps[1] and steps[1].kind, "find_material")
+    t.eq(steps[1] and steps[1].kind, "buy_auction")
     t.eq(steps[1] and steps[1].item, MAT)
-    t.ok(steps[1] and steps[1].text:find(": no source seen yet$") ~= nil, tostring(steps[1] and steps[1].text))
 end
 
 tests["prof walk learned: colours never read: open the window"] = function(t)
