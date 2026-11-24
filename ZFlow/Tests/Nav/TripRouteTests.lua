@@ -84,4 +84,16 @@ tests["trip route: the lines list every stop in order with distances and the cur
     t.ok(lines[3]:find("> 2. Boars", 1, true) ~= nil, lines[3])
 end
 
+-- Lead section 372: a turn-in stop already on the route is checked again
+-- each re-read; one no longer ready is held with its reason.
+tests["trip route: a turn-in stop no longer complete is held, and is ready again once complete"] = function(t)
+    local rows = { row(2, "Bandages", { "x" }, true) }
+    t.eq(T().Held({ quest = 2, turnIn = true }, rows), nil, "complete: ready")
+    rows[1].complete = false
+    t.eq(T().Held({ quest = 2, turnIn = true }, rows), T().HELD_NOT_COMPLETE)
+    t.eq(T().Held({ quest = 2, objective = 1 }, rows), nil, "an objective stop is never held")
+    t.eq(T().Held({ quest = 9, turnIn = true }, rows), nil, "not in the log: Live drops it")
+    t.eq(T().Held({ kind = "trip", turnIn = true }, rows), nil, "a run stop is not the log's")
+end
+
 return tests
