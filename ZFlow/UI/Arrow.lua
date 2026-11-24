@@ -548,6 +548,8 @@ function Arrow.Start(k, diag, own)
     -- shownLines: each arrow's lines as the source gave them at the last
     -- layout, for the tooltip. drawer: what a left click opens, when set.
     local shownLines, drawer = nil, nil
+    -- A1-12: the quest of the step the quest arrow shows, for its tooltip.
+    local tipQuest = nil
     local stop
     local guideFn = nil
     -- The player's own quests (S43, Nav/QuestRead.lua): the quest step when
@@ -802,6 +804,7 @@ function Arrow.Start(k, diag, own)
                     saying = true
                 end
             end
+            tipQuest = (not saying and type(step) == "table") and tonumber(step.quest) or nil
             guide = (step or prof) and { quest = step, prof = prof } or nil
         end
         if type(guide) ~= "table" then
@@ -1105,10 +1108,23 @@ function Arrow.Start(k, diag, own)
         -- P-TRIP slice 2: the planned route's stops (Nav/Trip.lua), on the
         -- quest arrow's tooltip.
         local route
+        -- A1-12 (Nav/StepTip.lua): the quest's level, objectives, XP and
+        -- what else is here, before the route's stops.
+        local stepTip = key == "quest" and tipQuest and k.use and k.use("stepTip") or nil
+        if stepTip and type(stepTip.Lines) == "function" then
+            local okTip, lines = pcall(stepTip.Lines, tipQuest)
+            if okTip and type(lines) == "table" then route = lines end
+        end
         local trip = key == "quest" and k.use and k.use("trip") or nil
         if trip and type(trip.Tip) == "function" then
             local okTrip, lines = pcall(trip.Tip)
-            if okTrip and type(lines) == "table" then route = lines end
+            if okTrip and type(lines) == "table" then
+                if route then
+                    for i = 1, #lines do route[#route + 1] = lines[i] end
+                else
+                    route = lines
+                end
+            end
         end
         return M.Tip({ key = key, stacked = current.prof.behind == true,
                        both = current.quest.shown == true and current.prof.shown == true,
