@@ -142,6 +142,7 @@ Nav\TravelSpells.lua
 Nav\TravelIcon.lua
 Nav\Leaving.lua
 Nav\FlightPaths.lua
+Nav\FlightStep.lua
 Nav\MapFlights.lua
 Nav\TaxiMark.lua
 Nav\FlightWord.lua
