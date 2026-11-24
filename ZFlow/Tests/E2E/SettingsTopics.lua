@@ -230,6 +230,7 @@ local BEFORE = {
     ["auction.postAdvice"] = { "account", "bool", true },
     ["trader.off"] = { "account", "bool", false },
     ["nav.mapFlights"] = { "account", "bool", false },
+    ["invites.friends"] = { "account", "bool", false },
     ["nav.taxiMark"] = { "account", "bool", true },
     ["nav.learnLegs"] = { "account", "bool", true },
     ["nav.repairStep"] = { "account", "bool", true },
@@ -246,7 +247,8 @@ local BEFORE = {
     ["arrow.layout"] = { "account", "table", nil, "layout.arrows" },
     ["arrow.style"] = { "account", "choice", "modern", "layout.arrowStyle" },
     ["arrow.palette"] = { "account", "choice", "standard", "layout.arrowPalette" },
-    ["craft.queue"] = { "account", "bool", true },
+    -- Lead section 380 (section 208 pin update): the craft bar window and its
+    -- craft.queue row are removed; the row is gone, not moved.
     ["ui.moveGuides"] = { "account", "bool", true },
     ["rotationIcon.layout"] = { "account", "table", nil, "layout.rotationIcon" },
     ["rotationQueue.enabled"] = { "account", "bool", true },
@@ -295,7 +297,7 @@ tests["stored values: no row's key, scope, type, default or saved place changed 
             end
         end
     end
-    t.eq(n, 52)
+    t.eq(n, 52, "section 380: craft.queue removed with the craft bar; the invite advice row added; G2 repair.costLine added")
     t.eq(addon.settings:row("repair.warnBelow").min, 0)
     t.eq(addon.settings:row("repair.warnBelow").max, 1)
     t.eq(addon.settings:row("spec.role").choices, { "", "dps", "heal", "tank" })
@@ -326,7 +328,7 @@ tests["stored values: a saved table from before the change reads back, every val
         n = n + 1
         t.eq(addon.settings:get(key), value, key .. " reads back as saved")
     end
-    t.eq(n, 50, "every row that holds a plain value")
+    t.eq(n, 50, "every row that holds a plain value (section 380: craft.queue removed; the invite advice row added; G2 repair.costLine added)")
     -- And the saved tables still hold them where they were.
     t.eq(c.saved(ns.id.accountDB).settings.vendor.list, false)
     t.eq(c.saved(ns.id.accountDB).settings.repair.warnBelow, 0.35)
@@ -365,7 +367,7 @@ tests["settings workflow: open the page, pick a topic, search, change a result, 
     t.eq(c.optionsNav("topic", "bags"), true)
     local keys = drawn(c)
     table.sort(keys)
-    t.eq(keys, { "bank.list", "items.haveCount", "repair.costLine", "repair.warnBelow", "vendor.list" })
+    t.eq(keys, { "bank.list", "items.dispositionTip", "items.haveCount", "repair.costLine", "repair.warnBelow", "vendor.list" })
     t.eq(ofKind(c, "group").text, T.Find("bags").name)
 
     -- Search every topic.
@@ -450,7 +452,7 @@ tests["settings late data: a module's rows declared after the page was opened ar
     t.ok(addon:Setting({ key = "late.floats", scope = "account", type = "number", default = 2, min = 1, max = 4,
         label = "Net floats", group = "professions" }) ~= nil)
     t.eq(c.optionsNav("topic", "professions"), true)
-    t.ok(has(drawn(c), "late.nets") and has(drawn(c), "late.floats") and has(drawn(c), "craft.queue"),
+    t.ok(has(drawn(c), "late.nets") and has(drawn(c), "late.floats") and has(drawn(c), "nav.nodes"),
         "found by navigation, beside the rows that were there")
     t.eq((c.optionsAct("late.floats", 3)), true)
     t.eq(c.optionsAct("late.floats", 9), false, "its limits hold")

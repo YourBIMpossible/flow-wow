@@ -20,7 +20,13 @@ local _, ns = ...
 --   A.Ready(rows)          the titles complete and not failed, log order,
 --                          each title once
 --   A.Names(titles[, max]) "A, B, C and 2 more"; nil for none
---   A.TurnInText(rows)     the hand-in line, or nil when none is ready
+--   A.ReadyRows(rows)      the same quests, as { id, title }
+--   A.TurnInText(rows[, who])  the hand-in line, or nil when none is
+--                          ready. It names the next move (lead section
+--                          408): who(id) is who takes that quest, asked of
+--                          the installed Questie at runtime through
+--                          ns.Nav.QuestiePlaces; not known, the line says
+--                          what to look for instead
 --   A.Shareable(rows, can) the titles not complete, not failed, for which
 --                          can(id) is a plain true; log order, each once
 --   A.ShareText(rows, can, grouped)  the share line, or nil
@@ -44,7 +50,14 @@ A.PRIORITY = 1
 -- No more titles than this are named in one line.
 A.MAX_NAMES = 3
 
-A.TURN_IN = "Ready to hand in: %s"
+A.TURN_IN = "Ready to hand in: %s."
+-- The next move, after the names (lead section 408). One quest, and who
+-- takes it is known:
+A.GO_SEE = " Go see %s."
+-- More than one quest: who takes each, after its name.
+A.SEE = "%s (see %s)"
+-- Who takes one of them is not known: what the game itself shows.
+A.LOOK = " Look for the yellow ? over who takes it."
 A.SHARE = "You can share with your group: %s"
 A.MORE = "%s and %d more"
 
@@ -71,10 +84,53 @@ function A.Names(titles, max)
     return line
 end
 
-function A.TurnInText(rows)
-    local names = A.Names(A.Ready(rows))
-    if names == nil then return nil end
-    return A.TURN_IN:format(names)
+-- A.ReadyRows(rows) -> the quests of A.Ready(rows), as { id, title }.
+function A.ReadyRows(rows)
+    local out, seen = {}, {}
+    if type(rows) ~= "table" then return out end
+    local titles = {}
+    for _, title in ipairs(A.Ready(rows)) do titles[title] = true end
+    for _, r in ipairs(rows) do
+        if type(r) == "table" and r.complete == true and titles[r.title] and not seen[r.title] then
+            seen[r.title] = true
+            out[#out + 1] = { id = r.id, title = r.title }
+        end
+    end
+    return out
+end
+
+-- A.TurnInText(rows[, who]) -> the hand-in line, or nil when none is ready.
+-- who(id) -> the name of who takes that quest, or nil when not known.
+-- One quest:  "Ready to hand in: A. Go see N."
+-- More:       "Ready to hand in: A (see N), B (see M)."
+-- A quest whose taker is not known gets no name, and the line ends with
+-- what to look for instead.
+function A.TurnInText(rows, who)
+    local ready = A.ReadyRows(rows)
+    if #ready == 0 then return nil end
+    local function name(r)
+        if type(who) ~= "function" or r.id == nil then return nil end
+        local ok, n = pcall(who, r.id)
+        if ok and type(n) == "string" and n ~= "" then return n end
+        return nil
+    end
+    if #ready == 1 then
+        local n = name(ready[1])
+        return A.TURN_IN:format(ready[1].title) .. (n and A.GO_SEE:format(n) or A.LOOK)
+    end
+    -- Only the quests named in the line are asked about.
+    local titles, unknown = {}, false
+    for i, r in ipairs(ready) do
+        local n = nil
+        if i <= A.MAX_NAMES then n = name(r) end
+        if n then
+            titles[i] = A.SEE:format(r.title, n)
+        else
+            titles[i] = r.title
+            if i <= A.MAX_NAMES then unknown = true end
+        end
+    end
+    return A.TURN_IN:format(A.Names(titles)) .. (unknown and A.LOOK or "")
 end
 
 function A.Shareable(rows, can)
@@ -150,11 +206,27 @@ function A.Declare(k)
 
             local function can(id) return ask(client, "questShareable", id) end
 
+            -- Who takes a complete quest (lead section 408): asked of the
+            -- installed Questie, kept for the session only. Not known stays
+            -- not known and is asked again at the next change of the log.
+            local takers = {}
+            local function who(id)
+                if id == nil then return nil end
+                if takers[id] ~= nil then return takers[id] end
+                if type(ns.Nav) ~= "table" or type(ns.Nav.QuestiePlaces) ~= "function" then return nil end
+                local ok, places = pcall(ns.Nav.QuestiePlaces, client, { { id = id, objectives = {} } }, nil)
+                local spot = ok and type(places) == "table" and type(places[id]) == "table" and places[id].turnIn or nil
+                if type(spot) == "table" and type(spot.name) == "string" and spot.name ~= "" then
+                    takers[id] = spot.name
+                end
+                return takers[id]
+            end
+
             local function refresh()
                 local rows = ns.Nav.QuestLogRows(client)
                 if type(rows) == "table" then last = rows end
                 local turnIn, share
-                if ctx.settings:get(A.TURN_IN_SETTING) ~= false then turnIn = A.TurnInText(last) end
+                if ctx.settings:get(A.TURN_IN_SETTING) ~= false then turnIn = A.TurnInText(last, who) end
                 if ctx.settings:get(A.SHARE_SETTING) ~= false then
                     local grouped = ask(client, "grouped")
                     -- Asked only in a group: alone, no quest is asked about.

@@ -50,7 +50,7 @@ return {
         if not has(t, c) then return end
         local q, p = c.arrows[1], c.arrows[2]
         t.eq(saved(k).mode, "stacked", "stacked to begin with")
-        t.eq(p.under, true)
+        t.eq(p.lookIs, "needle", "the profession arrow of the stack")
         q.drag(STACK)
         c.advance(0.1, 2)
         t.eq(saved(k).mode, "stacked", "moving the stack keeps it stacked")
@@ -60,8 +60,8 @@ return {
         t.eq(now.mode, "separate")
         t.eq(now.points.prof, FAR, "the needle is where it was let go")
         t.eq(now.points.quest, STACK, "the quest arrow did not move")
-        t.eq(p.under, false, "the needle is no longer under the quest arrow")
-        t.eq(p.attached, nil, "nor fixed to it")
+        t.eq(p.point, FAR, "it stands where it was let go")
+        t.eq(p.attached, nil, "not fixed to the quest arrow")
         t.eq(q.shown, true)
         t.eq(k.problems:count(), 0)
     end,
@@ -75,8 +75,14 @@ return {
         p.drag({ STACK[1], STACK[2], STACK[3] + 5, STACK[4] + 5 })
         c.advance(0.1, 2)
         t.eq(saved(k).mode, "stacked")
+        -- Nudged from where it stands in the stack (one rise over the quest
+        -- arrow): stacked too.
+        local rise = N.ARROW_SIZE + N.NeedleClearance(N.ARROW_SIZE) + N.STACK_GAP
+        p.drag({ STACK[1], STACK[2], STACK[3] + 5, STACK[4] + rise + 5 })
+        c.advance(0.1, 2)
+        t.eq(saved(k).mode, "stacked", "let go near its own place in the stack")
         t.eq(saved(k).points.quest, STACK)
-        t.eq(p.under, true)
+        t.eq(p.lookIs, "needle", "the profession arrow of the stack")
         t.eq(k.problems:count(), 0)
     end,
 
@@ -89,7 +95,7 @@ return {
         p.drag(FAR)
         c.advance(0.1, 2)
         t.eq(saved(k), before)
-        t.eq(p.under, true)
+        t.eq(p.lookIs, "needle", "the profession arrow of the stack")
         t.eq(k.problems:count(), 0)
     end,
 
@@ -105,7 +111,7 @@ return {
         p.drag({ STACK[1], STACK[2], STACK[3], STACK[4] })
         c.advance(0.1, 2)
         t.eq(saved(k).mode, "stacked")
-        t.eq(p.under, true)
+        t.eq(p.lookIs, "needle", "the profession arrow of the stack")
         t.eq(k.problems:count(), 0)
     end,
 }

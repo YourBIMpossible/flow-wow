@@ -6,6 +6,10 @@ local _, ns = ...
 
 local L, P, Present = ns.PriceLookup, ns.Prices, ns.ItemPresent
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local INFO = {
     [97] = { name = "Broken Fang", quality = 0, sellPrice = 4 },
@@ -136,6 +140,13 @@ tests["price command: no item says how to use it, and nothing is written"] = fun
     t.eq(L.Run(k, "fang"), { L.USAGE })
     local saved = c.saved(ns.id.accountDB)
     t.eq(type(saved.learned) == "table" and saved.learned.prices or nil, nil, "a lookup makes no price book")
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

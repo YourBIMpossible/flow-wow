@@ -22,7 +22,7 @@ local KIND = {
                -- N60a: the chat filter and the link click (UI/Chat.lua).
                "chatFilter", "onLinkClick" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
-             "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
+             "optionsPage", "guideLines", "taxiMark", "mapPins", "mapClick", "comboBar", "slotIcon",
              "markMerchantButtons", "rowPanel", "textEntry",
              -- N59: the info bar, and its data broker feed where the library is loaded.
              "infoBar", "broker",
@@ -81,6 +81,8 @@ KIND.listen[#KIND.listen + 1] = "onKitDrawn"
 -- The settings in one kit window (lead section 285 item 3): it hands the
 -- caller's tree to kitWindow and asks the game nothing.
 KIND.show[#KIND.show + 1] = "settingsWindow"
+-- Lead section 410: the settings as the game's own rows in its Options.
+KIND.show[#KIND.show + 1] = "optionsNative"
 
 -- Section 285 item 2b: the face, Ctrl-drag and hover tip of the Flow and
 -- self buttons (Rotation/FlowButton.lua).
@@ -112,10 +114,10 @@ KIND.show[#KIND.show + 1] = "setEditBox"
 local READS = {
     now = false, clock = true, clockMs = false, addonLoaded = true, listenFaults = true, uptime = true, inCombat = true,
     money = true, bags = true, bagItems = true, bankOpen = true, bankItems = true, merchantOpen = false,
-    merchantItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, tradeSkillTools = true, trainer = false, faction = false, class = true,
+    merchantItems = false, returnableItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, tradeSkillTools = true, trainer = false, faction = false, class = true,
     stealthed = true, target = true, inRange = true, level = false, gear = false, spellCooldown = true,
     spellId = true, spellTexture = false, facing = true, spell = true, position = true, dead = true,
-    ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, zone = true,
+    ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, mapName = false, zone = true,
     combatLockdown = true, version = false, screen = false, questLog = true, questFocus = true,
     questFocusReads = false, questieModule = false, minimap = false, itemInfo = false,
     itemLines = false, itemTexture = false, tracking = false, anyTracking = false, professions = false,
@@ -131,6 +133,8 @@ local READS = {
     pet = true,
     -- Lead section 226: the craft bar reads (P-CRAFT); the capture asks none.
     recipeUsable = false, moving = false,
+    -- G58: the party invite line reads the friends list; the capture asks none.
+    isFriend = false,
     -- G40: the arrow's time to arrive reads the speed; the capture asks none.
     speed = false,
     -- CF-32: a spell's name by id, for your own casts (Rotation/OwnCasts.lua).
@@ -245,6 +249,9 @@ local READS = {
     -- Nav/Trails.lua and Nav/Follow.lua only. Their names (IsIndoors,
     -- C_Map.GetBestMapForUnit, C_Map.GetPlayerMapPosition) are in Diag.NAMES.
     indoors = false, unitPosition = false,
+    -- Lead section 303 (d): the instance name, read by UI/DungeonTracker.lua
+    -- only. Its name (GetInstanceInfo) is in Diag.NAMES.
+    instanceName = false,
 }
 -- Lead section 337 item 1: the bag stacks with their bag and slot, and one
 -- slot read again before it is sold; read by Items/SellThese.lua only, on
@@ -258,6 +265,9 @@ READS.questShareable = false
 -- Lead section 337 item 1 (ACTING): one bag slot sold to the open merchant,
 -- only on the player click on Sell these, out of combat. Never the capture.
 KIND.act[#KIND.act + 1] = "sellBagItem"
+-- Lead section 382: a map's continent name; read by Nav/ProfFeed.lua only.
+-- Its name (C_Map.GetMapInfo, Enum.UIMapType) is in Diag.NAMES.
+READS.mapContName = false
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {
@@ -465,4 +475,8 @@ KIND.act[#KIND.act + 1] = "addonSend"
 READS.trackingRaw = false
 READS.tradeSkillAnswers = false
 
+
+-- S32: the zone and sub-zone words behind client.placeText, read by
+-- Nav/Crossings.lua to name a dock; never by the capture.
+READS.placeText = false
 return tests

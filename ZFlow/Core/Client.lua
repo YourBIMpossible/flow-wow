@@ -557,6 +557,39 @@ function ns.make.client(env)
         return out
     end
 
+    -- G3: what is on the open merchant's Buyback tab, in the tab's order:
+    --   { { index = n, item = link, name = text, price = copper to buy it
+    --       back, count = how many }, ... }
+    -- A field the client did not give is left out, never guessed. nil
+    -- unless the merchant window is known to be open, and nil when the
+    -- count or any one item could not be read or is marked secret: never a
+    -- shorter list. This only reads. Nothing here buys anything back.
+    -- First guesses, not seen in game on 16001: GetNumBuybackItems,
+    -- GetBuybackItemLink(index), GetBuybackItemInfo(index) answering name,
+    -- texture, price, quantity.
+    function c.returnableItems()
+        if c.merchantOpen() ~= true then return nil end
+        local ok, count = call(env.GetNumBuybackItems)
+        if not ok or hidden(count) or not wholeCount(count) then return nil end
+        local out = {}
+        for index = 1, count do
+            local okLink, link = call(env.GetBuybackItemLink, index)
+            if not okLink or (link ~= nil and hidden(link)) then return nil end
+            local okInfo, name, _, price, quantity = call(env.GetBuybackItemInfo, index)
+            if not okInfo or (name ~= nil and hidden(name)) or (price ~= nil and hidden(price))
+                or (quantity ~= nil and hidden(quantity)) then
+                return nil
+            end
+            local row = { index = index }
+            if type(link) == "string" then row.item = link end
+            if type(name) == "string" and name ~= "" then row.name = name end
+            if wholeCount(price) then row.price = price end
+            if wholeCount(quantity) and quantity > 0 then row.count = quantity end
+            out[index] = row
+        end
+        return out
+    end
+
     -- The profession whose window is open, and every recipe in it:
     --   { profession = skill line, skill = n, max = n,
     --     recipes = { { id =, name =, learned = true / false,
@@ -6625,6 +6658,60 @@ function ns.make.client(env)
         return h
     end
 
+    -- The name of a map as the client says it (C_Map.GetMapInfo(map).name),
+    -- or nil. Checked on warcraft.wiki.gg (API C_Map.GetMapInfo). A first
+    -- guess on 16001: needs game test.
+    function c.mapName(map)
+        if type(map) ~= "number" then return nil end
+        local ok, info = mapCall("GetMapInfo", map)
+        if not ok or type(info) ~= "table" then return nil end
+        local name = info.name
+        if hidden(name) or type(name) ~= "string" or name == "" then return nil end
+        return name
+    end
+
+    -- c.mapClick(fn) -> true when the world map will tell of the player's
+    -- own Alt + left clicks on it, else nil and a reason. fn(map, x, y):
+    -- the uiMapID the map showed when the button went down and where the
+    -- cursor was on it then, as shares 0..1 (x right, y down). A click
+    -- outside the map, without Alt, or with another button tells nothing.
+    -- Hooks only (HookScript OnMouseDown / OnMouseUp on
+    -- WorldMapFrame.ScrollContainer): the map's own click still runs, and
+    -- nothing is clicked or moved for the player. Where the button went
+    -- down is kept, since the map's own click may have changed the map by
+    -- the time the button comes up. First guesses, not seen on 16001:
+    -- ScrollContainer:GetNormalizedCursorPosition (MapCanvasScrollController
+    -- Mixin), HookScript on it, IsAltKeyDown. Needs a game test.
+    function c.mapClick(fn)
+        if type(fn) ~= "function" then return nil, "no function" end
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil, "no world map" end
+        local okS, scroll = pcall(function() return wm.ScrollContainer end)
+        if not okS or scroll == nil then return nil, "no map canvas" end
+        local function plain(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
+        local down
+        local okD = method(scroll, "HookScript", "OnMouseDown", function(_, button)
+            down = nil
+            if button ~= "LeftButton" then return end
+            local okA, alt = call(env.IsAltKeyDown)
+            if not okA or hidden(alt) or not alt then return end
+            local okM, map = method(wm, "GetMapID")
+            local okP, x, y = method(scroll, "GetNormalizedCursorPosition")
+            if not okM or not okP or hidden(map) or hidden(x) or hidden(y) then return end
+            if type(map) ~= "number" or not plain(x) or not plain(y) then return end
+            if x < 0 or x > 1 or y < 0 or y > 1 then return end
+            down = { map, x, y }
+        end)
+        local okU = method(scroll, "HookScript", "OnMouseUp", function(_, button)
+            local at = down
+            down = nil
+            if at == nil or button ~= "LeftButton" then return end
+            pcall(fn, at[1], at[2], at[3])
+        end)
+        if not okD or not okU then return nil, "no hook" end
+        return true
+    end
+
     -- c.mapPins() -> h, or nil when there is no world map, no canvas
     -- (WorldMapFrame.ScrollContainer.Child) or no frame could be made. One
     -- plain frame over the canvas, no mouse; its dots and lines are made
@@ -6825,6 +6912,16 @@ function ns.make.client(env)
         local okFlag, flag = call(env.IsPlayerMoving)
         if okFlag and type(flag) == "boolean" then return flag end
         return nil
+    end
+
+    -- Is the player with this id on the friends list? C_FriendList.IsFriend(
+    -- guid): true, false, or nil when the game does not say. A first guess:
+    -- not seen in game.
+    function c.isFriend(guid)
+        if type(guid) ~= "string" or guid == "" then return nil end
+        local list = env.C_FriendList
+        if type(list) ~= "table" then return nil end
+        return yesNo(call(list.IsFriend, guid))
     end
 
     -- How fast the player is moving, in yards a second: GetUnitSpeed(
@@ -7814,6 +7911,186 @@ function ns.make.client(env)
         function h.open() return waiting end
         return h
     end
+    -- Lead section 410: Z-Flow's settings as the game's own rows, under
+    -- Options > AddOns. One entry for the add-on, one under it for each
+    -- topic; each setting is a checkbox, slider or dropdown the game builds,
+    -- so look, spacing, scrolling, search and Defaults are the game's.
+    --
+    -- NOT CONFIRMED ON THIS CLIENT. No add-on installed on 16001 and no copy
+    -- of the client's interface source uses these calls; every installed
+    -- add-on registers a canvas (Questie's QuestieOptionsEngine.lua,
+    -- ForeverDungeonJournal's OptionsPanel.lua, Ace3's AceConfigDialog-3.0).
+    -- The names and argument orders below are the ones of the game's
+    -- Settings API as later clients have it, so every one is looked for
+    -- before anything is registered, and the answer is nil (the caller keeps
+    -- its own window) when one is missing. RegisterProxySetting has had two
+    -- argument orders; a setting that is never shown is registered first to
+    -- learn which one this client reads, and nil is the answer when neither
+    -- reads back. The add-on's entry is added to the list last, so a client
+    -- that fails part way shows no empty entry.
+    --
+    --   c.optionsNative(spec) -> h | nil   (show)
+    --   spec = { title, name, rows = { row, ... },
+    --            topics = { { id, name, rows = { row, ... } }, ... } }
+    --   row = { kind = "header", text }
+    --       | { kind = "button", label, text, tip, run = fn }
+    --       | { kind = "toggle" | "number" | "choice", key, label, tip,
+    --           default, get = fn() -> value, set = fn(value),
+    --           can = fn() -> true when it may be changed now,
+    --           tags = { word, ... }, min, max, step (number),
+    --           choices = { { value, label }, ... } (choice) }
+    --   h.open(topicId or nil) -> true when the game's Options was asked to
+    --     open at that topic's entry (the add-on's own entry for nil)
+    --   h.count() -> how many rows the game took
+    --   h.order() -> "new" | "old": the argument order that read back
+    function c.optionsNative(spec)
+        spec = type(spec) == "table" and spec or {}
+        local S = env.Settings
+        if type(S) ~= "table" then return nil end
+        local NEED = { "RegisterVerticalLayoutCategory", "RegisterVerticalLayoutSubcategory",
+            "RegisterAddOnCategory", "RegisterProxySetting", "OpenToCategory", "CreateSlider",
+            "CreateSliderOptions", "CreateControlTextContainer" }
+        for i = 1, #NEED do
+            if type(S[NEED[i]]) ~= "function" then return nil end
+        end
+        local checkbox = S.CreateCheckbox or S.CreateCheckBox
+        local dropdown = S.CreateDropdown or S.CreateDropDown
+        if type(checkbox) ~= "function" or type(dropdown) ~= "function" then return nil end
+        local title = type(spec.title) == "string" and spec.title or "Add-on"
+        local prefix = (type(spec.name) == "string" and spec.name or "AddOn") .. "_"
+        local okP, parent, parentLayout = call(S.RegisterVerticalLayoutCategory, title)
+        if not okP or type(parent) ~= "table" then return nil end
+
+        local VT = type(S.VarType) == "table" and S.VarType or {}
+        local function varType(v)
+            if type(v) == "boolean" then return VT.Boolean or "boolean" end
+            if type(v) == "number" then return VT.Number or "number" end
+            return VT.String or "string"
+        end
+        local order = "new"
+        local function proxy(cat, variable, default, label, get, set)
+            local ok, setting
+            if order == "new" then
+                ok, setting = call(S.RegisterProxySetting, cat, variable, varType(default), label, default, get, set)
+            else
+                ok, setting = call(S.RegisterProxySetting, cat, variable, {}, varType(default), label, default, get, set)
+            end
+            if ok and type(setting) == "table" then return setting end
+            return nil
+        end
+        local function readsBack(setting)
+            if not setting then return false end
+            local ok, v = method(setting, "GetValue")
+            return ok and v == true
+        end
+        local function yes() return true end
+        local function nothing() end
+        if not readsBack(proxy(parent, prefix .. "probe", false, title, yes, nothing)) then
+            order = "old"
+            if not readsBack(proxy(parent, prefix .. "probe2", false, title, yes, nothing)) then return nil end
+        end
+
+        local made = 0
+        local function add(layout, init)
+            if type(layout) ~= "table" or type(init) ~= "table" then return false end
+            return (method(layout, "AddInitializer", init)) == true
+        end
+        local function control(cat, r, setting)
+            if r.kind == "toggle" then return call(checkbox, cat, setting, r.tip) end
+            if r.kind == "number" then
+                local okO, opts = call(S.CreateSliderOptions, r.min, r.max, r.step)
+                if not okO or type(opts) ~= "table" then return false end
+                local M = env.MinimalSliderWithSteppersMixin
+                if type(M) == "table" and type(M.Label) == "table" and M.Label.Right ~= nil then
+                    method(opts, "SetLabelFormatter", M.Label.Right)
+                end
+                return call(S.CreateSlider, cat, setting, opts, r.tip)
+            end
+            if r.kind == "choice" then
+                local function options()
+                    local okC, box = call(S.CreateControlTextContainer)
+                    if not okC or type(box) ~= "table" then return {} end
+                    for _, choice in ipairs(type(r.choices) == "table" and r.choices or {}) do
+                        method(box, "Add", choice.value, choice.label)
+                    end
+                    local okD, data = method(box, "GetData")
+                    if okD and type(data) == "table" then return data end
+                    return {}
+                end
+                return call(dropdown, cat, setting, options, r.tip)
+            end
+            return false
+        end
+        local function rowsInto(cat, layout, rows)
+            for _, r in ipairs(type(rows) == "table" and rows or {}) do
+                if type(r) ~= "table" then
+                    -- not a row
+                elseif r.kind == "header" then
+                    local ok, init = call(env.CreateSettingsListSectionHeaderInitializer, r.text)
+                    if ok then add(layout, init) end
+                elseif r.kind == "button" then
+                    local run = r.run
+                    local ok, init = call(env.CreateSettingsButtonInitializer, r.label, r.text, function()
+                        if type(run) == "function" then pcall(run) end
+                    end, r.tip, true)
+                    if ok and add(layout, init) then made = made + 1 end
+                elseif type(r.key) == "string" and type(r.get) == "function" and type(r.set) == "function" then
+                    local get, set = r.get, r.set
+                    local setting = proxy(cat, prefix .. r.key, r.default, r.label, function()
+                        local ok, v = pcall(get)
+                        if ok and v ~= nil then return v end
+                        return r.default
+                    end, function(v)
+                        if hidden(v) then return end
+                        pcall(set, v)
+                    end)
+                    if setting then
+                        local ok, init = control(cat, r, setting)
+                        if ok and type(init) == "table" then
+                            made = made + 1
+                            local can = r.can
+                            if type(can) == "function" then
+                                method(init, "AddModifyPredicate", function()
+                                    local okC, may = pcall(can)
+                                    return okC and may == true
+                                end)
+                            end
+                            if type(r.tags) == "table" and #r.tags > 0 then
+                                method(init, "AddSearchTags", unpack(r.tags))
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        local byId = {}
+        rowsInto(parent, parentLayout, spec.rows)
+        for _, topic in ipairs(type(spec.topics) == "table" and spec.topics or {}) do
+            if type(topic) == "table" then
+                local ok, sub, layout = call(S.RegisterVerticalLayoutSubcategory, parent, tostring(topic.name))
+                if ok and type(sub) == "table" then
+                    if topic.id ~= nil then byId[topic.id] = sub end
+                    rowsInto(sub, layout, topic.rows)
+                end
+            end
+        end
+        if made == 0 then return nil end
+        call(S.RegisterAddOnCategory, parent)
+
+        local h = {}
+        function h.open(topicId)
+            local cat = topicId ~= nil and byId[topicId] or parent
+            local id = cat
+            local okI, got = method(cat, "GetID")
+            if okI and got ~= nil then id = got end
+            return (call(S.OpenToCategory, id)) == true
+        end
+        function h.count() return made end
+        function h.order() return order end
+        return h
+    end
+
     -- ------------------------------------------------------------ end N57
 
     -- ------------------------------------------------------------ N67
@@ -8874,7 +9151,9 @@ function ns.make.client(env)
     --     yet (the item not loaded).
     --   c.markRewardChoice(index) -> true when that choice's button carries
     --     the mark; nil when no button was found. Every other mark is
-    --     hidden; index nil hides them all.
+    --     hidden; index nil hides them all. kind "coin" (G14, section 393:
+    --     nothing is an upgrade, this sells for the most) draws the gold
+    --     coin icon instead of the arrow.
     -- In a do block: make.client is near Lua 5.1's 200 locals.
     do
         local REWARD_BUTTONS = 10
@@ -8918,12 +9197,23 @@ function ns.make.client(env)
             rewardBadges[b] = t
             return t
         end
-        function c.markRewardChoice(index)
+        local function rewardLook(t, kind)
+            if kind == "coin" then
+                method(t, "SetTexture", "Interface\\MoneyFrame\\UI-GoldIcon")
+                return
+            end
+            local okA, set = method(t, "SetAtlas", "bags-greenarrow")
+            if not okA or set == false then
+                method(t, "SetTexture", "Interface\\PetBattles\\BattleBar-AbilityBadge-Strong")
+            end
+        end
+        function c.markRewardChoice(index, kind)
             local shown = nil
             for i = 1, REWARD_BUTTONS do
                 local t = rewardBadge(i)
                 if t then
                     if i == index then
+                        rewardLook(t, kind)
                         method(t, "Show")
                         shown = true
                     else
@@ -9702,7 +9992,10 @@ function ns.make.client(env)
         -- no row. First guesses, none seen in game on 16001.
         local KIT_ROW = { frame = "T2", search = "T5", tab = "T7", button = "T16" }
         local KIT_OWN = { close = "UIPanelCloseButton", check = "UICheckButtonTemplate",
-            input = "InputBoxTemplate", scroll = "UIPanelScrollFrameTemplate" }
+            input = "InputBoxTemplate", scroll = "UIPanelScrollFrameTemplate", slider = "OptionsSliderTemplate" }
+        -- A template-made slider gets a name of ours: the stock slider
+        -- template names its labels from it.
+        local kitSliders = 0
         -- The template to ask for a part, or nil when the probe found it
         -- missing: then no create is tried and the plain form draws. A row
         -- not asked yet, one that works and one made but not confirmed are
@@ -9804,6 +10097,14 @@ function ns.make.client(env)
             local pools, on, wired, firstOf = {}, {}, {}, {}
             -- Lead section 340: each scroll's offset before this draw.
             local keeps = {}
+            -- The one dropdown list that is open, or nil. Closed by a pick, a
+            -- second press on its box, a turn of the wheel, a draw and the
+            -- window hiding.
+            local openDrop = nil
+            local function closeDrop()
+                if openDrop ~= nil then method(openDrop, "Hide") end
+                openDrop = nil
+            end
             local function take(parent, key, make, loose)
                 local by = pools[parent]
                 if by == nil then
@@ -10254,6 +10555,7 @@ function ns.make.client(env)
                     local okC, cur = method(scroll, "GetVerticalScroll")
                     local okR, range = method(scroll, "GetVerticalScrollRange")
                     if not okC or not okR or type(cur) ~= "number" or type(range) ~= "number" then return end
+                    closeDrop()
                     local to = cur - delta * size.wheelLines * size.lineHeight
                     if to > range then to = range end
                     if to < 0 then to = 0 end
@@ -10347,8 +10649,135 @@ function ns.make.client(env)
                 end
                 return { b }
             end
+            -- A choice as the game's dropdown: one box showing the item in
+            -- use; a press opens the list under it, a press on an item picks
+            -- it. The list stands on the window, above the rows, so no row
+            -- and no scroll cuts it.
+            local function dropdown(part, on1, x, colW, okay)
+                local n = #part.items
+                local list
+                local b = button(on1, part.items[part.selected] or "", colW, okay, function()
+                    if list == nil then return end
+                    local mine = openDrop == list
+                    closeDrop()
+                    if mine then return end
+                    method(list, "Show")
+                    method(list, "Raise")
+                    openDrop = list
+                end)
+                if b == nil then return {} end
+                sized(b, colW, size.button)
+                method(b, "SetPoint", "LEFT", on1, "LEFT", x, 0)
+                local arrow = texture(b, "OVERLAY", "drop")
+                if arrow ~= nil then
+                    sized(arrow, size.check, size.check)
+                    method(arrow, "SetPoint", "RIGHT", b, "RIGHT", -size.gapSmall, 0)
+                    if not pictured(arrow, "Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up") then method(arrow, "Hide") end
+                end
+                list = plain("Frame", f, "drop")
+                if list == nil then return { b } end
+                method(list, "SetFrameStrata", "DIALOG")
+                method(list, "EnableMouse", true)
+                method(list, "SetPoint", "TOPLEFT", b, "BOTTOMLEFT", 0, 0)
+                sized(list, colW, n * size.button + 2 * size.edge)
+                backing(list, color.fill, "fill")
+                border(list)
+                for i = 1, n do
+                    local item = plain("Button", list, "item")
+                    if item ~= nil then
+                        sized(item, colW - 2 * size.edge, size.button)
+                        method(item, "SetPoint", "TOPLEFT", list, "TOPLEFT", size.edge, -(size.edge + (i - 1) * size.button))
+                        local over = texture(item, "HIGHLIGHT", "over")
+                        if over ~= nil then
+                            method(over, "SetAllPoints", item)
+                            paint(over, color.hover)
+                        end
+                        local t = words(item, font.label, "item")
+                        if t ~= nil then
+                            method(t, "SetPoint", "LEFT", item, "LEFT", size.gapSmall, 0)
+                            if i == part.selected then inked(t, color.accent) else inked(t, color.text) end
+                            method(t, "SetText", part.items[i])
+                        end
+                        hook(item, "OnClick", function()
+                            closeDrop()
+                            if i ~= part.selected then tell(part.onSelect, i) end
+                        end)
+                    end
+                end
+                method(list, "Hide")
+                return { b }
+            end
+            -- A number with two limits as the game's slider, the value
+            -- beside it. Dragging moves the value shown; onChange is told
+            -- once, when the mouse button is let go. -> the slider, or nil
+            -- with nothing left showing when the client gives no slider or
+            -- one without a slider's calls: the caller draws the stepper.
+            -- First guesses, not seen in game: the template name, and the
+            -- Slider calls as the page's own slider uses them (sliderRow).
+            local function slider(part, on1, x, colW, okay)
+                if part.min == nil or part.max == nil or part.max <= part.min then return nil end
+                local s, which = made("Slider", on1, "slider", nil, function()
+                    if type(ns.id) ~= "table" or type(ns.id.framePrefix) ~= "string" then return nil end
+                    kitSliders = kitSliders + 1
+                    return ns.id.framePrefix .. "KitSlider" .. kitSliders
+                end)
+                if s == nil then return nil end
+                if which ~= "first" then
+                    if not (method(s, "SetOrientation", "HORIZONTAL")
+                        and method(s, "SetThumbTexture", "Interface\\Buttons\\WHITE8X8")) then
+                        method(s, "Hide")
+                        return nil
+                    end
+                    local track = texture(s, "BACKGROUND", "track")
+                    if track ~= nil then
+                        method(track, "SetPoint", "LEFT", s, "LEFT", 0, 0)
+                        method(track, "SetPoint", "RIGHT", s, "RIGHT", 0, 0)
+                        method(track, "SetHeight", size.gapSmall)
+                        paint(track, color.edge)
+                    end
+                    local okT, thumb = method(s, "GetThumbTexture")
+                    if okT and thumb ~= nil then
+                        sized(thumb, size.gap, size.check)
+                        method(thumb, "SetVertexColor", color.accent[1], color.accent[2], color.accent[3], color.accent[4])
+                    end
+                end
+                if not (method(s, "SetMinMaxValues", part.min, part.max) and method(s, "SetValueStep", part.step)
+                    and method(s, "SetValue", part.value)) then
+                    method(s, "Hide")
+                    return nil
+                end
+                method(s, "SetObeyStepOnDrag", true)
+                method(s, "EnableMouse", true)
+                local w = colW - size.numberValue
+                sized(s, w, size.check)
+                method(s, "SetPoint", "LEFT", on1, "LEFT", x, 0)
+                able(s, okay)
+                local v = words(on1, font.label, "value")
+                if v ~= nil then
+                    method(v, "SetPoint", "LEFT", on1, "LEFT", x + w, 0)
+                    method(v, "SetWidth", size.numberValue)
+                    method(v, "SetJustifyH", "CENTER")
+                    if okay then inked(v, color.text) else inked(v, color.textOff) end
+                    method(v, "SetText", tostring(part.value))
+                end
+                local pending = part.value
+                hook(s, "OnValueChanged", function(_, now)
+                    if type(now) ~= "number" or hidden(now) or now ~= now then return end
+                    now = part.min + math.floor((now - part.min) / part.step + 0.5) * part.step
+                    if now < part.min then now = part.min end
+                    if now > part.max then now = part.max end
+                    now = math.floor(now * 1000000 + 0.5) / 1000000
+                    pending = now
+                    if v ~= nil then method(v, "SetText", tostring(now)) end
+                end, true)
+                hook(s, "OnMouseUp", function()
+                    if okay and pending ~= part.value then tell(part.onChange, pending) end
+                end, true)
+                return s
+            end
             function CONTROL.choice(part, on1, x, colW, live)
                 local okay = live and part.enabled ~= false
+                if part.drop == true then return dropdown(part, on1, x, colW, okay) end
                 local n = #part.items
                 if n > size.choiceButtons then
                     local b = button(on1, part.items[part.selected] or "", colW, okay, function()
@@ -10378,6 +10807,8 @@ function ns.make.client(env)
             end
             function CONTROL.number(part, on1, x, colW, live)
                 local okay = live and part.enabled ~= false
+                local slid = slider(part, on1, x, colW, okay)
+                if slid ~= nil then return { slid } end
                 local function stepped(dir)
                     local v = part.value + dir * part.step
                     if part.min ~= nil and v < part.min then v = part.min end
@@ -10698,7 +11129,24 @@ function ns.make.client(env)
                     method(nm, "SetWidth", math.max(pane.w - left - right, 1))
                     method(nm, "SetJustifyH", "LEFT")
                     if off then inked(nm, color.textOff) else inked(nm, color.text) end
+                    local wraps = part.wrap == true and not hasSub
+                    -- words() turns wrapping off, and the name is kept from
+                    -- draw to draw: set it each time.
+                    method(nm, "SetWordWrap", wraps)
                     method(nm, "SetText", part.text)
+                    -- Lead section 408: a line that wraps is as tall as its
+                    -- text, and the parts under it start below it. A height
+                    -- the client does not give leaves the line one row high.
+                    if wraps then
+                        local okH, textH = method(nm, "GetStringHeight")
+                        if okH and type(textH) == "number" and not hidden(textH) and textH > 0 then
+                            local tall = math.ceil(textH) + 2 * size.gapSmall
+                            if tall > hgt then
+                                sized(h, pane.w, tall)
+                                pane.y = pane.y + tall - hgt
+                            end
+                        end
+                    end
                 end
                 local sub = words(h, font.small, "sub")
                 if sub ~= nil then
@@ -11107,9 +11555,21 @@ function ns.make.client(env)
                 for i = 1, #kids do
                     if kids[i].kind ~= "footer" then place(kids[i], pane, i == lastFlow) end
                 end
+                -- Lead section 408: a window that fits is as tall as what
+                -- was just drawn in it: the title bar, the padding, the
+                -- parts and the footer. Its width stays.
+                if now.fit == true then
+                    local want = size.title + 2 * size.pad + pane.y
+                    if hasFooter then want = want + size.footer end
+                    if want ~= height then
+                        height = want
+                        sized(f, width, height)
+                    end
+                end
             end
             draw = function(now)
                 reread()
+                closeDrop()
                 sweepStart()
                 slots = {}
                 keeps = {}
@@ -11190,6 +11650,7 @@ function ns.make.client(env)
             -- open: shown by show(true) and not since hidden by the add-on
             -- or closed by the player. Only a hide while open is the player's.
             function h.show(shown)
+                closeDrop()
                 open = shown and true or false
                 method(f, open and "Show" or "Hide")
             end
@@ -11994,6 +12455,27 @@ function ns.make.client(env)
         end
         return out
     end
+    -- Lead section 382 (Nav/ProfFeed.lua): the name of the continent a map
+    -- lies on, for "Next time you are in <continent>". C_Map.GetMapInfo up
+    -- the parents to the first of Enum.UIMapType.Continent (2 when the enum
+    -- is not there). nil when the client will not say; never guessed. A
+    -- first guess, not seen in game.
+    function c.mapContName(map)
+        if type(map) ~= "number" then return nil end
+        local kinds = type(env.Enum) == "table" and env.Enum.UIMapType
+        local contType = type(kinds) == "table" and tonumber(kinds.Continent) or 2
+        for _ = 1, 8 do
+            local ok, info = mapCall("GetMapInfo", map)
+            if not ok or type(info) ~= "table" then return nil end
+            if tonumber(info.mapType) == contType then
+                if type(info.name) ~= "string" or hidden(info.name) or info.name == "" then return nil end
+                return info.name
+            end
+            if type(info.parentMapID) ~= "number" or info.parentMapID == 0 then return nil end
+            map = info.parentMapID
+        end
+        return nil
+    end
 
     -- P-QUEST (lead section 354 item 4): whether quest id can be shared
     -- with your group: true, false, or nil when not known.
@@ -12004,6 +12486,27 @@ function ns.make.client(env)
         local log = env.C_QuestLog
         if type(log) ~= "table" then return nil end
         return yesNo(call(log.IsPushableQuest, id))
+    end
+
+    -- Lead section 303 (d), the in-dungeon tracker: the name of the instance
+    -- you are in, the first answer of GetInstanceInfo(), or nil when not
+    -- known (no call, a failed call, a secret or empty answer). Only reads.
+    -- A first guess: not seen in game on 16001.
+    function c.instanceName()
+        local ok, name = call(env.GetInstanceInfo)
+        if not ok or hidden(name) or type(name) ~= "string" or name == "" then return nil end
+        return name
+    end
+
+    -- S32: the words the client shows for where the player stands:
+    -- { zone = GetRealZoneText(), sub = GetSubZoneText() }, each a name or
+    -- nil; nil when neither is known. Read to name the dock a boat or
+    -- zeppelin was taken from and the place it landed. Only reads.
+    function c.placeText()
+        local zone = text(call(env.GetRealZoneText))
+        local sub = text(call(env.GetSubZoneText))
+        if zone == nil and sub == nil then return nil end
+        return { zone = zone, sub = sub }
     end
     return c
 end
