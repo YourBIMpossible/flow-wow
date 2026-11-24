@@ -228,3 +228,6 @@ Nav\Trip.lua
 UI\RouteTracker.lua
 Nav\QuestAdvice.lua
 Spells\TrainAdvice.lua
+Items\ProfPlan.lua
+Items\ProfSources.lua
+UI\ProfDock.lua
