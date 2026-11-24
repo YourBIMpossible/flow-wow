@@ -74,8 +74,9 @@ return {
         t.eq({ W.WIDTH, W.HEIGHT }, { 760, 520 })
         t.eq({ w.parts[1].kind, w.parts[2].kind, w.parts[3].kind }, { "header", "topicList", "scroll" })
         t.eq(w.parts[1].text, "2 topics", "the header says how many topics")
-        t.eq({ count(c, "header"), count(c, "topicList"), count(c, "scroll"), count(c, "footer") }, { 1, 1, 1, 0 },
-            "one of each, and no footer: there is no Save button")
+        t.eq({ count(c, "header"), count(c, "topicList"), count(c, "scroll"), count(c, "footer") }, { 1, 1, 1, 1 },
+            "one of each; the foot holds Close and no Save button")
+        t.eq(texts(c, "button"), { W.CLOSE_TEXT }, "Close is the one button of a topic without buttons")
         t.eq(texts(c, "section"), { T.Find("advanced").name }, "the topic's name is the one heading of a small topic")
         t.eq(texts(c, "row"), { "A flag", "A mode", "A count", "Held back" })
         t.eq({ count(c, "checkbox"), count(c, "choice"), count(c, "number") }, { 2, 1, 1 })
@@ -197,7 +198,7 @@ return {
         api.open({ topic = "advanced" })
         t.eq(c.kitType(W.ID, W.HEADER, "junk"), true)
         local jump = "sell.list" .. tostring(W.TOPIC_JUMP)
-        t.eq(texts(c, "button"), { O.JUMP }, "the hit's jump is drawn")
+        t.eq(texts(c, "button"), { O.JUMP, W.CLOSE_TEXT }, "the hit's jump is drawn, before Close")
         t.eq(c.kitClick(W.ID, jump), true, "and takes a click")
         t.eq(c.optionsLayout().topic, "bags", "the hit's topic is shown")
         t.ok(c.optionsLayout().search == nil or c.optionsLayout().search.value == nil
@@ -219,5 +220,25 @@ return {
         t.eq(odd.control, nil)
         t.eq(odd.enabled, false, "greyed")
         t.eq(odd.reason, W.NO_CONTROL, "says it cannot be changed here")
+    end,
+
+    -- Owner, 2026-11-23: the window follows the game's Settings window.
+    ["settings window: Close at the foot hides the window and changes no setting; a choice is a dropdown"] = function(t)
+        local k, c, api = start()
+        api.open({ topic = "advanced" })
+        local w = window(c)
+        if not w then t.ok(false, "a window") return end
+        local drop
+        local tree = ns.Kit.Window(W.Tree(O.Rows(k), function() end, function() end, select(3, O.Rows(k))))
+        ns.Kit.Each(tree, function(part)
+            if part.kind == "choice" then drop = part.drop end
+        end)
+        t.eq(drop, true, "the choice is drawn as a dropdown")
+        local before = { k.settings:get("test.flag"), k.settings:get("test.mode"), k.settings:get("test.count") }
+        t.eq(c.kitClick(W.ID, W.CLOSE), true, "Close takes a click")
+        t.eq(window(c).shown, false, "the window is hidden")
+        t.eq({ k.settings:get("test.flag"), k.settings:get("test.mode"), k.settings:get("test.count") }, before)
+        t.eq(api.open(), true, "and opens again")
+        t.eq(window(c).shown, true)
     end,
 }

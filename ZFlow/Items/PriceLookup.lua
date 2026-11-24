@@ -40,11 +40,12 @@ function Lookup.Find(item, itemInfo, book)
     if key == nil then return nil end
     local Prices = ns.Prices
     local entry = { key = key }
-    local name
+    local name, quality
     if type(itemInfo) == "function" then
         local ok, f = pcall(itemInfo, item)
         if ok and type(f) == "table" then
             if type(f.name) == "string" and f.name ~= "" then name = f.name end
+            if type(f.quality) == "number" then quality = f.quality end
             if isCount(f.sellPrice) then entry.sellPrice = f.sellPrice end
         end
     end
@@ -58,7 +59,7 @@ function Lookup.Find(item, itemInfo, book)
             buy = { unit = p.value, basis = p.basis, source = p.source, per = p.per }
         end
     end
-    return { key = key, name = name, sell = sell, buy = buy }
+    return { key = key, name = name, quality = quality, sell = sell, buy = buy }
 end
 
 local function trim(text)

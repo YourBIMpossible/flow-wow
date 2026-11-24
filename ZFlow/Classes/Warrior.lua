@@ -239,6 +239,17 @@ local pack = {
         tank = { name = "Protection", evidence = GUESS },
     },
 
+    -- G31: the spec recommended while levelling alone, and why. Written for
+    -- this pack in its own words from general knowledge of the class; nothing
+    -- here was read from the game or taken from a guide.
+    levelling = {
+        role = "dps", evidence = GUESS,
+        why = {
+            "A big two-handed weapon is your fastest way to kill alone.",
+            "Tanking talents make killing alone slow. With a shield on you can still tank a dungeon at your level without them.",
+        },
+    },
+
     resources = {
         { name = "Rage", forms = { "none", BATTLE, DEFENSIVE, BERSERKER }, evidence = GUESS },
     },
