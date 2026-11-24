@@ -1090,13 +1090,21 @@ function Arrow.Start(k, diag, own)
                 if okFind and type(place) == "table" then nearest[n.kind] = true end
             end
         end
+        -- Parity B-30: the step's shortcut, for the walk row.
+        local travel
+        local tr = k.use and k.use("travel")
+        if type(tr) == "table" and type(tr.State) == "function" then
+            local okTravel, st = pcall(tr.State)
+            if okTravel then travel = st end
+        end
         local waypoint = false
         if W and W.Get(k.store:get(W.SCOPE, W.PATH)) then waypoint = true end
         if not waypoint and N.WaypointStep and N.WaypointStep(client) then waypoint = true end
         return { stacked = saved.mode ~= "separate", hidden = saved.hidden, text = saved.text,
                  styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback,
                  party = party, step = { name = stepName, from = from, open = drawer ~= nil },
-                 nearest = nearest, waypoint = waypoint, professions = professions }
+                 nearest = nearest, waypoint = waypoint, professions = professions,
+                 travel = travel }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.
@@ -1308,6 +1316,10 @@ function Arrow.Start(k, diag, own)
             local ok, err = pcall(k.settings.set, k.settings,
                 N.ProfFeed and N.ProfFeed.SETTING or "nav.professions", action.professions)
             if not ok then k.problems:add("arrow", "professions", err) end
+        elseif action.walk ~= nil then
+            -- Parity B-30: Walk there instead (Nav/Travel.lua).
+            run("walking", using("travel", "Walk"))
+            relayout()
         elseif action.drawer then
             -- Lead section 387, R3: Open it, as a left click on the quest arrow.
             local ok, err = pcall(drawer, "quest")
