@@ -598,6 +598,8 @@ function Arrow.Start(k, diag, own)
     -- nil (none, the demo, or the words-only why line). The menu's first
     -- row (UI/ArrowMenu.lua M.StepRow, lead section 387 R3).
     local stepName = nil
+    -- stepQuest: the quest id of that step, or nil (A1-44/A1-45 menu rows).
+    local stepQuest = nil
     -- heading: the place of the quest arrow's step in the last source, as
     -- { cont, map, x, y }, or nil (none, the demo, or a step with no map
     -- place). Heading() gives a copy (lead section 169 B: Nav/Legs.lua
@@ -792,6 +794,15 @@ function Arrow.Start(k, diag, own)
                 local okProf, got = pcall(profStep.Step)
                 if okProf then prof = got end
             end
+            -- A1-18 (Nav/FlightNow.lua): on a flight the quest arrow says
+            -- where it lands and when, then the step; words only.
+            local flightNow = k.use and k.use("flightNow")
+            if flightNow and type(flightNow.Now) == "function" then
+                local okFly, fly = pcall(flightNow.Now, type(step) == "table" and step.label or nil)
+                if okFly and type(fly) == "table" then
+                    step, from, saying = { still = true, lines = { fly.title, fly.sub } }, "your flight", true
+                end
+            end
             -- No quest step: the quest arrow says why (lead section 294 item 5),
             -- once the world is entered (nothing is shown under the loading
             -- screen).
@@ -809,9 +820,9 @@ function Arrow.Start(k, diag, own)
             guide = {}
         end
         heading = placeOf(guide.quest)
-        stepName = nil
+        stepName, stepQuest = nil, nil
         if not saying and type(guide.quest) == "table" and type(guide.quest.label) == "string" then
-            stepName = guide.quest.label
+            stepName, stepQuest = guide.quest.label, tonumber(guide.quest.quest)
         end
         return Arrow.GuideSource(client, Arrow.Saved(k), guide, playing, Arrow.Palette(k))
     end
@@ -1090,13 +1101,19 @@ function Arrow.Start(k, diag, own)
                 if okFind and type(place) == "table" then nearest[n.kind] = true end
             end
         end
+        -- A1-44/A1-45: the step's quest and its custom route line (Nav/Focus.lua).
+        local focusMod, focus = k.use and k.use("focus"), {}
+        if stepQuest and focusMod and type(focusMod.TitleOf) == "function" then
+            local okTitle, title = pcall(focusMod.TitleOf, stepQuest)
+            if okTitle and title ~= nil then focus = { has = true, title = title } end
+        end
         local waypoint = false
         if W and W.Get(k.store:get(W.SCOPE, W.PATH)) then waypoint = true end
         if not waypoint and N.WaypointStep and N.WaypointStep(client) then waypoint = true end
         return { stacked = saved.mode ~= "separate", hidden = saved.hidden, text = saved.text,
                  styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback,
-                 party = party, step = { name = stepName, from = from, open = drawer ~= nil },
-                 nearest = nearest, waypoint = waypoint, professions = professions }
+                 party = party, step = { name = stepName, from = from, open = drawer ~= nil, quest = stepQuest },
+                 focus = focus, nearest = nearest, waypoint = waypoint, professions = professions }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.
@@ -1314,6 +1331,11 @@ function Arrow.Start(k, diag, own)
             if not ok then k.problems:add("arrow", "drawer", err) end
         elseif action.hide or action.nearest or action.waypoint then
             routeChoose(action)
+        elseif action.focus then
+            -- A1-44/A1-45: Go here next, Remove (Nav/Focus.lua).
+            local fn = using("focus", ({ add = "Add", from = "RemoveFrom", line = "RemoveLine" })[action.focus])
+            run("the custom route", fn, action.quest)
+            relayout()
         elseif action.style then
             local ok, reason = setStyle(action.style)
             if not ok then say(tostring(reason) .. ".") end
