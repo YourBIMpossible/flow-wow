@@ -62,10 +62,9 @@ local function nearestNode(input, itemName)
     return best
 end
 
+-- A vendor price seen is an observed price: Prices.Text labels it.
 local function coin(copper)
-    local text = call(ns.Prices and ns.Prices.Coin, copper)
-    if type(text) == "string" then return text end
-    return string.format("%dc", copper)
+    return ns.Prices.Text({ value = copper, basis = ns.Prices.OBSERVED })
 end
 
 function S.For(input, item, count)
