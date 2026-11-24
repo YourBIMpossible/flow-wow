@@ -173,6 +173,8 @@ UI\KitHost.lua
 Items\Keep.lua
 Items\Buyback.lua
 Items\RecipeBook.lua
+Items\RecipeColours.lua
+Items\CraftSpots.lua
 Items\RecipeLearned.lua
 Items\ProfRecipes.lua
 Items\Goals.lua
@@ -241,6 +243,7 @@ UI\ProfDock.lua
 Nav\ProfFeed.lua
 Nav\HearthAdvice.lua
 Nav\GateWords.lua
+Items\RecipeFacts.lua
 Nav\CrossingWords.lua
 Nav\Activities.lua
 UI\Lite.lua
