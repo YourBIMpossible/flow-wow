@@ -96,4 +96,49 @@ tests["trip route: a turn-in stop no longer complete is held, and is ready again
     t.eq(T().Held({ kind = "trip", turnIn = true }, rows), nil, "a run stop is not the log's")
 end
 
+-- S43 (lead dispatch section 391 item 4): the step says how many are still needed.
+tests["trip route: need says how many of the thing are still needed"] = function(t)
+    t.eq(T().Need("Gnoll Paw: 4/8"), "You still need 4 of Gnoll Paw.")
+    t.eq(T().Need("  Gnoll Paw : 0 / 10 "), "You still need 10 of Gnoll Paw.", "spaces")
+    t.eq(T().Need("4/8 Gnoll Paw"), "You still need 4 of Gnoll Paw.", "count first")
+end
+
+tests["trip route: need says one in the singular"] = function(t)
+    t.eq(T().Need("Gnoll Paw: 7/8"), "You still need 1 Gnoll Paw.")
+end
+
+tests["trip route: need says nothing when the objective is done or the count unreadable"] = function(t)
+    t.eq(T().Need("Gnoll Paw: 8/8"), nil, "done by count")
+    t.eq(T().Need("Gnoll Paw: 9/8"), nil, "over")
+    t.eq(T().Need("Gnoll Paw: 2/8", true), nil, "done by the log's flag")
+    t.eq(T().Need(nil), nil, "no text")
+    t.eq(T().Need(""), nil, "empty")
+    t.eq(T().Need("Speak to the Smith"), nil, "no count")
+    t.eq(T().Need("Gnoll Paw: x/8"), nil, "garbled count")
+    t.eq(T().Need("Gnoll Paw: 0/0"), nil, "nothing to get")
+    t.eq(T().Need({}), nil, "not text")
+end
+
+tests["trip route: an objective stop carries the need line; a turn-in does not"] = function(t)
+    local rows = { row(1, "Paws", { "Gnoll Paw: 4/8" }), row(2, "Bandages", { "Linen: 4/4" }, true),
+                   row(3, "Talk", { "Speak to the Smith" }) }
+    local places = { [1] = { objectives = { [1] = pts({ 0.6, 0.5 }) } },
+                     [2] = { turnIn = { points = { { map = 1, x = 0.55, y = 0.5 } }, name = "Smith" } },
+                     [3] = { objectives = { [1] = pts({ 0.4, 0.5 }) } } }
+    local stops = T().Stops(rows, places, HERE)
+    local by = {}
+    for _, s in ipairs(stops) do by[s.quest] = s end
+    t.eq(by[1].need, "You still need 4 of Gnoll Paw.")
+    t.eq(by[2].need, nil, "turn-in")
+    t.eq(by[3].need, nil, "no count: no line, no made-up number")
+    t.eq(by[3].detail, "Speak to the Smith", "the objective's own words stay")
+end
+
+tests["trip route: the route list says the need line in place of the raw count"] = function(t)
+    local route = { stops = { { label = "Paws", detail = "Gnoll Paw: 4/8", need = "You still need 4 of Gnoll Paw.",
+                                leg = 50 } }, yards = true, label = "straight" }
+    local lines = T().Lines(route, 1)
+    t.eq(lines[2], "> 1. Paws - You still need 4 of Gnoll Paw. - 50 yd - under a minute")
+end
+
 return tests

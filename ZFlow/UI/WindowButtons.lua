@@ -37,7 +37,7 @@
 --   WindowButtons.Declare(k, diag) also adds the word WB.WORD, which
 --   prints those lines.
 --
--- Settings: "buttons.worldMap" and "buttons.merchant" (bool, account,
+-- Settings: "buttons.worldMap", "buttons.merchant", "buttons.profession" and "buttons.bank" (bool, account,
 -- default on). The rows are UI/Rows.lua's;
 -- a missing row is off.
 --
@@ -143,6 +143,26 @@ WB.WINDOWS = {
         tip = "show the sell list",
         point = { "TOPRIGHT", "TOPRIGHT", -40, -40 },
     },
+    -- Queue item A4 (S22): the profession and bank windows. Each opens the
+    -- settings at its own topic (args go to the provided call), where the
+    -- help for that window is. Both points are the merchant's, as a first
+    -- guess: not seen in game.
+    {
+        key = "profession", frame = "TradeSkillFrame", setting = "buttons.profession",
+        label = "Button on the profession window", says = "profession window",
+        retry = "TRADE_SKILL_SHOW",
+        opens = "settingsPanel", call = "Show", args = { "professions" },
+        tip = "profession help and settings",
+        point = { "TOPRIGHT", "TOPRIGHT", -40, -40 },
+    },
+    {
+        key = "bank", frame = "BankFrame", setting = "buttons.bank",
+        label = "Button on the bank window", says = "bank window",
+        retry = "BANKFRAME_OPENED",
+        opens = "settingsPanel", call = "Show", args = { "bags" },
+        tip = "bag and bank help and settings",
+        point = { "TOPRIGHT", "TOPRIGHT", -40, -40 },
+    },
 }
 
 function WB.Declare(k, diag)
@@ -235,7 +255,7 @@ function WB.Declare(k, diag)
             k.problems:add("windowButtons", win.key, "the " .. win.opens .. " cannot be opened from here yet")
             return
         end
-        local ok, err = pcall(fn)
+        local ok, err = pcall(fn, unpack(win.args or {}))
         if not ok then k.problems:add("windowButtons", win.key, tostring(err)) end
     end
 

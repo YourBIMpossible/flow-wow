@@ -45,6 +45,14 @@ local _, ns = ...
 --   the route the arrow walks (Nav/TripRoute.lua Current) as rows for the
 --   route tracker window (UI/RouteTracker.lua): each stop's distance from
 --   the one before (the first from the player), or why it is not known.
+-- TN-2 (lead section 375 item 6): `trip optional <n>` marks stop n
+--   optional, and again unmarks it. P.Optional(list, n) -> true, line or
+--   false, why. An optional stop on this map stays on the route only when
+--   it costs at most N.DETOUR yards (N.RoutePlan's optional); else P.Order
+--   answers it as skipped (third value) and P.Run(ordered, label, skipped)
+--   lists it under the route with P.SKIPPED. `trip go` also offers each
+--   flight path to learn on this map (Nav/FlightPaths.lua Goals) as an
+--   optional stop for that route only; it is not saved on the trip.
 -- Module "trip" provides List, Lines, Go, Tip. Not tested in game.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -55,8 +63,8 @@ P.NAME = "trip"
 P.WORD = "trip"
 P.PATH = "state.trip"
 P.MAX = 20
-P.HELP = "a list of stops to visit: trip add vendor|repair|bank|inn|flight|mail|trainer|giver <quest>"
-    .. "|dungeon <name>|here [label]; trip, trip remove <n>, trip after <n> <m>, trip clear, trip go"
+P.HELP = "a list of stops to visit: trip add vendor|repair|bank|inn|flight|mail|auction|trainer|giver <quest>"
+    .. "|dungeon <name>|here [label]; trip, trip remove <n>, trip after <n> <m>, trip optional <n>, trip clear, trip go"
 
 P.HEADER = "Trip: %d stops"
 P.EMPTY = "Trip: no stops. Add one with trip add."
@@ -92,6 +100,11 @@ P.CIRCLE_WORD = "round in a circle"
 P.CIRCLE = "Not set: %s would go " .. P.CIRCLE_WORD .. "."
 P.CIRCLE_ORDER = "No route: %s go " .. P.CIRCLE_WORD .. "."
 P.VIA = "via %s"
+P.OPTIONAL_WORD = "optional"
+P.OPTIONAL_ON = "Stop %d (%s) is optional: kept only when on the way."
+P.OPTIONAL_OFF = "Stop %d (%s) is no longer optional."
+P.OPTIONAL_HOW = "Say trip optional <n>."
+P.SKIPPED = "skipped: more than " .. N.DETOUR .. " yd off the way"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -126,7 +139,7 @@ end
 local function copy(s)
     return { id = type(s.id) == "number" and s.id or nil, kind = s.kind, label = s.label, detail = s.detail,
              after = ids(s.after), quest = s.quest, objective = s.objective, pickUp = s.pickUp or nil,
-             quests = ids(s.quests),
+             quests = ids(s.quests), optional = s.optional == true or nil,
              place = { map = s.place.map, x = s.place.x, y = s.place.y } }
 end
 
@@ -234,11 +247,34 @@ function P.After(list, n, m)
     return true, P.AFTER_SET:format(i, tostring(s.label), j, tostring(o.label))
 end
 
+function P.Optional(list, n)
+    local i = tonumber(n)
+    if type(list) ~= "table" then return false, P.OPTIONAL_HOW end
+    if i == nil or list[i] == nil then return false, P.BAD_NUMBER:format(tostring(n)) end
+    local s = list[i]
+    if s.optional then
+        s.optional = nil
+        return true, P.OPTIONAL_OFF:format(i, tostring(s.label))
+    end
+    s.optional = true
+    return true, P.OPTIONAL_ON:format(i, tostring(s.label))
+end
+
 function P.ViaText(step)
     if type(step) ~= "table" or step.via == nil then return nil end
     if step.via == "far" then return N.Travel and N.Travel.FAR or nil end
     if type(step.label) ~= "string" or step.label == "" then return nil end
     return P.VIA:format(step.label)
+end
+
+-- S35: a leg through a learned gate gets the gate's line (Nav/GateWords.lua);
+-- any other leg, or a gate whose maps are not known, keeps P.ViaText.
+function P.GateVia(step, fromMap, toMap, stopLabel)
+    if type(step) == "table" and step.via == "gate" and type(N.GateWords) == "function" then
+        local line = N.GateWords(fromMap, toMap, stopLabel)
+        if line then return line end
+    end
+    return P.ViaText(step)
 end
 
 local function sizeOf(here)
@@ -268,10 +304,11 @@ function P.Order(list, here, legs)
     local size = sizeOf(here)
     local route
     if #same > 0 and size and type(N.RoutePlan) == "function" then
-        local places, localOf, after = {}, {}, {}
+        local places, localOf, after, optional = {}, {}, {}, {}
         for n, i in ipairs(same) do
             places[n] = all[i].place
             localOf[i] = n
+            if all[i].optional then optional[n] = true end
         end
         for n, i in ipairs(same) do
             for _, j in ipairs(edges[i] or {}) do
@@ -281,11 +318,18 @@ function P.Order(list, here, legs)
                 end
             end
         end
-        route = N.RoutePlan(places, here.map, size, here, legs, after)
+        route = N.RoutePlan(places, here.map, size, here, legs, after, optional)
     end
+    local skipped, gone = {}, {}
     if route then
         label = route.label
         for _, rs in ipairs(route.stops) do seq[#seq + 1] = same[rs.index] end
+        for _, l in ipairs(route.left) do
+            if l.reason == N.OFF_THE_WAY then
+                gone[same[l.index]] = true
+                skipped[#skipped + 1] = copy(all[same[l.index]])
+            end
+        end
     else
         for _, i in ipairs(same) do seq[#seq + 1] = i end
     end
@@ -293,6 +337,7 @@ function P.Order(list, here, legs)
     -- G42: a stable pass: the first stop of seq whose afters are all done
     -- goes next. Without afters seq is kept as it is.
     local done, ordered = {}, {}
+    for i in pairs(gone) do done[i] = true end
     while #ordered < #seq do
         local took = false
         for _, i in ipairs(seq) do
@@ -311,7 +356,7 @@ function P.Order(list, here, legs)
         end
         if not took then break end
     end
-    return ordered, label
+    return ordered, label, skipped
 end
 
 local function distance(s, here)
@@ -334,12 +379,13 @@ function P.Lines(list, here, vias)
             parts[#parts + 1] = P.NO_DISTANCE
         end
         if type(vias) == "table" and type(vias[i]) == "string" then parts[#parts + 1] = vias[i] end
+        if s.optional then parts[#parts + 1] = P.OPTIONAL_WORD end
         lines[#lines + 1] = i .. ". " .. table.concat(parts, " - ")
     end
     return lines
 end
 
-function P.Run(ordered, label)
+function P.Run(ordered, label, skipped)
     local steps = {}
     for _, s in ipairs(type(ordered) == "table" and ordered or {}) do
         if placed(s) then
@@ -354,7 +400,11 @@ function P.Run(ordered, label)
     end
     local title = P.TITLE
     if label ~= nil then title = title .. " (" .. tostring(label) .. ")" end
-    return { title = title, steps = steps, left = {} }
+    local left = {}
+    for _, s in ipairs(type(skipped) == "table" and skipped or {}) do
+        left[#left + 1] = { label = s.label, detail = s.detail, why = P.SKIPPED }
+    end
+    return { title = title, steps = steps, left = left }
 end
 
 -- Lead section 375: the stops whose quest is no longer in the log (rows
@@ -607,7 +657,7 @@ function P.Declare(k, diag)
             if placed(s) and s.place.map ~= here.map then
                 local ok, step = pcall(travel.Via, { label = s.label, detail = s.detail,
                     place = { map = s.place.map, x = s.place.x, y = s.place.y } })
-                if ok then vias[i] = P.ViaText(step) end
+                if ok then vias[i] = P.GateVia(step, here.map, s.place.map, s.label) end
             end
         end
         return vias
@@ -652,9 +702,19 @@ function P.Declare(k, diag)
             local ok, fn = pcall(L.Planner, h.map)
             if ok and type(fn) == "function" then legs = fn end
         end
-        local ordered, label = P.Order(list, h, legs)
+        local FP = k.use and k.use("flightPaths")
+        if FP and type(FP.Goals) == "function" and h.map ~= nil then
+            local okGoals, goals = pcall(FP.Goals)
+            for _, g in ipairs(okGoals and type(goals) == "table" and goals or {}) do
+                if type(g) == "table" and type(g.place) == "table" and g.place.map == h.map and #list < P.MAX then
+                    list[#list + 1] = { kind = "flight", label = tostring(g.text), optional = true,
+                                        place = { map = g.place.map, x = g.place.x, y = g.place.y } }
+                end
+            end
+        end
+        local ordered, label, skipped = P.Order(list, h, legs)
         if not ordered then return tostring(label) end
-        local ok, line = pcall(route.Run, P.Run(ordered, label))
+        local ok, line = pcall(route.Run, P.Run(ordered, label, skipped))
         if not ok then return P.NO_ROUTE end
         return tostring(line)
     end
@@ -708,6 +768,11 @@ function P.Declare(k, diag)
                 if ok then save(list) end
                 say({ line })
             end
+        elseif word == P.OPTIONAL_WORD then
+            local list = load()
+            local ok, line = P.Optional(list, rest)
+            if ok then save(list) end
+            say({ line })
         elseif word == "clear" then
             save({})
             say({ P.CLEARED })
