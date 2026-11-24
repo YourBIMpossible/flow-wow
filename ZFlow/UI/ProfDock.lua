@@ -619,9 +619,12 @@ function D.Declare(k)
             -- Lead section 450: the profession path panel replaces this one
             -- once Items/ProfPath.lua makes the plan; until then both stand.
             local function replaced()
-                local PATH, PPP = ns.ProfPath, ns.ProfPathPanel
-                if type(PATH) ~= "table" or type(PATH.Path) ~= "function" or type(PPP) ~= "table" then return false end
-                return ctx.settings:get(PPP.SETTING) ~= false
+                local PPP = ns.ProfPathPanel
+                if type(PPP) ~= "table" or type(ctx.use) ~= "function" then return false end
+                local ok, panel = pcall(ctx.use, PPP.NAME)
+                if not ok or type(panel) ~= "table" or type(panel.HasPath) ~= "function" then return false end
+                local asked, has = pcall(panel.HasPath)
+                return asked and has == true
             end
 
             ctx.bus:on(D.NAME, "TRADE_SKILL_SHOW", function()

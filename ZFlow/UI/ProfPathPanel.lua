@@ -79,8 +79,9 @@ function PPP.RangeText(range)
     if whole(range.crafts) then
         right = string.format(range.sure == true and PPP.CRAFTS or PPP.CRAFTS_UNSURE, range.crafts)
     end
-    if whole(range.learnAt) then
-        local train = string.format(PPP.TRAIN_AT, range.learnAt)
+    -- Lead section 450: the training this bracket waits on is prereq.skill.
+    if type(range.prereq) == "table" and whole(range.prereq.skill) then
+        local train = string.format(PPP.TRAIN_AT, range.prereq.skill)
         right = right and (right .. ", " .. train) or train
     end
     return said, right
@@ -89,7 +90,7 @@ end
 function PPP.MaterialText(m)
     if type(m) ~= "table" or not whole(m.need) then return nil end
     local said = string.format(PPP.MAT_NEED, text(m.name) and m.name or PPP.UNNAMED, m.need)
-    if m.net == "unknown" or m.bankSeen == false then return said, PPP.MAT_BANK_UNSEEN, "warn" end
+    if m.net == "unknown" then return said, PPP.MAT_BANK_UNSEEN, "warn" end
     if whole(m.net) then
         if m.net <= 0 then return said, PPP.MAT_HAVE, "good" end
         return said, string.format(PPP.MAT_SHORT, m.net), "warn"
@@ -234,9 +235,10 @@ function PPP.Declare(k, diag)
     end
 
     -- The plan, from Items/ProfPath.lua when it is there; nil otherwise.
-    local function plan()
+    local function plan(name)
+        if name == nil then name = prof end
         local PATH, P = ns.ProfPath, ns.ProfPlan
-        if not text(prof) or type(PATH) ~= "table" or type(PATH.Path) ~= "function" then return nil end
+        if not text(name) or type(PATH) ~= "table" or type(PATH.Path) ~= "function" then return nil end
         local input
         if type(P) == "table" and type(P.Input) == "function" then
             local source
@@ -244,10 +246,20 @@ function PPP.Declare(k, diag)
                 local ok, s = pcall(ctx.use, P.NODE_SOURCE)
                 if ok then source = s end
             end
-            local ok, v = pcall(P.Input, ctx.client, ctx.store, prof, source)
-            if ok then input = v end
+            local ok, v = pcall(P.Input, ctx.client, ctx.store, name, source)
+            -- One shape for every reader of the path (Items/ProfPath.lua).
+            if ok and type(v) == "table" and type(PATH.FromPlanInput) == "function" then
+                local mapped, m = pcall(PATH.FromPlanInput, v)
+                if mapped then input = m end
+            end
         end
-        if type(input) ~= "table" then input = { prof = prof } end
+        if type(input) ~= "table" then input = { prof = name } end
+        -- The open window's own reading is the newest there is.
+        local r = ask("recipes")
+        if type(r) ~= "table" then r = ask("tradeSkillRows") end
+        if type(r) == "table" and r.name == name and whole(r.skill) and whole(r.max) then
+            input.skill, input.max = r.skill, r.max
+        end
         local ok, v = pcall(PATH.Path, input)
         if ok and type(v) == "table" then return v end
         return nil
@@ -288,6 +300,14 @@ function PPP.Declare(k, diag)
         return nil
     end
 
+    -- True when the panel has brackets to show for the open profession
+    -- window. UI/ProfDock.lua steps aside only then.
+    function api.HasPath()
+        if not ctx or not enabled() then return false end
+        local p = plan(windowProf() or prof)
+        return type(p) == "table" and type(p.ranges) == "table" and p.ranges[1] ~= nil
+    end
+
     function api.Open()
         if not ctx or not host then return false end
         prof = windowProf() or prof
@@ -318,7 +338,8 @@ function PPP.Declare(k, diag)
             group = "professions",
             synonyms = { "profession", "professions", "path", "brackets", "recipes", "skill", "shopping" },
         } },
-        provides = { Open = api.Open, Close = api.Close, Toggle = api.Toggle, Shown = api.shown },
+        provides = { Open = api.Open, Close = api.Close, Toggle = api.Toggle, Shown = api.shown,
+            HasPath = api.HasPath },
         start = function(c)
             ctx = c
             local s = saved()

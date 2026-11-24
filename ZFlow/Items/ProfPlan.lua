@@ -954,7 +954,9 @@ function P.Input(client, store, prof, nodeSource)
     local keyOf = ns.Items and ns.Items.Key or function(v) return v end
     local bags = call(get(ns.HaveTip, "Counts"), ask(client, "bagItems"), keyOf)
     local bank = get(saved(store, "char", "learned.bankCounts"), "counts")
-    if type(bank) ~= "table" then bank = {} end
+    -- Lead section 450: a bank never opened is not an empty bank.
+    local bankSeen = type(bank) == "table"
+    if not bankSeen then bank = {} end
     local prices = saved(store, "account", "learned.prices")
     local kind = get(get(ns.Nav, "PROF_STATION"), prof)
     local pos = ask(client, "position")
@@ -1018,6 +1020,7 @@ function P.Input(client, store, prof, nodeSource)
         colours = saved(store, "char", "learned.recipeColors"),
         bags = bags or {},
         bank = bank,
+        bankSeen = bankSeen,
         price = function(item)
             if type(prices) ~= "table" or not ns.Prices then return nil end
             for _, k in ipairs({ "auction", "vendor" }) do

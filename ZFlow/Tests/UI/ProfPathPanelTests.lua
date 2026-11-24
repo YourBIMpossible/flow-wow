@@ -19,7 +19,7 @@ local PLAN = {
     selected = 1,
     ranges = {
         { from = 50, to = 60, recipe = "Test Buckle", crafts = 10, sure = true },
-        { from = 60, to = 75, recipe = "Test Nail", crafts = 18, sure = false, learnAt = 50 },
+        { from = 60, to = 75, recipe = "Test Nail", crafts = 18, sure = false, prereq = { skill = 50, tier = 150 } },
     },
     materials = {
         { name = "Test Bar", need = 20, net = 0 },

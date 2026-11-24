@@ -207,4 +207,73 @@ tests["prof path: the profession plan's input reads into a path input"] = functi
     t.eq(i.prices(769), 7)
 end
 
+-- Lead section 450: the contract fields. Red before 2026-11-24's fix: the
+-- path had brackets and mats only, so UI/ProfPathPanel.lua drew nothing.
+for _, prof in ipairs(PROFS) do
+    tests["prof path contract: " .. prof .. " has the section 450 fields"] = function(t)
+        local p = path(prof)
+        t.ok(type(p) == "table", "a path")
+        if type(p) ~= "table" then return end
+        t.eq(p.id, prof); t.eq(p.prof, prof); t.eq(p.skill, 1); t.eq(p.max, 75); t.eq(p.status, "ok")
+        t.ok(type(p.rev) == "number" and p.rev >= 1, "a rev")
+        t.eq(p.selected, 1, "the first bracket is the current one")
+        t.eq(#p.ranges, #p.brackets, "one range for each bracket")
+        t.eq(type(p.tasks), "table")
+        for i, r in ipairs(p.ranges) do
+            local b = p.brackets[i]
+            t.eq(r.from, b.from); t.eq(r.to, b.to); t.eq(r.recipe, b.recipe); t.eq(r.crafts, b.count)
+            t.eq(type(r.sure), "boolean")
+            t.ok(r.colourFrom == "seen" or r.colourFrom == "table", "colourFrom")
+            t.ok(type(r.learnAt) == "table" and (r.learnAt.kind == "known" or r.learnAt.kind == "trainer"
+                or r.learnAt.kind == "recipe"), "learnAt is a table with a kind")
+        end
+        local trained = 0
+        for _, r in ipairs(p.ranges) do
+            if r.prereq then
+                trained = trained + 1
+                t.eq(r.prereq.skill, r.from, "the training comes before the bracket")
+                t.ok(r.prereq.tier > r.prereq.skill, "and names the next tier")
+            end
+        end
+        t.eq(trained, #p.trains, "one prereq for each training")
+    end
+end
+
+tests["prof path contract: net is need less bags and bank, never below 0"] = function(t)
+    local base = path("Blacksmithing")
+    local m = base.materials[1]
+    t.ok(m ~= nil and m.need > 2, "a material to net")
+    if not m then return end
+    t.eq(m.bankSeen, true); t.eq(m.allocated, 0); t.eq(m.net, m.need)
+    local p = path("Blacksmithing", { bags = { [m.item] = 1 }, bank = { [m.item] = 1 } })
+    t.eq(p.materials[1].net, m.need - 2)
+    p = path("Blacksmithing", { bags = { [m.item] = m.need + 5 } })
+    t.eq(p.materials[1].net, 0, "never below 0")
+end
+
+tests["prof path contract: a bank never seen gives no bank count and an unknown net"] = function(t)
+    local p = path("Blacksmithing", { bank = {}, bankSeen = false })
+    local m = p.materials[1]
+    t.eq(m.bankSeen, false); t.eq(m.bank, nil); t.eq(m.net, "unknown")
+    p = path("Blacksmithing", { bankSeen = false, bags = { [m.item] = m.need } })
+    t.eq(p.materials[1].net, 0, "the bags alone cover it, so the bank does not matter")
+    local mapped = PP().FromPlanInput({ prof = "Blacksmithing", skill = 1, bank = {}, bankSeen = false })
+    t.eq(mapped.bankSeen, false, "the plan input's word is carried")
+end
+
+tests["prof path contract: rev stays for the same answer and bumps when it changes"] = function(t)
+    local a = path("Cooking")
+    local b = path("Cooking")
+    t.eq(b.rev, a.rev, "nothing changed")
+    local item = a.materials[1] and a.materials[1].item
+    if item == nil then
+        t.ok(false, "Cooking has no material to change")
+        return
+    end
+    local c = path("Cooking", { bags = { [item] = 1 } })
+    t.eq(c.rev, a.rev + 1, "the bags changed")
+    local d = path("Cooking", { skill = 2 })
+    t.eq(d.rev, c.rev + 1, "the skill changed")
+end
+
 return tests

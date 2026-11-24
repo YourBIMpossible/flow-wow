@@ -241,6 +241,79 @@ local function known(input, recipe)
     return type(input.known) == "table" and input.known[recipe] ~= nil and input.known[recipe] ~= false
 end
 
+-- Lead section 450: the contract fields on a made path. The brackets,
+-- trains, mats and lines above stay for the readers that came first.
+local revs = {}
+
+local function learnAt(b)
+    if b.learn ~= true then return { kind = "known" } end
+    if b.recipeItem ~= nil then return { kind = "recipe", item = b.recipeItem } end
+    return { kind = "trainer", npc = b.trainer }
+end
+
+local function nameOf(input, item)
+    if type(input.name) ~= "function" then return nil end
+    local ok, v = pcall(input.name, item)
+    if ok and type(v) == "string" and v ~= "" then return v end
+    return nil
+end
+
+-- The bank counts as seen when the input says so, or (no word either way)
+-- when it was handed a bank table at all.
+local function bankSeenOf(input)
+    if input.bankSeen ~= nil then return input.bankSeen == true end
+    return type(input.bank) == "table"
+end
+
+local function contract(input, path)
+    local parts = { tostring(input.skill), tostring(input.max) }
+    local at = {}
+    for _, tr in ipairs(path.trains) do at[tr.at] = tr.cap end
+    path.id, path.skill, path.status = input.prof, input.skill, "ok"
+    if whole(input.max) then path.max = input.max else path.max = firstCap(input.skill, nil) end
+    path.ranges, path.materials, path.tasks = {}, {}, {}
+    for _, b in ipairs(path.brackets) do
+        local colourFrom = "table"
+        if b.seen == true then colourFrom = "seen" end
+        local range = { from = b.from, to = b.to, recipe = b.recipe, crafts = b.count,
+            sure = b.colour == "optimal", colourFrom = colourFrom, learnAt = learnAt(b),
+            station = b.station, alternatives = {}, parts = b.mats }
+        if at[b.from] ~= nil then range.prereq = { skill = b.from, tier = at[b.from] } end
+        path.ranges[#path.ranges + 1] = range
+        parts[#parts + 1] = table.concat({ b.from, b.to, tostring(b.recipe), b.count, tostring(b.colour),
+            colourFrom, range.learnAt.kind }, ":")
+    end
+    if path.ranges[1] then path.selected = 1 end
+    local seen = bankSeenOf(input)
+    for _, m in ipairs(path.mats) do
+        local row = { item = m.item, name = m.name or nameOf(input, m.item), need = m.need, bags = m.bags,
+            bankSeen = seen, allocated = 0, source = m.source }
+        local left = m.need - m.bags
+        if seen then
+            row.bank = m.bank
+            row.net = math.max(0, left - m.bank)
+        elseif left <= 0 then
+            row.net = 0
+        else
+            row.net = "unknown"
+        end
+        path.materials[#path.materials + 1] = row
+        parts[#parts + 1] = table.concat({ tostring(m.item), m.need, m.bags, tostring(row.bank), tostring(row.net),
+            tostring(m.source and m.source.price) }, ":")
+    end
+    -- rev: one more each time anything a reader shows has changed.
+    local sig = table.concat(parts, "|")
+    local r = revs[input.prof]
+    if r == nil then
+        r = { sig = sig, n = 1 }
+        revs[input.prof] = r
+    elseif r.sig ~= sig then
+        r.sig, r.n = sig, r.n + 1
+    end
+    path.rev = r.n
+    return path
+end
+
 function ProfPath.Path(input)
     if type(input) ~= "table" or type(input.prof) ~= "string" or not whole(input.skill) then
         return nil, "no reading"
@@ -310,7 +383,7 @@ function ProfPath.Path(input)
             need = need[item], bags = bags, bank = bank, short = math.max(0, need[item] - bags - bank),
             source = ProfPath.Source(item, priceOf(input.prices, item), data) }
     end
-    return path
+    return contract(input, path)
 end
 
 -- The profession plan's input (Items/ProfPlan.lua, ProfPlan.Input) as a path
@@ -322,5 +395,6 @@ function ProfPath.FromPlanInput(p)
         if type(r) == "table" and r.profession == p.prof then knownSet[name] = true end
     end
     return { prof = p.prof, skill = p.skill, max = p.max, known = knownSet, colours = p.colours,
-        bags = p.bags, bank = p.bank, prices = p.price, faction = p.faction }
+        bags = p.bags, bank = p.bank, bankSeen = p.bankSeen, prices = p.price, faction = p.faction,
+        name = p.name }
 end
