@@ -57,6 +57,13 @@ end
 -- Read as off (section 186): a current map not read, or a spell left out of
 -- it, is not known, and the rule that wants it off does not fire.
 local function readOff(s, name) return type(s.current) == "table" and s.current[name] == false end
+-- Lead section 348, as Shaman (section 340): not swinging, by the driver's
+-- swing read (s.attacking); where that read was not made, either name read
+-- as off. One row for both names: the button casts the swing as "Attack".
+local function swingOff(s)
+    if s.attacking ~= nil then return s.attacking == false end
+    return readOff(s, "Attack") or readOff(s, "Auto Attack")
+end
 -- Missing, or with less than secs left (a buff the snapshot gives as true has
 -- time left). Buffs not read: not known, so not needed (section 186).
 local function needBuff(s, name, secs)
@@ -179,9 +186,7 @@ local buffs = tag({
 
 local melee = tag({
     { spell = "Attack", target = true, reason = "Start attacking",
-      when = function(s) return s.hostile and inAnimal(s) and unstealthed(s) and readOff(s, "Attack") end },
-    { spell = "Auto Attack", target = true, reason = "Start attacking",
-      when = function(s) return s.hostile and inAnimal(s) and unstealthed(s) and readOff(s, "Auto Attack") end },
+      when = function(s) return s.hostile and inAnimal(s) and unstealthed(s) and swingOff(s) end },
 })
 
 local cat = tag({
@@ -235,9 +240,7 @@ local casterDamage = tag({
     { spell = "Wrath", target = true, reason = "Wrath",
       when = function(s) return s.hostile and caster(s) end },
     { spell = "Attack", target = true, reason = "Out of mana: hit it with your weapon",
-      when = function(s) return s.hostile and caster(s) and lacksPower(s, "Wrath") and readOff(s, "Attack") end },
-    { spell = "Auto Attack", target = true, reason = "Out of mana: hit it with your weapon",
-      when = function(s) return s.hostile and caster(s) and lacksPower(s, "Wrath") and readOff(s, "Auto Attack") end },
+      when = function(s) return s.hostile and caster(s) and lacksPower(s, "Wrath") and swingOff(s) end },
 })
 
 local function join(...)

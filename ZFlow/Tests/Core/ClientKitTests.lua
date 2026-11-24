@@ -618,4 +618,35 @@ tests["kitWindow: what each part drew, the game's own or the plain form, is told
     t.eq({ got[1].art.frame, got[1].art.button }, { "fallback", "first" }, "the frame is plain, the button the game's")
 end
 
+-- Lead section 348 (MyBuddy's ask): h.place moves and resizes a window
+-- already built, keeping its border; it tells no onMoved (the player did
+-- not move it). Fails before: h.place is nil.
+tests["kitWindow: place moves and resizes a built window, keeps its frame and border, tells no onMoved"] = function(t)
+    local moved = 0
+    local h, env = open(t, nil, { onMoved = function() moved = moved + 1 end })
+    if h == nil then t.ok(false, "a handle") return end
+    t.eq(type(h.place), "function", "the handle answers place")
+    if type(h.place) ~= "function" then return end
+    local frames = #madeOf(env, "Frame", "ButtonFrameTemplate")
+    local top = madeOf(env, "Frame", "ButtonFrameTemplate")[1]
+    local anchored = {}
+    function top:SetPoint(...) anchored = { ... } end
+    t.eq(h.place({ "TOPLEFT", "TOPLEFT", 40, -60 }, 520, 400), true, "placed")
+    t.eq({ anchored[1], anchored[3], anchored[4], anchored[5] }, { "TOPLEFT", "TOPLEFT", 40, -60 }, "anchored where asked, on the screen")
+    t.eq({ top.width, top.height }, { 520, 400 }, "at the new size")
+    t.eq(#madeOf(env, "Frame", "ButtonFrameTemplate"), frames, "the same window frame: none made again")
+    t.ok(saying(env, "FontString", "Linen Cloth") ~= nil, "its parts drawn again in the new size")
+    t.eq(moved, 0, "a place by the add-on is not a move by the player")
+    t.eq(h.place(nil, 300, 250), true, "size alone")
+    t.eq({ top.width, top.height }, { 320, 250 }, "never below the window's least size (320 wide)")
+    t.eq(h.place({ "CENTER", "CENTER", 0, 0 }), true, "place alone keeps the size")
+    t.eq({ top.width, top.height }, { 320, 250 })
+    local ok, why = h.place({ "TOPLEFT", 5 }, 400, 300)
+    t.eq(ok, false, "a broken place is refused")
+    t.ok(type(why) == "string" and why ~= "", "and says why: " .. tostring(why))
+    ok, why = h.place(nil, -5, 300)
+    t.eq(ok, false, "a size below 0 is refused")
+    t.ok(type(why) == "string" and why ~= "", "and says why: " .. tostring(why))
+end
+
 return tests

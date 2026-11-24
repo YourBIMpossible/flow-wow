@@ -236,4 +236,28 @@ tests["fake kitWindow: a click on a list row and on a folding section tells the 
     t.eq(row and row.text, "Oh Brother...", "the record carries the row's name")
 end
 
+-- Lead section 348: the fake's h.place records the new place and size, as
+-- the real client draws it. Fails before: h.place is nil.
+tests["fake kitWindow: place records the new place and size, and tells no onMoved"] = function(t)
+    local c = ns.make.fakeClient()
+    if type(c.kitWindow) ~= "function" then t.ok(false, "the fake answers kitWindow") return end
+    local moved = 0
+    local tree = K.Window({ id = "FakePlace", title = "Place", children = { { kind = "scroll", children = {} } } })
+    local h = c.kitWindow("FakePlace", tree, { onMoved = function() moved = moved + 1 end })
+    t.ok(type(h) == "table", "a handle")
+    if type(h) ~= "table" then return end
+    t.eq(type(h.place), "function", "the handle answers place")
+    if type(h.place) ~= "function" then return end
+    t.eq(h.place({ "TOPLEFT", "TOPLEFT", 40, -60 }, 520, 400), true)
+    local rec = c.kitWindows().FakePlace
+    t.eq({ rec.point, rec.width, rec.height }, { { "TOPLEFT", "TOPLEFT", 40, -60 }, 520, 400 })
+    t.eq(h.place(nil, 300, 250), true)
+    rec = c.kitWindows().FakePlace
+    t.eq({ rec.width, rec.height }, { 320, 250 }, "never below the window's least size")
+    local ok, why = h.place({ "TOPLEFT", 5 }, 400, 300)
+    t.eq(ok, false)
+    t.ok(type(why) == "string" and why ~= "", "says why")
+    t.eq(moved, 0, "no onMoved")
+end
+
 return tests

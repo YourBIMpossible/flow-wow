@@ -32,6 +32,7 @@ return {
         "Core/Sound.lua",
         "UI/MoveGuides.lua",
         "Core/Facts.lua",
+        "Core/InviteAdvice.lua",
         "UI/Export.lua",
         "Items/PriceChart.lua",
         "Items/HaveTip.lua",
@@ -101,6 +102,7 @@ return {
         "Rotation/Snapshot.lua",
         "Rotation/BuffFood.lua",
         "Rotation/HealItems.lua",
+        "Rotation/FoodAdvice.lua",
         "Rotation/Choose.lua",
         "Rotation/KeyPlan.lua",
         "Rotation/Cast.lua",
@@ -166,6 +168,7 @@ return {
         "Nav/Legs.lua",
         "Nav/QuestItems.lua",
         "UI/ProfCard.lua",
+        "UI/ProfLearn.lua",
         "UI/ProfPick.lua",
 
         -- On screen (after Nav: the panel uses its saved-point rules)
@@ -265,5 +268,7 @@ return {
     "UI/Chat.lua",
     -- G48 (P-TRIP): the party route over add-on messages (after TripRoute).
     "Nav/PartyRoute.lua",
+    -- P-EVIDENCE+ (sections 252, 262): look-only capture fields saved under diag (after Diag).
+    "Core/AutoEvidence.lua",
     },
 }

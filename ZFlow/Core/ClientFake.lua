@@ -3128,6 +3128,26 @@ function ns.make.fakeClient(opts)
         if not ok or type(text) ~= "string" then return nil end
         return text
     end
+    -- Lead section 340: hoverTip also takes a named icon (c.icon with
+    -- spec.name), as the real client takes any named frame: the rotation
+    -- icon's tooltip.
+    local iconNames = {}
+    local namedIcon = c.icon
+    function c.icon(spec)
+        local h = namedIcon(spec)
+        if type(h) == "table" and type(spec) == "table" and type(spec.name) == "string" then
+            iconNames[spec.name] = true
+        end
+        return h
+    end
+    local rowTip = c.hoverTip
+    function c.hoverTip(spec)
+        if type(spec) == "table" and type(spec.text) == "function" and iconNames[spec.frame] then
+            c.hoverTips[spec.frame] = spec
+            return true
+        end
+        return rowTip(spec)
+    end
 
 
 
@@ -3203,6 +3223,13 @@ function ns.make.fakeClient(opts)
         local v = s.npcText[kind]
         if type(v) ~= "string" or v == "" then return nil end
         return v
+    end
+    -- P-QOL: the open window's NPC, "male", "female" or nil (not known,
+    -- the start), as the real client's npcSex.
+    function c.setNpcSex(v) s.npcSex = v end
+    function c.npcSex()
+        if s.npcSex == "male" or s.npcSex == "female" then return s.npcSex end
+        return nil
     end
     -- N39 and N40 (P-KEYS slice E): the target's name and the spell it
     -- casts, as the real client's; setTargetCastFails makes the read raise.
@@ -3804,6 +3831,25 @@ function ns.make.fakeClient(opts)
                 read(w, now)
                 return true
             end
+            -- As the real client's h.place (lead section 348): records the
+            -- new place and size; the size never below the least size.
+            function h.place(point, width, height)
+                if point ~= nil then
+                    if type(point) ~= "table" or type(point[1]) ~= "string" or type(point[2]) ~= "string"
+                        or type(point[3]) ~= "number" or type(point[4]) ~= "number" then
+                        return false, "a place is anchor, screen anchor, x, y"
+                    end
+                end
+                for _, v in ipairs({ width or 1, height or 1 }) do
+                    if type(v) ~= "number" or v ~= v or v <= 0 or v == math.huge then
+                        return false, "a size is a number above 0"
+                    end
+                end
+                if point ~= nil then w.rec.point = { point[1], point[2], point[3], point[4] } end
+                if width ~= nil then w.rec.width = math.max(width, tonumber(w.tree.minWidth) or 0) end
+                if height ~= nil then w.rec.height = math.max(height, tonumber(w.tree.minHeight) or 0) end
+                return true
+            end
             function h.show(on) w.rec.shown = on and true or false end
             function h.shown() return w.rec.shown end
             function h.close() w.rec.shown = false end
@@ -4131,6 +4177,21 @@ function ns.make.fakeClient(opts)
         function c.setAddonRefuse(why) addonRefusal = why end
         function c.setAddonName(name) me = tostring(name) end
     end
+    -- P-EVIDENCE+: the raw tracking list (c.trackingRaw) and the profession
+    -- window's raw answers (c.tradeSkillAnswers), each a copy of what was
+    -- set, in the real read's shape; nil when none is set (no such read).
+    --   c.setTrackingRaw({ count = n, entries = { { form, kind, name, hasActive, active, ... } } })
+    --   c.setTradeSkillAnswers({ open, rows, headers, expanded, collapsed, unknown, subClass, invSlot })
+    local function evidenceCopy(v)
+        if type(v) ~= "table" then return v end
+        local out = {}
+        for key, value in pairs(v) do out[key] = evidenceCopy(value) end
+        return out
+    end
+    function c.setTrackingRaw(r) s.evidenceTracking = evidenceCopy(r) end
+    function c.trackingRaw() return evidenceCopy(s.evidenceTracking) end
+    function c.setTradeSkillAnswers(r) s.evidenceTradeAnswers = evidenceCopy(r) end
+    function c.tradeSkillAnswers() return evidenceCopy(s.evidenceTradeAnswers) end
     return c
 end
 

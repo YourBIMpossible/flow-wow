@@ -109,7 +109,12 @@ function T.Stops(rows, places, here)
     end
     for _, row in ipairs(type(rows) == "table" and rows or {}) do
         if type(row) == "table" and row.id ~= nil and type(row.title) == "string" and row.failed ~= true then
-            if row.complete == true then
+            local why = row.complete == true and Q.TurnInHold(row, places) or nil
+            if why then
+                -- F-028: a turn-in that may not be ready is a line, not a stop.
+                local line = Q.HeldLine(why)
+                left[#left + 1] = { quest = row.id, label = row.title, detail = line, why = line }
+            elseif row.complete == true then
                 local spot = spotOf(places, row.id, nil)
                 add(row, nil, Q.TurnInLine(type(spot) == "table" and spot.name or nil))
             else

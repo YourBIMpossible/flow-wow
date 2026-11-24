@@ -28,6 +28,8 @@ local _, ns = ...
 --       and forgotten on GROUP_ROSTER_UPDATE.
 --     groupOn: the setting G.SETTING; nil before the module starts.
 --   G.Step(s, pack, prefs) -> suggestion | nil, note     the chooser's "group" step
+--   G.Needs(s, pack, prefs) -> list, unsure     who needs what, sorted by need
+--   G.NeedLine(need) -> text | nil              one need as words, no name
 --   G.Fits(who, kind, class) -> true | false
 --
 -- Not tested in game: every client read it uses is a first guess
@@ -337,6 +339,125 @@ local function pick(spell, m, reason)
     return { spell = spell, kind = "group", look = true, unit = m.unit, member = m.name, reason = reason }
 end
 
+-- Lead section 354 item 3: who needs what, sorted by need.
+-- The need comes first: something to remove, then a buff that is missing,
+-- then one running out (the least time left first). Of the same need: the
+-- tank, the healer, then roster order (item 19), each member's rows in
+-- pack order.
+G.RANK = { cure = 1, missing = 2, low = 3 }
+
+-- G.Needs(s, pack, prefs) -> list, unsure
+--   list: one row for each thing a member needs that is yours to cast now
+--     { spell, unit, member, need = "cure" | "missing" | "low", reach, detail, left }
+--     reach   true, or false: out of range (kept in its place, said so)
+--     detail  cure: what it removes, in lower case
+--     left    low: the seconds left
+--     member  the player's name, for a live line only: never saved, never
+--             in a reason or a note
+--   unsure: true when something was not read (a reach, a buff, whether
+--     they are dead); what was not read is never a need.
+-- A dead or offline member needs nothing. One cure for one kind of harm:
+-- the first row of yours in range, else the first out of range.
+function G.Needs(s, pack, prefs)
+    local list, unsure = {}, false
+    if type(s) ~= "table" or type(pack) ~= "table" or type(s.party) ~= "table" then return list, unsure end
+    local members = ordered(s.party)
+    local dispels = type(pack.dispels) == "table" and pack.dispels or {}
+    local rows = type(pack.groups) == "table" and pack.groups or {}
+    local seq = 0
+    local function add(m, order, row)
+        seq = seq + 1
+        row.unit, row.member, row.order, row.seq = m.unit, m.name, order, seq
+        list[#list + 1] = row
+    end
+    for order, m in ipairs(members) do
+        local reachOf = type(m.reach) == "table" and m.reach or {}
+        local hasOf = type(m.has) == "table" and m.has or {}
+        local live = alive(m)
+
+        -- What is on them that a spell of yours removes.
+        local types = m.debuffTypes
+        if live and type(types) == "table" then
+            local found = {}   -- [kind] = { spell, reach }
+            for _, rule in ipairs(dispels) do
+                if yours(s, rule, prefs) and castable(s, rule.spell) then
+                    local reach = reachOf[rule.spell]
+                    for _, kind in ipairs(sortedKinds(type(rule.types) == "table" and rule.types or {})) do
+                        if types[kind] then
+                            local had = found[kind]
+                            if reach == nil then
+                                if had == nil then unsure = true end
+                            elseif had == nil or (had.reach == false and reach == true) then
+                                found[kind] = { spell = rule.spell, reach = reach }
+                            end
+                        end
+                    end
+                end
+            end
+            for _, kind in ipairs(sortedKinds(found)) do
+                add(m, order, { spell = found[kind].spell, need = "cure", reach = found[kind].reach, detail = string.lower(kind) })
+            end
+        end
+
+        -- Their rows: every row that fits them and is yours; of the rows
+        -- sharing a slot, only the first of those.
+        local taken = {}
+        for _, row in ipairs(rows) do
+            if yours(s, row, prefs) and G.Fits(row.who, m.kind, m.class) then
+                local slot
+                if type(row.slot) == "string" then slot = row.slot end
+                if not (slot and taken[slot]) then
+                    if slot then taken[slot] = true end
+                    if castable(s, row.spell) then
+                        local rebuff = type(row.rebuff) == "number" and row.rebuff or G.REBUFF
+                        -- Not `t and t[k] or nil`: a read "missing" (false) must stay false.
+                        local reach, has = reachOf[row.spell], hasOf[row.spell]
+                        if not live then
+                            if m.dead == nil then unsure = true end
+                        elseif reach == nil then
+                            unsure = true
+                        elseif has == false then
+                            add(m, order, { spell = row.spell, need = "missing", reach = reach })
+                        elseif type(has) == "number" and has <= rebuff then
+                            add(m, order, { spell = row.spell, need = "low", reach = reach, left = has })
+                        elseif has == nil and reach == true then
+                            unsure = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    table.sort(list, function(a, b)
+        local ra, rb = G.RANK[a.need], G.RANK[b.need]
+        if ra ~= rb then return ra < rb end
+        if a.need == "low" and a.left ~= b.left then return a.left < b.left end
+        if a.order ~= b.order then return a.order < b.order end
+        return a.seq < b.seq
+    end)
+    for _, row in ipairs(list) do row.order, row.seq = nil, nil end
+    return list, unsure
+end
+
+-- One need as words, with the unit and never the name:
+-- "Mark of the Wild for party2: missing, out of range". nil for no need.
+function G.NeedLine(need)
+    if type(need) ~= "table" or type(need.spell) ~= "string" or type(need.unit) ~= "string" then return nil end
+    local what
+    if need.need == "cure" then
+        what = type(need.detail) == "string" and need.detail or "something to remove"
+    elseif need.need == "missing" then
+        what = "missing"
+    elseif need.need == "low" then
+        what = "running out"
+    else
+        return nil
+    end
+    local line = string.format("%s for %s: %s", need.spell, need.unit, what)
+    if need.reach == false then line = line .. ", out of range" end
+    return line
+end
+
 function G.Step(s, pack, prefs)
     if type(s) ~= "table" or type(pack) ~= "table" then return nil, "no group suggestions" end
     if s.groupOn == false then return nil, "suggestions for your group are switched off" end
@@ -348,77 +469,29 @@ function G.Step(s, pack, prefs)
     if s.resting == true then return nil, "resting" end
     local party = s.party
     if type(party) ~= "table" then return nil, "your group not read" end
-    local members = ordered(party)
-    if #members == 0 then return nil, "nobody in your group" end
+    if #ordered(party) == 0 then return nil, "nobody in your group" end
 
-    -- A curse or poison first (Flow: E:Dispel came long before the buffs).
-    for _, m in ipairs(members) do
-        local types = m.debuffTypes
-        if alive(m) and type(types) == "table" then
-            for _, rule in ipairs(type(pack.dispels) == "table" and pack.dispels or {}) do
-                if yours(s, rule, prefs) and castable(s, rule.spell)
-                    and type(m.reach) == "table" and m.reach[rule.spell] == true then
-                    for _, kind in ipairs(sortedKinds(rule.types or {})) do
-                        if types[kind] then
-                            return pick(rule.spell, m, string.format("%s for %s: %s", rule.spell, m.unit, string.lower(kind)))
-                        end
-                    end
-                end
-            end
+    -- The first need in range is the pick (lead section 354 item 3: by
+    -- need; a curse or poison first, as Flow's E:Dispel came long before
+    -- the buffs).
+    local needs, unsure = G.Needs(s, pack, prefs)
+    local far, farCount = nil, 0
+    for _, need in ipairs(needs) do
+        if need.reach == true then
+            return pick(need.spell, { unit = need.unit, name = need.member }, G.NeedLine(need))
         end
+        farCount = farCount + 1
+        if far == nil then far = need end
     end
-
+    if far ~= nil then
+        local note = G.NeedLine(far)
+        if farCount > 1 then note = string.format("%s (and %d more)", note, farCount - 1) end
+        return nil, note
+    end
     local rows = type(pack.groups) == "table" and pack.groups or {}
     if #rows == 0 then
         if type(pack.groupsNone) == "string" and pack.groupsNone ~= "" then return nil, pack.groupsNone end
         return nil, "no buffs for your group"
-    end
-    -- Who wants which row: every row that fits them and is yours; of the
-    -- rows sharing a slot, only the first of those.
-    local wanted = {}
-    for i, m in ipairs(members) do
-        local taken, w = {}, {}
-        for j, row in ipairs(rows) do
-            if yours(s, row, prefs) and G.Fits(row.who, m.kind, m.class) then
-                local slot = type(row.slot) == "string" and row.slot or nil
-                if not (slot and taken[slot]) then
-                    if slot then taken[slot] = true end
-                    w[j] = true
-                end
-            end
-        end
-        wanted[i] = w
-    end
-    -- Item 19 (lead section 247): each member in order (the tank, then the
-    -- healer, then the rest in roster order), each of their rows in order.
-    -- Flow went row by row over the roster, so a rogue's Mark came before
-    -- the tank's Thorns.
-    local unsure = false
-    for i, m in ipairs(members) do
-        for j, row in ipairs(rows) do
-            if wanted[i][j] and type(row) == "table" and type(row.spell) == "string" and castable(s, row.spell) then
-                local rebuff = type(row.rebuff) == "number" and row.rebuff or G.REBUFF
-                do
-                    -- Not `t and t[k] or nil`: a read "missing" (false) must stay false.
-                    local reach, has
-                    if type(m.reach) == "table" then reach = m.reach[row.spell] end
-                    if type(m.has) == "table" then has = m.has[row.spell] end
-                    if not alive(m) then
-                        if m.dead == nil then unsure = true end
-                    elseif reach == true then
-                        if has == false then
-                            return pick(row.spell, m, string.format("%s for %s: missing", row.spell, m.unit))
-                        elseif type(has) == "number" and has <= rebuff then
-                            return pick(row.spell, m, string.format("%s for %s: running out", row.spell, m.unit))
-                        elseif has == nil then
-                            unsure = true
-                        end
-                    elseif reach == nil then
-                        unsure = true
-                    end
-                end
-            end
-        end
     end
     if unsure then return nil, "your buffs on your group: not known for some" end
     return nil, "everyone has your buffs"
