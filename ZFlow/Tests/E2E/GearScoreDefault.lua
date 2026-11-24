@@ -109,7 +109,7 @@ tests["gear score default: the worn slot not read says not known, never a number
     local all = table.concat(lines, " | ")
     t.eq(lines[1], "No verdict: " .. ns.GearScore.REASON.worn .. ": head", "no verdict without the worn item")
     t.ok(at(lines, "Score 10 (dps), 6 (tank)") ~= nil, "the item's own score needs no worn item: " .. all)
-    t.eq(begins(lines, "vs "), "vs your head piece: not known", all)
+    t.eq(begins(lines, "vs "), "vs your head piece: not read yet", all)
     t.eq(at(lines, "vs your head piece: nothing worn"), nil, "not read is not empty")
     t.eq(at(lines, "vs your head piece: +10 (dps), +6 (tank)"), nil, "not read is not a worn score of 0")
     for i = 1, #lines do
@@ -122,7 +122,7 @@ tests["gear score default: the worn item's stats not read says not known too"] =
     local c = boot({ prepare = function(c) c.setItem(WORN, { kind = "INVTYPE_HEAD" }) end })
     local lines = hover(c, STRONG)
     t.eq(lines[1], "No verdict: " .. ns.GearScore.REASON.wornStat .. ": head")
-    t.eq(begins(lines, "vs "), "vs your head piece: not known", table.concat(lines, " | "))
+    t.eq(begins(lines, "vs "), "vs your head piece: not read yet", table.concat(lines, " | "))
 end
 
 tests["gear score default: the worn item still says you are wearing it, with no vs line"] = function(t)

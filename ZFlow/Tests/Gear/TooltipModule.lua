@@ -452,7 +452,7 @@ tests["gear tooltip C-26: a worn slot that was not read is not known, never a nu
     t.eq(M.Lines(c, packs(), HELM, { role = "tank", score = true }), {
         { text = "No verdict: " .. ns.GearScore.REASON.worn .. ": head", tone = "none" },
         { text = "Score 12 (tank), 4 (dps)", tone = "info" },
-        { text = "vs your head piece: not known", tone = "info" },
+        { text = "vs your head piece: not read yet", tone = "info" },
         { text = GUESS_NOTE .. ".", tone = "info" },
     })
     -- Not asked for the score: the lines the other readers always got.

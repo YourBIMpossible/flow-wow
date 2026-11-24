@@ -31,7 +31,7 @@ local _, ns = ...
 --                                  role; roles held up to different slots
 --                                  get a line each
 --     "vs your head piece: nothing worn"   a slot known to be empty (GT2-1)
---     "vs your head piece: not known"   what you wear there, or its stats,
+--     "vs your head piece: not read yet"   what you wear there, or its stats,
 --                                  was not read: never a number. The
 --                                  item's own score is still said.
 --     "You're wearing this."       in place of the vs lines, when
@@ -80,7 +80,7 @@ M.WEARING = "You're wearing this."
 M.NOTHING_WORN = "nothing worn"
 -- C-26: what a slot that was not read is held up as, and the note under
 -- scores made with weights the class pack marks FIRST_GUESS.
-M.NOT_KNOWN = "not known"
+M.NOT_KNOWN = "not read yet"
 M.FIRST_GUESS = "first guess"
 M.GUESS_NOTE = "Scores use first-guess stat weights"
 M.WORD = "gear"
@@ -190,7 +190,9 @@ end
 --   scored  { { role, result, weights, unread } ... }: `weights` the
 --           evidence label of the role's weights; `unread` the slot whose
 --           worn item was not read (then result has the score alone)
-local function scoreLines(scored, worn)
+local scoreLines
+function M.ScoreLines(scored, worn) return scoreLines(scored, worn) end
+function scoreLines(scored, worn)
     if #scored == 0 then return {} end
     local parts, guessed = {}, {}
     for i = 1, #scored do
@@ -223,6 +225,7 @@ local function scoreLines(scored, worn)
                 elseif result.empty == true then
                     -- GT2-1: a slot known to be empty is "nothing worn", once, not a 0 per role.
                     group.empty = true
+                    group[#group + 1] = M.NOTHING_WORN .. " (" .. scored[i].role .. ")"
                 else
                     group[#group + 1] = signed(result.delta) .. " (" .. scored[i].role .. ")"
                 end
@@ -233,7 +236,10 @@ local function scoreLines(scored, worn)
             local against = table.concat(group, ", ")
             if group.unknown > 0 and group.unknown == #group then
                 against = M.NOT_KNOWN   -- for every role: said once
-            elseif group.empty == true then
+            elseif group.empty == true and group.unknown == 0 then
+                -- Section 286: with a slot not read for another role, each
+                -- role keeps its own words; "nothing worn" alone would
+                -- hide what is not known.
                 against = M.NOTHING_WORN
             end
             out[#out + 1] = { text = "vs " .. order[i] .. ": " .. against, tone = "info" }
@@ -289,8 +295,10 @@ function M.Lines(client, packs, link, opts)
                 -- C-26: what you wear was not read, so the scorer gave no
                 -- number at all. The item's own score does not need it.
                 local unread = unreadSlot(detail.result)
-                if unread ~= nil then
-                    local own = ns.GearScore.Score((ns.GearRead.Stats(gear.stats)), pack.weights[roles[i]].values)
+                -- A role with no weights has no score of its own either.
+                local w = type(pack) == "table" and type(pack.weights) == "table" and pack.weights[roles[i]]
+                if unread ~= nil and type(w) == "table" and type(w.values) == "table" then
+                    local own = ns.GearScore.Score((ns.GearRead.Stats(gear.stats)), w.values)
                     if finite(own) then
                         scored[#scored + 1] = { role = roles[i], result = { score = own }, weights = detail.weights,
                                                 unread = unread }
