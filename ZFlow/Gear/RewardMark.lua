@@ -26,13 +26,13 @@ local _, ns = ...
 -- upgrade; or two choices are the same biggest upgrade. An item you cannot
 -- use is never the pick. What is not gear is passed over.
 --
--- The module: on QUEST_COMPLETE the pick is marked (client.markRewardChoice)
+-- The module: on QUEST_DETAIL (the offer, P-QOL) and QUEST_COMPLETE the pick is marked (client.markRewardChoice)
 -- and worked out again every TICK seconds while the window is open, so an
--- item loaded late or a role changed moves the mark. QUEST_FINISHED clears
--- it. An error working it out shows no mark, is counted, and is kept as one
+-- item loaded late or a role changed moves the mark. QUEST_FINISHED and
+-- QUEST_ACCEPTED clear it. An error working it out shows no mark, is counted, and is kept as one
 -- "gear" problem per distinct error.
 -- Setting: gear.rewardMark (bool, account, on by default).
--- Not tested in game: QUEST_COMPLETE, QUEST_FINISHED and the client reads
+-- Not tested in game: QUEST_DETAIL, QUEST_ACCEPTED, QUEST_COMPLETE, QUEST_FINISHED and the client reads
 -- are first guesses on 16001 (Core/Client.lua questChoices, Diag.NAMES).
 
 local RM = {}
@@ -202,17 +202,21 @@ function RM.Declare(k, packs)
             local function repeatIfMany()
                 if open and not tick and not fewChoices() then tick = c.sched:every(RM.NAME, RM.TICK, update) end
             end
-            c.bus:on(RM.NAME, "QUEST_COMPLETE", function()
+            -- P-QOL: the offer (detail) as well as the turn-in, as Flow did.
+            local function opened()
                 open = true
                 update()
                 repeatIfMany()
-            end)
+            end
+            c.bus:on(RM.NAME, "QUEST_COMPLETE", opened)
+            c.bus:on(RM.NAME, "QUEST_DETAIL", opened)
             c.bus:on(RM.NAME, "GET_ITEM_INFO_RECEIVED", function()
                 if not open or tick then return end
                 update()
                 repeatIfMany()
             end)
             c.bus:on(RM.NAME, "QUEST_FINISHED", close)
+            c.bus:on(RM.NAME, "QUEST_ACCEPTED", close)
         end,
         stop = function() close() end,
     })

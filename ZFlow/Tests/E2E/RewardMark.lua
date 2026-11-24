@@ -127,6 +127,38 @@ tests["reward mark: the window closed - the mark is cleared"] = function(t)
     t.eq(c.rewardMarked(), nil, "and stays cleared")
 end
 
+-- P-QOL: Flow showed the best pick when you were offered the quest as
+-- well as when you turned it in (Modules/Gear/QuestRewards.lua header).
+tests["reward mark: the quest offered (detail window) - the best pick is marked there too"] = function(t)
+    local c, addon = boot({ role = "dps" })
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.fire("QUEST_DETAIL")
+    t.eq(c.rewardMarked(), 2, "marked on the offer")
+    t.eq(newProblems(addon), 0)
+    c.fire("QUEST_FINISHED")
+    t.eq(c.rewardMarked(), nil, "cleared when the window closes")
+end
+
+tests["reward mark: the offer accepted - the mark goes with the window"] = function(t)
+    local c = boot({ role = "dps" })
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.fire("QUEST_DETAIL")
+    t.eq(c.rewardMarked(), 2)
+    c.fire("QUEST_ACCEPTED", 1, 101)
+    t.eq(c.rewardMarked(), nil, "cleared on accept")
+    later(c)
+    t.eq(c.rewardMarked(), nil, "and stays cleared")
+end
+
+tests["reward mark: the setting off - nothing on the offer either"] = function(t)
+    local c, addon = boot({ role = "dps" })
+    addon.settings:set("gear.rewardMark", false)
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.fire("QUEST_DETAIL")
+    later(c)
+    t.eq(c.rewardMarked(), nil)
+end
+
 tests["reward mark: the role changes - the mark follows it"] = function(t)
     local c, addon = boot({ role = "dps" })
     c.setQuestChoices(choices(WEAK, STRONG, TOUGH))
