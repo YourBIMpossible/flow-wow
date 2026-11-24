@@ -316,6 +316,25 @@ tests["key actions F1: tank, Righteous Fury missing, a better bag item: the key 
     nothingWritten(t, c)
 end
 
+-- §454 (Twin's HOLD on F1): a weak-step buff, the gathering tracking, is
+-- missing and a better bag item is ready. The key shows the tracking, not
+-- the item. Red on f31dd929, where a weak step gave the key to the item.
+tests["key actions F1: Find Minerals off, a better bag item: the key shows Find Minerals, not the item"] = function(t)
+    local c, addon = start()
+    learn(c, "Find Minerals", 2580)
+    c.setProfessions({ "Mining" })
+    c.setTracking("Find Minerals", false)
+    gear(c, addon, "tank"); c.advance(1, 5)
+    local s = suggested(addon)
+    t.eq(type(s) == "table" and s.spell, "Find Minerals", "the tracking is suggested")
+    t.eq(attr(c, "type"), "spell", "the key casts")
+    t.ok(attr(c, "item") ~= "item:4321", "the better item is not on the key")
+    -- Tracking on: now the item comes onto the key.
+    c.setTracking("Find Minerals", true); c.advance(1, 5)
+    t.eq(attr(c, "item"), "item:4321", "with the tracking on the item is on the key")
+    nothingWritten(t, c)
+end
+
 tests["key actions: the key's actions row off: none of these is put on the key"] = function(t)
     local c, addon = start()
     gear(c, addon)
