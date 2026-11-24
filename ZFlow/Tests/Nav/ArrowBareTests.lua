@@ -97,17 +97,19 @@ T["view: a needle that is off with a step is bare, and is not drawn"] = function
     t.eq(blind.prof.text.to, "prof", "on its own frame")
 end
 
-T["view: stacked and off, the text is on the needle's own frame, opposite the quest lines (section 341)"] = function(t)
+T["view: stacked and off, the text is on the needle's own frame, above; the quest lines below"] = function(t)
     local off = N.ArrowView(state(nil, nil, { bearingKnown = false }))
     t.eq(off.prof.mode, "off")
     t.eq(off.prof.shown, false)
     t.eq(off.prof.bare, true)
     t.eq(off.prof.text.shown, true)
     t.eq(off.prof.text.to, "prof")
-    t.ok(off.prof.text.side ~= off.quest.text.side, "the other side")
+    t.eq(off.prof.text.side, "above", "its lines above")
+    t.eq(off.quest.text.side, "below", "the quest lines below")
+    -- A quest stop no longer switches the profession arrow off: not bare.
     local onPoint = N.ArrowView(state(nil, { distance = 5 }))
-    t.eq(onPoint.prof.mode, "off", "the quest step is at its point")
-    t.eq(onPoint.prof.bare, true)
+    t.eq(onPoint.prof.mode, "arrow", "the quest step is at its point: it still points")
+    t.eq(onPoint.prof.bare, false)
     t.eq(onPoint.prof.text.shown, true)
 end
 
@@ -133,14 +135,15 @@ T["view: the quest arrow is never said to be bare here"] = function(t)
 end
 
 T["view: stacked and off, the needle's lines take room"] = function(t)
-    -- Arrow top 40 under the screen top: one line (14) fits above with the
-    -- needle's clearance, a line and two more (14 + 28) do not.
-    local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -40 } } } }
+    -- Arrow top 20 under the screen top: the needle's two lines (28) and
+    -- their gap do not fit above it, so the arrow is moved down for them.
+    local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -20 } } } }
     local off = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28, bearingKnown = false }))
     t.eq(off.prof.mode, "off")
-    -- Lead section 387 R2 replaces section 341 here: stacked, profession text above, quest text below.
-    t.eq(off.prof.text.side, "above", "the profession step above")
-    t.eq(off.quest.text.side, "below", "the quest line below")
+    t.eq(off.prof.text.side, "above", "over the quest arrow")
+    t.eq(off.quest.text.side, "below", "the quest line under it")
+    t.eq(off.quest.point[4], -(28 + N.TEXT_GAP_ABOVE), "moved down by the lines and their gap")
+    t.eq(off.prof.point, off.quest.point, "the text frame with it")
 end
 
 return T

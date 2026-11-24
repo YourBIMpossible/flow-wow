@@ -33,7 +33,7 @@ T["stacked: profession text above, quest text below, top or bottom half"] = func
         t.eq(v.prof.text.side, "above", name .. ": the profession step above")
         t.eq(v.prof.text.point, { "BOTTOM", "TOP", 0, 7 }, name .. ": clear of the needle")
         t.eq(v.quest.text.side, "below", name .. ": the quest text below")
-        t.eq(v.quest.text.point, { "TOP", "BOTTOM", 0, -7 }, name)
+        t.eq(v.quest.text.point, { "TOP", "BOTTOM", 0, -2 }, name .. ": the needle is over the quest arrow, not under it")
     end
 end
 
