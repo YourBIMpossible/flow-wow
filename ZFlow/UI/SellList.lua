@@ -240,6 +240,16 @@ function SellList.Listing(client, store, grants, r)
     -- P-SETS G13: gear better for another role of yours is kept (the
     -- setting gear.keepOffspec), an upgrade for your chosen role too.
     if type(ns.GearOffSpec) == "table" then ns.GearOffSpec.Apply(context, client, store, ns.Packs, stacks) end
+    -- G5: food and drink you have outgrown (Disposition's
+    -- outgrownConsumable) takes what food and drink the bags hold, and your
+    -- level. Only reads. Not tested in game.
+    if type(client) == "table" then
+        context.consumables = ns.Disposition.ConsumableFacts(stacks, client.itemInfo, client.itemLines)
+        if context.level == nil and type(client.level) == "function" then
+            local okLevel, level = pcall(client.level)
+            if okLevel and type(level) == "number" then context.level = level end
+        end
+    end
     local out = { stacks = stacks, kept = ns.SellView.Kept(bag, context), notRead = 0 }
     -- Items whose facts were not read yet (no name, quality or price),
     -- counted once per item: two stacks of one item are one item.
