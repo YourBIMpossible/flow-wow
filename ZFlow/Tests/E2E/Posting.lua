@@ -42,11 +42,20 @@ local function boot(opts)
     return c, addon
 end
 
-local function word(c)
+-- The words the auctions word prints, as typed (names in their quality
+-- colour, Items/Present.lua Tint).
+local function rawWord(c)
     for i = #c.printed, 1, -1 do c.printed[i] = nil end
     c.slashes[ns.id.slash]("auctions")
     local out = {}
     for i, l in ipairs(c.printed) do out[i] = l end
+    return out
+end
+
+-- The same with the colour codes taken off, to compare the words.
+local function word(c)
+    local out = rawWord(c)
+    for i, l in ipairs(out) do out[i] = ns.ItemPresent.Plain(l) end
     return out
 end
 
@@ -74,6 +83,10 @@ tests["posting e2e: a searched price puts the item on the auctions word"] = func
         FANG_ROW,
         FOOT,
     })
+    -- The name is in the colour of its quality (poor: Kit.Quality(0)), one
+    -- name, tinted once.
+    local raw = rawWord(c)[2]
+    t.ok(raw:find(ns.ItemPresent.Tint("Broken Fang", 0), 1, true) ~= nil, "the name carries its quality colour: " .. raw)
     noneActs(t, c)
 end
 
