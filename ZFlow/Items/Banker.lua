@@ -120,7 +120,7 @@ function B.SellRows(items, context)
         local d = D.Decide(e, context)
         local n = D.CountOf(d, "sell")
         if n == nil or n > 0 then
-            rows[#rows + 1] = { key = e.key, name = e.name, count = n,
+            rows[#rows + 1] = { key = e.key, name = e.name, count = n, quality = e.quality,
                                 reason = sellReason(d) or "the sell rules would sell it" }
         end
     end

@@ -132,6 +132,18 @@ function ns.make.modules(k)
         return true
     end
 
+    -- Work that runs once in Load, after the saved data is open and before
+    -- any module is wired (G57 lite mode reads its row here and switches
+    -- modules off with k:SwitchOff). Each runs under the meter as its
+    -- owner; one that raises is a problem, kind "beforeWire", and Load goes
+    -- on. Only taken while modules are declared.
+    local beforeWire = {}
+    function k:BeforeWire(owner, fn)
+        if k.phase ~= "declare" or type(fn) ~= "function" then return false end
+        beforeWire[#beforeWire + 1] = { owner = tostring(owner), fn = fn }
+        return true
+    end
+
     function k:Module(spec)
         local problem = specProblem(spec)
         if not problem and mods[spec.name] then problem = "duplicate module" end
@@ -232,6 +244,9 @@ function ns.make.modules(k)
             return false
         end
         k.store:open()
+        for i = 1, #beforeWire do
+            k.meter:run(beforeWire[i].owner, "beforeWire", nil, beforeWire[i].fn)
+        end
 
         k.phase = "wire"
         local sorted = resolve()

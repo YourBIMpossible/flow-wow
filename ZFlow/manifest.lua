@@ -111,6 +111,7 @@ return {
         "Rotation/Driver.lua",
         "Rotation/KeyFrame.lua",
         "Rotation/Role.lua",
+        "Rotation/Spec.lua",
         "Rotation/Fights.lua",
         "UI/FightLog.lua",
         "Classes/Druid.lua",
@@ -188,12 +189,12 @@ return {
         "UI/GameOptions.lua",
         "UI/SellList.lua",
         "UI/BankList.lua",
-        "UI/CraftBar.lua",
-        "UI/ProfHelper.lua",
         "UI/KitHost.lua",
         "Items/Keep.lua",
+        "Items/Buyback.lua",
         "Items/RecipeBook.lua",
         "Items/RecipeLearned.lua",
+        "Items/ProfRecipes.lua",
         "Items/Goals.lua",
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
@@ -281,9 +282,27 @@ return {
     "Nav/QuestAdvice.lua",
     -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
     "Spells/TrainAdvice.lua",
+    -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).
+    "Items/ProfPlan.lua",
+    -- P-COACH C3 (section 382): where the plan's short materials come from (after ProfPlan, Prices).
+    "Items/ProfSources.lua",
+    -- Section 387: the next-step panel docked under the game's profession window (after ProfPlan, ProfSources, KitHost).
+    "UI/ProfDock.lua",
+    -- Lead section 382 (C2 P-COACH): one profession step for the needle (after ProfStep, Legs, ProfPlan, ProfSources).
+    "Nav/ProfFeed.lua",
     -- G46 (lead section 391 item 2): when hearthing saves the walk, and where to set home (after Trip, TripRoute).
     "Nav/HearthAdvice.lua",
     -- Lead section 303 (d): the in-dungeon tracker, on the kit (after BossKills and the dungeon data).
     "UI/DungeonTracker.lua",
+    -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
+    "Nav/GateWords.lua",
+    -- S32: boat and zeppelin dock names and wait words (Crossings calls them at run time).
+    "Nav/CrossingWords.lua",
+    -- S38 (lead section 395 item 6): activities and route lanes (after Trip, Nodes).
+    "Nav/Activities.lua",
+    -- G57: lite mode, the perf.lite row and the lite word (after Diag and every module it switches off).
+    "UI/Lite.lua",
+    -- G44 (section 397 item 14): the class trainer route step (after TrainAdvice and the packs).
+    "Nav/ClassTrainerStep.lua",
     },
 }
