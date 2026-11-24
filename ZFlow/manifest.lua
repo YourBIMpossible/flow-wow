@@ -277,6 +277,8 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
+    -- Old-Flow parity R6: your class buffs with the time left, under the player frame (after the class packs and the kit).
+    "UI/BuffStrip.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
     -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
