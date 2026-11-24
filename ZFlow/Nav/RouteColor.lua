@@ -28,7 +28,7 @@ local _, ns = ...
 --
 -- What the colours mean (Muse's rules 1 to 3):
 --   waypoint    green, always, at any distance and in any zone: RC.WAYPOINT
---               (1EFF00; colour-blind 009E73).
+--               (1EFF00; colour-blind 0072B2).
 --   profession  purple always means professions. One ramp, dim far to
 --               bright near, over the same distances as the route's
 --               (N.COLOR_FAR to N.COLOR_NEAR): RC.PROFESSION. In another
@@ -60,7 +60,7 @@ local function rgb(hex)
 end
 
 -- By palette key (the keys of N.ARROW_PALETTE).
-RC.WAYPOINT = { standard = rgb("1EFF00"), colourBlind = rgb("009E73") }
+RC.WAYPOINT = { standard = rgb("1EFF00"), colourBlind = rgb("0072B2") }
 RC.PROFESSION = {
     standard = { far = rgb("7B4BA6"), near = rgb("A335EE") },
     colourBlind = { far = rgb("8E6BBF"), near = rgb("CC79A7") },

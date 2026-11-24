@@ -37,7 +37,7 @@ local TABLE = {
     standard = { away = "9EA0A8", far = "FF8C1A", mid = "FFD91A", near = "33F24D", here = "4DA6FF",
                  waypoint = "1EFF00", profFar = "7B4BA6", profNear = "A335EE" },
     colourBlind = { away = "9EA0A8", far = "E69F00", mid = "F0E442", near = "009E73", here = "56B4E9",
-                    waypoint = "009E73", profFar = "8E6BBF", profNear = "CC79A7" },
+                    waypoint = "0072B2", profFar = "8E6BBF", profNear = "CC79A7" },
 }
 
 tests["route colour: away, far, mid, near and here are Muse's values, in both palettes"] = function(t)
@@ -132,9 +132,9 @@ tests["route colour: the X at the destination is one gold in both palettes"] = f
     t.eq(RC().Hex(x[1], x[2], x[3]), "E69F00")
 end
 
--- Muse's "the colour-blind palette keeps the same roles apart". One pair is
--- the same colour in her table: the colour-blind waypoint and "near" are
--- both 009E73; it is left out here and named in the report.
+-- Muse's "the colour-blind palette keeps the same roles apart". Every role
+-- is a colour of its own in both palettes: the colour-blind waypoint is
+-- 0072B2, apart from near 009E73.
 tests["route colour: in each palette the roles are colours of their own"] = function(t)
     local MIN = 0.2
     for _, word in ipairs(PALETTES) do
@@ -152,9 +152,8 @@ tests["route colour: in each palette the roles are colours of their own"] = func
         for i = 1, #names do
             for j = i + 1, #names do
                 local a, b = names[i], names[j]
-                local same = word == "colourBlind" and a == "near" and b == "waypoint"
                 local family = a == "profFar" and b == "profNear"
-                if not same and not family then
+                if not family then
                     local d = apart(roles[a], roles[b])
                     t.ok(d >= MIN, word .. ": " .. a .. " and " .. b .. " are apart (" .. d .. ")")
                 end
