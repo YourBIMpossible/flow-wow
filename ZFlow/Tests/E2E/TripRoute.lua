@@ -40,7 +40,8 @@ local function boot(opts)
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, opts.char or {})
     if opts.bags then c.setBags(opts.bags) end
-    c.setClass("WARRIOR"); c.setFaction("Alliance"); c.setLevel(18)
+    c.setClass("WARRIOR"); c.setFaction("Alliance"); c.setLevel(opts.level or 18)
+    if opts.skills then c.setSkillRanks(opts.skills); c.setMoney(500000) end
     c.setZone(1, MAP); c.setPosition(MAP, opts.x or 0.5, opts.y or 0.5); c.setFacing(0)
     c.setMapSize(MAP, 1000, 1000); c.setMapCont(MAP, 0)
     if opts.questie ~= false then
@@ -304,6 +305,32 @@ tests["trip route: town stops are pure and guess no place"] = function(t)
     t.eq(#T.Town({ map = MAP + 1, free = 0, vendor = v }), 0, "vendor on another map: no stop")
     t.eq(T.Town({ map = MAP, free = 0, vendor = { map = MAP, x = 0.5, y = 0.5 } })[1].label, "Bags full: sell at a vendor")
     t.eq(T.Town({ map = MAP, inn = { map = MAP, x = 0.4, y = 0.5, name = "50%s" } })[1].label, "Set hearthstone at this inn")
+end
+
+-- FLOW-PARITY A2-08: at level 40 without riding, the riding trainer is a
+-- route stop when one was seen on this map. Not seen, its place stays
+-- unknown: no stop, a line under the route says so. Nothing is trained.
+local NO_RIDING = { Defense = { rank = 200, max = 200 } }
+
+tests["trip route: a riding trainer not seen yet is said under the route, with no place made up"] = function(t)
+    local c = boot({ level = 40, skills = NO_RIDING })
+    c.slashes[ns.id.slash]("route"); c.advance(1, 5)
+    t.ok(said(c, "Riding trainer - place not seen yet: ask a city guard for the riding trainer") ~= nil,
+        "the unknown place is said")
+    t.eq(said(c, ". Riding trainer"), nil, "no numbered stop for it")
+end
+
+tests["trip route: a riding trainer seen on this map is a stop of the route"] = function(t)
+    local c = boot({ level = 40, skills = NO_RIDING, x = 0.45 })
+    c.setTrainer({ npc = "Test Rider", services = {
+        { name = "Horse Riding", rank = "Apprentice", state = "available", cost = 200000, level = 40 } } })
+    c.fire("TRAINER_SHOW"); c.setTrainer(nil); c.fire("TRAINER_CLOSED")
+    c.setPosition(MAP, 0.5, 0.5); c.advance(2, 5)
+    c.slashes[ns.id.slash]("route"); c.advance(1, 5)
+    t.ok(said(c, "Riding trainer: Test Rider - " .. ns.Nav.TripRoute.RIDING_DETAIL) ~= nil, "the trainer is a stop")
+    local T = ns.Nav.TripRoute
+    local _, aside = T.Town({ map = MAP, riding = { label = "Riding trainer", name = "Far Rider" } })
+    t.eq(aside[1].why, "not on this map: Far Rider")
 end
 
 return tests
