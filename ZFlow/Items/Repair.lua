@@ -31,7 +31,8 @@ local _, ns = ...
 --               radius = Repair.NEAR }, the shape Nav/ProfStep gives
 --
 -- Module: Repair.Declare(k) -> api; api.current() -> { lines, step, worst }
--- while something is low, else nil. One chat line when gear first goes low;
+-- while something is low, else nil. One chat line when gear first goes low,
+-- in the repair step's words (Repair.STEP) when it gives some;
 -- not again until it has been fine in between. Checked on entering the world
 -- and on UPDATE_INVENTORY_DURABILITY (CLIENT NEED: the event).
 -- Setting: "repair.warnBelow" (number, 0..1, default 0.20): the row is the
@@ -52,8 +53,12 @@ Repair.EVENT = "UPDATE_INVENTORY_DURABILITY"
 Repair.ADVISOR = "advisor"
 Repair.PROMPT_ID = "l6c.repair"
 Repair.PROMPT_PRIORITY = 50
--- Nothing in Z-Flow learns repair vendors yet (they come only from an import
--- of Flow's places), so the line promises nothing.
+-- The repair step (Nav/RepairStep.lua): its Lines() name the nearest repair
+-- vendor this character has seen, and are what the chat line and the
+-- advisor prompt say. Without it, the warning's own lines.
+Repair.STEP = "repairStep"
+-- The words when no imported vendor is known. A vendor this character has
+-- seen (Nav/ServiceSeen.lua) is named instead by the repair step's lines.
 Repair.NO_VENDOR = "No repair vendor is known yet."
 
 local function finite(v)
@@ -219,16 +224,28 @@ function Repair.Declare(k)
             -- The advisor panel (UI/Advisor.lua), looked up each time and
             -- never needed: without it, or when it refuses or raises, the
             -- warning works as before.
-            local function prompt(warning)
+            local function prompt(text)
                 local ok, advisor = pcall(ctx.use, Repair.ADVISOR)
                 if not ok or type(advisor) ~= "table" then return end
-                if warning then
+                if text then
                     if type(advisor.Add) == "function" then
-                        pcall(advisor.Add, Repair.PROMPT_ID, table.concat(warning.lines, " "), Repair.PROMPT_PRIORITY)
+                        pcall(advisor.Add, Repair.PROMPT_ID, text, Repair.PROMPT_PRIORITY)
                     end
                 elseif type(advisor.Remove) == "function" then
                     pcall(advisor.Remove, Repair.PROMPT_ID)
                 end
+            end
+            -- What is said while gear is low: the repair step's lines when
+            -- it gives some (it reads `current`, so this runs after that is
+            -- set), else the warning's own. nil when nothing is low.
+            local function words(warning)
+                if not warning then return nil end
+                local ok, step = pcall(ctx.use, Repair.STEP)
+                if ok and type(step) == "table" and type(step.Lines) == "function" then
+                    local okL, lines = pcall(step.Lines)
+                    if okL and type(lines) == "table" and #lines > 0 then return table.concat(lines, " ") end
+                end
+                return table.concat(warning.lines, " ")
             end
             local function check()
                 local warning, state = Repair.Check(ctx.client, ctx.store, ctx.settings:get(Repair.SETTING))
@@ -238,15 +255,15 @@ function Repair.Declare(k)
                 -- Only on a change of what is said: a prompt is not re-added
                 -- on every durability event, and nothing is removed that was
                 -- never added.
-                local text = warning and table.concat(warning.lines, " ") or nil
+                local text = words(warning)
                 if text ~= prompted then
                     prompted = text
-                    prompt(warning)
+                    prompt(text)
                 end
                 if current and not warned then
                     warned = true
                     local id = k.id or ns.id
-                    ctx.client.print(id.title .. ": " .. table.concat(current.lines, " "))
+                    ctx.client.print(id.title .. ": " .. text)
                 elseif not current then
                     warned = false
                 end
