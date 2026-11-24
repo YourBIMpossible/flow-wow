@@ -214,6 +214,8 @@ Nav\DungeonStates.lua
 Nav\DungeonRead.lua
 Nav\BossKills.lua
 UI\DungeonWindow.lua
+UI\HelpPages.lua
+UI\SetupList.lua
 Nav\QuestSpots.lua
 Nav\TripRoute.lua
 UI\MinimapPlace.lua
@@ -228,3 +230,4 @@ Nav\Trip.lua
 UI\RouteTracker.lua
 Nav\QuestAdvice.lua
 Nav\InvitePrompt.lua
+Spells\TrainAdvice.lua

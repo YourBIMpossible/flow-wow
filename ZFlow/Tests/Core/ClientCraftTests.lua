@@ -42,6 +42,18 @@ tests["c.moving: from the speed, else the moving flag, or not known"] = function
     t.eq(ns.make.client({ IsPlayerMoving = function() return 1 end }).moving(), nil, "not a plain yes or no")
 end
 
+tests["c.speed: the player's yards a second, or not known"] = function(t)
+    local unit
+    t.eq(ns.make.client({ GetUnitSpeed = function(u) unit = u; return 7 end }).speed(), 7)
+    t.eq(unit, "player")
+    t.eq(ns.make.client({ GetUnitSpeed = function() return 0 end }).speed(), 0, "standing still")
+    t.eq(ns.make.client({}).speed(), nil, "no such call")
+    t.eq(ns.make.client({ GetUnitSpeed = function() return nil end }).speed(), nil)
+    t.eq(ns.make.client({ GetUnitSpeed = function() return -1 end }).speed(), nil)
+    t.eq(ns.make.client({ GetUnitSpeed = function() return math.huge end }).speed(), nil)
+    t.eq(ns.make.client({ GetUnitSpeed = function() error("no") end }).speed(), nil)
+end
+
 -- A stand-in for the client's frames: every frame made is in env.frames.
 local function gameEnv()
     local env = { frames = {}, UIParent = {} }
