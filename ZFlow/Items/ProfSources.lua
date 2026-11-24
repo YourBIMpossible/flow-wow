@@ -5,9 +5,12 @@ local _, ns = ...
 --   1. gather: a node seen on the map the player is on (GatherMate2's,
 --      through Nav/AddonSources.lua), the nearest;
 --   2. buy_vendor: a vendor price seen (learned.prices kind "vendor").
---      Queue item A5: when a vendor was seen selling it (Items/
---      VendorWares.lua, through input.vendorOf) the line names that vendor
---      and the step carries npc and target; else it is text only;
+--      Queue item A5: when a vendor was seen
+--      selling it (Items/VendorWares.lua, through input.vendorOf) the line
+--      names that vendor and the step carries npc and target; else, with a
+--      price, the nearest vendor seen selling trade goods
+--      (input.tradeVendor) as one to try, with its target; else text only,
+--      "from a trade goods vendor";
 --   3. buy_auction: the auction house, text only.
 -- The bank is the plan's own step (take_bank). Z-Flow never buys, posts or
 -- gathers for the player: each is a line of text, with a place only where
@@ -17,7 +20,8 @@ local _, ns = ...
 --   step = ProfSources.For(input, item, count)   nil when count < 1
 -- input = { here = { map, x, y }, nodes = { { kind, node, map, x, y } },
 --           name(item), vendorPrice(item) -> copper or nil,
---           vendorOf(item) -> { npc, map, x, y } or nil }
+--           vendorOf(item) -> { npc, map, x, y } or nil,
+--           tradeVendor() -> { name, map, x, y } or nil }
 --
 -- Gives is a first guess, not seen in game: a node gives the item of its
 -- own name (herbs), and "<X> Vein" or "<X> Deposit" gives "<X> Ore". A
@@ -30,6 +34,9 @@ local S = ns.ProfSources
 -- Section 383: a material whose name is not read yet; never its number.
 S.UNNAMED = "of the materials"
 S.ORE_SUFFIXES = { " Vein", " Deposit" }
+-- The buy line with no vendor seen selling the item (lead, 2026-11-24).
+S.TRADE_VENDOR = "Buy %d %s from a trade goods vendor"
+S.TRY = ": try %s"
 
 local function whole(n)
     return type(n) == "number" and n == n and n >= 1 and n < math.huge and n == math.floor(n)
@@ -38,6 +45,15 @@ end
 local function call(f, ...)
     if type(f) ~= "function" then return nil end
     return f(...)
+end
+
+-- A vendor read with a name and a place, else nil; a read that errors is nil.
+local function placed(f, nameKey, ...)
+    local ok, v = pcall(call, f, ...)
+    if not ok or type(v) ~= "table" then return nil end
+    if type(v[nameKey]) ~= "string" or v[nameKey] == "" then return nil end
+    if v.map == nil or type(v.x) ~= "number" or type(v.y) ~= "number" then return nil end
+    return v
 end
 
 function S.Gives(node, item)
@@ -82,18 +98,27 @@ function S.For(input, item, count)
             text = string.format("Gather %d %s (%s)", count, name, node.node) }
     end
     local price = call(input.vendorPrice, item)
-    if type(price) == "number" and price >= 0 then
-        local who = call(input.vendorOf, item)
-        if type(who) == "table" and type(who.npc) == "string" and who.npc ~= "" then
-            local step = { kind = "buy_vendor", item = item, count = count, npc = who.npc,
-                text = string.format("Buy %d %s from %s (%s each)", count, name, who.npc, coin(price)) }
-            if type(who.map) == "number" and type(who.x) == "number" and type(who.y) == "number" then
-                step.target = { map = who.map, x = who.x, y = who.y }
-            end
-            return step
+    if not (type(price) == "number" and price >= 0) then price = nil end
+    -- A vendor seen selling it counts only with a vendor price seen (A5).
+    local okW, who = pcall(call, price and input.vendorOf, item)
+    if not okW or type(who) ~= "table" or type(who.npc) ~= "string" or who.npc == "" then who = nil end
+    if who then
+        local step = { kind = "buy_vendor", item = item, count = count, npc = who.npc,
+            text = string.format("Buy %d %s from %s (%s each)", count, name, who.npc, coin(price)) }
+        if type(who.map) == "number" and type(who.x) == "number" and type(who.y) == "number" then
+            step.target = { map = who.map, x = who.x, y = who.y }
         end
-        return { kind = "buy_vendor", item = item, count = count,
-            text = string.format("Buy %d %s from a vendor (%s each)", count, name, coin(price)) }
+        return step
+    end
+    if price then
+        local step = { kind = "buy_vendor", item = item, count = count,
+            text = string.format(S.TRADE_VENDOR, count, name) .. string.format(" (%s each)", coin(price)) }
+        local try = placed(input.tradeVendor, "name")
+        if try then
+            step.text = step.text .. string.format(S.TRY, try.name)
+            step.target = { map = try.map, x = try.x, y = try.y }
+        end
+        return step
     end
     return { kind = "buy_auction", item = item, count = count,
         text = string.format("Buy %d %s at the auction house", count, name) }

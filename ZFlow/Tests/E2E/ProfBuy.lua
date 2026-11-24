@@ -74,7 +74,7 @@ tests["prof buy e2e: bars short, a vendor price seen: buy them from a vendor wit
     local _, addon = start({ prof = "Blacksmithing", vendor = { [BAR] = 50 } })
     local steps = addon.profPlan.plan("Blacksmithing")
     t.eq(steps[1] and steps[1].kind, "buy_vendor")
-    t.ok(steps[1] and steps[1].text:find("from a vendor (" .. cost(50) .. " each)", 1, true) ~= nil,
+    t.ok(steps[1] and steps[1].text:find("from a trade goods vendor (" .. cost(50) .. " each)", 1, true) ~= nil,
         "the cost is on the line: " .. tostring(steps[1] and steps[1].text))
     t.eq(steps[#steps] and steps[#steps].kind, "craft")
 end
