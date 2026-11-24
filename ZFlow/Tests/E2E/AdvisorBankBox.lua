@@ -71,7 +71,7 @@ end
 tests["advisor bank box: the bank prompt names the items and their counts"] = function(t)
     local c, addon = start()
     c.setBankOpen(true)
-    t.eq(promptOf(addon), "Bank: Linen Cloth x12, Copper Ore x5")
+    t.eq(promptOf(addon), "Put in your bank for later: Linen Cloth x12, Copper Ore x5")
     c.setBankOpen(false)
 end
 
@@ -79,12 +79,12 @@ tests["advisor bank box: the bank prompt names three, then counts the rest"] = f
     local c, addon = start({ bag = { { item = LINEN, count = 20 }, { item = WOOL, count = 10 },
         { item = COPPER, count = 5 }, { item = LEATHER, count = 4 } } })
     c.setBankOpen(true)
-    t.eq(promptOf(addon), "Bank: Linen Cloth x20, Wool Cloth x10, Copper Ore x5, and 1 more")
+    t.eq(promptOf(addon), "Put in your bank for later: Linen Cloth x20, Wool Cloth x10, Copper Ore x5, and 1 more")
 end
 
 tests["advisor bank box: a name not read yet is said so, never an item number"] = function(t)
     local text = ns.ItemPresent.BankPrompt({ ok = true, rows = { { key = "818", count = 3 } }, unread = 0 })
-    t.eq(text, "Bank: item not read yet x3")
+    t.eq(text, "Put in your bank for later: item not read yet x3")
     t.ok(not tostring(text):find("818", 1, true), "no item number")
 end
 
@@ -99,6 +99,28 @@ tests["advisor bank box: the bank prompt is there only while the bank is open"] 
     t.eq(promptOf(addon), nil, "the bank closed: the prompt is gone")
     c.fire("PLAYER_ENTERING_WORLD")
     t.eq(promptOf(addon), nil, "and entering the world does not bring it back")
+end
+
+-- Owner, 2026-11-23: the box at the bank read as "one kind of item to put
+-- in the bank" and the owner could not tell what it was. Fails before: the
+-- line began with the one word "Bank:".
+tests["advisor bank box: the line at the bank says what to do with the items, in the titled advice window"] = function(t)
+    local c, addon = start()
+    local before = addon.problems:count()
+    c.setBankOpen(true)
+    local text = promptOf(addon)
+    t.eq(text, "Put in your bank for later: Linen Cloth x12, Copper Ore x5")
+    local w = c.kitWindows().Advisor
+    t.ok(type(w) == "table" and w.shown == true, "the advice window is shown at the bank")
+    local said = false
+    -- Lead section 408: the title is in the title bar, not a part.
+    t.eq(w and w.title, TITLE, "under the add-on's own title")
+    for _, p in ipairs((w and w.parts) or {}) do
+        if p.text == text then said = true end
+    end
+    t.ok(said, "the line is on the window, whole")
+    t.ok(not tostring(text):find("kind of item", 1, true), "never a bare count of kinds")
+    t.eq(addon.problems:count(), before)
 end
 
 for name, fn in pairs(tests) do

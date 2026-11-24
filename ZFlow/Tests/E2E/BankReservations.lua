@@ -154,7 +154,7 @@ tests["bank reservations: the reserved part stays, the free part goes to the ban
     t.ok(not has(lines, "20 x Linen Cloth: kept for later"), "not all 20")
     t.ok(has(lines, ns.ItemPresent.HELD_HEADER) and has(lines, "8 x Linen Cloth"), "8 held: " .. joined(lines))
     -- The prompt names the items now and is read at the bank (sections 340/341).
-    t.eq(promptAtBank(c, addon), "Bank: Linen Cloth x12", "the prompt names the same rows")
+    t.eq(promptAtBank(c, addon), "Put in your bank for later: Linen Cloth x12", "the prompt names the same rows")
 end
 
 tests["bank reservations: a goal that holds every stack leaves nothing to bank"] = function(t)
@@ -188,7 +188,7 @@ tests["bank reservations: a goal made, changed and dropped; nothing stale"] = fu
     goals[1].count = 5
     bumpBags(c)
     -- Named and read at the bank now (sections 340/341).
-    t.eq(promptAtBank(c, addon), "Bank: Linen Cloth x15")
+    t.eq(promptAtBank(c, addon), "Put in your bank for later: Linen Cloth x15")
     lines = visit(t, c)
     t.ok(has(lines, "15 x Linen Cloth: kept for later") and has(lines, "5 x Linen Cloth"), joined(lines))
     -- Dropped.
@@ -293,7 +293,7 @@ tests["bank reservations: a saved goal holds its count, the rest goes to the ban
     t.ok(has(lines, "12 x Linen Cloth: kept for later"), "the free 12 to the bank: " .. joined(lines))
     t.ok(has(lines, ns.ItemPresent.HELD_HEADER) and has(lines, "8 x Linen Cloth"), "8 held: " .. joined(lines))
     -- Named and read at the bank now (sections 340/341).
-    t.eq(promptAtBank(c, addon), "Bank: Linen Cloth x12")
+    t.eq(promptAtBank(c, addon), "Put in your bank for later: Linen Cloth x12")
 end
 
 tests["bank reservations: a goal added with the goal word holds at the next look"] = function(t)
@@ -305,7 +305,7 @@ tests["bank reservations: a goal added with the goal word holds at the next look
     lines = visit(t, c)
     t.ok(has(lines, "12 x Linen Cloth: kept for later") and has(lines, "8 x Linen Cloth"), joined(lines))
     -- Named and read at the bank now (sections 340/341).
-    t.eq(promptAtBank(c, addon), "Bank: Linen Cloth x12")
+    t.eq(promptAtBank(c, addon), "Put in your bank for later: Linen Cloth x12")
 end
 
 -- The sell side (UI/SellList.lua, one evaluation per merchant visit) holds

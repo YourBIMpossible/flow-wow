@@ -34,6 +34,9 @@
 --   SellList.Listing(client, store, grants, r) -> one listing, worked out
 --                                     once; LinesOf(listing) and
 --                                     TreeOf(listing, client, id) word it
+--   SellList.AutoLines(store, listing, title) -> what each vendor
+--                                     automation that is on would do, said
+--                                     only (G2); listing.auto holds them
 --   SellList.Declare(k)           -> api       declares the module on kernel k
 --     api.last()   the lines of the last listing, nil before the first
 --     api.shows()  how many listings were made since the start
@@ -100,6 +103,23 @@ SellList.SLOT = "sellAction"
 SellList.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 360, -120 }
 SellList.NEVER_PATH = "settings.sell.never"
 SellList.PRICES_PATH = "learned.prices"
+-- G2 (lead section 402 item 9): the vendor automations the import carries
+-- (Import/FromFlow.lua), read from the account data and only said: nothing
+-- here sells, repairs, deletes or moves anything by itself. In the order the
+-- lines are shown; text gets the add-on's title, then the count where it has
+-- one. Not kernel setting rows (Settings/Model.lua lists them). The repair
+-- cost itself is Items/RepairCost.lua's line at a merchant that repairs.
+SellList.AUTO_PATH = "settings.sell."
+SellList.AUTO = {
+    { key = "autoJunk", count = "junk",
+      text = "Sell junk automatically is on, but %s sells nothing by itself. Grey items it would sell: %s." },
+    { key = "autoAll", count = "all",
+      text = "Sell all automatically is on, but %s sells nothing by itself. Items on this list: %s." },
+    { key = "autoRepair",
+      text = "Repair automatically is on, but %s repairs nothing by itself: use the merchant's Repair button." },
+    { key = "autoCleanup", text = "Clean up bags automatically is on, but %s deletes and moves nothing by itself." },
+}
+SellList.NOT_COUNTED = "not counted yet"
 -- Why Show() showed nothing (for the caller; not player text).
 SellList.NOT_STARTED = "the sell list has not started"
 SellList.NO_MERCHANT = "no merchant window is open"
@@ -239,7 +259,44 @@ function SellList.Listing(client, store, grants, r)
     end
     out.others = SellList.Others(bag, out, context.book)
     out.grey = SellList.Grey(bag, out)
+    out.auto = SellList.AutoLines(store, out, ns.id.title)
     return out
+end
+
+-- G2: the lines that say which vendor automations are on and that none of
+-- them is done by itself, in SellList.AUTO's order. store: the add-on's
+-- store (only true is on). listing: SellList.Listing's, for the counts.
+-- title: the add-on's name in the text. -> { text, ... }, empty when none.
+function SellList.AutoLines(store, listing, title)
+    local out = {}
+    if type(store) ~= "table" or type(store.get) ~= "function" then return out end
+    local list = type(listing) == "table" and not listing.unavailable and listing.list or nil
+    local rows = type(list) == "table" and list.ok and type(list.rows) == "table" and list.rows or nil
+    for _, a in ipairs(SellList.AUTO) do
+        if store:get("account", SellList.AUTO_PATH .. a.key) == true then
+            if a.count then
+                local said = SellList.NOT_COUNTED
+                if rows then
+                    local n = 0
+                    for _, r in ipairs(rows) do
+                        if a.count == "all" or r.rule == "junk" then n = n + 1 end
+                    end
+                    said = n == 1 and "1 item" or (n .. " items")
+                end
+                out[#out + 1] = string.format(a.text, tostring(title), said)
+            else
+                out[#out + 1] = string.format(a.text, tostring(title))
+            end
+        end
+    end
+    return out
+end
+
+-- G2: listing.auto, first, before lines (in place).
+local function autoFirst(lines, listing)
+    local auto = type(listing.auto) == "table" and listing.auto or {}
+    for i = #auto, 1, -1 do table.insert(lines, 1, tostring(auto[i])) end
+    return lines
 end
 
 -- The bag items a listing neither offers for sale nor keeps by a rule,
@@ -335,9 +392,9 @@ function SellList.LinesOf(listing)
             lines[#lines + 1] = ns.ItemPresent.KEPT_HEADER
             for _, k in ipairs(kept.rows) do lines[#lines + 1] = ns.ItemPresent.KeptText(k) end
         end
-        return SellList.OtherLines(lines, listing)
+        return autoFirst(SellList.OtherLines(lines, listing), listing)
     end
-    return SellList.OtherLines(ns.ItemPresent.SellLines(listing.list, kept), listing)
+    return autoFirst(SellList.OtherLines(ns.ItemPresent.SellLines(listing.list, kept), listing), listing)
 end
 
 -- The "Not sold" rows added to text lines: "<name>: <why>".
@@ -516,6 +573,11 @@ function SellList.TreeOf(listing, client, id, action)
         end
     end
     local footer = { kind = "footer", text = SellList.TOTAL, money = total, slot = SellList.SLOT }
+    -- G2: what the vendor automations that are on would do, first.
+    local auto = type(listing.auto) == "table" and listing.auto or {}
+    for i = #auto, 1, -1 do
+        table.insert(body, 1, { kind = "line", text = tostring(auto[i]), tone = "warn" })
+    end
     if type(action) == "table" then
         if type(action.button) == "table" then footer.buttons = { action.button } end
         if type(action.note) == "table" then
