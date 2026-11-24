@@ -195,7 +195,8 @@ tests["flow button: made and shown at a default boot, its setting on by default"
     t.eq(h.slots[1].icon, nil, "no art path named")
     t.eq(empty(c, FLOW), true, "the plain empty face")
     local line = tip(c, FLOW)
-    t.ok(type(line) == "string" and line:find("rotation is off", 1, true) ~= nil, "the tooltip says what is missing: " .. tostring(line))
+    -- Lead section 533: the rotation off, the one line (Tests/E2E/FlowButtonOff.lua).
+    t.eq(line, FB.OFF_TIP, "the tooltip says what is missing")
     t.eq(h.point, FB.DEFAULT_POINT, "the default place")
     local s = rowOf(c, SELF)
     t.ok(s ~= nil, "the self button was made at boot")

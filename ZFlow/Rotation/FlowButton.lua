@@ -6,8 +6,14 @@ local _, ns = ...
 --   Flow button  holds what the rotation suggests now (the plain key part of
 --                the driver's attributes: type, spell, unit, item). On with
 --                "Keep the rotation on one button" (rotation.keyFrame), which
---                is on by default; with the rotation off it shows a question
---                mark and holds nothing.
+--                is on by default. With the rotation off ("Suggest the next
+--                spell", rotation.enabled, switched off) it holds nothing
+--                and shows the word Flow: never a question mark, and not
+--                the last spell's picture. Its tooltip is then the one line
+--                FB.OFF_TIP, naming that Settings row (lead section 533,
+--                gap 5; Muse's agreed spec). With the rotation on and
+--                nothing to cast it shows the last spell it held, dimmed,
+--                or the word.
 --   Self button  holds the first self buff the class pack wants that is not
 --                on you (unit "player"). N15: seals, shouts, shields, Hunter's
 --                Mark and the forms stay on the Flow button, never here. On
@@ -85,6 +91,12 @@ FB.SELF_NAME = "Buff button, for your self buffs"
 -- Lead section 409 item 4: the word under each button, so the two are told
 -- apart without hovering.
 FB.FLOW_WORD = "Flow"
+-- Lead section 533 (gap 5): the Flow button's whole tooltip while the
+-- rotation is off. It quotes the rotation's Settings row as it reads
+-- (Rotation/Driver.lua, D.SETTING's label); Tests/E2E/FlowButtonOff.lua
+-- holds the two together.
+FB.ROTATION_LABEL = "Suggest the next spell"
+FB.OFF_TIP = "Rotation off — turn on '" .. FB.ROTATION_LABEL .. "' to fill this button."
 FB.SELF_WORD = "Buffs"
 FB.SELF_LABEL = "Show the self buff button"
 FB.DOCK_LABEL = "Keep the self button under the Flow button"
@@ -205,6 +217,8 @@ end
 function FB.Tip(which, why, hold, now)
     local name = FB.FLOW_NAME
     if which == "self" then name = FB.SELF_NAME end
+    -- The rotation off: the one line, nothing before it (section 533).
+    if type(hold) ~= "table" and which ~= "self" and why == FB.OFF_TIP then return FB.OFF_TIP end
     if type(hold) ~= "table" then return name .. ". " .. tostring(why) end
     local what = hold.spell or hold.item
     if which == "self" then return name .. ". Casts " .. tostring(what) .. " on you when you click it." end
@@ -328,7 +342,7 @@ function FB.Declare(k)
 
     -- One button: made once, out of a fight; set through a KeyFrame.
     local function unit(which, frame, sizeOf, pointOf, layoutKey)
-        local u = { which = which, why = "", hold = nil, wanted = nil, lastTex = nil }
+        local u = { which = which, why = "", hold = nil, wanted = nil, lastTex = nil, wordOnly = false }
         local row, kf, face, iconSig
         local name = ns.id.framePrefix .. frame
         local madeSaid = false
@@ -378,6 +392,9 @@ function FB.Declare(k)
                 tex = u.lastTex
                 mode = "picture"
                 if tex == nil then mode = none end
+                -- Lead section 533: the rotation off, the Flow button says
+                -- its word, not the last spell's picture.
+                if which == "flow" and u.wordOnly then tex, mode = nil, "word" end
             end
             mouse(e ~= nil)
             if tex == nil or type(row.icon) ~= "function" then
@@ -469,9 +486,12 @@ function FB.Declare(k)
         end
 
         -- on: the setting; hold: what to hold or nil; why: the line when
-        -- nothing is held.
-        function u.want(on, hold, why)
+        -- nothing is held. word (the Flow button, section 533): holding
+        -- nothing it shows its word, never the last picture.
+        function u.want(on, hold, why, word)
             u.why = why
+            local turned = (word == true) ~= u.wordOnly
+            u.wordOnly = word == true
             if not on then
                 u.wanted = nil
                 if kf then after(kf:want(nil)) end
@@ -480,6 +500,9 @@ function FB.Declare(k)
             if not ensure() then return end
             u.wanted = { hold = hold }
             after(kf:want(u.wanted))
+            -- The face follows the rotation going off or on while the
+            -- button holds nothing. A secure button: out of a fight only.
+            if turned and u.hold == nil and lockdown() == false then icon(nil) end
         end
 
         function u.try()
@@ -531,7 +554,7 @@ function FB.Declare(k)
             units.self.try()
             return
         end
-        local flowWhy = "The rotation is off: switch it on in the settings (Combat) and this button holds what it suggests."
+        local flowWhy = FB.OFF_TIP
         local selfWhy = "The rotation is off: switch it on in the settings (Combat) and this button holds a buff you are missing."
         local flowHold, selfHold = nil, nil
         if live then
@@ -543,7 +566,7 @@ function FB.Declare(k)
             if okPick then selfHold = pick end
             selfWhy = "Nothing to cast now: every self buff you know is up or on the Flow button (seals, shouts and forms stay there)."
         end
-        units.flow.want(setting(FB.SETTING) == true, flowHold, flowWhy)
+        units.flow.want(setting(FB.SETTING) == true, flowHold, flowWhy, not rotationOn)
         units.self.want(setting(FB.SELF_SETTING) == true, selfHold, selfWhy)
     end
 
