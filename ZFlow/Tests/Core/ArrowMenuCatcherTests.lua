@@ -184,6 +184,31 @@ return {
         t.eq(shown(catcher), true, "and it comes back with the next menu")
     end,
 
+    ["panel (F4): clamped to the screen and opened 4px right of and below the pointer, as Flow's menu"] = function(t)
+        local e, made = env()
+        e.GetCursorPosition = function() return 100, 200 end
+        e.UIParent.answers = { GetEffectiveScale = function() return 2 end }
+        local c = ns.make.client(e)
+        local h = c.arrow(SPEC)
+        local before = #made
+        h.menu(ITEMS, function() end)
+        local panel
+        for i = before + 1, #made do
+            if made[i].kind == "Frame" and not panel then panel = made[i] end
+        end
+        if not panel then
+            t.ok(false, "a panel was made")
+            return
+        end
+        local clamped, point = false, nil
+        for _, cl in ipairs(panel.calls) do
+            if cl.name == "SetClampedToScreen" and cl[1] == true then clamped = true end
+            if cl.name == "SetPoint" then point = cl end
+        end
+        t.eq(clamped, true, "the panel cannot open off the screen edge")
+        t.eq(point and { point[1], point[3], point[4], point[5] }, { "TOPLEFT", "BOTTOMLEFT", 54, 96 })
+    end,
+
     -- ---------------------------------------------------------------- AI2
     ["tip: a tooltip that cannot say whose it is is left alone"] = function(t)
         local e = env()

@@ -3275,12 +3275,15 @@ function ns.make.client(env)
         -- At the pointer where the client says where that is, else under
         -- the arrow.
         method(panel, "ClearAllPoints")
+        -- Kept on screen at any minimap icon position (Flow Menu.lua does the same).
+        method(panel, "SetClampedToScreen", true)
         local okC, x, y = call(env.GetCursorPosition)
         local okS, scale = method(env.UIParent, "GetEffectiveScale")
         local at = false
         if okC and okS and type(x) == "number" and type(y) == "number" and type(scale) == "number"
             and not hidden(x) and not hidden(y) and not hidden(scale) and scale > 0 then
-            at = method(panel, "SetPoint", "TOPLEFT", env.UIParent, "BOTTOMLEFT", x / scale, y / scale)
+            -- Flow's Menu: 4px right of and below the pointer.
+            at = method(panel, "SetPoint", "TOPLEFT", env.UIParent, "BOTTOMLEFT", x / scale + 4, y / scale - 4)
         end
         if not at then method(panel, "SetPoint", "TOPLEFT", f, "BOTTOMLEFT", 0, 0) end
         menu.owner, menu.pick = owner, type(pick) == "function" and pick or nil
