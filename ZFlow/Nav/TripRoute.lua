@@ -830,7 +830,10 @@ function T.Declare(k, diag)
     k:Setting({ key = T.TOWN_SETTING, scope = "account", type = "bool", default = true,
         label = "Add town stops: selling and hearthstone", group = "travel.route",
         help = "Acts when you plan a quest route with the route word: a vendor you have seen when your bags fill, and a seen inn near most of your quests to set your hearthstone. You sell and set it; nothing is done for you.",
-        synonyms = { "route", "sell", "vendor", "bags", "hearth", "inn", "town" } })
+        -- Not "sell": that word and "junk" each belong to the bags topic alone, and the
+        -- settings topic word goes there (Tests/E2E/SettingsTopics.lua; White, lead section 539).
+        -- The search still finds this row by "selling" in its label.
+        synonyms = { "route", "selling", "vendor", "bags", "hearth", "inn", "town" } })
 
     k:Setting({ key = T.PICKUP_SETTING, scope = "account", type = "bool", default = true,
         label = "Add quests to pick up on the way", group = "travel.route",
