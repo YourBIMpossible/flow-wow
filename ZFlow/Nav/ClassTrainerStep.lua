@@ -34,7 +34,8 @@ C.KIND = "classTrainer"
 C.NPCS = "learned.places.npcs"
 C.RADIUS = 10
 C.LABEL = "Class trainer"
-C.TRIES = 3
+C.TRIES = 6
+C.RETRY = 10
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -176,17 +177,23 @@ function C.Declare(k)
     end
 
     -- The class trainers of the player's own Questie, read once for the
-    -- session and class. An empty answer is asked again, C.TRIES times in
-    -- all: Questie may still be loading, or a read may have failed.
-    local asked, questie, tries = nil, nil, 0
+    -- session and class. An answer with no trainer (Questie still loading,
+    -- or a read that failed) is asked again, but no sooner than C.RETRY
+    -- seconds later and C.TRIES times in all: the arrow asks for this step
+    -- on every frame, and one ask reads every NPC Questie knows. A client
+    -- that gives no time (now() not a number) gets the C.TRIES asks in a row.
+    local asked, questie, tries, last = nil, nil, 0, nil
     local function fromQuestie(class)
         if asked == class then return questie end
         local L = ns.ClassQuestList
         local db = ask("questieModule", "QuestieDB")
         if type(L) ~= "table" or type(db) ~= "table" then return nil end
+        local now = ask("now")
+        if finite(now) and finite(last) and now >= last and now - last < C.RETRY then return nil end
         local ok, found = pcall(L.Trainers, db, ask("questieModule", "ZoneDB"), class, ask("faction"))
         if not ok or type(found) ~= "table" then found = {} end
         tries = tries + 1
+        if finite(now) then last = now else last = nil end
         if next(found) ~= nil or tries >= C.TRIES then asked, questie = class, found end
         return found
     end

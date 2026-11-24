@@ -21,7 +21,8 @@ local Q_OPEN, Q_DONE, Q_OTHER, Q_ANY = 5001, 5002, 6000, 5003
 local GIVER, TRAINER, ENEMY = 7001, 7002, 7003
 
 -- A stand-in for Questie's two modules, for a player of `class`. state.raise
--- true makes every NPC read raise.
+-- true makes every NPC read raise. state.scans counts the times the list of
+-- NPCs was gone through for class trainers.
 local function questie(class, state)
     local mine = 2 ^ (CLASS_ID[class] - 1)
     local other = 2 ^ (CLASS_ID[class == "MAGE" and "DRUID" or "MAGE"] - 1)
@@ -45,6 +46,7 @@ local function questie(class, state)
     for id in pairs(npcs) do db.NPCPointers[id] = true end
     function db.QueryQuestSingle(id, field) return quests[id] and quests[id][field] end
     function db.QueryNPCSingle(id, field)
+        if state and id == TRAINER and field == "subName" then state.scans = (state.scans or 0) + 1 end
         if state and state.raise then error("questie not ready") end
         return npcs[id] and npcs[id][field]
     end
@@ -67,7 +69,8 @@ local function boot(opts)
     c.setQuestDone(Q_OPEN, false); c.setQuestDone(Q_DONE, true)
     -- Every spell of the pack is one the player has not learned.
     local id = 100
-    local pack = type(ns.Packs) == "table" and ns.Packs[class] or nil
+    local pack
+    if type(ns.Packs) == "table" then pack = ns.Packs[class] end
     for name in pairs(type(pack) == "table" and type(pack.spells) == "table" and pack.spells or {}) do
         id = id + 1
         c.setSpellId(name, id)
@@ -213,10 +216,35 @@ tests["know 1: a Questie read that raises is words only, and the place comes onc
     t.ok(s ~= nil, "still a step")
     t.eq(s and s.place, nil, "no made-up place")
     t.ok(has(typed(c, "classquests"), "  [5001] Test class quest (level 10): not done"), "no giver while it raises")
+    -- Asked again only after the wait: the arrow asks for the step on
+    -- every frame, and each ask of Questie reads every NPC it knows.
     state.raise = false
+    s = a.Step()
+    t.eq(s and s.place, nil, "not asked again at once")
+    c.advance(ns.ClassTrainerStep.RETRY + 1, 2)
     s = a.Step()
     t.eq(s and s.place, { map = MAP, x = 0.66, y = 0.42 })
     t.eq(addon.problems:count(), base, "no new problem")
+end
+
+-- Red on f79dde51: the arrow asks for the step on every frame, so the three
+-- asks were used up in the first frames after login (state.scans was 3) and
+-- Questie was never asked again.
+tests["know 1: a Questie with no answer yet is not asked on every frame, and is asked again later"] = function(t)
+    local state = { raise = true }
+    local c, addon = boot({ state = state })
+    local a = stepApi(addon)
+    if not a then return t.ok(false, "no classTrainerStep") end
+    a.Step(); a.Step(); a.Step(); a.Step()
+    t.ok((state.scans or 0) <= 1, "one ask in the first seconds, not one a frame: " .. tostring(state.scans))
+    state.raise = false
+    c.advance(ns.ClassTrainerStep.RETRY + 1, 2)
+    local s = a.Step()
+    t.eq(s and s.name, "Test Trainer", "asked again after the wait")
+    local n = state.scans
+    c.advance(ns.ClassTrainerStep.RETRY * 3, 6)
+    a.Step()
+    t.eq(state.scans, n, "an answer with a trainer is kept: Questie is not asked again")
 end
 
 -- Section 236: a reload. The trainer the player opened is kept and wins
