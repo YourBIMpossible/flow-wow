@@ -6,7 +6,7 @@ local _, ns = ...
 -- pins the gap list of one state, so the list here is the coverage table:
 --   ladder, mats:   a learned recipe sure at every skill, materials in the bags
 --   ladder, none:   the same recipes, nothing in the bags, no source seen
---   outgrown:       one learned recipe, grey past 24, materials in the
+--   outgrown:       one learned recipe, grey past 25, materials in the
 --                   bags; no trainer list seen
 --   trainer done:   as outgrown, with a trainer list seen and all of it known
 --   no colours:     recipes learned, their colours never read
@@ -31,14 +31,18 @@ local function rankMax(skill)
 end
 
 -- A made-up recipe sure from each multiple of 25 for 25 points; outgrown
--- keeps only the first.
+-- keeps only the first, and says it is outgrown the way the window saves it
+-- (lead section 419): seen grey from the skill after its sure span.
 local function book(prof, outgrown)
     local b, colours = {}, {}
     for lo = 1, CAP - 1, 25 do
         local name = string.format("Test %s %d", prof, lo)
         b[name] = { profession = prof, makes = 9100 + lo, mats = { [MAT] = 1 } }
         colours[name] = { optimal = { lo = lo, hi = lo + 24 } }
-        if outgrown then break end
+        if outgrown then
+            colours[name].trivial = { lo = lo + 25, hi = CAP }
+            break
+        end
     end
     return b, colours
 end
@@ -132,6 +136,17 @@ tests["prof walk learned: outgrown with no trainer seen names a new recipe at a 
     local steps = addon.profPlan.plan("Tailoring")
     t.eq(steps[1] and steps[1].kind, "learn_recipe")
     t.eq(steps[1] and steps[1].recipe, nil, "no recipe is named: none was seen")
+    t.eq(steps[1] and steps[1].outgrown, true, "said as outgrown (section 419)")
+end
+
+-- Lead sections 418 item 5 and 419: every recipe seen grey and the seen
+-- trainer has nothing new: the known recipe that may give a point.
+tests["prof walk learned: trainer done with every recipe grey names a known recipe"] = function(t)
+    local addon = start("Tailoring", "trainer done")
+    addon.store:set("char", "learned.facts.profSkill", { Tailoring = { skill = 40, max = 75 } })
+    local steps = addon.profPlan.plan("Tailoring")
+    t.eq(steps[1] and steps[1].kind, "maybe_craft")
+    t.eq(steps[1] and steps[1].recipe, "Test Tailoring 1")
 end
 
 tests["prof walk learned: rank ends train the next rank in every state"] = function(t)

@@ -8,7 +8,8 @@ local _, ns = ...
 --   fresh:           window opened once; nothing learned or seen
 --   ladder, mats:    a learned recipe sure at every skill, materials in bags
 --   ladder, none:    the same recipes, nothing in the bags
---   outgrown:        one learned recipe, grey past 24; no trainer list seen
+--   outgrown:        one learned recipe, seen grey past 25 (lead section
+--                    419); no trainer list seen
 --   trainer partial: as outgrown, with a trainer list seen holding recipes
 --                    not learned yet
 --   trainer done:    as outgrown, every recipe on the seen list known
@@ -42,7 +43,9 @@ local OUTGROWN_STATES = { outgrown = true, ["trainer partial"] = true, ["trainer
     ["trainer away"] = true }
 
 -- A made-up recipe sure from each multiple of 25 for 25 points; the
--- outgrown states keep only the first.
+-- outgrown states keep only the first, and say it is outgrown the way the
+-- window saves it (lead section 419): seen grey from the skill after its
+-- sure span. Without it the recipe may still give a point and stays the step.
 local function book(prof, state)
     local b, colours = {}, {}
     if state == "fresh" then return b, colours end
@@ -50,7 +53,10 @@ local function book(prof, state)
         local name = string.format("Test %s %d", prof, lo)
         b[name] = { profession = prof, makes = 9100 + lo, mats = { [MAT] = 1 } }
         colours[name] = { optimal = { lo = lo, hi = lo + 24 } }
-        if OUTGROWN_STATES[state] then break end
+        if OUTGROWN_STATES[state] then
+            colours[name].trivial = { lo = lo + 25, hi = CAP }
+            break
+        end
     end
     return b, colours
 end
@@ -136,8 +142,11 @@ local function walk(prof, state)
 end
 
 -- Craft gaps per state. Gathering professions have none in any state.
--- Lead section 418 item 5: "trainer done" names a known recipe that may
--- give a point, so no state has a gap.
+-- Re-derived after lead section 419: past 25 the outgrown states' recipe is
+-- seen grey, so no known recipe gives a point; outgrown and trainer away
+-- name a recipe at a trainer here, trainer partial the new recipe on the
+-- list, trainer done (section 418 item 5) the known recipe that may give a
+-- point. No state has a gap and no reason is pinned.
 local CRAFT_GAPS = {}
 
 for _, state in ipairs(STATES) do
@@ -166,6 +175,34 @@ tests["prof cover: a trainer seen only on another continent: a recipe at a train
     local steps = addon.profPlan.plan("Tailoring")
     t.eq(steps[1] and steps[1].kind, "learn_recipe")
     t.eq(steps[1] and steps[1].npc, nil, "the far trainer is not named")
+end
+
+-- Lead section 419: a known recipe that may still give a point (last seen
+-- orange, never green or grey) is the step before the trainer's new recipe.
+tests["prof cover: trainer partial, a known recipe never seen grey comes before the trainer"] = function(t)
+    local addon = start("Tailoring", "trainer partial")
+    addon.store:set("char", "learned.recipeColors",
+        { ["Test Tailoring 1"] = { optimal = { lo = 1, hi = 25 } } })
+    addon.store:set("char", "learned.facts.profSkill", { Tailoring = { skill = 40, max = 75 } })
+    local steps = addon.profPlan.plan("Tailoring")
+    t.eq(steps[#steps] and steps[#steps].kind, "craft")
+    t.eq(steps[#steps] and steps[#steps].recipe, "Test Tailoring 1")
+    for _, s in ipairs(steps) do t.ok(s.kind ~= "learn_recipe", "no trainer step") end
+    addon.store:set("char", "learned.recipeColors",
+        { ["Test Tailoring 1"] = { optimal = { lo = 1, hi = 25 }, trivial = { lo = 26, hi = CAP } } })
+    steps = addon.profPlan.plan("Tailoring")
+    t.eq(steps[1] and steps[1].kind, "learn_recipe", "seen grey: the new recipe at the trainer")
+    t.eq(steps[1] and steps[1].recipe, "Test Tailoring new 1")
+end
+
+-- Lead sections 418 item 5 and 419: every recipe seen grey and the trainer
+-- has nothing new: the known recipe that may give a point.
+tests["prof cover: trainer done, every recipe grey: a known recipe may give a point"] = function(t)
+    local addon = start("Tailoring", "trainer done")
+    addon.store:set("char", "learned.facts.profSkill", { Tailoring = { skill = 40, max = 75 } })
+    local steps = addon.profPlan.plan("Tailoring")
+    t.eq(steps[1] and steps[1].kind, "maybe_craft")
+    t.eq(steps[1] and steps[1].recipe, "Test Tailoring 1")
 end
 
 return tests

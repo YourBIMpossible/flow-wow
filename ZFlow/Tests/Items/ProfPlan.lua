@@ -126,7 +126,7 @@ tests["prof plan: ore in the bags and a known smelt: make the part first"] = fun
     t.eq(s.text, "Smelt 4 Test Bar at a forge, for Test Buckle")
     t.eq(steps[2] and steps[2].count, 2, "four bars make two buckles")
     steps = P().Plan(input({ book = { ["Test Buckle"] = BOOK["Test Buckle"] }, bags = { [1] = 9 } }))
-    t.eq(kinds(steps), {}, "no smelt recipe known: no part step")
+    t.eq(kinds(steps), { "find_material" }, "no smelt recipe known: no part step, the short bar is the step")
 end
 
 tests["prof plan: what the bags lack and the bank holds: take it from the bank"] = function(t)
@@ -269,11 +269,13 @@ tests["prof plan: trainer done: the known recipe most likely to give a point (se
         ["Test Late Cap"] = { profession = "Tailoring", makes = 62, mats = { [4] = 1 } },
         ["Test Late Belt"] = { profession = "Tailoring", makes = 63, mats = { [3] = 1 } },
     }
+    -- Lead section 419: each seen green or grey below the skill, so none
+    -- gives a point (a colour only last seen orange or yellow would).
     local colours = {
         ["Test Gone Sash"] = { trivial = { lo = 60, hi = 90 } },
-        ["Test Late Robe"] = { medium = { lo = 80, hi = 100 } },
-        ["Test Late Cap"] = { medium = { lo = 80, hi = 100 } },
-        ["Test Late Belt"] = { medium = { lo = 80, hi = 100 } },
+        ["Test Late Robe"] = { medium = { lo = 80, hi = 100 }, easy = { lo = 101, hi = 105 } },
+        ["Test Late Cap"] = { medium = { lo = 80, hi = 100 }, easy = { lo = 101, hi = 105 } },
+        ["Test Late Belt"] = { medium = { lo = 80, hi = 100 }, easy = { lo = 101, hi = 105 } },
     }
     local rows = {}
     for name in pairs(book) do rows[#rows + 1] = { name = name, skill = 1, state = "known" } end
