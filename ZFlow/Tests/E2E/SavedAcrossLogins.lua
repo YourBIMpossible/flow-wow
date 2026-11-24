@@ -47,11 +47,14 @@ tests["saved across logins: a snapshot from the first session is still there aft
     local a1, second = twoLogins()
     local before = a1.diag.snaps
     t.ok(type(before) == "table" and #before >= 1, "the first session kept a snapshot")
+    -- `second` already carries the second login's own snapshot (boot()'s
+    -- PLAYER_ENTERING_WORLD takes one, same as the first session's); this
+    -- diag call adds one more on top of that, so two are new since a1.
     second.slashes[ns.id.slash]("diag")
     local d = second.saved(ns.id.accountDB).diag
     t.eq(d.snaps[1], before[1], "the oldest snapshot is unchanged")
-    t.eq(#d.snaps, #before + 1, "the new snapshot is added after it")
-    t.eq(d.count, a1.diag.count + 1, "the snapshot count goes on from the first session")
+    t.eq(#d.snaps, #before + 2, "the login's own snapshot and the asked one are both added after it")
+    t.eq(d.count, a1.diag.count + 2, "the snapshot count goes on from the first session")
 end
 
 tests["saved across logins: the first login's tracking record is kept and the second one's is added"] = function(t)
