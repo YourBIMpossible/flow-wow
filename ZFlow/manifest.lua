@@ -274,7 +274,11 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
-    -- Lead section 382 (C2 P-COACH): one profession step for the needle (after ProfStep, Legs).
+    -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).
+    "Items/ProfPlan.lua",
+    -- P-COACH C3 (section 382): where the plan's short materials come from (after ProfPlan, Prices).
+    "Items/ProfSources.lua",
+    -- Lead section 382 (C2 P-COACH): one profession step for the needle (after ProfStep, Legs, ProfPlan, ProfSources).
     "Nav/ProfFeed.lua",
     },
 }
