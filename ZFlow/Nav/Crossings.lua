@@ -337,10 +337,12 @@ function N.CrossingSteps(input)
                 -- the player's trips says its dock, landing and wait.
                 -- B-03: standing at the boarding place with no wait known
                 -- says to wait there; the time stays unknown.
-                hint = (best.crossing.seen ~= nil and N.CrossingHint)
-                    and N.CrossingHint(best.how, best.from.name, best.to.name, best.from.wait,
-                        num(best.toBoard) and best.toBoard <= (N.CROSSING_AT_BOARD or 0)) or nil,
             }
+            if best.crossing.seen ~= nil and N.CrossingHint then
+                local atBoard = false
+                if num(best.toBoard) and best.toBoard <= (N.CROSSING_AT_BOARD or 0) then atBoard = true end
+                steps[#steps].hint = N.CrossingHint(best.how, best.from.name, best.to.name, best.from.wait, atBoard)
+            end
         end
     end
     return steps, unjoined

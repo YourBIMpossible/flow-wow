@@ -37,7 +37,8 @@ end
 
 local function first(c)
     local a = c.arrows[1]
-    return a and a.shown and a.lines and a.lines[1] or nil
+    if a and a.shown and a.lines then return a.lines[1] end
+    return nil
 end
 
 tests["travel cast order: a known spell puts the Moonglade stop first, and the arrow says to cast it"] = function(t)

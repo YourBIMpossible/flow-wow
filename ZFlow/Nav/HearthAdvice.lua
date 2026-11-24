@@ -289,7 +289,11 @@ function H.Declare(k)
         local services = ns.ServiceSeen and ns.ServiceSeen.PLACES or "learned.places.services"
         local home, _, best = H.Home({ bind = bind, stops = stops, inns = H.Inns(saved(ctx.store, "char", services)),
                               size = function(map) return ask(client, "mapSize", map) end })
-        step = best and H.SetStep(best, ask(client, "mapName", best.map)) or nil
+        if best then
+            step = H.SetStep(best, ask(client, "mapName", best.map))
+        else
+            step = nil
+        end
         if home and home ~= lastHome then
             lastHome = home
             say(home)

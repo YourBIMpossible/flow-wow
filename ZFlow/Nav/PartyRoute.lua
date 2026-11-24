@@ -169,7 +169,8 @@ end
 
 function P.Label(from, step, log)
     if type(step) ~= "table" or type(step.label) ~= "string" then return step end
-    local who = type(from) == "string" and from:match("^([^%-]+)") or nil
+    local who
+    if type(from) == "string" then who = from:match("^([^%-]+)") end
     local out = {}
     for key, v in pairs(step) do out[key] = v end
     local extra = {}
@@ -315,7 +316,9 @@ function P.Declare(k, diag)
         local run = {}
         for key, v in pairs(offer.run) do run[key] = v end
         run.steps = {}
-        for i, st in ipairs(offer.run.steps or {}) do run.steps[i] = P.Label(offer.from, st, okLog and log or nil) end
+        local own
+        if okLog then own = log end
+        for i, st in ipairs(offer.run.steps or {}) do run.steps[i] = P.Label(offer.from, st, own) end
         say(P.TAKEN:format(offer.from, tostring(tr.Run(run))))
     end
 
@@ -355,9 +358,16 @@ function P.Declare(k, diag)
         say(P.KEPT:format(from))
     end
 
+    -- A click redraws the arrow at once, as the slash word's own pass
+    -- does (lead section 466): the player clicks and sees the route.
+    local function redraw()
+        local arrow = k.use and k.use("arrow")
+        if type(arrow) == "table" and type(arrow.Redraw) == "function" then pcall(arrow.Redraw) end
+    end
+
     local function clicked(rest)
-        if rest == "take" then return api.Take() end
-        if rest == "keep" then return api.Keep() end
+        if rest == "take" then api.Take(); return redraw() end
+        if rest == "keep" then api.Keep(); return redraw() end
     end
 
     local function receive(prefix, text, channel, sender)

@@ -140,7 +140,8 @@ end
 
 local function step(addon)
     local m = addon.use("hearthAdvice")
-    return m and m.Step and m.Step() or nil
+    if m and m.Step then return m.Step() end
+    return nil
 end
 
 tests["hearth advice: a spoken-to inn near the quests: a Set hearthstone step there"] = function(t)

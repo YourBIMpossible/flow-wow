@@ -46,6 +46,7 @@ M.EVERY = 5           -- seconds between looks
 M.SAVE = "Riding at level %d costs about %s; you have %s. Start saving for it."
 M.SAVE_SHORT = "Riding at level %d costs about %s; you have it."
 M.SAVE_UNKNOWN = "Riding at level %d (price not seen yet): start saving for it."
+M.SAVE_NO_MONEY = "Riding at level %d costs about %s (money not readable): start saving for it."
 M.MOUNT = "Next: buy your first mount from a mount vendor (price not seen yet)."
 M.LEARN = "Learn riding (%s)"
 M.LEARN_UNKNOWN = "Learn riding (price not seen yet)"
@@ -78,7 +79,8 @@ function M.Cost(npcs)
     if type(npcs) ~= "table" then return nil end
     local best
     for _, e in pairs(npcs) do
-        local v = type(e) == "table" and type(e.ridingCosts) == "table" and e.ridingCosts[M.LEVEL] or nil
+        local v
+        if type(e) == "table" and type(e.ridingCosts) == "table" then v = e.ridingCosts[M.LEVEL] end
         if finite(v) and v >= 0 and (best == nil or v < best) then best = v end
     end
     return best
@@ -92,7 +94,7 @@ function M.Lines(next, cost, money)
         if not price then return { M.SAVE_UNKNOWN:format(M.LEVEL) } end
         if have and finite(money) and money >= cost then return { M.SAVE_SHORT:format(M.LEVEL, price) } end
         if have then return { M.SAVE:format(M.LEVEL, price, have) } end
-        return { M.SAVE_UNKNOWN:format(M.LEVEL) }
+        return { M.SAVE_NO_MONEY:format(M.LEVEL, price) }
     end
     if next == "mount" then return { M.MOUNT } end
     return {}
@@ -139,7 +141,8 @@ function M.Declare(k)
         local have = 0
         for name, row in pairs(ranks) do
             if R and R.IsRiding(name) then
-                local r = type(row) == "table" and row.rank or nil
+                local r
+                if type(row) == "table" then r = row.rank end
                 if not finite(r) then return nil end
                 if r > have then have = r end
             end
@@ -176,7 +179,8 @@ function M.Declare(k)
         local advisor = ctx.use and ctx.use("advisor")
         if type(advisor) ~= "table" then return end
         local lines = api.lines()
-        local said = #lines > 0 and table.concat(lines, " ") or nil
+        local said
+        if #lines > 0 then said = table.concat(lines, " ") end
         if said == shown then return end
         if said then advisor.Add(M.PROMPT, said, M.PRIORITY) else advisor.Remove(M.PROMPT) end
         shown = said

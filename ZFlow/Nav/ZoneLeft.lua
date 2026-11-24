@@ -177,7 +177,8 @@ function Z.Work(steps, map)
     local out = {}
     if map == nil or type(steps) ~= "table" then return out end
     for _, step in ipairs(steps) do
-        local label = type(step) == "table" and step.label or nil
+        local label
+        if type(step) == "table" then label = step.label end
         if type(label) == "string" and label ~= "" and stepMap(step) == map then
             local other = N.PROF_OTHER_MAP
             if type(other) == "string" and label:sub(-#other) == other then label = label:sub(1, -#other - 1) end
@@ -311,7 +312,8 @@ function Z.Declare(k, diag)
 
     local function look()
         local pos = ask(client(), "position")
-        local map = type(pos) == "table" and pos.map or nil
+        local map
+        if type(pos) == "table" then map = pos.map end
         if map == nil then return end
         held = { map = map, work = Z.Work(workSteps(), map) }
     end

@@ -69,4 +69,11 @@ tests["mount milestone: the pure order and an unknown price"] = function(t)
     t.eq(M.Step("riding", {}, PRICE), nil, "no trainer place: no step")
 end
 
+tests["mount milestone: a seen price with money not readable says so, not price unknown"] = function(t)
+    local M = ns.Nav.MountMilestone
+    t.eq(M.Lines("save", 200000, nil)[1], M.SAVE_NO_MONEY:format(M.LEVEL, ns.Prices.Coin(200000)))
+    t.eq(M.Lines("save", 200000, nil)[1], "Riding at level 40 costs about 20g (money not readable): start saving for it.")
+    t.eq(M.Lines("save", nil, 5)[1], M.SAVE_UNKNOWN:format(M.LEVEL), "no price seen: price not seen yet")
+end
+
 return tests
