@@ -59,6 +59,16 @@ P.OFFER = "%s shared a route (%d stops); type %s route take to follow it."
 P.INCOMPLETE = "The route from %s came incomplete; ask again with %s route ask."
 P.NO_OFFER = "No party route to take."
 P.TAKEN = "Following the route from %s: %s"
+-- FLOW-PARITY B-36: the offer carries two chat links, the player clicks one;
+-- nothing is taken until then. Kind "addon:<addon>:party", rest take|keep.
+P.FOLLOW = "Follow party route"
+P.KEEP = "Keep my route"
+P.KEPT = "Keeping your own route; the route from %s is not taken."
+function P.Kind(addon) return "addon:" .. tostring(addon) .. ":party" end
+function P.Choices(addon)
+    local kind = P.Kind(addon)
+    return "|H" .. kind .. ":take|h[" .. P.FOLLOW .. "]|h |H" .. kind .. ":keep|h[" .. P.KEEP .. "]|h"
+end
 P.WHY_OFF = "sharing is off in the settings (Share your route with your party)"
 P.WHY_ALONE = "you are not in a party"
 P.WHY_PREFIX = "the client did not take the add-on message prefix"
@@ -178,6 +188,7 @@ function P.Declare(k, diag)
     local offer              -- { from, run }
     local offered, warned = {}, {}
     local made = 0
+    local cancelClick
 
     local function client() return ctx and ctx.client or k.client end
     local function id() return k.id or ns.id end
@@ -279,7 +290,17 @@ function P.Declare(k, diag)
         local key = sender .. "|" .. p.sid
         if not offered[key] then
             offered[key] = true
-            say(P.OFFER:format(sender, #run.steps, id().slash))
+            say(P.OFFER:format(sender, #run.steps, id().slash) .. " " .. P.Choices(id().addon))
+        end
+    end
+
+    local function clicked(rest)
+        if rest == "take" then return api.Take() end
+        if rest == "keep" then
+            if not offer then return say(P.NO_OFFER) end
+            local from = offer.from
+            offer = nil
+            return say(P.KEPT:format(from))
         end
     end
 
@@ -336,10 +357,15 @@ function P.Declare(k, diag)
                 local ok, err = pcall(receive, ...)
                 if not ok then problem(err) end
             end)
+            if type(cl.onLinkClick) == "function" then
+                local ok, got = pcall(cl.onLinkClick, P.Kind(id().addon), clicked)
+                if ok and type(got) == "function" then cancelClick = got end
+            end
         end,
         stop = function()
             if type(cancel) == "function" then pcall(cancel) end
-            cancel = nil
+            if type(cancelClick) == "function" then pcall(cancelClick) end
+            cancel, cancelClick = nil, nil
             bufs, offer = {}, nil
         end,
     })

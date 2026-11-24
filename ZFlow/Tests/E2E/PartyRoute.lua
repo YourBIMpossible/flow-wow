@@ -98,6 +98,27 @@ tests["party route: a route shared by one client is offered to and taken by the 
     t.eq(first(b), "Boars", "the taken route's first stop is on the other client's arrow")
 end
 
+-- FLOW-PARITY B-36: the offer has two links; the player clicks one.
+tests["party route: the offer's two links follow the route or keep your own"] = function(t)
+    local a, b = pair()
+    slash(a, "route"); slash(a, "route share")
+    local kind = ns.Nav.PartyRoute.Kind(ns.id.addon)
+    t.ok(said(b, "[Follow party route]") and said(b, "[Keep my route]"), "two choices on the offer line")
+    t.eq(first(b), nil, "nothing is taken before a click")
+    t.eq(b.clickLink(kind .. ":keep"), 1)
+    t.ok(said(b, "Keeping your own route; the route from Anna is not taken."))
+    t.eq(first(b), nil, "keep leaves the route as it was")
+    t.eq(b.clickLink(kind .. ":take"), 1)
+    t.ok(said(b, "No party route to take."), "a kept offer is gone")
+    local c, d = pair()
+    slash(c, "route"); slash(c, "route share")
+    local sent = #d.addonSent
+    t.eq(d.clickLink(kind .. ":take"), 1)
+    t.ok(said(d, "Following the route from Anna"))
+    t.eq(first(d), "Boars", "follow puts the shared route on the arrow")
+    t.eq(#d.addonSent, sent, "a click sends nothing")
+end
+
 tests["party route: a refused send says not shared and nothing else changes"] = function(t)
     local a, b = pair()
     slash(a, "route")
