@@ -49,11 +49,13 @@ local function at(c, zoneCont, map, x, y)
 end
 
 -- Camp here on 1411; Mail over the sea on 1420.
+-- Test was wrong: the slash handler (Core/Diag.lua) lowers the whole line, so
+-- "trip add here Camp" saves the label "camp"; the labels are typed lower here.
 local function twoStops(c)
     at(c, 1, 1411, 0.5, 0.6)
-    slash(c, "trip add here Camp")
+    slash(c, "trip add here camp")
     at(c, 0, 1420, 0.3, 0.3)
-    slash(c, "trip add here Mail")
+    slash(c, "trip add here mail")
     at(c, 1, 1411, 0.5, 0.5)
 end
 
@@ -61,13 +63,13 @@ tests["trip after e2e: the owner sets an after and the route obeys it"] = functi
     local c, addon = start()
     twoStops(c)
     slash(c, "trip after 1 2")
-    t.ok(said(c, ns.Nav.Trip.AFTER_SET:format(1, "Camp", 2, "Mail")) ~= nil, "said what was set")
+    t.ok(said(c, ns.Nav.Trip.AFTER_SET:format(1, "camp", 2, "mail")) ~= nil, "said what was set")
     local v = addon.store:get("char", ns.Nav.Trip.PATH)
     t.ok(type(v) == "table" and type(v.stops[1].after) == "table", "saved with the stop")
     slash(c, "trip go")
     local a = c.arrows[1]
     t.eq(a and a.lines and a.lines[1], "Boat to Tirisfal dock", "Mail first, by way of the boat")
-    t.eq(a and a.lines and a.lines[2], "Then: Mail")
+    t.eq(a and a.lines and a.lines[2], "Then: mail")
 end
 
 tests["trip after e2e: a circle is refused with one line naming the stops"] = function(t)
@@ -76,18 +78,18 @@ tests["trip after e2e: a circle is refused with one line naming the stops"] = fu
     slash(c, "trip after 1 2")
     slash(c, "trip after 2 1")
     local line = said(c, ns.Nav.Trip.CIRCLE_WORD)
-    t.ok(line ~= nil and line:find("Camp", 1, true) ~= nil and line:find("Mail", 1, true) ~= nil, tostring(line))
+    t.ok(line ~= nil and line:find("camp", 1, true) ~= nil and line:find("mail", 1, true) ~= nil, tostring(line))
 end
 
 tests["trip via e2e: a stop on another continent is listed via the boat"] = function(t)
     local c = start()
     twoStops(c)
     slash(c, "trip")
-    local line = said(c, "2. Mail")
+    local line = said(c, "2. mail")
     t.ok(line ~= nil and line:find("via Boat to Tirisfal dock", 1, true) ~= nil, tostring(line))
     slash(c, "trip go")
     local a = c.arrows[1]
-    t.eq(a and a.lines and a.lines[1], "Camp", "this map first, as before")
+    t.eq(a and a.lines and a.lines[1], "camp", "this map first, as before")
 end
 
 return tests
