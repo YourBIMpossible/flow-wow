@@ -189,4 +189,28 @@ return {
     ["N58 rogue pack: no poison choice row while no rule suggests a poison"] = function(t)
         t.eq(ns.Packs.ROGUE.options.sticky, nil, "no sticky rows")
     end,
+
+    -- N52 ROGUE-3/4 (lead sections 233, 394): Vanish breaks a root, shown
+    -- only. Blind is cast on an enemy and frees nobody, so it is no breaker.
+    ["rogue ROGUE-3: rooted, Vanish breaks it"] = function(t)
+        local knows = { "Vanish", "Blind", "Attack", "Sinister Strike" }
+        local r = ns.Choose(snap({ loc = "ROOT" }, knows), ns.Packs.ROGUE)
+        t.eq(r and r.spell, "Vanish")
+        t.eq(r and r.kind, "emergency")
+    end,
+
+    ["rogue ROGUE-3/4: a stun, Vanish on cooldown, or not held: no breaker; Blind never one"] = function(t)
+        local knows = { "Vanish", "Blind", "Attack", "Sinister Strike" }
+        local r = ns.Choose(snap({ loc = "STUN" }, knows), ns.Packs.ROGUE)
+        t.ok(not r or r.kind ~= "emergency", "a stun is not broken by it")
+        local s = snap({ loc = "ROOT" }, knows)
+        s.spells["Vanish"].onCooldown = true
+        r = ns.Choose(s, ns.Packs.ROGUE)
+        t.ok(not r or r.kind ~= "emergency", "Vanish not ready")
+        r = ns.Choose(snap({}, knows), ns.Packs.ROGUE)
+        t.ok(not r or r.kind ~= "emergency", "not held")
+        for _, b in ipairs(ns.Packs.ROGUE.breakers) do
+            t.ok(b.spell ~= "Blind", "Blind is not a breaker")
+        end
+    end,
 }
