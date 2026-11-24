@@ -201,11 +201,12 @@ local function smeltFor(input, item)
     return nil
 end
 
--- How many of this item can be had: bags, bank, then smelted from bag ore.
+-- How many of this item can be had: bags, bank, then smelted from ore in
+-- the bags and the bank (section 400 item 3).
 local function have(input, item)
     local bags, bank = count(input.bags, item), count(input.bank, item)
     local smelt, ore, per = smeltFor(input, item)
-    local made = smelt and math.floor(count(input.bags, ore) / per) or 0
+    local made = smelt and math.floor((count(input.bags, ore) + count(input.bank, ore)) / per) or 0
     return bags + bank + made, bags, bank, smelt
 end
 
@@ -305,7 +306,7 @@ local function craftSteps(input, c)
         n = math.min(n, math.floor((have(input, item)) / per))
     end
     if n < 1 then return nil end
-    local parts, banks, mats = {}, {}, {}
+    local ores, parts, banks, mats = {}, {}, {}, {}
     for _, item in ipairs(sortedKeys(c.entry.mats)) do
         local need = c.entry.mats[item] * n
         local _, bags, bank, smelt = have(input, item)
@@ -318,6 +319,12 @@ local function craftSteps(input, c)
         end
         if short > 0 then
             local _, ore, per = smeltFor(input, item)
+            local oreBags = count(input.bags, ore)
+            local oreBank = math.min(count(input.bank, ore), math.max(0, short * per - oreBags))
+            if oreBank > 0 then
+                ores[#ores + 1] = { kind = "take_bank", item = ore, count = oreBank, recipe = c.recipe,
+                    text = string.format("Take %d %s from your bank, for %s", oreBank, itemName(input, ore), c.recipe) }
+            end
             parts[#parts + 1] = { kind = "make_part", item = item, count = short, recipe = smelt,
                 station = P.SMELT_STATION, from = { item = ore, count = short * per },
                 text = string.format("Smelt %d %s at %s, for %s", short, itemName(input, item),
@@ -325,6 +332,7 @@ local function craftSteps(input, c)
         end
     end
     local steps = {}
+    for _, s in ipairs(ores) do steps[#steps + 1] = s end
     for _, s in ipairs(parts) do steps[#steps + 1] = s end
     for _, s in ipairs(banks) do steps[#steps + 1] = s end
     local at = ""
