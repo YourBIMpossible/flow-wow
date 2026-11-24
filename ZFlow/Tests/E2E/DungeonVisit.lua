@@ -274,6 +274,61 @@ tests["dungeon entering: the lines wait for Questie, and for a dungeon list that
     t.eq(addon2.problems:count(), base2, "no new problem")
 end
 
+-- Plexy, lead section 504 CHANGES-2: whether you are in a dungeon has three
+-- answers. Not known changes nothing. Red on 339e7683: an instance read
+-- that gives nothing is read as outside: the run's clock is stopped, the
+-- run is closed after the wait, and the word says you are not in a dungeon.
+tests["dungeon visit: an instance read that gives nothing changes nothing, and the word says so"] = function(t)
+    local c, addon, base = boot({ clock = 1000 })
+    local V = ns.DungeonVisit
+    c.setInstance(nil)
+    c.setClock(1500)
+    c.fire("PLAYER_ENTERING_WORLD"); c.fire("ZONE_CHANGED_NEW_AREA")
+    c.advance(1, 5)
+    local run = addon.store:get("char", "dungeon.run")
+    t.eq(run and run.name, "The Deadmines", "the run is still the one you are in")
+    t.eq(run and run.left, nil, "its clock is not stopped")
+    local lines = typed(c, "dungeon")
+    t.eq(lines[1], ns.id.title .. ": " .. tostring(V.CANNOT_TELL), "the word says it cannot tell")
+    t.eq(#lines, 1)
+    c.setClock(1500 + V.GRACE + 1)
+    c.fire("ZONE_CHANGED_NEW_AREA")
+    c.advance(1, 5)
+    t.eq(addon.store:get("char", "dungeon.times"), nil, "and the run is not closed")
+    -- The read answers again, inside: the same run, nothing said twice.
+    walkIn(c)
+    t.eq(times(c, ns.id.title .. IN_LOG), 1, "the same run: its lines are not said again")
+    c.setClock(1000 + 1800)
+    walkOut(c)
+    c.setClock(1000 + 1800 + V.GRACE + 1)
+    c.fire("ZONE_CHANGED_NEW_AREA")
+    c.advance(1, 5)
+    t.eq(addon.store:get("char", "dungeon.times"), { ["The Deadmines"] = 1800 }, "timed from its real start to its end")
+    t.eq(addon.problems:count(), base, "no new problem")
+end
+
+-- Red on 339e7683: XP gained while it is not known where you are is counted
+-- as questing XP (a sample is kept).
+tests["dungeon visit: XP gained while it is not known where you are counts for neither rate"] = function(t)
+    local c, addon = boot({ outside = true, clock = 1000 })
+    c.setXp({ cur = 100, max = 10000, rested = 0 })
+    c.fire("PLAYER_XP_UPDATE", "player")
+    c.setInstance(nil)
+    c.setClock(1300)
+    c.setXp({ cur = 600, max = 10000, rested = 0 })
+    c.fire("PLAYER_XP_UPDATE", "player")
+    t.eq(addon.store:get("char", "dungeon.xpSamples"), nil, "not a questing sample")
+    local c2, addon2 = boot({ clock = 1000 })
+    c2.setXp({ cur = 100, max = 10000, rested = 0 })
+    c2.fire("PLAYER_XP_UPDATE", "player")
+    c2.setInstance(nil)
+    c2.setXp({ cur = 600, max = 10000, rested = 0 })
+    c2.fire("PLAYER_XP_UPDATE", "player")
+    local run = addon2.store:get("char", "dungeon.run")
+    t.eq(run and run.noXp, true, "the run in progress no longer has a known XP")
+    t.eq(run and run.xp, nil, "and none is added to it")
+end
+
 -- B-56 (lead section 490 item 4): run timing.
 local function trackerHas(c, text)
     local rec = c.kitWindows().dungeonTracker

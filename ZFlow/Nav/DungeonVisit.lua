@@ -46,6 +46,15 @@
 --                      inside it over its timed length (B-56). When either
 --                      is not known nothing is said.
 --
+--   not known          (Plexy, lead section 504 CHANGES-2) whether you are in
+--                      a dungeon has three answers: inside, outside, and
+--                      not known (the client's instance read gave nothing,
+--                      as Nav/BossKills.lua guards it). Not known changes
+--                      nothing: the run you are in goes on, its clock is not
+--                      stopped and it is not closed, nothing is said on
+--                      "entering", and XP gained meanwhile goes to neither
+--                      rate. The dungeon word says it cannot tell.
+--
 -- Chat words only. LOOK ONLY: nothing is accepted, shared, targeted or
 -- clicked. No quest or dungeon table ships here: the quests are Questie's,
 -- read through Nav/DungeonRead.lua (its index is read in slices while you
@@ -107,6 +116,7 @@ V.MINUTE, V.MINUTES = "1 minute", "%d minutes"
 V.HOUR, V.HOURS = "1 hour", "%d hours"
 V.HELP = "say the dungeon you are in: your quests for it and the bosses killed"
 V.OUTSIDE = "you are not in a dungeon. Type %s dungeons for the dungeons and their quests."
+V.CANNOT_TELL = "the game does not say right now whether you are in a dungeon. Ask again in a moment."
 V.NO_NAME = "the game does not say which dungeon this is."
 V.NOT_KNOWN = "Questie has no dungeon of this name, so its quests are not known."
 V.IN_LOG_ONE = "1 of its quests in your log"
@@ -348,9 +358,12 @@ function V.Declare(k, diag)
 
     local function client() return ctx and ctx.client or k.client end
 
+    -- true: in a dungeon; false: not in one; nil: not known (the instance
+    -- read did not answer). Not known is never read as outside.
     local function inside()
         local inst = ask(client(), "instance")
-        return type(inst) == "table" and inst.inside == true and V.KINDS[inst.kind] == true
+        if type(inst) ~= "table" or type(inst.inside) ~= "boolean" then return nil end
+        return inst.inside == true and V.KINDS[inst.kind] == true
     end
 
     -- The reader's index, in slices out of the way of the frame; started
@@ -557,9 +570,12 @@ function V.Declare(k, diag)
         return V.QuestLines(name, have, missing), "quests", info
     end
 
-    -- The summary's lines; outside: nil.
+    -- The summary's lines; outside: nil; not known whether inside: nil and
+    -- "unknown".
     function api.Lines()
-        if not inside() then return nil end
+        local isIn = inside()
+        if isIn == nil then return nil, "unknown" end
+        if not isIn then return nil end
         local name = ask(client(), "instanceName")
         local out, info
         if type(name) ~= "string" or name == "" then
@@ -614,7 +630,10 @@ function V.Declare(k, diag)
     -- Entering, leaving, a reload inside: which run this is.
     local function entered()
         local name
-        if inside() then
+        local isIn = inside()
+        -- Not known where you are: the run stays as it was.
+        if isIn == nil then return end
+        if isIn then
             index()
             name = ask(client(), "instanceName")
             -- Inside a dungeon the game does not name: nothing to keep.
@@ -647,7 +666,11 @@ function V.Declare(k, diag)
         if type(xp) == "table" then now = { cur = xp.cur, max = xp.max, level = ask(client(), "level") } end
         local gained = V.Gain(lastXp, now)
         local isIn = inside()
-        if isIn and lastXp ~= nil and gained == nil then
+        -- A reading missed inside, or XP gained while it is not known where
+        -- you are: the run in progress no longer has a known XP.
+        local missed = isIn == true and lastXp ~= nil and gained == nil
+        local unplaced = isIn == nil and gained ~= nil and gained > 0
+        if missed or unplaced then
             local r = run()
             if r and type(r.name) == "string" and r.left == nil and r.noXp ~= true then
                 r.noXp = true
@@ -656,6 +679,8 @@ function V.Declare(k, diag)
         end
         lastXp = now
         if not gained or gained <= 0 then return end
+        -- Not known where: it counts for neither rate.
+        if isIn == nil then return end
         if isIn then
             local r = run()
             if r and type(r.name) == "string" and r.left == nil then
@@ -677,11 +702,12 @@ function V.Declare(k, diag)
         diag.commands[V.WORD] = function()
             -- A run that ended since the last event is closed first.
             if ctx then pcall(entered) end
-            local ok, lines = pcall(api.Lines)
+            local ok, lines, why = pcall(api.Lines)
             if not ok then
                 k.problems:add(V.NAME, "word", tostring(lines))
                 return
             end
+            if not lines and why == "unknown" then return say({ V.CANNOT_TELL }) end
             if not lines then return say({ V.OUTSIDE:format(tostring(id.slash)) }) end
             say(lines)
         end
