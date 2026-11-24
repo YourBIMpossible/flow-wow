@@ -58,6 +58,10 @@ T.RUN_SAID = "Run planned: %d stops; the arrow walks it."
 T.HELD_LINE = "Turn-in held: %s"
 T.HELD_NOT_COMPLETE = "not complete any more"
 T.LEFT = "%s left the route: its quest is no longer in your log."
+T.UNDER_MINUTE = "under a minute"    -- S34: a leg's time on its step
+T.ONE_MINUTE = "about 1 minute"
+T.MINUTES = "about %d minutes"
+T.UNDER_SECS = 45                     -- seconds: shorter legs are "under a minute"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -138,6 +142,26 @@ function T.Stops(rows, places, here)
     return stops, left
 end
 
+-- S34 (lead dispatch section 395 item 2): a leg's seconds. A leg is in
+-- yards at a run (N.Legs.RUN yards a second): the straight line, or the
+-- player's own timed trip (flight or boat wait included) turned into such
+-- yards by N.Legs.YardsOf, so ordering by yards is ordering by seconds.
+function T.Seconds(yards)
+    if not finite(yards) or yards < 0 then return nil end
+    local L = N.Legs
+    local speed = type(L) == "table" and finite(L.RUN) and L.RUN > 0 and L.RUN or 7
+    return yards / speed
+end
+
+-- The words for a leg's seconds, or nil when they are not known.
+function T.TimeWords(secs)
+    if not finite(secs) or secs < 0 then return nil end
+    if secs < T.UNDER_SECS then return T.UNDER_MINUTE end
+    local m = math.max(1, math.floor(secs / 60 + 0.5))
+    if m == 1 then return T.ONE_MINUTE end
+    return T.MINUTES:format(m)
+end
+
 function T.Plan(rows, places, here, legs)
     here = type(here) == "table" and here or {}
     if here.map == nil then return nil, T.WHY_NO_MAP end
@@ -161,6 +185,7 @@ function T.Plan(rows, places, here, legs)
     for i, rs in ipairs(route.stops) do
         local s = stops[rs.index]
         s.leg = yards and rs.leg or nil
+        s.secs = s.leg and T.Seconds(s.leg) or nil
         ordered[i] = s
     end
     return { kind = "quests", stops = ordered, yards = yards, label = route.label, left = left }
@@ -224,6 +249,9 @@ function T.Lines(route, at)
         local parts = { tostring(s.label) }
         if s.detail ~= nil then parts[#parts + 1] = tostring(s.detail) end
         parts[#parts + 1] = dist
+        local secs = route.yards ~= false and (finite(s.secs) and s.secs or (finite(s.leg) and T.Seconds(s.leg))) or nil
+        local time = secs and T.TimeWords(secs)
+        if time then parts[#parts + 1] = time end
         if s.gone then parts[#parts + 1] = "done" end
         -- A stop whose quest left the log is off the list (lead section 375).
         if not s.left and not (s.held and not s.gone) then
