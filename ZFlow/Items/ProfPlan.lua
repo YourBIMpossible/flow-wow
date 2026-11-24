@@ -29,7 +29,9 @@ local _, ns = ...
 -- count } (the ore); craft adds mats (one line per material), and for a
 -- sure craft reach, after and thenText (section 388 a);
 -- kind one of learn_recipe, train_tier, make_part, take_bank, go_station, craft, in
--- that order. why (with no steps): "no reading", "no recipe" (nothing gives
+-- that order; or the one gather_skill step of a gathering profession with
+-- no craft to make (P.GATHER; adds gather = the profession and, with a
+-- node seen, node and target). why (with no steps): "no reading", "no recipe" (nothing gives
 -- a point and nothing can be learned at this skill), "no colours" (the
 -- window's colours were never read) or "no materials"; say is then the one
 -- thing a new player does next, in plain words (section 383).
@@ -59,6 +61,23 @@ P.SAY = {
     ["no recipe"] = "Visit a %s trainer for new recipes",
 }
 P.SAY_NO_PROF = "Open a profession window once"
+-- Queue item A2: the gathering professions. Their points come from
+-- gathering, not from a recipe, so with no craft to make the plan is one
+-- gather_skill step: a line of text, with the nearest node seen on this
+-- map as its place when the profession has a node kind (never guessed).
+-- kind is the node kind Nav/AddonSources.lua gives. First guesses, not
+-- seen in game: the lines, and that any node gives a point.
+P.GATHER = {
+    Mining = { kind = "Mining", text = "Mine any ore vein you find" },
+    Herbalism = { kind = "Herb Gathering", text = "Pick any herb you find" },
+    Fishing = { kind = "Fishing", text = "Fish in any water, with a fishing pole on" },
+    Skinning = { text = "Skin the beasts you kill, with a skinning knife in your bags" },
+}
+P.GATHER_NEAR = "%s; the nearest seen is %s"
+-- A gathering profession with no skill read: it has no window to open.
+P.SAY_GATHER = "Learn %s from a trainer, then gather once"
+-- "no recipe" with a trainer of this profession seen.
+P.SAY_TRAINER = "Visit %s for new %s recipes"
 P.SMELT_PROF = "Mining"
 P.SMELT_STATION = "forge"
 P.CHANCE = { optimal = "sure", medium = "maybe" }
@@ -127,17 +146,24 @@ local function cost(input, mats)
     return total
 end
 
+local function gathers(input)
+    if type(input) ~= "table" or type(input.prof) ~= "string" then return nil end
+    return P.GATHER[input.prof]
+end
+
+-- A gathering profession needs no recipe book: its plan can be the gather
+-- step alone.
 local function usable(input)
     return type(input) == "table" and type(input.prof) == "string"
         and whole(input.skill) and whole(input.max) and input.max > 0
-        and type(input.book) == "table"
+        and (type(input.book) == "table" or gathers(input) ~= nil)
 end
 
 function P.Candidates(input)
     local out = {}
     if not usable(input) then return out end
     local colours = type(input.colours) == "table" and input.colours or {}
-    for name, r in pairs(input.book) do
+    for name, r in pairs(type(input.book) == "table" and input.book or {}) do
         if type(r) == "table" and r.profession == input.prof and r.partial ~= true
             and type(r.mats) == "table" and next(r.mats) ~= nil then
             local chance, span = colourAt(colours[name], input.skill)
@@ -158,7 +184,7 @@ end
 
 -- A known smelt that makes this item: name, entry (one ore item only).
 local function smeltFor(input, item)
-    for name, r in pairs(input.book) do
+    for name, r in pairs(type(input.book) == "table" and input.book or {}) do
         if type(r) == "table" and r.profession == P.SMELT_PROF and r.makes == item and r.partial ~= true
             and type(r.mats) == "table" then
             local ore, per, n = nil, nil, 0
@@ -334,7 +360,7 @@ end
 -- Was any recipe colour of this profession read?
 local function coloursRead(input)
     if type(input.colours) ~= "table" then return false end
-    for name, r in pairs(input.book) do
+    for name, r in pairs(type(input.book) == "table" and input.book or {}) do
         if type(r) == "table" and r.profession == input.prof and type(input.colours[name]) == "table" then
             return true
         end
@@ -344,7 +370,41 @@ end
 
 local function empty(why, input, about)
     if type(input) ~= "table" or type(input.prof) ~= "string" then return {}, why, P.SAY_NO_PROF end
+    if why == "no reading" and gathers(input) then return {}, why, string.format(P.SAY_GATHER, input.prof) end
+    if why == "no recipe" then
+        local npc = get(trainerAt(input), "npc")
+        if type(npc) == "string" and npc ~= "" then
+            return {}, why, string.format(P.SAY_TRAINER, npc, input.prof)
+        end
+    end
     return {}, why, string.format(P.SAY[why], about or input.prof)
+end
+
+-- Queue item A2: the one step of a gathering profession with no craft to
+-- make. target is the nearest node of its kind seen on the map the player
+-- is on, or nil.
+local function gatherStep(input)
+    local g = gathers(input)
+    local here, best, bestD = input.here, nil, nil
+    if type(g.kind) == "string" and type(here) == "table" and here.map ~= nil and type(input.nodes) == "table" then
+        for _, n in ipairs(input.nodes) do
+            if type(n) == "table" and n.kind == g.kind and n.map == here.map
+                and type(n.x) == "number" and type(n.y) == "number" then
+                local d = (n.x - (here.x or 0)) ^ 2 + (n.y - (here.y or 0)) ^ 2
+                if not best or d < bestD then best, bestD = n, d end
+            end
+        end
+    end
+    local line, step = g.text, { kind = "gather_skill", gather = input.prof }
+    if best then
+        step.target = { map = best.map, x = best.x, y = best.y }
+        if type(best.node) == "string" and best.node ~= "" then
+            step.node = best.node
+            line = string.format(P.GATHER_NEAR, line, best.node)
+        end
+    end
+    step.text = string.format("%s (%s)", line, reading(input))
+    return step
 end
 
 -- Section 388 (a), R1: the skill a sure craft reaches and the next recipe
@@ -372,6 +432,7 @@ function P.Plan(input)
         local steps = craftSteps(input, c)
         if steps then return thenLine(input, list, c, steps) end
     end
+    if gathers(input) then return { gatherStep(input) } end
     if #list > 0 and sourced(input) then
         local steps = sourcedSteps(input, list[1])
         if steps then return thenLine(input, list, list[1], steps) end
@@ -419,6 +480,12 @@ end
 function P.Input(client, store, prof, nodeSource)
     local readings = saved(store, "char", "learned.facts.profSkill")
     local r = get(readings, prof)
+    -- Queue item A2: a profession with no window (Herbalism, Skinning) never
+    -- saves a reading, so its skill is read from the skill lines.
+    if type(r) ~= "table" then
+        local line = get(ask(client, "skillRanks"), prof)
+        if type(line) == "table" then r = { skill = line.rank, max = line.max } end
+    end
     local keyOf = ns.Items and ns.Items.Key or function(v) return v end
     local bags = call(get(ns.HaveTip, "Counts"), ask(client, "bagItems"), keyOf)
     local bank = get(saved(store, "char", "learned.bankCounts"), "counts")
