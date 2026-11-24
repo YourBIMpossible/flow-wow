@@ -225,7 +225,7 @@ tests["prof plan: a material whose name is not read yet is never a number"] = fu
         name = function() return nil end }))
     t.eq(steps[1] and steps[1].text, "Take 5 of the materials from your bank, for Test Bolt")
     for _, s in ipairs(steps) do
-        t.eq(s.text:find("%d%d") == nil and s.text:find("item %d") == nil, true, s.text)
+        t.eq(s.text:find("item %d"), nil, s.text)
     end
 end
 
