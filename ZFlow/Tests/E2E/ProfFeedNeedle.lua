@@ -101,4 +101,35 @@ tests["prof feed: /zflow prof plan prints each profession, its steps and the pic
         "the pick and why")
 end
 
+-- Lead section 387 R5: the picked step with a place is also a labelled pin
+-- on the world map (client.mapPins), cleared with no step or the tick off.
+local function pinSet(c)
+    for _, h in ipairs(c.mapPinSets or {}) do
+        if h.shown and h.pins[1] and h.pins[1].name == FISH.text then return h end
+    end
+    return nil
+end
+
+tests["prof feed: the picked step is a labelled pin on the world map; the tick off clears it"] = function(t)
+    local c, addon = start({ Cooking = { FISH }, Mining = { MINE } })
+    c.setWorldMap(1411)
+    c.advance(2, 4)
+    local h = pinSet(c)
+    t.ok(h ~= nil, "a pin named with the step's own words")
+    t.eq(h and h.pins[1].x, 0.45)
+    t.eq(h and h.pins[1].y, 0.5)
+    t.eq(addon.settings:set("nav.professions", false), true)
+    c.advance(2, 4)
+    t.eq(h and h.shown, false, "the tick off: the pin is gone")
+end
+
+tests["prof feed: no step with a place, no pin"] = function(t)
+    local c = start({ Cooking = { FAR } })
+    c.setWorldMap(1453)
+    c.advance(2, 4)
+    for _, h in ipairs(c.mapPinSets or {}) do
+        t.ok(not (h.shown and h.pins[1] and h.pins[1].name == FISH.text), "no Cooking pin")
+    end
+end
+
 return tests
