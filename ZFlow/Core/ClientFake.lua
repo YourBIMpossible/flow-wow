@@ -2057,6 +2057,25 @@ function ns.make.fakeClient(opts)
     end
     c.mapPinSets = {}
     function c.setWorldMap(map) s.worldMap = map end
+    -- Map names: c.setMapName(map, name); mapName(map) is nil until told.
+    function c.setMapName(map, name)
+        s.mapNames = s.mapNames or {}
+        s.mapNames[map] = name
+    end
+    function c.mapName(map) return s.mapNames and s.mapNames[map] or nil end
+    -- The player's Alt + left click on the world map: mapClick(fn) keeps
+    -- fn (nil and a reason with no frames); c.clickMap(map, x, y) is the
+    -- player doing it.
+    c.mapClicks = {}
+    function c.mapClick(fn)
+        if s.noFrames then return nil, "no world map" end
+        if type(fn) ~= "function" then return nil, "no function" end
+        c.mapClicks[#c.mapClicks + 1] = fn
+        return true
+    end
+    function c.clickMap(map, x, y)
+        for _, fn in ipairs(c.mapClicks) do fn(map, x, y) end
+    end
     function c.mapPins()
         if s.noFrames then return nil end
         local h = { pins = {}, lines = {}, shown = false, draws = 0, clears = 0 }

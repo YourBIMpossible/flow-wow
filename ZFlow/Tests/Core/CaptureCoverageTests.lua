@@ -22,7 +22,7 @@ local KIND = {
                -- N60a: the chat filter and the link click (UI/Chat.lua).
                "chatFilter", "onLinkClick" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",
-             "optionsPage", "guideLines", "taxiMark", "mapPins", "comboBar", "slotIcon",
+             "optionsPage", "guideLines", "taxiMark", "mapPins", "mapClick", "comboBar", "slotIcon",
              "markMerchantButtons", "rowPanel", "textEntry",
              -- N59: the info bar, and its data broker feed where the library is loaded.
              "infoBar", "broker",
@@ -115,7 +115,7 @@ local READS = {
     merchantItems = false, returnableItems = false, recipes = true, recipeSchematic = false, tradeSkillSchematic = true, tradeSkillRows = true, tradeSkillTools = true, trainer = false, faction = false, class = true,
     stealthed = true, target = true, inRange = true, level = false, gear = false, spellCooldown = true,
     spellId = true, spellTexture = false, facing = true, spell = true, position = true, dead = true,
-    ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, zone = true,
+    ghost = true, corpse = true, waypoint = false, mapSize = true, mapCont = false, mapName = false, zone = true,
     combatLockdown = true, version = false, screen = false, questLog = true, questFocus = true,
     questFocusReads = false, questieModule = false, minimap = false, itemInfo = false,
     itemLines = false, itemTexture = false, tracking = false, anyTracking = false, professions = false,

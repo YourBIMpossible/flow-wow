@@ -619,6 +619,14 @@ function Arrow.Start(k, diag, own)
                 from = "nothing"
                 if step then
                     mine, from = true, "your own waypoint"
+                    -- One picked on another map (Alt + click on the world
+                    -- map, a pasted map number): that map's own continent,
+                    -- where the client says it.
+                    local to = step.place
+                    if to.cont == nil and type(client.mapCont) == "function" then
+                        local okC, cont = pcall(client.mapCont, to.map)
+                        if okC and type(cont) == "number" then to.cont = cont end
+                    end
                 else
                     step = N.WaypointStep(client)
                     if step then from = "the map pin" end
@@ -1368,7 +1376,8 @@ function Arrow.Start(k, diag, own)
     local function way(rest)
         local text = type(rest) == "string" and rest:match("^%s*(.-)%s*$") or ""
         local cmd = wayHeld and "/way" or (id.slash .. " way")
-        local HOW = cmd .. " x y [label] sets a waypoint on the map you are on; " .. cmd .. " clear removes it."
+        local HOW = cmd .. " x y [label] sets a waypoint on the map you are on; " .. cmd .. " clear removes it. "
+            .. "Or hold Alt and click a spot on the world map."
         if not W then
             say("waypoints are not loaded.")
         elseif not ready then
@@ -1385,7 +1394,9 @@ function Arrow.Start(k, diag, own)
                 say(W.REASON.unset .. ".")
             end
         else
-            local wp, why = W.Set(W.Slot(k.store), ask(client, "position"), text)
+            local here = ask(client, "position")
+            local okN, zoneName = pcall(function() return client.mapName(here.map) end)
+            local wp, why = W.Set(W.Slot(k.store), here, text, okN and zoneName or nil)
             if wp then
                 say("waypoint set: " .. tostring(W.Text(wp)) .. ".")
                 relayout()
@@ -1414,6 +1425,30 @@ function Arrow.Start(k, diag, own)
     end
     claimWay()
     listen("PLAYER_LOGIN", claimWay)
+
+    -- Alt + click on the world map sets the same waypoint at that spot
+    -- (G35). It only points: the map's own click is left as it is.
+    local function mapWay(map, x, y)
+        if not W or not ready then return end
+        local wp, why = W.SetAt(W.Slot(k.store), map, x, y)
+        if wp then
+            local okN, name = pcall(function() return client.mapName(map) end)
+            local where = okN and type(name) == "string" and (" in " .. name) or ""
+            say("waypoint set: " .. tostring(W.Text(wp)) .. where .. ". "
+                .. (wayHeld and "/way" or (id.slash .. " way")) .. " clear removes it.")
+            relayout()
+        else
+            say(tostring(why) .. "; nothing changed.")
+        end
+    end
+    local mapHooked = false
+    local function hookMap()
+        if mapHooked or type(client.mapClick) ~= "function" then return end
+        local ok, done = pcall(client.mapClick, mapWay)
+        mapHooked = ok and done == true
+    end
+    hookMap()
+    listen("PLAYER_LOGIN", hookMap)
 
     local function setGuide(fn)
         guideFn = type(fn) == "function" and fn or nil
