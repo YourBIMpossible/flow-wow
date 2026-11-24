@@ -4931,8 +4931,20 @@ function ns.make.fakeClient(opts)
             return 0
         end
         c.barGlowing = name
+        -- c.setBars(map): bar button name -> the spell it holds. Set, the
+        -- glow is on the buttons holding the spell (c.barGlowButtons, sorted).
+        if type(s.bars) == "table" then
+            local on = {}
+            for button, spell in pairs(s.bars) do
+                if spell == name then on[#on + 1] = button end
+            end
+            table.sort(on)
+            c.barGlowButtons = on
+            return #on
+        end
         return 1
     end
+    function c.setBars(map) s.bars = map end
 
     -- FLOW-PARITY D-07: c.setSpellCooldownSpan(id, start, length) and
     -- c.spellCooldownSpan(id) (nil: never set). Icons get h.cooldown

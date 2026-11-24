@@ -97,6 +97,31 @@ tests["barglow D-06: the bar button holding the suggested spell glows; off clear
     t.eq(c.barGlowing, nil, "suggestions off: no glow")
 end
 
+-- CHANGES-3: the same spell suggested, the spell dragged to another bar
+-- slot (or the page or stance changed): the glow follows it.
+tests["barglow D-06: the same spell moved to another bar slot: the glow moves"] = function(t)
+    local c, addon = start()
+    local spell = suggested(c)
+    t.ok(spell ~= nil, "a spell is suggested")
+    c.setBars({ ActionButton1 = spell })
+    addon.settings:set(D.SETTING, false); c.advance(1, 3)
+    addon.settings:set(D.SETTING, true); c.advance(1, 3)
+    t.eq(suggested(c), spell, "the same spell")
+    t.eq(c.barGlowButtons, { "ActionButton1" }, "the glow on the button holding it")
+    c.setBars({ ActionButton5 = spell })
+    c.fire("ACTIONBAR_SLOT_CHANGED", 5); c.advance(1, 3)
+    t.eq(suggested(c), spell, "still the same spell")
+    t.eq(c.barGlowButtons, { "ActionButton5" }, "the glow moved with the spell")
+    for _, event in ipairs({ "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR", "UPDATE_SHAPESHIFT_FORM" }) do
+        c.setBars({ MultiBarBottomLeftButton2 = spell })
+        c.fire(event); c.advance(1, 3)
+        t.eq(c.barGlowButtons, { "MultiBarBottomLeftButton2" }, event .. ": the glow follows")
+        c.setBars({ ActionButton5 = spell })
+        c.fire(event); c.advance(1, 3)
+        t.eq(c.barGlowButtons, { "ActionButton5" }, event .. ": and back")
+    end
+end
+
 tests["barglow D-06: the glow changes nothing any button casts"] = function(t)
     local c = start()
     local before = holds(c)
