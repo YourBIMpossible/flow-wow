@@ -56,17 +56,17 @@ E.NAME = "errand"
 E.WORD = "stop"
 E.RADIUS = 10
 E.NPCS = "learned.places.npcs"
-E.ORDER = { "vendor", "repair", "bank", "inn", "flight", "mail", "trainer" }
+E.ORDER = { "vendor", "repair", "bank", "inn", "flight", "mail", "auction", "trainer" }
 E.KINDS = {
     vendor = "vendor", repair = "repair", bank = "banker", inn = "innkeeper",
-    flight = "flight", mail = "mailbox", trainer = "trainer",
+    flight = "flight", mail = "mailbox", auction = "auction", trainer = "trainer",
 }
 E.LABELS = {
     vendor = "Vendor", repair = "Repair", banker = "Bank", innkeeper = "Inn",
-    flight = "Flight master", mailbox = "Mailbox", trainer = "Trainer",
+    flight = "Flight master", mailbox = "Mailbox", auction = "Auction house", trainer = "Trainer",
 }
 E.HELP = "point the arrow at the nearest stop you have seen: vendor, repair, bank, inn, flight,"
-    .. " mail or trainer; hearth, route, off"
+    .. " mail, auction or trainer; hearth, route, off"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge

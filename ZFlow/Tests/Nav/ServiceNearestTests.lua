@@ -17,7 +17,7 @@ end
 local T = {}
 
 T["nearest service: the kinds and the saved path are the ones agreed"] = function(t)
-    t.eq(N.SERVICE_KINDS, { "vendor", "repair", "banker", "innkeeper", "flight", "mailbox" })
+    t.eq(N.SERVICE_KINDS, { "vendor", "repair", "banker", "innkeeper", "flight", "mailbox", "auction" })
     t.eq(N.SERVICES, "learned.places.services")
 end
 

@@ -55,7 +55,7 @@ P.NAME = "trip"
 P.WORD = "trip"
 P.PATH = "state.trip"
 P.MAX = 20
-P.HELP = "a list of stops to visit: trip add vendor|repair|bank|inn|flight|mail|trainer|giver <quest>"
+P.HELP = "a list of stops to visit: trip add vendor|repair|bank|inn|flight|mail|auction|trainer|giver <quest>"
     .. "|dungeon <name>|here [label]; trip, trip remove <n>, trip after <n> <m>, trip clear, trip go"
 
 P.HEADER = "Trip: %d stops"
