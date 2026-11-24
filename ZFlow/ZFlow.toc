@@ -144,6 +144,7 @@ Nav\Leaving.lua
 Nav\FlightPaths.lua
 Nav\MapFlights.lua
 Nav\TaxiMark.lua
+Nav\FlightWord.lua
 Nav\Flights.lua
 Nav\Gates.lua
 Nav\Travel.lua
@@ -155,6 +156,7 @@ UI\ProfPick.lua
 UI\DevPanel.lua
 UI\SettingsSlash.lua
 UI\SettingsPage.lua
+UI\SettingsNative.lua
 UI\SettingsKeys.lua
 UI\SettingsPanel.lua
 UI\SettingsWindow.lua
@@ -170,6 +172,7 @@ UI\SellList.lua
 UI\BankList.lua
 UI\KitHost.lua
 Items\Keep.lua
+Items\Buyback.lua
 Items\RecipeBook.lua
 Items\RecipeLearned.lua
 Items\ProfRecipes.lua
@@ -218,6 +221,7 @@ UI\HelpPages.lua
 UI\SetupList.lua
 Nav\QuestSpots.lua
 Nav\TripRoute.lua
+Nav\ZoneLeft.lua
 UI\MinimapPlace.lua
 UI\MinimapButton.lua
 Nav\Trails.lua
@@ -228,11 +232,22 @@ Nav\PartyRoute.lua
 Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
+UI\BuffStrip.lua
 Nav\QuestAdvice.lua
+Nav\TravelAdvice.lua
+Nav\InvitePrompt.lua
 Spells\TrainAdvice.lua
 Items\ProfPlan.lua
 Items\ProfSources.lua
+Items\VendorWares.lua
 UI\ProfDock.lua
 Nav\ProfFeed.lua
 Nav\HearthAdvice.lua
+UI\DungeonTracker.lua
 Nav\GateWords.lua
+Nav\CrossingWords.lua
+Nav\Activities.lua
+UI\Lite.lua
+Nav\ClassTrainerStep.lua
+Items\DispositionTip.lua
+Import\Apply.lua

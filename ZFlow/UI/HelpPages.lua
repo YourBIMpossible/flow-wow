@@ -76,7 +76,7 @@ H.PAGES = {
     { id = "stops", title = "Vendors, inns and other stops",
       about = {
           { "The arrow can point at places you have seen.",
-            "A vendor, a repairer, a bank, an inn or a flight master." },
+            "A vendor, a repairer, a bank, an inn, a flight master or an auction house." },
           { "A trip is your own list of stops, walked in order." },
       },
       words = {
@@ -113,6 +113,7 @@ H.PAGES = {
       },
       words = {
           { word = "banker", text = "What to put in the bank now" },
+          { word = "buyback", text = "At a merchant: what you can buy back" },
           { word = "auctions", text = "What in your bags is worth the auction house" },
           { word = "auction", text = "The prices seen in your own searches" },
           { word = "trader", text = "Deals among your own searches this session" },

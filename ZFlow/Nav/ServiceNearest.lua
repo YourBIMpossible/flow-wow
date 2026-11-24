@@ -32,7 +32,7 @@ local _, ns = ...
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
-N.SERVICE_KINDS = { "vendor", "repair", "banker", "innkeeper", "flight", "mailbox" }
+N.SERVICE_KINDS = { "vendor", "repair", "banker", "innkeeper", "flight", "mailbox", "auction" }
 N.SERVICES = "learned.places.services"
 
 local KNOWN = {}

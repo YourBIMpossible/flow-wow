@@ -210,4 +210,30 @@ tests["dungeon list 343: the level range as the header and the list say it"] = f
     t.eq(S.CountText(0), "No quests")
 end
 
+tests["dungeon pane: every row says what the player does next"] = function(t)
+    local quests = {
+        [1] = q(1, { name = "In log", level = 22 }),
+        [2] = q(2, { name = "Easy pickup", level = 18 }),
+        [3] = q(3, { name = "Later one", level = 30, requiredLevel = 26 }),
+    }
+    local pane = S.Pane({ available = true, dungeon = { key = 7, name = "The Deadmines" },
+        quests = { quests[1], quests[2], quests[3] }, ctx = ctx(quests, { log = { [1] = true } }) })
+    local seen = 0
+    for _, g in ipairs(pane.groups) do
+        for _, r in ipairs(g.rows) do
+            if g.id ~= "notforyou" then
+                seen = seen + 1
+                t.eq(r.next, S.NEXT[r.state], tostring(r.name) .. ": the line for its state")
+                t.ok(type(r.next) == "string" and r.next ~= "", tostring(r.name) .. ": a next step")
+            end
+        end
+    end
+    t.eq(seen, 3, "all three rows")
+    t.eq(pane.groups[1].rows[1].next, "Do it on this run.")
+    for state, line in pairs(S.NEXT) do
+        t.ok(type(line) == "string" and line:sub(-1) == ".", state .. ": a whole sentence")
+    end
+end
+
+
 return tests

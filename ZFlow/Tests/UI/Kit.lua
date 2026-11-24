@@ -267,4 +267,23 @@ return {
         _, w, h = K.Place({ point = { "CENTER", "CENTER", 1, 2 }, width = 500, height = 360 }, fixed)
         t.eq({ w, h }, { K.WIDTH, K.HEIGHT }, "a window that cannot be resized keeps its size")
     end,
+
+    ["kit: a choice may ask to be drawn as a dropdown; drop must be true or false"] = function(t)
+        if not has(t) then return end
+        local function one(drop)
+            local tree, why = K.Window({ id = "Drop", title = "Drop", children = {
+                { kind = "row", label = "A mode", control = { kind = "choice", items = { "a", "b" }, selected = 1,
+                    onSelect = nop, drop = drop } },
+            } })
+            if not tree then return nil, why end
+            local got
+            K.Each(tree, function(p) if p.kind == "choice" then got = p end end)
+            return got
+        end
+        t.eq(one(true).drop, true, "drop = true is kept")
+        t.eq(one(false).drop, nil, "drop = false is the row of buttons")
+        t.eq(one(nil).drop, nil)
+        local ok, why = one("yes")
+        refused(t, ok, why, "drop", "a word for drop")
+    end,
 }
