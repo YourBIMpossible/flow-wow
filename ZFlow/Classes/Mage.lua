@@ -25,8 +25,9 @@ local _, ns = ...
 --   * channelled spells (Arcane Missiles, Blizzard, Evocation): the snapshot
 --     has no read of your own channel, so a suggestion could cut one short.
 --     They stay in the spell list; the chooser does not suggest them;
---   * Frost Nova and Blink as steps: they answer an enemy next to you, and
---     the driver reads no such thing yet. Both are on the key rows;
+--   * Blink as a step: it answers a frozen or rooted enemy next to you, and
+--     the driver reads no frozen state yet. It is on the key rows. Frost
+--     Nova is a step (N52): an enemy next to you, on you and hitting you;
 --   * Polymorph and Counterspell on another enemy are shown only, never on
 --     the key (lead section 242: the crowd-control and plate-cast steps of
 --     Rotation/Choose.lua); both wait on the nameplate reads (P-READS);
@@ -147,6 +148,10 @@ local buffs = tag({
 })
 
 local single = tag({
+    -- Needs game test: the three reads (targetMelee, targetOnYou,
+    -- hittingYou) as the Druid pack uses them for Entangling Roots.
+    { spell = "Frost Nova", reason = "An enemy is hitting you up close: freeze it, then step back",
+      when = function(s) return inFight(s) and s.hostile and s.targetMelee and s.targetOnYou and s.hittingYou end },
     { spell = "Fire Blast", target = true, reason = "Fire Blast is ready: instant damage",
       when = function(s) return s.hostile end },
     { spell = "Frostbolt", target = true, reason = "Frostbolt: damage, and it slows",

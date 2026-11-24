@@ -129,4 +129,17 @@ tests["mage MAGE-5: the magic you chose is kept up out of a fight"] = function(t
     t.ok(got == nil or got.spell ~= AMPLIFY, "in a fight: not asked for")
 end
 
+tests["mage N52: an enemy hitting you up close: Frost Nova first; otherwise not"] = function(t)
+    local known = { MAGE_ARMOR, "Arcane Intellect", "Frostbolt", "Fire Blast", "Frost Nova" }
+    local close = { buffs = ARMORED, inCombat = true, hostile = true,
+        targetMelee = true, targetOnYou = true, hittingYou = true }
+    t.eq(pick(close, known), "Frost Nova", "an enemy next to you, hitting you")
+    local apart = { buffs = ARMORED, inCombat = true, hostile = true, targetOnYou = true, hittingYou = true }
+    t.eq(pick(apart, known), "Fire Blast", "not next to you: damage as before")
+    local quiet = { buffs = ARMORED, inCombat = true, hostile = true, targetMelee = true, targetOnYou = true }
+    t.eq(pick(quiet, known), "Fire Blast", "next to you, not hitting you yet: as before")
+    t.eq(pick(close, { MAGE_ARMOR, "Arcane Intellect", "Frostbolt", "Fire Blast" }), "Fire Blast",
+        "Frost Nova not known: as before")
+end
+
 return tests
