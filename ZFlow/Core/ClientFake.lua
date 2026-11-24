@@ -180,6 +180,10 @@ function ns.make.fakeClient(opts)
         if s.merchantOpen ~= true then return nil end
         return copyRows(s.merchant)
     end
+    function c.returnableItems()
+        if s.merchantOpen ~= true then return nil end
+        return copyRows(s.buyback)
+    end
     function c.recipes()
         local r = s.recipes
         if type(r) ~= "table" then return nil end
@@ -829,6 +833,11 @@ function ns.make.fakeClient(opts)
     -- window that cannot be read. merchantItems() gives it only while the
     -- window is open.
     function c.setMerchant(rows) s.merchant = copyRows(rows) end
+    -- G3: the merchant's Buyback tab, in the shape of returnableItems():
+    -- { { index =, item =, name =, price =, count = }, ... }; nil for a tab
+    -- that cannot be read. returnableItems() gives it only while the window is
+    -- open.
+    function c.setReturnable(rows) s.buyback = copyRows(rows) end
     -- true / false fire the merchant event; nil is "not known" and fires nothing.
     function c.setMerchantOpen(on)
         if on == nil then s.merchantOpen = nil return end
@@ -939,6 +948,68 @@ function ns.make.fakeClient(opts)
     function c.optionsHide() if s.options then s.options.shown = false end end
     function c.optionsAct(key, value)
         if s.options and type(s.options.act) == "function" then return s.options.act(key, value) end
+    end
+    -- Lead section 410: the twin of c.optionsNative, the add-on's settings
+    -- as the game's own rows. Off until setOptionsNative(true): a client
+    -- with no such rows is the start, as nothing shows 16001 has them.
+    --   c.nativeOptions() -> { title, rows, topics, opened = { topic id or
+    --     false, ... } } or nil; c.nativeRow(key) -> the row of that key
+    --   c.nativeSet(key, value) -> plays the player changing the row: false
+    --     when the row's `can` says no, else what its set gave
+    --   c.nativePress(label) -> true when a button row of that label ran
+    function c.setOptionsNative(on) s.nativeOn = (on == true) end
+    function c.optionsNative(spec)
+        if not s.nativeOn or type(spec) ~= "table" then return nil end
+        local n = 0
+        local function count(rows)
+            for _, r in ipairs(rows or {}) do
+                if r.kind ~= "header" then n = n + 1 end
+            end
+        end
+        count(spec.rows)
+        for _, topic in ipairs(spec.topics or {}) do count(topic.rows) end
+        if n == 0 then return nil end
+        s.native = { title = spec.title, rows = spec.rows or {}, topics = spec.topics or {}, opened = {} }
+        local h = {}
+        function h.open(topicId)
+            if s.nativeOpenFails then return false end
+            s.native.opened[#s.native.opened + 1] = topicId or false
+            return true
+        end
+        function h.count() return n end
+        function h.order() return "new" end
+        return h
+    end
+    function c.setNativeOpenFails(on) s.nativeOpenFails = (on == true) end
+    function c.nativeOptions() return s.native end
+    local function nativeEach(fn)
+        if not s.native then return nil end
+        for _, r in ipairs(s.native.rows) do
+            local got = fn(r)
+            if got ~= nil then return got end
+        end
+        for _, topic in ipairs(s.native.topics) do
+            for _, r in ipairs(topic.rows or {}) do
+                local got = fn(r, topic)
+                if got ~= nil then return got end
+            end
+        end
+        return nil
+    end
+    function c.nativeRow(key)
+        return nativeEach(function(r) if r.key == key and r.kind ~= "button" then return r end end)
+    end
+    function c.nativeSet(key, value)
+        local r = c.nativeRow(key)
+        if not r then return nil end
+        if type(r.can) == "function" and r.can() ~= true then return false end
+        return r.set(value)
+    end
+    function c.nativePress(label)
+        local r = nativeEach(function(row) if row.kind == "button" and row.label == label then return row end end)
+        if not r then return false end
+        r.run()
+        return true
     end
     -- S28 sound restart: setSound{ ways = { name, ... }, fail = text or nil,
     -- noEvent = true } and speakersChanged() to play the game's event.
@@ -1846,6 +1917,9 @@ function ns.make.fakeClient(opts)
     function c.setPlateCasts(list) s.plateCasts = copyPlateRows(list) end
     function c.plateCasts() return copyPlateRows(s.plateCasts) end
     function c.grouped() return s.grouped end
+    -- The friends list, by player id (party invites): not known until set.
+    function c.setFriend(guid, v) s.friends = s.friends or {}; s.friends[guid] = v end
+    function c.isFriend(guid) return s.friends and s.friends[guid] or nil end
     function c.setGrouped(v)
         if v == nil then s.grouped = nil else s.grouped = v and true or false end
     end
@@ -2029,6 +2103,25 @@ function ns.make.fakeClient(opts)
     end
     c.mapPinSets = {}
     function c.setWorldMap(map) s.worldMap = map end
+    -- Map names: c.setMapName(map, name); mapName(map) is nil until told.
+    function c.setMapName(map, name)
+        s.mapNames = s.mapNames or {}
+        s.mapNames[map] = name
+    end
+    function c.mapName(map) return s.mapNames and s.mapNames[map] or nil end
+    -- The player's Alt + left click on the world map: mapClick(fn) keeps
+    -- fn (nil and a reason with no frames); c.clickMap(map, x, y) is the
+    -- player doing it.
+    c.mapClicks = {}
+    function c.mapClick(fn)
+        if s.noFrames then return nil, "no world map" end
+        if type(fn) ~= "function" then return nil, "no function" end
+        c.mapClicks[#c.mapClicks + 1] = fn
+        return true
+    end
+    function c.clickMap(map, x, y)
+        for _, fn in ipairs(c.mapClicks) do fn(map, x, y) end
+    end
     function c.mapPins()
         if s.noFrames then return nil end
         local h = { pins = {}, lines = {}, shown = false, draws = 0, clears = 0 }
@@ -3307,7 +3400,7 @@ function ns.make.fakeClient(opts)
     --     section 236: a read that fails, then recovers);
     --   c.rewardMarked(): the choice marked now, or nil.
     do
-        local rewardMark = nil
+        local rewardMark, rewardKind = nil, nil
         function c.setQuestChoices(rows)
             if type(rows) == "table" then s.questChoices = rows else s.questChoices = nil end
         end
@@ -3319,15 +3412,17 @@ function ns.make.fakeClient(opts)
             for i, row in ipairs(s.questChoices) do out[i] = { index = row.index, link = row.link } end
             return out
         end
-        function c.markRewardChoice(index)
+        function c.markRewardChoice(index, kind)
             if type(index) ~= "number" then
-                rewardMark = nil
+                rewardMark, rewardKind = nil, nil
                 return nil
             end
-            rewardMark = index
+            rewardMark, rewardKind = index, kind
             return true
         end
         function c.rewardMarked() return rewardMark end
+        -- G14 coin: "upgrade" (the arrow) or "coin" (sell it), or nil.
+        function c.rewardMarkKind() return rewardKind end
     end
     -- S21: the value on a loot roll's item, as the real client's
     -- rollValue(rollID, text, r, g, b): true, kept per roll; no text clears
@@ -3768,9 +3863,22 @@ function ns.make.fakeClient(opts)
         -- by its path and by its key, with whether it can be used.
         local function read(w, tree)
             local list, byName, slots = {}, {}, {}
+            local byPart = {}
+            local size = ns.Kit.look.size
             local function one(part, live)
                 local entry = { part = part, live = live and part.enabled ~= false, checked = part.checked == true }
-                list[#list + 1] = { kind = part.kind, path = part.path, key = part.key, text = ns.Kit.TextOf(part) }
+                local row = { kind = part.kind, path = part.path, key = part.key, text = ns.Kit.TextOf(part) }
+                -- Lead section 408: a line that wraps, and the rows the
+                -- fake takes it to fill (c.KIT_LETTER wide a letter: a
+                -- count, not the game's fonts).
+                if part.kind == "line" and part.wrap == true then
+                    local room = (w.rec.width or tree.width) - 2 * size.pad - 2 * size.gapSmall
+                    local per = math.max(math.floor(room / c.KIT_LETTER), 1)
+                    row.wrap = true
+                    row.rows = math.max(math.ceil(#tostring(row.text or "") / per), 1)
+                end
+                byPart[part] = row
+                list[#list + 1] = row
                 byName[part.path] = entry
                 if part.kind ~= "bind" and part.key ~= nil then byName[part.key] = entry end
                 if part.kind == "footer" and part.slot ~= nil then slots[part.slot] = { slot = part.slot } end
@@ -3787,6 +3895,24 @@ function ns.make.fakeClient(opts)
             end
             walk(tree.children)
             w.tree, w.parts, w.slots, w.rec.parts = tree, byName, slots, list
+            w.rec.title = tree.title
+            -- As the real client's fit (lead section 408): the title bar,
+            -- the padding and the parts. The fake knows the height of lines
+            -- only; any other part counts as one row.
+            if tree.fit == true then
+                local tall = 0
+                for i = 1, #tree.children do
+                    local part = tree.children[i]
+                    if part.kind == "line" and type(part.sub) == "string" and part.sub ~= "" then
+                        tall = tall + size.rowHeightDesc
+                    elseif byPart[part] ~= nil and byPart[part].rows ~= nil then
+                        tall = tall + byPart[part].rows * size.lineHeight
+                    else
+                        tall = tall + size.lineHeight
+                    end
+                end
+                w.rec.height = size.title + 2 * size.pad + tall
+            end
         end
         -- The window, and the part of that path or key when it can be used.
         local function entryOf(id, name)
@@ -3820,6 +3946,8 @@ function ns.make.fakeClient(opts)
             if drawnFn ~= nil then pcall(drawnFn, id, art) end
         end
         function c.setKitFails(n) kitFails = tonumber(n) or 0 end
+        -- How wide the fake takes one letter of a wrapping line to be.
+        c.KIT_LETTER = 7
         function c.kitWindow(id, tree, extra)
             local cb = type(extra) == "table" and extra or {}
             local bad = s.noFrames or type(id) ~= "string" or type(tree) ~= "table" or tree.kind ~= "window"
@@ -3864,7 +3992,10 @@ function ns.make.fakeClient(opts)
                 end
                 if point ~= nil then w.rec.point = { point[1], point[2], point[3], point[4] } end
                 if width ~= nil then w.rec.width = math.max(width, tonumber(w.tree.minWidth) or 0) end
-                if height ~= nil then w.rec.height = math.max(height, tonumber(w.tree.minHeight) or 0) end
+                -- A window that fits keeps the height of its parts.
+                if height ~= nil and w.tree.fit ~= true then
+                    w.rec.height = math.max(height, tonumber(w.tree.minHeight) or 0)
+                end
                 return true
             end
             function h.show(on) w.rec.shown = on and true or false end
@@ -4428,6 +4559,25 @@ function ns.make.fakeClient(opts)
     function c.questShareable(id)
         if type(id) ~= "number" then return nil end
         return s.questShareable and s.questShareable[id]
+    end
+
+    -- Lead section 303 (d): c.setInstanceName(text) (nil: not known).
+    function c.setInstanceName(name) s.instanceName = name end
+    function c.instanceName()
+        if type(s.instanceName) ~= "string" or s.instanceName == "" then return nil end
+        return s.instanceName
+    end
+
+    -- S32: c.setPlaceText(zone, sub): the zone and sub-zone words; not set,
+    -- placeText() is nil (not known).
+    function c.setPlaceText(zone, sub)
+        local function w(v) return type(v) == "string" and v ~= "" and v or nil end
+        s.placeText = (w(zone) or w(sub)) and { zone = w(zone), sub = w(sub) } or nil
+    end
+    function c.placeText()
+        local p = s.placeText
+        if p == nil then return nil end
+        return { zone = p.zone, sub = p.sub }
     end
     return c
 end

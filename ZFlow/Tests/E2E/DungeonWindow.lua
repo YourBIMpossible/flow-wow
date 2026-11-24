@@ -10,7 +10,7 @@ local tests = {}
 local ID = "dungeons"
 local DM, SFK = 1581, 209
 
-local function questie()
+local function questie(inside)
     local quests = {
         [101] = { Id = 101, name = "Red Silk", level = 18, requiredLevel = 14, zoneOrSort = DM,
             Starts = { NPC = { 501 } } },
@@ -20,6 +20,12 @@ local function questie()
             Starts = { NPC = { 503 } } },
     }
     local npcs = { [501] = { name = "Gryan", friendlyToFaction = "A" }, [503] = { name = "Sorcerer", friendlyToFaction = "AH" } }
+    if inside then
+        -- Its giver is inside the Deadmines (Twin low note, icons by group).
+        quests[108] = { Id = 108, name = "Deep Inside", level = 18, requiredLevel = 14, zoneOrSort = DM,
+            Starts = { NPC = { 505 } } }
+        npcs[505] = { name = "Prisoner", friendlyToFaction = "A", spawns = { [DM] = { { 10, 10 } } } }
+    end
     local db = { QuestPointers = {} }
     for id in pairs(quests) do db.QuestPointers[id] = true end
     function db.GetQuest(id) return quests[id] end
@@ -43,11 +49,12 @@ local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, opts.account or {}); c.setSaved(ns.id.charDB, {})
-    c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction("Alliance"); c.setLevel(18)
-    for _, id in ipairs({ 101, 103, 201 }) do c.setQuestDone(id, false) end
+    c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction(opts.faction or "Alliance"); c.setLevel(18)
+    for _, id in ipairs({ 101, 103, 108, 201 }) do c.setQuestDone(id, false) end
+    if opts.log then c.setQuestLog(opts.log) end
     c.setZone(1, 1436); c.setPosition(1436, 0.5, 0.5)
     if opts.questie ~= false then
-        local db, zones = questie()
+        local db, zones = questie(opts.inside)
         c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
     end
     local addon = ns.offline.addon(c)
@@ -275,5 +282,56 @@ tests["dungeon window 343: a summary line above the tabs: name, level range, que
     s = partByKey(box.tree, "summary")
     t.eq(s and { s.text, s.right, s.sub }, { "Shadowfang Keep", "Level 27", "1 quest" }, "follows the pick")
 end
+
+-- Twin low note: the other three groups' icons. unfold: a group to open
+-- first (Not for you is folded at first).
+local function iconsOf(c, unfold)
+    local last
+    local real = c.kitWindow
+    c.kitWindow = function(id, tree, extra)
+        last = tree
+        local h = real(id, tree, extra)
+        if type(h) == "table" then
+            local update = h.update
+            h.update = function(now)
+                last = now
+                return update(now)
+            end
+        end
+        return h
+    end
+    open(c)
+    if unfold then c.kitClick(ID, "group." .. unfold) end
+    local icons = {}
+    ns.Kit.Each(last, function(part)
+        if part.kind == "line" and type(part.text) == "string" then icons[part.text] = part.icon end
+    end)
+    return icons
+end
+
+tests["dungeon window icons: in your log, inside, and not for you"] = function(t)
+    local look = ns.Kit.look.icon
+    local icons = iconsOf((boot({ inside = true, log = { { id = 101, title = "Red Silk", objectives = {} } } })))
+    t.eq(icons["Red Silk"], look.questInLog, "in your log")
+    t.eq(icons["Deep Inside"], look.questAvailable, "inside: the available mark")
+    local horde = iconsOf((boot({ faction = "Horde" })), "notforyou")
+    t.eq(horde["Red Silk"], look.questNotForYou, "the other faction's quest")
+end
+
+tests["dungeon window next: each quest line says what to do with it"] = function(t)
+    local c = boot()
+    local box = capture(c)
+    open(c)
+    t.eq(c.kitSelect(ID, "dungeons", 1), true, "the Deadmines")
+    local subs = {}
+    ns.Kit.Each(box.tree, function(p)
+        if p.text ~= nil and p.sub ~= nil then subs[tostring(p.text)] = tostring(p.sub) end
+    end)
+    local S = ns.DungeonStates
+    local red, defias = subs["Red Silk"], subs["The Defias Brotherhood"]
+    t.ok(red ~= nil and red:find(S.NEXT.pickup, 1, true) ~= nil, "pick it up first: " .. tostring(red))
+    t.ok(defias ~= nil and defias:find(S.NEXT.nextrun, 1, true) ~= nil, "level 20 at 18, a later run: " .. tostring(defias))
+end
+
 
 return tests
