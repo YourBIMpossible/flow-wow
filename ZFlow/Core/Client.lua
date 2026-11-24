@@ -2481,6 +2481,61 @@ function ns.make.client(env)
         return mod
     end
 
+    -- One boss as the dungeon journal of the client gives it (lead DISPATCH
+    -- 426), or nil when the client has no journal calls or does not answer:
+    --   { name = text or nil, items = { item id, ... }, shown = true or nil }
+    -- instance, encounter: the journal's own numbers. The name is the first
+    -- answer of EJ_GetEncounterInfo(encounter). withLoot: also ask the loot
+    -- (EJ_SelectInstance, EJ_SelectEncounter, EJ_GetNumLoot, then
+    -- C_EncounterJournal.GetLootInfoByIndex(i).itemID). Selecting turns the
+    -- page of the journal, so the loot is not asked while the journal
+    -- window is shown (shown = true then). Read only: nothing is cast,
+    -- bought, moved or clicked. First guesses, from the retail client's
+    -- call names: whether a 16001 client has them is what Nav/DungeonRead.lua
+    -- R.JournalLine reports. Not seen in game.
+    function c.journalBoss(instance, encounter, withLoot)
+        if type(instance) ~= "number" or type(encounter) ~= "number" then return nil end
+        if type(env.EJ_GetEncounterInfo) ~= "function" then return nil end
+        local okName, name = call(env.EJ_GetEncounterInfo, encounter)
+        if not okName then return nil end
+        local out = { name = text(true, name), items = {} }
+        if not withLoot then
+            if out.name == nil then return nil end
+            return out
+        end
+        local frame = env.EncounterJournal
+        if type(frame) == "table" then
+            local okShown, shown = method(frame, "IsShown")
+            if okShown and shown then
+                out.shown = true
+                return out
+            end
+        end
+        local group = env.C_EncounterJournal
+        if type(group) ~= "table" or type(group.GetLootInfoByIndex) ~= "function" then
+            if out.name == nil then return nil end
+            return out
+        end
+        if not call(env.EJ_SelectInstance, instance) or not call(env.EJ_SelectEncounter, encounter) then
+            if out.name == nil then return nil end
+            return out
+        end
+        local okCount, count = call(env.EJ_GetNumLoot)
+        count = whole(okCount, count) or 0
+        if count > 500 then count = 500 end
+        local had = {}
+        for i = 1, count do
+            local okInfo, info = call(group.GetLootInfoByIndex, i)
+            local id = okInfo and type(info) == "table" and whole(true, info.itemID) or nil
+            if id and id > 0 and not had[id] then
+                had[id] = true
+                out.items[#out.items + 1] = id
+            end
+        end
+        if out.name == nil and #out.items == 0 then return nil end
+        return out
+    end
+
     -- The minimap as the client says it is (F1), or nil without one:
     --   { size =, radius =, rotates =, square = }
     -- size: how wide the frame is. radius: yards from the middle to the
@@ -4023,6 +4078,18 @@ function ns.make.client(env)
         if v == true or v == 1 then return true end
         if v == false or v == 0 then return false end
         return nil
+    end
+
+    -- c.repairCost() -> what repairing everything costs at the open
+    -- merchant, in copper (0: nothing to repair), or nil when not known or
+    -- the merchant does not repair. A read only: nothing is repaired.
+    -- First guess, not seen in game: GetRepairAllCost() -> cost, canRepair
+    -- (warcraft.wiki.gg, API GetRepairAllCost).
+    function c.repairCost()
+        if c.merchantRepairs() ~= true then return nil end
+        local ok, cost = call(env.GetRepairAllCost)
+        if not ok or cost == nil or hidden(cost) or not wholeCount(cost) then return nil end
+        return cost
     end
 
     -- c.bindLocation() -> the name of the place the hearthstone is set to,
@@ -9213,6 +9280,81 @@ function ns.make.client(env)
         end
     end
 
+    -- G14 bag badge (section 393): a few letters on bag slots (the role an
+    -- upgrade is for). First guess, not seen in game on 16001: the bag
+    -- windows are ContainerFrame1..NUM_CONTAINER_FRAMES (13 when not given),
+    -- each window's GetID() its bag and its buttons <window>Item1..36 with
+    -- GetID() their slot, as the classic bag code builds them.
+    --   c.markBagSlots({ { bag, slot, text } ... }) -> how many slots carry
+    --     a letter now. Every other letter is hidden; {} hides them all.
+    -- The marks are kept and drawn again when a bag window opens (a window
+    -- may show another bag than last time). Our own font string on each
+    -- button, reused; nothing of the game's is written, nothing is clicked.
+    -- In a do block: make.client is near Lua 5.1's 200 locals.
+    do
+        local bagLetters, bagWanted, bagHooked = {}, {}, {}
+        local function bagLetter(button)
+            local known = bagLetters[button]
+            if known ~= nil then return known or nil end
+            local okT, fs = method(button, "CreateFontString", nil, "OVERLAY", "NumberFontNormalSmall")
+            if not okT or fs == nil then
+                bagLetters[button] = false
+                return nil
+            end
+            method(fs, "SetPoint", "TOPLEFT", button, "TOPLEFT", 2, -2)
+            method(fs, "SetTextColor", 0.1, 1, 0.1)
+            method(fs, "Hide")
+            bagLetters[button] = fs
+            return fs
+        end
+        local function bagDraw()
+            local okN, frames = pcall(function() return env.NUM_CONTAINER_FRAMES end)
+            if not okN or type(frames) ~= "number" then frames = 13 end
+            local shown = 0
+            for f = 1, frames do
+                local name = "ContainerFrame" .. f
+                local okF, frame = pcall(function() return env[name] end)
+                if okF and type(frame) == "table" then
+                    if not bagHooked[frame] then
+                        bagHooked[frame] = true
+                        method(frame, "HookScript", "OnShow", function() bagDraw() end)
+                    end
+                    local okB, bag = method(frame, "GetID")
+                    local row = okB and bagWanted[bag] or nil
+                    for i = 1, 36 do
+                        local okI, button = pcall(function() return env[name .. "Item" .. i] end)
+                        if okI and type(button) == "table" then
+                            local okS, slot = method(button, "GetID")
+                            local text = row and okS and row[slot] or nil
+                            local fs = (text or bagLetters[button]) and bagLetter(button) or nil
+                            if fs then
+                                if text then
+                                    method(fs, "SetText", text)
+                                    method(fs, "Show")
+                                    shown = shown + 1
+                                else
+                                    method(fs, "Hide")
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            return shown
+        end
+        function c.markBagSlots(marks)
+            bagWanted = {}
+            for _, m in ipairs(type(marks) == "table" and marks or {}) do
+                if type(m) == "table" and type(m.bag) == "number" and type(m.slot) == "number"
+                    and type(m.text) == "string" and m.text ~= "" then
+                    bagWanted[m.bag] = bagWanted[m.bag] or {}
+                    bagWanted[m.bag][m.slot] = m.text
+                end
+            end
+            return bagDraw()
+        end
+    end
+
     -- S21 (lead section 275): the Need or Greed value on a loot roll's item
     -- (Gear/RollHint.lua). A first guess, not seen in game on 16001: the
     -- roll frame's item picture is its IconFrame field (legacy Flow's
@@ -12443,6 +12585,255 @@ function ns.make.client(env)
         end
         return out
     end
+    -- --------------------------------- route beside the quest log and on the map
+    -- The seams UI/RouteList.lua and UI/MapRoute.lua draw through. All of
+    -- it is a first guess, not seen on 16001: QuestLogFrame and its
+    -- IsShown / GetRight / GetTop / GetHeight; ToggleWorldMap, ShowUIPanel
+    -- and WorldMapFrame:SetMapID; C_Map.GetMapInfo and C_Map.GetMapLevels;
+    -- the canvas WorldMapFrame.ScrollContainer.Child (as c.mapPins above),
+    -- the portrait mask picture, GameTooltip, TooltipBackdropTemplate.
+    -- Needs a game test.
+
+    local function finiteNumber(v)
+        return v ~= nil and not hidden(v) and type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
+    end
+
+    -- c.questLogFrame() -> { shown, right, top, height } or nil when the
+    -- game has no quest log frame or it will not say. right and top are
+    -- the frame's own edges (screen units, from the bottom left); they
+    -- are nil while it is hidden or does not answer plain numbers.
+    function c.questLogFrame()
+        local f = env.QuestLogFrame
+        if f == nil then return nil end
+        local okS, shown = method(f, "IsShown")
+        if not okS or hidden(shown) then return nil end
+        local out = { shown = shown == true }
+        if not out.shown then return out end
+        local okR, right = method(f, "GetRight")
+        local okT, top = method(f, "GetTop")
+        local okH, height = method(f, "GetHeight")
+        if okR and finiteNumber(right) then out.right = right end
+        if okT and finiteNumber(top) then out.top = top end
+        if okH and finiteNumber(height) then out.height = height end
+        return out
+    end
+
+    -- c.showMap(map) -> true when the world map was asked to show that
+    -- uiMapID. The world map is opened first when it is closed. Nothing is
+    -- done unless InCombatLockdown answers a plain false.
+    function c.showMap(map)
+        if not finiteNumber(map) then return false end
+        local okLock, locked = call(env.InCombatLockdown)
+        if not okLock or hidden(locked) or locked ~= false then return false end
+        local wm = env.WorldMapFrame
+        if wm == nil then return false end
+        local okS, shown = method(wm, "IsShown")
+        if not okS or hidden(shown) then return false end
+        if shown ~= true then
+            local opened = false
+            if type(env.ToggleWorldMap) == "function" then opened = call(env.ToggleWorldMap) end
+            if not opened and type(env.ShowUIPanel) == "function" then opened = call(env.ShowUIPanel, wm) end
+            if not opened then return false end
+        end
+        local okM = method(wm, "SetMapID", map)
+        return okM == true
+    end
+
+    -- c.mapInfo(map) -> { name, low, high } or nil when the game will not
+    -- say anything about that uiMapID. name: the game's own name for the
+    -- map. low, high: the levels the game itself gives for it; nil when it
+    -- gives none (never 0).
+    function c.mapInfo(map)
+        if not finiteNumber(map) then return nil end
+        local cm = env.C_Map
+        if type(cm) ~= "table" then return nil end
+        local out = {}
+        local okI, info = call(cm.GetMapInfo, map)
+        if okI and type(info) == "table" and type(info.name) == "string" and not hidden(info.name)
+            and info.name ~= "" then
+            out.name = info.name
+        end
+        local okL, low, high = call(cm.GetMapLevels, map)
+        if okL and finiteNumber(low) and finiteNumber(high) and low > 0 and high >= low then
+            out.low, out.high = low, high
+        end
+        if out.name == nil and out.low == nil then return nil end
+        return out
+    end
+
+    -- c.routePins() -> h, or nil when there is no world map, no canvas or
+    -- no frame could be made. Round numbered marks over the map's canvas,
+    -- made as needed and kept; each shows a tooltip under the mouse.
+    --   h.map() -> the uiMapID the world map shows, or nil (as c.mapPins)
+    --   h.draw(pins)   pins = { { n, x, y, text, sub, now } }: x, y shares
+    --       (x right, y down) of the shown map; n the number written on
+    --       the mark; text, sub the tooltip's lines; now marks the stop
+    --       the arrow points at. Marks past the count are hidden.
+    --   h.clear()   hides them all
+    -- The canvas's own scale is not read (as c.mapPins): the marks may
+    -- draw small or large when the map is zoomed.
+    function c.routePins()
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil end
+        local okC, canvas = pcall(function() return wm.ScrollContainer.Child end)
+        if not okC or canvas == nil then return nil end
+        local ok, host = call(env.CreateFrame, "Frame", nil, canvas)
+        if not ok or host == nil then return nil end
+        method(host, "SetAllPoints", canvas)
+        method(host, "SetFrameStrata", "HIGH")
+        local marks, count = {}, 0
+        local SIZE = 22
+
+        local function make()
+            local okB, b = call(env.CreateFrame, "Button", nil, host)
+            if not okB or b == nil then return false end
+            method(b, "SetSize", SIZE, SIZE)
+            local m = { button = b }
+            local okD, disc = method(b, "CreateTexture", nil, "BACKGROUND")
+            if okD and disc ~= nil then
+                method(disc, "SetAllPoints", b)
+                method(disc, "SetTexture", "Interface\\CharacterFrame\\TempPortraitAlphaMask")
+                m.disc = disc
+            end
+            local okF, fs = method(b, "CreateFontString", nil, "OVERLAY", "GameFontNormalSmall")
+            if okF and fs ~= nil then
+                method(fs, "SetPoint", "CENTER", b, "CENTER", 0, 0)
+                m.label = fs
+            end
+            method(b, "SetScript", "OnEnter", function()
+                local tip = env.GameTooltip
+                if tip == nil or m.text == nil then return end
+                method(tip, "SetOwner", b, "ANCHOR_RIGHT")
+                method(tip, "SetText", m.text)
+                if m.sub ~= nil then method(tip, "AddLine", m.sub, 1, 1, 1, true) end
+                method(tip, "Show")
+            end)
+            method(b, "SetScript", "OnLeave", function()
+                local tip = env.GameTooltip
+                if tip ~= nil then method(tip, "Hide") end
+            end)
+            return m
+        end
+
+        local h = {}
+        function h.map()
+            local okS, shown = method(wm, "IsShown")
+            if not okS or shown ~= true then return nil end
+            local okM, map = method(wm, "GetMapID")
+            if not okM or not finiteNumber(map) then return nil end
+            return map
+        end
+        function h.clear()
+            for i = 1, count do if marks[i] then method(marks[i].button, "Hide") end end
+            count = 0
+        end
+        function h.draw(pins)
+            local okW, w = method(canvas, "GetWidth")
+            local okH, ht = method(canvas, "GetHeight")
+            if not okW or not okH or not finiteNumber(w) or not finiteNumber(ht) or w <= 0 or ht <= 0 then
+                h.clear()
+                return false
+            end
+            local n = 0
+            for _, p in ipairs(type(pins) == "table" and pins or {}) do
+                if type(p) == "table" and finiteNumber(p.x) and finiteNumber(p.y) then
+                    n = n + 1
+                    local m = marks[n]
+                    if m == nil then
+                        m = make()
+                        marks[n] = m
+                    end
+                    if m then
+                        m.text = type(p.text) == "string" and p.text or nil
+                        m.sub = type(p.sub) == "string" and p.sub ~= "" and p.sub or nil
+                        if m.disc then
+                            if p.now == true then
+                                method(m.disc, "SetVertexColor", 0.1, 0.45, 0.1, 0.95)
+                            else
+                                method(m.disc, "SetVertexColor", 0.1, 0.1, 0.1, 0.9)
+                            end
+                        end
+                        if m.label then method(m.label, "SetText", tostring(p.n or "")) end
+                        method(m.button, "ClearAllPoints")
+                        method(m.button, "SetPoint", "CENTER", canvas, "TOPLEFT", p.x * w, -p.y * ht)
+                        method(m.button, "Show")
+                    end
+                end
+            end
+            for i = n + 1, count do if marks[i] then method(marks[i].button, "Hide") end end
+            count = n
+            return true
+        end
+        return h
+    end
+
+    -- c.mapCard() -> h, or nil when there is no world map or no frame
+    -- could be made. One small card in the map's top left corner, in the
+    -- game's tooltip look, as wide and tall as its words.
+    --   h.show({ title, lines = { text, ... } })   draws it
+    --   h.hide()
+    function c.mapCard()
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil end
+        local okC, area = pcall(function() return wm.ScrollContainer end)
+        if not okC or area == nil then area = wm end
+        local ok, f = call(env.CreateFrame, "Frame", nil, wm, "TooltipBackdropTemplate")
+        if not ok or f == nil then
+            ok, f = call(env.CreateFrame, "Frame", nil, wm)
+            if not ok or f == nil then return nil end
+            local okBg, bg = method(f, "CreateTexture", nil, "BACKGROUND")
+            if okBg and bg ~= nil then
+                method(bg, "SetAllPoints", f)
+                method(bg, "SetColorTexture", 0, 0, 0, 0.8)
+            end
+        end
+        method(f, "SetFrameStrata", "HIGH")
+        method(f, "SetPoint", "TOPLEFT", area, "TOPLEFT", 10, -10)
+        method(f, "Hide")
+        local PAD, GAP = 10, 3
+        local strings = {}
+        local function str(i)
+            if strings[i] == nil then
+                local okF, fs = method(f, "CreateFontString", nil, "OVERLAY",
+                    i == 1 and "GameFontNormal" or "GameFontHighlightSmall")
+                strings[i] = okF and fs or false
+                if strings[i] then method(strings[i], "SetJustifyH", "LEFT") end
+            end
+            return strings[i]
+        end
+
+        local h = {}
+        function h.hide() method(f, "Hide") end
+        function h.show(card)
+            if type(card) ~= "table" then
+                h.hide()
+                return false
+            end
+            local words = { tostring(card.title or "") }
+            for _, l in ipairs(type(card.lines) == "table" and card.lines or {}) do words[#words + 1] = tostring(l) end
+            local width, y = 0, PAD
+            for i, text in ipairs(words) do
+                local fs = str(i)
+                if fs then
+                    method(fs, "SetText", text)
+                    method(fs, "ClearAllPoints")
+                    method(fs, "SetPoint", "TOPLEFT", f, "TOPLEFT", PAD, -y)
+                    method(fs, "Show")
+                    local okW, sw = method(fs, "GetStringWidth")
+                    local okH, sh = method(fs, "GetStringHeight")
+                    if okW and finiteNumber(sw) and sw > width then width = sw end
+                    y = y + ((okH and finiteNumber(sh) and sh > 0) and sh or 12) + GAP
+                end
+            end
+            for i = #words + 1, #strings do if strings[i] then method(strings[i], "Hide") end end
+            if width <= 0 then width = 160 end
+            method(f, "SetSize", width + PAD * 2, y - GAP + PAD)
+            method(f, "Show")
+            return true
+        end
+        return h
+    end
+    -- ----------------------------- end route beside the quest log and on the map
     -- Lead section 382 (Nav/ProfFeed.lua): the name of the continent a map
     -- lies on, for "Next time you are in <continent>". C_Map.GetMapInfo up
     -- the parents to the first of Enum.UIMapType.Continent (2 when the enum

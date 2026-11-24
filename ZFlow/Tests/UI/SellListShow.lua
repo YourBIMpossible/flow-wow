@@ -202,8 +202,9 @@ tests["sell list Show: it reads the bags and the item facts, draws, and does not
     -- bagSlots: where each stack is, for the Sell these button (lead
     -- section 337 item 1), a read. Never sellBagItem.
     -- skillRanks, itemLines: the skill boosters' reads (lead section 337 item 2).
+    -- professions: the read for the materials kept for a profession (Items/ProfPlan.lua Materials).
     local readsAllowed = { bagItems = true, itemInfo = true, itemTexture = true, saved = true, bagSlots = true,
-        skillRanks = true, itemLines = true }
+        skillRanks = true, itemLines = true, professions = true }
     for name in pairs(called) do
         t.ok(readsAllowed[name], "Show() called client." .. name .. ", which is not one of its reads")
     end

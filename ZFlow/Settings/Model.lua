@@ -52,6 +52,8 @@ M.ROWS = {
     { key = "vendor.list", type = "bool", default = true },
     -- repair.warnBelow: durability share for the repair warning (Items/Repair.lua) (lead)
     { key = "repair.warnBelow", type = "number", default = 0.20, bounds = { min = 0, max = 1 } },
+    -- repair.costLine: the look-only repair cost line at a merchant (Items/RepairCost.lua)
+    { key = "repair.costLine", type = "bool", default = true },
     -- bank.list: the look-only banker list (UI/BankList.lua) (lead)
     { key = "bank.list", type = "bool", default = true },
     -- loot.junkNote: the look-only grey loot note (Items/LootNote.lua) (lead)
