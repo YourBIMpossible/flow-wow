@@ -274,5 +274,7 @@ return {
     "Nav/Trip.lua",
     -- G43 (P-TRIP): the route tracker window and the current step's map pin (after Trip, TripRoute, the kit).
     "UI/RouteTracker.lua",
+    -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
+    "Spells/TrainAdvice.lua",
     },
 }
