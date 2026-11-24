@@ -264,6 +264,7 @@ local BEFORE = {
     ["nav.crossings"] = { "account", "bool", true },
     ["nav.zoneFirst"] = { "account", "bool", true },
     ["vendor.list"] = { "account", "bool", true },
+    ["repair.costLine"] = { "account", "bool", true },
     ["repair.warnBelow"] = { "account", "number", 0.20 },
     ["bank.list"] = { "account", "bool", true },
     ["loot.junkNote"] = { "account", "bool", true },
@@ -294,7 +295,7 @@ tests["stored values: no row's key, scope, type, default or saved place changed 
             end
         end
     end
-    t.eq(n, 51)
+    t.eq(n, 52)
     t.eq(addon.settings:row("repair.warnBelow").min, 0)
     t.eq(addon.settings:row("repair.warnBelow").max, 1)
     t.eq(addon.settings:row("spec.role").choices, { "", "dps", "heal", "tank" })
@@ -325,7 +326,7 @@ tests["stored values: a saved table from before the change reads back, every val
         n = n + 1
         t.eq(addon.settings:get(key), value, key .. " reads back as saved")
     end
-    t.eq(n, 49, "every row that holds a plain value")
+    t.eq(n, 50, "every row that holds a plain value")
     -- And the saved tables still hold them where they were.
     t.eq(c.saved(ns.id.accountDB).settings.vendor.list, false)
     t.eq(c.saved(ns.id.accountDB).settings.repair.warnBelow, 0.35)
@@ -364,7 +365,7 @@ tests["settings workflow: open the page, pick a topic, search, change a result, 
     t.eq(c.optionsNav("topic", "bags"), true)
     local keys = drawn(c)
     table.sort(keys)
-    t.eq(keys, { "bank.list", "items.haveCount", "repair.warnBelow", "vendor.list" })
+    t.eq(keys, { "bank.list", "items.haveCount", "repair.costLine", "repair.warnBelow", "vendor.list" })
     t.eq(ofKind(c, "group").text, T.Find("bags").name)
 
     -- Search every topic.

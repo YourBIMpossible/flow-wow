@@ -121,7 +121,7 @@ local READS = {
     itemLines = false, itemTexture = false, tracking = false, anyTracking = false, professions = false,
     durability = false, lootWindow = false, windowState = false, form = true, petBattle = false,
     vehicle = false, guid = false, playerGUID = false, petGUID = false, serviceNpc = false,
-    merchantRepairs = false, bindLocation = false, hearthCooldown = false, targetRank = false,
+    merchantRepairs = false, repairCost = false, bindLocation = false, hearthCooldown = false, targetRank = false,
     frameRect = false, worldPosition = true, onTaxi = true, realm = false, modifiers = false,
     unitInfo = false, unitBuff = true, mounted = false, questItem = true, itemCount = true,
     itemUse = false, mapCorners = true, globalText = false, plates = false, canAttack = false,
