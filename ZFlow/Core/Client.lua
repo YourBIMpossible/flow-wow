@@ -13546,7 +13546,7 @@ function ns.make.client(env)
                     badge = made
                     method(badge, "SetSize", 16, 16)
                     method(badge, "SetPoint", "RIGHT", frame, "LEFT", -2, 0)
-                    method(badge, "SetTexture", "Interface\Icons\INV_Sword_04")
+                    method(badge, "SetTexture", "Interface\\Icons\\INV_Sword_04")
                 end
                 return (method(badge, on == true and "Show" or "Hide")) and true or false
             end
@@ -13585,7 +13585,7 @@ function ns.make.client(env)
             method(bar, "SetHeight", 3)
             method(bar, "SetPoint", "BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
             method(bar, "SetPoint", "BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-            method(bar, "SetStatusBarTexture", "Interface\Buttons\WHITE8X8")
+            method(bar, "SetStatusBarTexture", "Interface\\Buttons\\WHITE8X8")
             method(bar, "SetStatusBarColor", 1, 0.82, 0.1)
             method(bar, "SetMinMaxValues", 0, 1)
             local okBack, back = method(bar, "CreateTexture", nil, "BACKGROUND")

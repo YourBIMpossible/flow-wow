@@ -162,4 +162,23 @@ tests["castedgedraw D-08: the icon and a click row have an edge bar"] = function
     t.ok(rbar ~= nil, "the bar is on the row's first button")
 end
 
+-- CHANGES-2: the texture paths are read back exactly, backslashes kept
+-- (a single backslash in a Lua string is an escape, not a path separator).
+tests["texturepaths: the swing badge and the edge bar get their exact texture paths"] = function(t)
+    local env = env0()
+    env.InCombatLockdown = function() return false end
+    local c = ns.make.client(env)
+    local h = c.icon({ name = "TestIcon", size = 48 })
+    if not (type(h) == "table" and type(h.swing) == "function" and type(h.edge) == "table") then
+        t.ok(false, "no swing or edge"); return
+    end
+    t.eq(h.swing(true), true)
+    local badge = env.TestIcon.kids[#env.TestIcon.kids]
+    t.eq(badge and last(badge, "SetTexture"), { "Interface\\Icons\\INV_Sword_04" }, "the badge path")
+    t.eq(h.edge.set(0.5), true)
+    local bar
+    for _, f in ipairs(env.made) do if f.kind == "StatusBar" then bar = f end end
+    t.eq(bar and last(bar, "SetStatusBarTexture"), { "Interface\\Buttons\\WHITE8X8" }, "the edge bar path")
+end
+
 return tests
