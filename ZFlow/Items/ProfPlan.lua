@@ -901,6 +901,123 @@ function P.Input(client, store, prof, nodeSource)
     }
 end
 
+-- Lead section 416 item 3: every item the plan's steps name as a material
+-- is kept off the sell list (DISPATCH 382: it goes to the auction house,
+-- never to a vendor). The step kinds whose item is a material; a craft's
+-- material lines (mats, with the ore of a smelt) and a smelt's ore (from)
+-- count too. A craft's own item is what it makes, not a material.
+P.MATERIAL_KINDS = { take_bank = true, make_part = true, gather = true, buy_vendor = true, buy_auction = true }
+
+-- steps -> out[item] = { { prof, what = the recipe }, ... }, as
+-- Disposition's context.materials takes it. out is added to when given.
+function P.StepMaterials(prof, steps, out)
+    out = type(out) == "table" and out or {}
+    if type(prof) ~= "string" or prof == "" then return out end
+    -- need: how many a craft line uses (lead section 418 item 4 (b)),
+    -- summed per profession; nil from a step that is not a craft line.
+    local function add(item, recipe, need)
+        if item == nil then return end
+        local uses = out[item]
+        if type(uses) ~= "table" then uses = {} out[item] = uses end
+        local use
+        for _, u in ipairs(uses) do
+            if u.prof == prof then use = u end
+        end
+        if use == nil then
+            use = { prof = prof, what = type(recipe) == "string" and recipe ~= "" and recipe or nil }
+            uses[#uses + 1] = use
+        end
+        if type(need) == "number" and need >= 0 then use.need = (use.need or 0) + need end
+    end
+    for _, s in ipairs(type(steps) == "table" and steps or {}) do
+        if type(s) == "table" then
+            if P.MATERIAL_KINDS[s.kind] then add(s.item, s.recipe) end
+            if type(s.from) == "table" then add(s.from.item, s.recipe) end
+            if s.kind == "craft" and type(s.mats) == "table" then
+                for _, m in ipairs(s.mats) do
+                    if type(m) == "table" then
+                        add(m.item, s.recipe, m.need)
+                        add(m.ore, s.recipe, m.oreCount)
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- The materials every profession's plan names, read from the client and
+-- the store: the professions are the saved skill readings and
+-- client.professions(). nil when no store is given (nothing saved: no plan).
+-- The professions the player has: the saved skill readings and
+-- client.professions(), sorted.
+local function profsHeld(client, store)
+    local profs, seen = {}, {}
+    local function addProf(name)
+        if type(name) == "string" and name ~= "" and not seen[name] then
+            seen[name] = true
+            profs[#profs + 1] = name
+        end
+    end
+    local readings, known = saved(store, "char", "learned.facts.profSkill"), ask(client, "professions")
+    for name in pairs(type(readings) == "table" and readings or {}) do addProf(name) end
+    for name in pairs(type(known) == "table" and known or {}) do addProf(name) end
+    table.sort(profs)
+    return profs
+end
+
+function P.Materials(client, store)
+    if type(store) ~= "table" or type(store.get) ~= "function" then return nil end
+    local profs = profsHeld(client, store)
+    local out = {}
+    for _, prof in ipairs(profs) do
+        local ok, steps = pcall(function() return P.Plan(P.Input(client, store, prof)) end)
+        if ok then P.StepMaterials(prof, steps, out) end
+    end
+    return out
+end
+
+-- Lead section 418 item 4 (a): the gathered goods of a profession the
+-- player has are kept though no step names them, known by the client's
+-- item class and subclass (Trade Goods 7: Cloth 5, Leather 6, Metal &
+-- Stone 7, Meat 8, Herb 9), never by an item list. { [subclass] =
+-- { { prof, word }, ... } }; word is what the kept row says.
+P.TRADE_GOODS = 7
+P.GATHERED = {
+    [5] = { { prof = "Tailoring", word = "cloth" }, { prof = "First Aid", word = "cloth" } },
+    [6] = { { prof = "Skinning", word = "skins" } },
+    [7] = { { prof = "Mining", word = "ore" } },
+    [8] = { { prof = "Fishing", word = "fish" } },
+    [9] = { { prof = "Herbalism", word = "herbs" } },
+}
+
+-- Adds to out (as P.Materials gives it) the bag items that are gathered
+-- goods of a profession the player has and that no step of it names; such
+-- a use needs none (need 0), so all of it is spare. -> out
+function P.Gathered(client, store, stacks, out)
+    out = type(out) == "table" and out or {}
+    if type(stacks) ~= "table" or type(client) ~= "table" or type(client.itemInfo) ~= "function" then return out end
+    local held = {}
+    for _, prof in ipairs(profsHeld(client, store)) do held[prof] = true end
+    for _, st in ipairs(stacks) do
+        local key = type(st) == "table" and ns.Items.Key(st.item) or nil
+        local info = key ~= nil and ask(client, "itemInfo", st.item) or nil
+        local kinds = type(info) == "table" and info.classID == P.TRADE_GOODS and P.GATHERED[info.subclassID] or nil
+        for _, g in ipairs(kinds or {}) do
+            if held[g.prof] then
+                local uses = out[key]
+                if type(uses) ~= "table" then uses = {} out[key] = uses end
+                local named = false
+                for _, u in ipairs(uses) do
+                    if u.prof == g.prof then named = true end
+                end
+                if not named then uses[#uses + 1] = { prof = g.prof, what = g.word, need = 0 } end
+            end
+        end
+    end
+    return out
+end
+
 function P.Declare(k)
     local api = {}
     local ctx
