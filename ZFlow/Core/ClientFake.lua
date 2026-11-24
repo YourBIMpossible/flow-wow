@@ -3335,7 +3335,7 @@ function ns.make.fakeClient(opts)
     --     section 236: a read that fails, then recovers);
     --   c.rewardMarked(): the choice marked now, or nil.
     do
-        local rewardMark = nil
+        local rewardMark, rewardKind = nil, nil
         function c.setQuestChoices(rows)
             if type(rows) == "table" then s.questChoices = rows else s.questChoices = nil end
         end
@@ -3347,15 +3347,17 @@ function ns.make.fakeClient(opts)
             for i, row in ipairs(s.questChoices) do out[i] = { index = row.index, link = row.link } end
             return out
         end
-        function c.markRewardChoice(index)
+        function c.markRewardChoice(index, kind)
             if type(index) ~= "number" then
-                rewardMark = nil
+                rewardMark, rewardKind = nil, nil
                 return nil
             end
-            rewardMark = index
+            rewardMark, rewardKind = index, kind
             return true
         end
         function c.rewardMarked() return rewardMark end
+        -- G14 coin: "upgrade" (the arrow) or "coin" (sell it), or nil.
+        function c.rewardMarkKind() return rewardKind end
     end
     -- S21: the value on a loot roll's item, as the real client's
     -- rollValue(rollID, text, r, g, b): true, kept per roll; no text clears

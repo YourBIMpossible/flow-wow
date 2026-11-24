@@ -8949,7 +8949,9 @@ function ns.make.client(env)
     --     yet (the item not loaded).
     --   c.markRewardChoice(index) -> true when that choice's button carries
     --     the mark; nil when no button was found. Every other mark is
-    --     hidden; index nil hides them all.
+    --     hidden; index nil hides them all. kind "coin" (G14, section 393:
+    --     nothing is an upgrade, this sells for the most) draws the gold
+    --     coin icon instead of the arrow.
     -- In a do block: make.client is near Lua 5.1's 200 locals.
     do
         local REWARD_BUTTONS = 10
@@ -8993,12 +8995,23 @@ function ns.make.client(env)
             rewardBadges[b] = t
             return t
         end
-        function c.markRewardChoice(index)
+        local function rewardLook(t, kind)
+            if kind == "coin" then
+                method(t, "SetTexture", "Interface\\MoneyFrame\\UI-GoldIcon")
+                return
+            end
+            local okA, set = method(t, "SetAtlas", "bags-greenarrow")
+            if not okA or set == false then
+                method(t, "SetTexture", "Interface\\PetBattles\\BattleBar-AbilityBadge-Strong")
+            end
+        end
+        function c.markRewardChoice(index, kind)
             local shown = nil
             for i = 1, REWARD_BUTTONS do
                 local t = rewardBadge(i)
                 if t then
                     if i == index then
+                        rewardLook(t, kind)
                         method(t, "Show")
                         shown = true
                     else
