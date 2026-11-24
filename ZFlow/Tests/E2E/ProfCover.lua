@@ -8,7 +8,7 @@ local _, ns = ...
 --   fresh:           window opened once; nothing learned or seen
 --   ladder, mats:    a learned recipe sure at every skill, materials in bags
 --   ladder, none:    the same recipes, nothing in the bags
---   outgrown:        one learned recipe, grey past 24; no trainer list seen
+--   outgrown:        one learned recipe, grey past 25; no trainer list seen
 --   trainer partial: as outgrown, with a trainer list seen holding recipes
 --                    not learned yet
 --   trainer done:    as outgrown, every recipe on the seen list known
@@ -137,7 +137,7 @@ end
 
 -- The craft skill values that are not a rank's end, past the one learned
 -- recipe's span.
-local OUTGROWN = { "25-74", "76-149", "151-224", "226-299" }
+local OUTGROWN = { "26-74", "76-149", "151-224", "226-299" }
 
 -- Craft gaps per state. Gathering professions have none in any state.
 local CRAFT_GAPS = {
