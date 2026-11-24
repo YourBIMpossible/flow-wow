@@ -351,5 +351,7 @@ return {
     "Gear/BagBadge.lua",
     -- G47 (lead section 397 item 15): follow advice text, leader far (after Bearing and the advisor).
     "Nav/FollowAdvice.lua",
+    -- N43 (P-TRIP route display): the current step's area on the minimap (after TripRoute, MinimapPin).
+    "UI/RouteArea.lua",
     },
 }
