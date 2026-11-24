@@ -43,6 +43,9 @@ local _, ns = ...
 --     "gate unknown"  a walled map with no gate known: a copy of the step
 --               with N.GATE_UNKNOWN as its detail; a step that has a line of
 --               its own (detail or lines) is handed back as it is
+--   Else, with a spell to learn (not skipped, no hint of its own and no
+--   flight line): a copy of the step whose hint is "Learn <spell>
+--   (<where>)" (Travel.LEARN), and no how. Lead section 403 (b).
 --   Else the step itself (the same table) and no how. skipped drops the
 --   spell, the stone, the ride and the flight; the crossing and the gate
 --   stay.
@@ -75,6 +78,9 @@ Travel.THEN = "Then: %s"
 -- Shown under a step whose place is on another continent with no way there
 -- known yet (lead section 187).
 Travel.FAR = "On another continent: no boat or zeppelin learned yet"
+-- Under a step when the travel spell is one to learn (lead section 403 b):
+-- "Learn <spell> (<where>)".
+Travel.LEARN = "%s (%s)"
 -- S45: the ways asked of other modules, in no order of their own (the
 -- order is N.TravelVia's). module: its name for k.use; key: its field in ways.
 Travel.WAYS = { { module = "crossings", key = "crossing" }, { module = "flights", key = "flight" } }
@@ -177,6 +183,21 @@ function N.TravelVia(step, ways, skipped)
         local out = {}
         for key, v in pairs(step) do out[key] = v end
         out.hint = ways.flightHint
+        return out
+    end
+    -- Lead section 403 (b): a spell this player has still to learn is no
+    -- way (N.TravelAction leaves it out), but where to learn it is said
+    -- under the step, so the hint is not lost. A step's own hint stays.
+    local learn = ways.spell
+    if not skipped and type(learn) == "table" and learn.learn and type(learn.label) == "string"
+        and step.hint == nil then
+        local out = {}
+        for key, v in pairs(step) do out[key] = v end
+        if type(learn.detail) == "string" and learn.detail ~= "" then
+            out.hint = Travel.LEARN:format(learn.label, learn.detail)
+        else
+            out.hint = learn.label
+        end
         return out
     end
     return step
