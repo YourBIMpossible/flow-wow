@@ -102,10 +102,6 @@ local function walk(prof, state)
     return out
 end
 
--- The craft skill values past the one recipe (sure from 1 to 25) that are
--- not a rank's end, as ranges.
-local OUTGROWN = { "26-74", "76-149", "151-224", "226-299" }
-
 -- The coverage table: per state, the craft gaps. Gathering professions never
 -- end without a step (the gather line), so their gaps are none in every state.
 local CRAFT_GAPS = {
@@ -114,10 +110,9 @@ local CRAFT_GAPS = {
     ["ladder, none"] = {},
     -- Fixed: no trainer list seen, so the next step is a new recipe at one.
     ["outgrown"] = {},
-    -- Measured limit: every recipe on the seen trainer's list is known; the
-    -- plan says "Visit <trainer> for new <prof> recipes" (no vendor or drop
-    -- recipes are known to the addon; section 406).
-    ["trainer done"] = { ["no recipe"] = OUTGROWN },
+    -- Lead section 418 item 5: every recipe on the seen trainer's list is
+    -- known; the plan names the known recipe most likely to give a point.
+    ["trainer done"] = {},
     -- Review: colours never read is a step to open the window.
     ["no colours"] = {},
 }
@@ -141,6 +136,17 @@ tests["prof walk learned: outgrown with no trainer seen names a new recipe at a 
     local steps = addon.profPlan.plan("Tailoring")
     t.eq(steps[1] and steps[1].kind, "learn_recipe")
     t.eq(steps[1] and steps[1].recipe, nil, "no recipe is named: none was seen")
+    t.eq(steps[1] and steps[1].outgrown, true, "said as outgrown (section 419)")
+end
+
+-- Lead sections 418 item 5 and 419: every recipe seen grey and the seen
+-- trainer has nothing new: the known recipe that may give a point.
+tests["prof walk learned: trainer done with every recipe grey names a known recipe"] = function(t)
+    local addon = start("Tailoring", "trainer done")
+    addon.store:set("char", "learned.facts.profSkill", { Tailoring = { skill = 40, max = 75 } })
+    local steps = addon.profPlan.plan("Tailoring")
+    t.eq(steps[1] and steps[1].kind, "maybe_craft")
+    t.eq(steps[1] and steps[1].recipe, "Test Tailoring 1")
 end
 
 tests["prof walk learned: rank ends train the next rank in every state"] = function(t)

@@ -89,6 +89,12 @@ P.GATHER_NEAR = "%s; the nearest seen is %s"
 P.SAY_GATHER = "Learn %s from a trainer, then gather once"
 -- "no recipe" with a trainer of this profession seen.
 P.SAY_TRAINER = "Visit %s for new %s recipes"
+-- Lead section 418 item 5: every recipe on the seen trainer list is known
+-- and none gives a point. The one step is the known recipe most likely to
+-- give one, by facts only: the latest colour seen, then materials held, then
+-- the cheapest by known prices. The say line is given once, never per step.
+P.MAYBE = "Make 1 %s: may give a point (%s)"
+P.SAY_KNOWN_ONLY = "This add-on does not know recipes sold by vendors or found as drops"
 -- Review of section 405 item 4: the steps for the two plans that ended
 -- with a line only. The window's colours were never read; a short material
 -- with no source seen (never the auction house).
@@ -340,10 +346,13 @@ end
 
 -- Section 400 item 2: the book read holds no recipe of this profession.
 -- Was a trainer list of this profession, with its trainer named, seen?
--- (A shipped list names no trainer.)
+-- (A shipped list names no trainer.) Section 416 item 1: a trainer on
+-- another continent is not a step (section 400 item 4), so its list counts
+-- as not seen and the next step is a recipe at a trainer here.
 local function trainerSeen(input)
     for _, l in pairs(type(input.trainerLists) == "table" and input.trainerLists or {}) do
-        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string" then return true end
+        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string"
+            and not away(input, l.npc) then return true end
     end
     return false
 end
@@ -518,6 +527,71 @@ local function sourcedSteps(input, c)
     return steps
 end
 
+-- Lead section 418 item 5: a trainer list of this profession seen here,
+-- with every row on it known.
+local function trainerDone(input)
+    local seen = false
+    for _, l in pairs(type(input.trainerLists) == "table" and input.trainerLists or {}) do
+        if type(l) == "table" and l.profession == input.prof and type(l.npc) == "string"
+            and not away(input, l.npc) then
+            for _, row in ipairs(type(l.rows) == "table" and l.rows or {}) do
+                if type(row) == "table" and row.state ~= "known" then return false end
+            end
+            seen = true
+        end
+    end
+    return seen
+end
+
+-- The last skill a recipe's saved colours gave a point at, or nil when no
+-- colour of it was read.
+local function lastPoint(spans)
+    if type(spans) ~= "table" then return nil end
+    local top
+    for _, d in ipairs({ "optimal", "medium", "easy" }) do
+        local s = spans[d]
+        if type(s) == "table" and type(s.hi) == "number" and (not top or s.hi > top) then top = s.hi end
+    end
+    if top then return top end
+    local g = spans.trivial
+    if type(g) == "table" and type(g.lo) == "number" then return g.lo - 1 end
+    return nil
+end
+
+local function held(input, mats)
+    for item, per in pairs(mats) do
+        if have(input, item) < per then return false end
+    end
+    return true
+end
+
+-- a before b: the latest colour seen, then materials held, then the
+-- cheapest (unpriced last), then by name.
+local function likelier(a, b)
+    if a.top ~= b.top then return a.top > b.top end
+    if a.held ~= b.held then return a.held end
+    if (a.cost == nil) ~= (b.cost == nil) then return a.cost ~= nil end
+    if a.cost ~= b.cost then return a.cost < b.cost end
+    return a.recipe < b.recipe
+end
+
+-- The known recipe most likely to give a point, as one step, or nil.
+local function maybeStep(input)
+    local best
+    local colours = type(input.colours) == "table" and input.colours or {}
+    for name, r in pairs(type(input.book) == "table" and input.book or {}) do
+        local top = type(r) == "table" and r.profession == input.prof and r.partial ~= true
+            and type(r.mats) == "table" and next(r.mats) ~= nil and lastPoint(colours[name]) or nil
+        if top then
+            local c = { recipe = name, entry = r, top = top, held = held(input, r.mats), cost = cost(input, r.mats) }
+            if not best or likelier(c, best) then best = c end
+        end
+    end
+    if not best then return nil end
+    return { kind = "maybe_craft", recipe = best.recipe, item = best.entry.makes, count = 1,
+        station = input.station, text = string.format(P.MAYBE, best.recipe, reading(input)) }
+end
+
 -- The step that reads the window's recipe colours.
 local function openStep(input)
     return { kind = "open_window", prof = input.prof, text = string.format(P.OPEN_WINDOW, input.prof) }
@@ -657,6 +731,13 @@ function P.Plan(input)
         local step = firstRecipeStep(input)
         step.outgrown = true
         return { step }
+    end
+    -- Lead section 418 item 5: the seen trainer has nothing new and no known
+    -- recipe gives a point (section 419 above): the known recipe most likely
+    -- to give one.
+    if trainerDone(input) then
+        local maybe = maybeStep(input)
+        if maybe then return { maybe }, nil, P.SAY_KNOWN_ONLY end
     end
     return empty("no recipe", input)
 end

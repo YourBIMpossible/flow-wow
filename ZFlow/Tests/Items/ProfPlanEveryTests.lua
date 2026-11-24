@@ -116,10 +116,12 @@ for _, prof in ipairs(CRAFTS) do
         t.eq(steps[1] and steps[1].kind, "learn_recipe", "no trainer seen: a step to any trainer")
         t.eq(steps[1] and steps[1].text, "Learn a " .. prof .. " recipe at a trainer (" .. prof .. " 40 of 75)")
         local lists = { a = { profession = prof, npc = "Test Trainer", rows = {} } }
-        local none, why, named = P().Plan(craftInput(prof, { skill = 40, colours = grey, trainerLists = lists }))
-        t.eq(#none, 0, "no step")
-        t.eq(why, "no recipe", "no recipe")
-        t.eq(named, "Visit Test Trainer for new " .. prof .. " recipes", "a trainer seen is named")
+        -- Lead section 418 item 5: the seen trainer has nothing new: the known
+        -- recipe most likely to give a point, never "Visit <trainer>".
+        local done, _, say = P().Plan(craftInput(prof, { skill = 40, colours = grey, trainerLists = lists }))
+        t.eq(done[1] and done[1].kind, "maybe_craft", "trainer done: a known recipe")
+        t.eq(done[1] and done[1].text, "Make 1 " .. recipe .. ": may give a point (" .. prof .. " 40 of 75)")
+        t.eq(say, P().SAY_KNOWN_ONLY, "recipes from vendors and drops are not known")
     end
 
     tests["every profession: " .. prof .. " with a recipe to learn says which and where"] = function(t)

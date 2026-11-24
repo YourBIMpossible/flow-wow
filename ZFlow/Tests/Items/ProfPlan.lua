@@ -256,4 +256,51 @@ tests["prof plan: the craft step says the skill it reaches and what comes after"
     t.eq(craft.thenText, nil)
 end
 
+-- Lead section 418 item 5: every recipe on the seen trainer list is known
+-- and none gives a point. The arrow names the known recipe most likely to
+-- give one, never "Visit <trainer>": the latest colour seen first, then
+-- materials held, then the cheapest by known prices. One say line, not one
+-- per step, tells that recipes from vendors and drops are not known.
+tests["prof plan: trainer done: the known recipe most likely to give a point (section 418 item 5)"] = function(t)
+    if type(P()) ~= "table" then return t.ok(false, "ns.ProfPlan") end
+    local book = {
+        ["Test Gone Sash"] = { profession = "Tailoring", makes = 60, mats = { [4] = 1 } },
+        ["Test Late Robe"] = { profession = "Tailoring", makes = 61, mats = { [3] = 2 } },
+        ["Test Late Cap"] = { profession = "Tailoring", makes = 62, mats = { [4] = 1 } },
+        ["Test Late Belt"] = { profession = "Tailoring", makes = 63, mats = { [3] = 1 } },
+    }
+    -- Lead section 419: each seen green or grey below the skill, so none
+    -- gives a point (a colour only last seen orange or yellow would).
+    local colours = {
+        ["Test Gone Sash"] = { trivial = { lo = 60, hi = 90 } },
+        ["Test Late Robe"] = { medium = { lo = 80, hi = 100 }, easy = { lo = 101, hi = 105 } },
+        ["Test Late Cap"] = { medium = { lo = 80, hi = 100 }, easy = { lo = 101, hi = 105 } },
+        ["Test Late Belt"] = { medium = { lo = 80, hi = 100 }, easy = { lo = 101, hi = 105 } },
+    }
+    local rows = {}
+    for name in pairs(book) do rows[#rows + 1] = { name = name, skill = 1, state = "known" } end
+    local lists = { a = { profession = "Tailoring", npc = "Test Tailor", rows = rows } }
+    local base = { prof = "Tailoring", skill = 110, max = 150, book = book, colours = colours,
+        trainerLists = lists, bags = { [3] = 1 } }
+    local steps, _, say = P().Plan(input(base))
+    t.eq(kinds(steps), { "maybe_craft" }, "one step")
+    local s = steps[1] or {}
+    t.eq(s.recipe, "Test Late Belt", "latest colour, materials held (before the cheaper Cap)")
+    t.eq(s.count, 1)
+    t.eq(s.text, "Make 1 Test Late Belt: may give a point (Tailoring 110 of 150)")
+    t.eq(s.why, nil, "the say line is not on the step")
+    t.eq(say, P().SAY_KNOWN_ONLY, "said once")
+    t.eq(say, "This add-on does not know recipes sold by vendors or found as drops")
+    base.bags = {}
+    steps = P().Plan(input(base))
+    -- By the prices above: the Cap's one of item 4 (5) is under the Belt's one of item 3 (10).
+    t.eq(steps[1] and steps[1].recipe, "Test Late Cap", "none held: the cheapest")
+    t.eq(steps[1] and steps[1].text, "Make 1 Test Late Cap: may give a point (Tailoring 110 of 150)")
+    -- A recipe on the list not learned yet (later skill) is not trainer done.
+    lists.a.rows = { { name = "Test Later", skill = 120, state = "unavailable" } }
+    local none, why = P().Plan(input(base))
+    t.eq(none, {}, "still waiting on the trainer")
+    t.eq(why, "no recipe")
+end
+
 return tests
