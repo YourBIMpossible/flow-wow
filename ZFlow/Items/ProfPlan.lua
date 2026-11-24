@@ -59,7 +59,13 @@ P.SAY = {
     ["no colours"] = "Open your %s window once",
     ["no materials"] = "Get the materials for %s",
     ["no recipe"] = "Visit a %s trainer for new recipes",
+    ["at the top"] = "%s is at the top: no rank past it",
 }
+-- Section 400 item 2: the last rank's end in Classic. No rank past it to train.
+P.TOP = 300
+-- Section 400 item 2: no recipe of this profession in the book read and no
+-- trainer list seen: the cheapest next step is a first recipe at a trainer.
+P.LEARN_ANY = "Learn a %s recipe at %s (%s)"
 P.SAY_NO_PROF = "Open a profession window once"
 -- Queue item A2: the gathering professions. Their points come from
 -- gathering, not from a recipe, so with no craft to make the plan is one
@@ -254,6 +260,20 @@ local function learnStep(input)
     return nil
 end
 
+-- Section 400 item 2: the book read holds no recipe of this profession.
+local function bookEmpty(input)
+    for _, r in pairs(type(input.book) == "table" and input.book or {}) do
+        if type(r) == "table" and r.profession == input.prof then return false end
+    end
+    return true
+end
+
+local function firstRecipeStep(input)
+    local npc = get(trainerAt(input), "npc")
+    return { kind = "learn_recipe", npc = npc, target = npcTarget(input, npc),
+        text = string.format(P.LEARN_ANY, input.prof, npc or "a trainer", reading(input)) }
+end
+
 local function tierStep(input)
     local l = trainerAt(input)
     local npc = get(l, "npc")
@@ -426,7 +446,10 @@ end
 
 function P.Plan(input)
     if not usable(input) then return empty("no reading", input) end
-    if input.skill >= input.max then return { tierStep(input) } end
+    if input.skill >= input.max then
+        if input.max >= P.TOP then return empty("at the top", input) end
+        return { tierStep(input) }
+    end
     local list = P.Candidates(input)
     for _, c in ipairs(list) do
         local steps = craftSteps(input, c)
@@ -438,6 +461,7 @@ function P.Plan(input)
         if steps then return thenLine(input, list, list[1], steps) end
     end
     if #list > 0 then return empty("no materials", input, list[1].recipe) end
+    if bookEmpty(input) then return { learnStep(input) or firstRecipeStep(input) } end
     if not coloursRead(input) then return empty("no colours", input) end
     local learn = learnStep(input)
     if learn then return { learn } end

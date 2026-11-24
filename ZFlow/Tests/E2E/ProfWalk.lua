@@ -64,7 +64,7 @@ local function walk(t, prof)
     local plan = addon.profPlan and addon.profPlan.plan
     if type(plan) ~= "function" then return t.ok(false, "addon.profPlan.plan") end
     local gaps, why = {}, {}
-    for skill = 1, CAP do
+    for skill = 1, CAP - 1 do
         addon.store:set("char", "learned.facts.profSkill", { [prof] = { skill = skill, max = rankMax(skill) } })
         local ok, steps, reason = pcall(plan, prof)
         if not ok or type(steps) ~= "table" or steps[1] == nil then
@@ -79,10 +79,10 @@ local function walk(t, prof)
 end
 
 for _, prof in ipairs(CRAFT) do
-    tests["prof walk: " .. prof .. " 1 to 300, a next step at every skill"] = function(t) walk(t, prof) end
+    tests["prof walk: " .. prof .. " 1 to 299, a next step at every skill below the top"] = function(t) walk(t, prof) end
 end
 for _, prof in ipairs(GATHER) do
-    tests["prof walk: " .. prof .. " 1 to 300, a next step at every skill"] = function(t) walk(t, prof) end
+    tests["prof walk: " .. prof .. " 1 to 299, a next step at every skill below the top"] = function(t) walk(t, prof) end
 end
 
 -- 300 is the last rank's end in Classic: there is no rank past it to train.
