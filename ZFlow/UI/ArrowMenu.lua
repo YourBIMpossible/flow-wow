@@ -324,6 +324,7 @@ M.FLOW_TEXT = "Flow windows"
 -- closes it and says it is open (both, or the row only opens it).
 M.FLOW_WINDOWS = {
     { name = "dungeonWindow", text = "Dungeon quests", open = "Open", close = "Close", shown = "Shown" },
+    { name = "profPathPanel", text = "Profession path", open = "Open", close = "Close", shown = "Shown" },
     { name = "settingsPanel", text = "Settings", open = "Toggle" },
     { name = "sellList", text = "Sell list", open = "Show" },
     { name = "feedback", text = "Feedback", open = "Open" },

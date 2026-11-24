@@ -24,7 +24,7 @@ local _, ns = ...
 --   PPP.View(model) -> a kit window spec               pure
 --     model = { plan, open, selected, prof }
 --   PPP.Plain(model) -> plain panel rows               pure
---   PPP.Declare(k, diag) -> api   api.Open(), api.Toggle(), api.shown(),
+--   PPP.Declare(k, diag) -> api   api.Open(), api.Close(), api.Toggle(), api.shown(),
 --     api.model()
 --
 -- Not seen in game: its size, its place, and whether every line fits.
@@ -295,6 +295,9 @@ function PPP.Declare(k, diag)
         host.show(true)
         return true
     end
+    function api.Close()
+        if host then host.show(false) end
+    end
     function api.Toggle()
         if api.shown() then
             host.show(false)
@@ -315,7 +318,7 @@ function PPP.Declare(k, diag)
             group = "professions",
             synonyms = { "profession", "professions", "path", "brackets", "recipes", "skill", "shopping" },
         } },
-        provides = { Open = api.Open, Toggle = api.Toggle, Shown = api.shown },
+        provides = { Open = api.Open, Close = api.Close, Toggle = api.Toggle, Shown = api.shown },
         start = function(c)
             ctx = c
             local s = saved()
