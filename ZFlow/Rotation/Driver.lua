@@ -84,6 +84,8 @@ local _, ns = ...
 --       lowHealth  N8 (lead section 238): client.lowHealth(), the game's
 --                  low-health warning: true or false, nil when not known or
 --                  the client has no such read
+--       loc        G25: client.heldBy(), the kind of hold on you ("ROOT",
+--                  ...); nil when not held, not known or not read
 --       healItem   N8: your healthstone and healing potion
 --                  (Rotation/HealItems.lua): { stone, stoneName, potion,
 --                  potionName } kept in extra.heal until the bags change
@@ -671,6 +673,15 @@ function D.Read(client, pack, ids, role, extra)
             return nil
         end
         if field == "healItem" then return healItemKept(client, heal) end
+        -- G25: what holds you (client.heldBy), for the break-free rule. Not
+        -- held, not known and a failed read are all nil: the rule then
+        -- reads no hold and suggests nothing.
+        if field == "loc" then
+            if type(client.heldBy) ~= "function" then return nil end
+            local ok, v = pcall(client.heldBy)
+            if ok and type(v) == "string" then return v end
+            return nil
+        end
         if field == "mounted" or field == "onTaxi" then
             if type(client[field]) ~= "function" then return nil end
             local ok, v = pcall(client[field])

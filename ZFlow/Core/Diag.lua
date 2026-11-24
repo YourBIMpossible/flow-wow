@@ -273,6 +273,9 @@ Diag.NAMES = {
     -- P-QUEST (lead section 354 item 4): whether a quest can be shared
     -- (client.questShareable). A first guess on 16001.
     "C_QuestLog.IsPushableQuest",
+    -- G25 (lead section 404 item 4): what holds you in place
+    -- (client.heldBy). First guesses on 16001.
+    "C_LossOfControl.GetActiveLossOfControlDataCount", "C_LossOfControl.GetActiveLossOfControlData",
 }
 
 -- Namespaces whose member names are saved once per start, and the patterns

@@ -1636,6 +1636,9 @@ function ns.make.fakeClient(opts)
     function c.setFishingPole(v)
         if v == nil then s.fishingPole = nil else s.fishingPole = v and true or false end
     end
+    -- G25: heldBy() is unknown (nil) until set; false: nothing holds you.
+    function c.heldBy() return s.heldBy end
+    function c.setHeldBy(v) s.heldBy = v end
     -- N8: lowHealth() and itemCooldown(id) are unknown (nil) until set.
     --   c.setLowHealth(true / false)   c.setLowHealth(nil): not known
     --   c.setItemCooldown(id, secs)    secs 0: ready; nil: not known

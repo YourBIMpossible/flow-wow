@@ -5281,6 +5281,29 @@ function ns.make.client(env)
         return class == 2 and subclass == 20
     end
 
+    -- G25 (lead section 404 item 4): what holds you in place, by the
+    -- client's loss-of-control list: the first row's kind ("ROOT", "STUN",
+    -- "FEAR", ...) as the client spells it, false when nothing holds you,
+    -- nil when not known (no call, a failed, odd or secret answer). A
+    -- locked spell school is not a hold on you and is passed by. First
+    -- guess on 16001 (C_LossOfControl.GetActiveLossOfControlDataCount and
+    -- GetActiveLossOfControlData(i) answering a table with locType): not
+    -- seen in game. It only reads.
+    function c.heldBy()
+        local group = env.C_LossOfControl
+        if type(group) ~= "table" then return nil end
+        local ok, n = call(group.GetActiveLossOfControlDataCount)
+        if not ok or n == nil or hidden(n) or type(n) ~= "number" then return nil end
+        for i = 1, n do
+            local okRow, row = call(group.GetActiveLossOfControlData, i)
+            if not okRow or row == nil or hidden(row) or type(row) ~= "table" then return nil end
+            local kind = row.locType
+            if kind == nil or hidden(kind) or type(kind) ~= "string" then return nil end
+            if kind ~= "SCHOOL_INTERRUPT" then return kind end
+        end
+        return false
+    end
+
     -- N8 (lead section 238): the game's low-health warning, as Flow reads it
     -- (Modules/Rotation/BuffItems.lua): LowHealthFrame shown, and not faded
     -- out (alpha above 0.05; an alpha not read counts as shown). True,
