@@ -270,5 +270,7 @@ return {
     "Nav/PartyRoute.lua",
     -- P-EVIDENCE+ (sections 252, 262): look-only capture fields saved under diag (after Diag).
     "Core/AutoEvidence.lua",
+    -- P-TRIP slice 1: the trip list of stops for the route (after TripRoute, Errand, DungeonRead).
+    "Nav/Trip.lua",
     },
 }
