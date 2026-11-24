@@ -231,6 +231,7 @@ Nav\PartyRoute.lua
 Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
+UI\BuffStrip.lua
 Nav\QuestAdvice.lua
 Spells\TrainAdvice.lua
 Items\ProfPlan.lua
