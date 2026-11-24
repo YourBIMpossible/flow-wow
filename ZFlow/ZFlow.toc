@@ -55,6 +55,7 @@ Items\TooltipDisposition.lua
 Items\Bank.lua
 Items\Reservations.lua
 Items\LootNote.lua
+Items\RepairCost.lua
 Items\Plan.lua
 Items\Present.lua
 Items\CraftHint.lua

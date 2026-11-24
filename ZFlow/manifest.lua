@@ -68,6 +68,8 @@ return {
         "Items/Bank.lua",
         "Items/Reservations.lua",
         "Items/LootNote.lua",
+        -- G2, show only (lead section 397 lane B item 9): the repair cost said at a merchant that repairs (after Prices).
+        "Items/RepairCost.lua",
         "Items/Plan.lua",
         "Items/Present.lua",
         "Items/CraftHint.lua",

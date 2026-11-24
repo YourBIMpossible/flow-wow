@@ -4080,6 +4080,18 @@ function ns.make.client(env)
         return nil
     end
 
+    -- c.repairCost() -> what repairing everything costs at the open
+    -- merchant, in copper (0: nothing to repair), or nil when not known or
+    -- the merchant does not repair. A read only: nothing is repaired.
+    -- First guess, not seen in game: GetRepairAllCost() -> cost, canRepair
+    -- (warcraft.wiki.gg, API GetRepairAllCost).
+    function c.repairCost()
+        if c.merchantRepairs() ~= true then return nil end
+        local ok, cost = call(env.GetRepairAllCost)
+        if not ok or cost == nil or hidden(cost) or not wholeCount(cost) then return nil end
+        return cost
+    end
+
     -- c.bindLocation() -> the name of the place the hearthstone is set to,
     -- or nil.
     function c.bindLocation()
