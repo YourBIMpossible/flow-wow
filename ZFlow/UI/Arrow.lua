@@ -661,9 +661,12 @@ function Arrow.Start(k, diag, own)
             if step ~= nil and not followed and trails and type(trails.Refine) == "function" then
                 local okTrail, refined = pcall(trails.Refine, step)
                 if okTrail and type(refined) == "table" and refined ~= step then
+                    -- (A step that only gained the cave line is still the waypoint.)
+                    if refined.trail then
+                        mine = false
+                        from = from .. ", along a trail you walked"
+                    end
                     step = refined
-                    mine = false
-                    from = from .. ", along a trail you walked"
                 end
             end
             -- The way there, when it is a cast, the hearthstone, a ride or a
