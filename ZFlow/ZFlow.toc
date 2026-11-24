@@ -227,3 +227,4 @@ Nav\Trip.lua
 UI\RouteTracker.lua
 Items\ProfPlan.lua
 Items\ProfSources.lua
+UI\ProfDock.lua
