@@ -1320,6 +1320,16 @@ function Arrow.Start(k, diag, own)
             -- Parity B-30: Walk there instead (Nav/Travel.lua).
             run("walking", using("travel", "Walk"))
             relayout()
+        elseif action.wayAt then
+            -- Lead section 465 (A1-42): "Waypoint at <name>".
+            local at = using("wayWords", "At")
+            if at then
+                local okW, done, line = pcall(at, action.wayAt)
+                if okW then say(tostring(line)) else k.problems:add("arrow", "wayAt", done) end
+            else
+                say("waypoints are not ready.")
+            end
+            relayout()
         elseif action.drawer then
             -- Lead section 387, R3: Open it, as a left click on the quest arrow.
             local ok, err = pcall(drawer, "quest")
@@ -1538,6 +1548,18 @@ function Arrow.Start(k, diag, own)
                 say(W.REASON.unset .. ".")
             end
         else
+            -- Lead section 465 (A1-39/41/42): zone names, place words and
+            -- party members (Nav/WayWords.lua) first; the rest as before.
+            local words = k.use and k.use("wayWords")
+            if type(words) == "table" and type(words.Take) == "function" then
+                local okW, took, line = pcall(words.Take, text)
+                if not okW then k.problems:add("arrow", "way", took) end
+                if okW and took then
+                    say(tostring(line))
+                    relayout()
+                    return
+                end
+            end
             local here = ask(client, "position")
             local okN, zoneName = pcall(function() return client.mapName(here.map) end)
             local wp, why = W.Set(W.Slot(k.store), here, text, okN and zoneName or nil)
