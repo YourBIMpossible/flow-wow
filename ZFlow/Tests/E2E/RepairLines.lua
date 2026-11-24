@@ -54,9 +54,13 @@ tests["repair lines: the warning is said once, not again while the gear stays lo
     c.setPosition(MAP, 0.15, 0.5)
     c.fire("UPDATE_INVENTORY_DURABILITY")
     c.advance(1, 4)
+    -- The warning's own line starts with the add-on's name. The same words
+    -- numbered under "Ways to improve:" (UI/Alerts.lua, the list at login)
+    -- are the advisor's list, not the warning said again.
+    local own = ns.id.title .. ": An item you wear is at"
     local n = 0
     for _, line in ipairs(c.printed or {}) do
-        if tostring(line):find("An item you wear is at", 1, true) then n = n + 1 end
+        if tostring(line):sub(1, #own) == own then n = n + 1 end
     end
     t.eq(n, 1)
 end
