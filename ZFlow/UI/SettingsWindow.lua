@@ -15,7 +15,8 @@ local _, ns = ...
 --     rows, layout   SettingsOptions.Rows(k)'s first and third answers
 --     act(key, value)    a control was changed
 --     nav(kind, value)   "topic" (id), "search" (text), "action" (a
---                        button's key), "open" (a row's own window)
+--                        button's key), "open" (a row's own window),
+--                        "close" (the Close button)
 --     The tree is Kit.Window's: client.kitWindow draws it.
 --
 -- The window, top to bottom:
@@ -23,11 +24,14 @@ local _, ns = ...
 --               search box at the right; every letter typed searches
 --   topic list  one line a topic, the one shown marked. During a search the
 --               mark stays on the topic the window goes back to.
+--   the foot    Close, at the right. No Defaults button: the page has no
+--               reset (owner decision 6, UI/SettingsPage.lua).
 --   the pane    the topic's name as the first heading, then its rows; a
 --               search's hits stand under a heading for each topic. Nothing
 --               found: a line saying what was searched and how to clear it.
 -- A row: its label, one short line of description, its control in the
--- right-hand column. Who it is saved for is in the row's tooltip. A row
+-- right-hand column: a checkbox, a dropdown for a choice, a slider for a
+-- number with two limits. Who it is saved for is in the row's tooltip. A row
 -- that cannot be set is greyed, with the reason.
 -- Fake client only; not tested in game.
 local W = {}
@@ -46,6 +50,11 @@ W.MANY_TOPICS = " topics"
 W.TOPIC_JUMP = ".topic"
 -- A row that could be set but has no control for its kind of value (Twin F2).
 W.NO_CONTROL = "This cannot be changed in this window."
+-- The button at the foot of the window (owner, 2026-11-23: the window is to
+-- follow the game's own Settings window). It closes the window; a change is
+-- saved when it is made, so there is nothing to confirm.
+W.CLOSE = "#close"
+W.CLOSE_TEXT = "Close"
 W.NO_CONTROL_THERE = "This cannot be changed here; use "
 
 local function isText(v) return type(v) == "string" and v ~= "" end
@@ -72,7 +81,7 @@ local function controlOf(r, act)
         for i = 1, #items do
             if items[i] == "" then return nil end
         end
-        return { kind = "choice", key = r.key, items = items, selected = selected,
+        return { kind = "choice", key = r.key, items = items, selected = selected, drop = true,
             onSelect = function(i) act(r.key, r.choices[i]) end }
     end
     if (r.kind == "number" or r.kind == "slider") and type(r.value) == "number" then
@@ -249,6 +258,9 @@ function W.Tree(rows, act, nav, layout)
                   if topic then nav("topic", topic.id) end
               end },
             { kind = "scroll", children = pane },
+            { kind = "footer", buttons = {
+                { kind = "button", key = W.CLOSE, text = W.CLOSE_TEXT, onClick = function() nav("close") end },
+            } },
         },
     })
 end

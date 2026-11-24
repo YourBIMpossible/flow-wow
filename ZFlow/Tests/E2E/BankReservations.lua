@@ -7,6 +7,10 @@ local _, ns = ...
 -- shown in all three.
 -- Offline: the reads are the fake client's, not the game's. Not tested in game.
 local tests = {}
+-- Item names carry the game's quality colour (Items/Present.lua, Tint; the
+-- colour itself is tested in Tests/Items/ItemColourTests.lua). These tests are
+-- about the words, so they read them with the colour taken off.
+local plain = ns.ItemPresent.Plain
 
 local LINEN, PELT, BOLT, POTION = 2589, 4865, 2996, 858
 local INFO = {
@@ -104,7 +108,7 @@ end
 
 local function has(lines, text)
     for _, l in ipairs(lines or {}) do
-        if l == text then return true end
+        if plain(l) == text then return true end
     end
     return false
 end
@@ -113,7 +117,7 @@ local function joined(lines) return table.concat(lines or {}, " / ") end
 
 local function starts(lines, prefix)
     for _, l in ipairs(lines or {}) do
-        if l:sub(1, #prefix) == prefix then return true end
+        if plain(l):sub(1, #prefix) == prefix then return true end
     end
     return false
 end
@@ -325,17 +329,24 @@ tests["bank reservations: a saved goal is held at the merchant too, only the res
     t.ok(has(lines, "Ruined Pelt: 2 held for your steps"), "two kept, with why: " .. joined(lines))
     local one, three = false, false
     for _, l in ipairs(lines or {}) do
-        if l:sub(1, 17) == "1 x Ruined Pelt: " then one = true end
-        if l:sub(1, 17) == "3 x Ruined Pelt: " then three = true end
+        if plain(l):sub(1, 17) == "1 x Ruined Pelt: " then one = true end
+        if plain(l):sub(1, 17) == "3 x Ruined Pelt: " then three = true end
     end
     t.ok(one and not three, "one of three offered: " .. joined(lines))
     c.slashes[ns.id.slash]("goal remove " .. PELT)
     lines = sellLines(c)
     three = false
     for _, l in ipairs(lines or {}) do
-        if l:sub(1, 17) == "3 x Ruined Pelt: " then three = true end
+        if plain(l):sub(1, 17) == "3 x Ruined Pelt: " then three = true end
     end
     t.ok(three and not has(lines, "Ruined Pelt: 2 held for your steps"), "goal gone, all three: " .. joined(lines))
+end
+
+for name, fn in pairs(tests) do
+    tests[name] = function(t)
+        return fn(setmetatable({ eq = function(got, want, msg) return t.eq(plain(got), plain(want), msg) end },
+            { __index = t }))
+    end
 end
 
 return tests

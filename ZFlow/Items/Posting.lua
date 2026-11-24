@@ -112,7 +112,7 @@ function Po.List(bag, decide, seen)
                 local count = isCount(item.count) and item.count or 1
                 local vendor = isCount(item.sellPrice) and item.sellPrice or 0
                 local _, left = Po.Verdict(each, vendor, count, 0, 0)
-                out[#out + 1] = { id = item.key, name = item.name, count = count, each = each, seen = price,
+                out[#out + 1] = { id = item.key, name = item.name, quality = item.quality, count = count, each = each, seen = price,
                                   seenAt = isCount(s.at) and s.at or nil, vendor = vendor,
                                   gain = math.floor(left + 0.5) }
             end
@@ -161,7 +161,7 @@ function Po.Lines(rows, now, title, max, unsold)
     local lines = { title .. " Auctions: " .. #rows .. " thing(s) worth the auction house (from prices in your own searches)" }
     for i = 1, math.min(#rows, max) do
         local r = rows[i]
-        local name = ns.ItemPresent.Name(r.id, type(r.name) == "string" and { [r.id] = r.name } or nil)
+        local name = ns.ItemPresent.Name(r.id, type(r.name) == "string" and { [r.id] = ns.ItemPresent.Tint(r.name, r.quality) } or nil)
         local seenText = coin(r.seen)
         if isCount(r.seenAt) and isCount(now) and now >= r.seenAt then
             seenText = seenText .. ", " .. ns.PriceChart.Span(now - r.seenAt) .. " ago"
