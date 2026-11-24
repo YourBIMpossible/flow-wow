@@ -297,14 +297,18 @@ function Travel.Declare(k, diag)
         return N.TravelVia(step, ways, skips[key] == true)
     end
 
-    function api.walk()
+    -- menu: true from the arrow menu's row (parity B-30), whose own row
+    -- brings the shortcut back; the typed word names itself.
+    function api.walk(menu)
         if not lastKey or (not lastHow and not skips[lastKey]) then
             say("no shortcut on this step: nothing to walk past.")
             return false
         end
         local on = not skips[lastKey]
         N.TravelSkip(skips, lastKey, on)
-        if on then
+        if on and menu then
+            say("you walk to this step. The arrow's menu has the shortcut back.")
+        elseif on then
             say("you walk to this step. Say " .. ns.id.slash .. " " .. Travel.WORD .. " again for the shortcut.")
         else
             say("the shortcut is back for this step; no more walk past it.")
@@ -325,7 +329,7 @@ function Travel.Declare(k, diag)
         provides = {
             Via = function(step) return api.via(step) end,
             State = function() return api.state() end,
-            Walk = function() return api.walk() end,
+            Walk = function() return api.walk(true) end,
         },
         start = function(c) ctx = c end,
         stop = function()
