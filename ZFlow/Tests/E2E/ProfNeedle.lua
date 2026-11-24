@@ -135,10 +135,25 @@ end
 tests["prof needle: a crafting profession with nothing that gives a point says why"] = function(t)
     local c = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 50, max = 75 } }, book = BOOK,
         colours = { ["Bolt of Linen Cloth"] = { trivial = { lo = 40, hi = 60 } },
-                    ["Linen Bag"] = { optimal = { lo = 10, hi = 20 } } } })
+                    ["Linen Bag"] = { optimal = { lo = 10, hi = 20 }, trivial = { lo = 45, hi = 55 } } } })
+    -- Lead section 421 point 2: "all grey" means every known recipe was
+    -- seen grey, so Linen Bag is marked seen grey here.
     textOnly(t, c, { fmt(N.PROF_WHY_NO_POINT, "Tailoring", 50) }, "all grey at 50")
     local c2 = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 50, max = 75 } } })
     textOnly(t, c2, { fmt(N.PROF_WHY_RECIPES, "Tailoring") }, "no recipe colours seen")
+end
+
+-- Lead section 421 point 2: a recipe last seen orange at 20 with the skill
+-- now 50 was never seen grey, so it stays the step, worded as not
+-- confirmed: the craft, then when it was last seen giving points and the
+-- window to open. Fails before: "No known Tailoring recipe gives a point at 50".
+tests["prof needle: a recipe last seen orange at 20, skill now 50, is the step, not confirmed"] = function(t)
+    local c = start({ professions = { "Tailoring" }, skill = { Tailoring = { skill = 50, max = 75 } }, book = BOOK,
+        colours = { ["Bolt of Linen Cloth"] = { trivial = { lo = 40, hi = 60 } },
+                    ["Linen Bag"] = { optimal = { lo = 10, hi = 20 } } } })
+    t.ok(N.PROF_CRAFT_STALE ~= nil and N.PROF_STALE_CHECK ~= nil, "the lines exist")
+    textOnly(t, c, { fmt(N.PROF_CRAFT_STALE, "Linen Bag"), fmt(N.PROF_STALE_CHECK, 20, "Tailoring") },
+        "last seen orange at 20, skill now 50")
 end
 
 -- Fails before: a capped profession with no trainer seen says nothing.
