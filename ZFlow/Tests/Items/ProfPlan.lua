@@ -181,9 +181,10 @@ end
 
 tests["prof plan: gives a point but no materials anywhere: no steps and the reason"] = function(t)
     if type(P()) ~= "table" then return t.ok(false, "ns.ProfPlan") end
-    local steps, why = P().Plan(input())
-    t.eq(steps, {})
-    t.eq(why, "no materials")
+    -- Review of section 405 item 4: no source seen is a step naming the material.
+    local steps = P().Plan(input())
+    t.eq(steps[1] and steps[1].kind, "find_material")
+    t.ok(steps[1] and steps[1].text:find(": no source seen yet$") ~= nil, tostring(steps[1] and steps[1].text))
     t.eq(select(2, P().Plan(nil)), "no reading")
     t.eq(select(2, P().Plan(input({ skill = "50" }))), "no reading")
     t.eq(select(2, P().Plan(input({ max = 0 }))), "no reading")
@@ -207,16 +208,15 @@ tests["prof plan: an empty plan says the one thing to do next"] = function(t)
     t.eq(say, "Open your Blacksmithing window once")
     _, _, say = P().Plan(nil)
     t.eq(say, "Open a profession window once")
-    _, why, say = P().Plan(input({ colours = {} }))
-    t.eq(why, "no colours", "no recipe colour read for this profession")
-    t.eq(say, "Open your Blacksmithing window once")
-    _, why, say = P().Plan(input())
-    t.eq(why, "no materials")
-    t.eq(say, "Get the materials for Test Buckle")
+    -- Review of section 405 item 4: these two are steps now.
+    local open = P().Plan(input({ colours = {} }))
+    t.eq(open[1] and open[1].text, "Open your Blacksmithing window", "no recipe colour read for this profession")
+    local find = P().Plan(input())
+    t.eq(find[1] and find[1].kind, "find_material")
     local grey = { ["Test Buckle"] = { trivial = { lo = 40, hi = 60 } } }
-    _, why, say = P().Plan(input({ colours = grey }))
-    t.eq(why, "no recipe")
-    t.eq(say, "Visit a Blacksmithing trainer for new recipes")
+    -- Review of section 405 item 4: no trainer list seen is a step to one.
+    local steps = P().Plan(input({ colours = grey }))
+    t.eq(steps[1] and steps[1].kind, "learn_recipe")
 end
 
 tests["prof plan: a material whose name is not read yet is never a number"] = function(t)

@@ -294,5 +294,7 @@ return {
     "Nav/HearthAdvice.lua",
     -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
     "Nav/GateWords.lua",
+    -- Lead section 406 item 3: recipe facts for the profession plan, seen in game then shipped (read by ProfPlan at call time).
+    "Items/RecipeFacts.lua",
     },
 }
