@@ -21,6 +21,7 @@ local function boot()
     c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true } })
     c.setSaved(ns.id.charDB, { learned = { places = { services = {
         s = { name = "Near Smith", map = MAP, x = 0.6, y = 0.5, kinds = { repair = true }, seen = 10, n = 1 },
+        v = { name = "Near Trader", map = MAP, x = 0.3, y = 0.5, kinds = { vendor = true }, seen = 10, n = 1 },
     } } } })
     c.setScreen(1024, 768)
     c.setZone(1, MAP); c.setPosition(MAP, 0.5, 0.5); c.setFacing(0)
@@ -74,7 +75,38 @@ tests["way words: a place word with none seen says so"] = function(t)
     local c, addon = boot()
     slash(c, "way mail")
     t.eq(waypoint(addon), nil)
-    t.ok(tostring(last(c)):find("no mail seen", 1, true) ~= nil, tostring(last(c)))
+    -- Which kind, and how one comes to be known (lead section 595 item 3):
+    -- the line is the module's own (WW.NONE) with the kind's name in it.
+    local WW = ns.Nav.WayWords
+    local want = type(WW.NONE) == "string" and type(WW.NAMES) == "table" and WW.NONE:format(WW.NAMES.mail) or nil
+    t.ok(want ~= nil, "the module has its no-place line and the kinds' names")
+    t.ok(want ~= nil and tostring(last(c)):find(want, 1, true) ~= nil, tostring(last(c)))
+end
+
+-- Flow's other words for the same places (its Modules/Nav/Waypoint.lua
+-- ALIAS): sell, taxi, fly, flightmaster, innkeeper, hearth, banker, ah,
+-- auctioneer, mailbox. Fails before: none of them is taken.
+tests["way words: Flow's other words for a place mean the same place"] = function(t)
+    local WW = ns.Nav.WayWords
+    t.ok(type(WW.Word) == "function", "WW.Word names the kind a word means")
+    if type(WW.Word) ~= "function" then return end
+    local want = { sell = "vendor", taxi = "flight", fly = "flight", flightmaster = "flight",
+        innkeeper = "inn", hearth = "inn", banker = "bank", ah = "auction", auctioneer = "auction",
+        mailbox = "mail", repair = "repair", vendor = "vendor", mail = "mail" }
+    for word, kind in pairs(want) do
+        t.eq(WW.Word(word), kind, word)
+    end
+    t.eq(WW.Word("SELL"), "vendor", "any case")
+    t.eq(WW.Word("zed"), nil, "a word that is no place")
+    t.eq(WW.Word(nil), nil)
+end
+
+tests["way words: sell points at the nearest vendor seen, as vendor does"] = function(t)
+    local c, addon = boot()
+    slash(c, "way sell")
+    local wp = waypoint(addon)
+    t.eq(wp and wp.map, MAP)
+    t.eq(wp and wp.x, 0.3)
 end
 
 tests["way words: a party member's name sets a waypoint where they stand"] = function(t)
