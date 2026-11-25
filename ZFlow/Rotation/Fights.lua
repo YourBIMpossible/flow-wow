@@ -84,6 +84,18 @@ Fights.WINDOW = 10
 Fights.RECENT = 20
 Fights.UNTIMED = 5
 Fights.NO_DEATH = "no death recorded this session."
+-- Parity row C-64, the data half (lead section 712), as Flow's
+-- Modules/Deaths.lua: the deaths of the session, newest first, at most
+-- this many. rec:deaths() -> { { at, you, who, party, rows } }:
+--   you    true for your own death; rows: the hits on you before it,
+--          oldest first, { before, ability, source, amount } (health
+--          after a hit is not read: no health is, R.FROM_AMOUNT)
+--   who    a group member's name for theirs (party = true, rows {}), from
+--          the combat log's UNIT_DIED with the group flag (place 10). It is
+--          for the deaths window only: never in a diag line or a saved
+--          table. Another player outside the group, or a creature: not kept.
+-- The window and the health graph (C-65) are the drawing lane's.
+Fights.KEEP_DEATHS = 10
 
 local ELITE = { elite = true, rareelite = true, worldboss = true }
 local PLAIN = { normal = true, rare = true, trivial = true, minus = true }
@@ -183,6 +195,12 @@ function Fights.New(keep)
     local outside = 0
     local recent = {}    -- the last hits on me, oldest first
     local lastDeath
+    local deaths = {}    -- C-64: the deaths of the session, oldest first
+
+    local function keepDeath(row)
+        deaths[#deaths + 1] = row
+        while #deaths > Fights.KEEP_DEATHS do table.remove(deaths, 1) end
+    end
 
     -- The open fight counts toward the fixed number.
     local function trim()
@@ -223,7 +241,16 @@ function Fights.New(keep)
 
     -- The values of one event, in the order the client gives them. `at` is
     -- the caller's time for it.
-    function rec:event(at, _, sub, _, src, srcName, srcFlags, _, dst, _, dstFlags, _, a12, a13, _, a15, a16)
+    function rec:event(at, _, sub, _, src, srcName, srcFlags, _, dst, dstName, dstFlags, _, a12, a13, _, a15, a16)
+        -- C-64: a group member's death (not yours: rec:died keeps that).
+        if sub == "UNIT_DIED" then
+            if dst ~= nil and dst ~= me and grouped(dstFlags) == true and named(dstName) then
+                local when
+                if type(at) == "number" and at == at then when = at end
+                keepDeath({ at = when, you = false, who = dstName, party = true, rows = {} })
+            end
+            return false
+        end
         if open and open.group ~= true then
             local a, b = grouped(srcFlags), grouped(dstFlags)
             if a or b then
@@ -293,6 +320,13 @@ function Fights.New(keep)
             end
         end
         lastDeath = d
+        -- C-64: kept with the session's deaths, as rows.
+        local rows = {}
+        for i = 1, #d.hits do
+            local h = d.hits[i]
+            rows[i] = { before = h.before, ability = h.name, source = h.from, amount = h.amount }
+        end
+        keepDeath({ at = d.at, you = true, rows = rows })
         -- C-51 (Twin's review): the hits before this death are not hits
         -- before the next one.
         recent = {}
@@ -300,6 +334,20 @@ function Fights.New(keep)
     end
 
     function rec:death() return copyDeath(lastDeath) end
+
+    -- C-64: the deaths of the session, newest first, as copies.
+    function rec:deaths()
+        local out = {}
+        for i = #deaths, 1, -1 do
+            local d = deaths[i]
+            local rows = {}
+            for j, r in ipairs(d.rows) do
+                rows[j] = { before = r.before, ability = r.ability, source = r.source, amount = r.amount }
+            end
+            out[#out + 1] = { at = d.at, you = d.you, who = d.who, party = d.party, rows = rows }
+        end
+        return out
+    end
 
     function rec:list()
         local out = {}
