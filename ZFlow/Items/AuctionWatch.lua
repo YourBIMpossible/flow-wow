@@ -41,6 +41,11 @@ W.HELP = "<item> [price]: watch an item's auction price (amounts end in g, s or 
 W.AH = "ah"
 W.AH_HELP = "watch <item> [price] | unwatch <item> | alone: the watch list. It buys nothing."
 W.AH_USAGE = "ah watch <item> [price] | ah unwatch <item> | ah (the list). It buys nothing."
+-- E-33: bare ah frames the list as the legacy /flow ah did (Auction.lua:479-489):
+-- a heading, each watched item with its last price ("not yet" there), an
+-- "(empty)" line when none, then the words. No age, no cap, as there.
+W.AH_HEAD = "auction watch list, last price seen:"
+W.AH_EMPTY = "nothing watched."
 
 local UNIT = { g = 10000, s = 100, c = 1 }
 
@@ -110,6 +115,19 @@ function W.Lines(list, priceOf, nameOf, under)
     return out
 end
 
+-- E-33: the lines bare ah says, around the list's own lines.
+function W.AhLines(lines)
+    local out = { W.AH_HEAD }
+    local any = false
+    for _, line in ipairs(type(lines) == "table" and lines or {}) do
+        out[#out + 1] = line
+        any = true
+    end
+    if not any then out[#out + 1] = W.AH_EMPTY end
+    out[#out + 1] = W.AH_USAGE
+    return out
+end
+
 -- E-31: the chat line when a watched item is seen at or under its mark.
 function W.AlertLine(name, unit, mark)
     return string.format("%s is on the auction house for %s each, at or under your %s.", name, coin(unit), coin(mark))
@@ -169,7 +187,11 @@ function W.Declare(k, diag)
         arg = type(arg) == "string" and arg:match("^%s*(.-)%s*$") or ""
         local cmd, rest = arg:match("^(%S*)%s*(.-)$")
         cmd = cmd:lower()
-        if cmd == "" then return word("") end
+        if cmd == "" then
+            if not ctx then return say("not started yet") end
+            for _, line in ipairs(W.AhLines(W.Lines(list(), priceOf, nameOf))) do say(line) end
+            return
+        end
         if cmd == "watch" then return word(rest) end
         if cmd == "unwatch" then
             if rest == "" then return say(W.AH_USAGE) end
