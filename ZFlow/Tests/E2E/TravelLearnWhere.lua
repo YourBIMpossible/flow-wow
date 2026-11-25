@@ -40,6 +40,7 @@ local function start(opts)
     c.setMapCorners(1411, { cont = 1, ox = 0, oy = 0, ex = 1000, ey = 0, sx = 0, sy = 500 })
     c.setMapCorners(MOONGLADE, { cont = 1, ox = 5000, oy = 0, ex = 6000, ey = 0, sx = 5000, sy = 1000 })
     c.setClass(opts.class or "DRUID"); c.setFaction("Horde"); c.setLevel(20)
+    if opts.lists then c.setSaved(ns.id.charDB, { learned = { trainerLists = opts.lists } }) end
     if opts.known ~= nil then
         c.setSpellId(TELEPORT, TELEPORT_ID)
         c.setSpell(TELEPORT_ID, { known = opts.known })
@@ -58,7 +59,7 @@ local function has(lines, text)
     return false
 end
 
-local LEARN = Travel.LEARN and Travel.LEARN:format("Learn " .. TELEPORT, "your class trainer, from level 10")
+local LEARN = Travel.LEARN and Travel.LEARN:format("Learn " .. TELEPORT, ns.Nav.TRAVEL_FROM or "?")
 
 -- Fails before: the line under the quest is the no-flight line; the spell
 -- is never named.
@@ -96,6 +97,16 @@ tests["travel learn where: in Moonglade already, no learn line"] = function(t)
     local c = start({ known = false, here = MOONGLADE })
     local a = c.arrows[1]
     t.ok(not has(a.lines, LEARN), "no learn line")
+end
+
+-- Section 618: the level only once the player's own trainer window listed
+-- the spell (the saved trainer lists). Fails before: the typed level 10.
+tests["travel learn where: the level is the one the player's trainer listed"] = function(t)
+    local lists = { k = { npc = "Turak Runetotem", shown = { available = true, unavailable = true, known = true },
+        complete = true, rows = { { name = TELEPORT, state = "unavailable", level = 14 } } } }
+    local c = start({ known = false, lists = lists })
+    local want = Travel.LEARN:format("Learn " .. TELEPORT, ns.Nav.TRAVEL_FROM_LEVEL:format(14))
+    t.ok(has(c.arrows[1].lines, want), "the recorded level: " .. want)
 end
 
 return tests

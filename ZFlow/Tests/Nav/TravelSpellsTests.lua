@@ -11,12 +11,24 @@ local HERE = { position = { map = 1456, x = 0.4, y = 0.4 } } -- Thunder Bluff
 
 local T = {}
 
-T["data: Teleport: Moonglade as legacy Flow has it"] = function(t)
+T["data: Teleport: Moonglade and its map, as legacy Flow has them"] = function(t)
     local s = N.TRAVEL_SPELLS[1]
     t.eq(s.name, "Teleport: Moonglade")
     t.eq(s.map, MOONGLADE)
     t.eq(s.class, "DRUID")
-    t.eq(s.from, "your class trainer, from level 10")
+end
+
+-- Owner, lead section 618 ("Game facts, drop level"; section 611): no level
+-- is typed into the table. The map is the one number a row may carry, and
+-- no text of a row holds a digit. Fails before: the "from level 10" text.
+T["data: no level is typed into the travel spells (section 618)"] = function(t)
+    for i, s in ipairs(N.TRAVEL_SPELLS) do
+        for key, v in pairs(s) do
+            if type(v) == "number" then t.eq(key, "map", "row " .. i .. ": only the map is a number")
+            elseif type(v) == "string" then t.eq(v:find("%d"), nil, "row " .. i .. " " .. key .. ": no number typed in: " .. v) end
+        end
+        t.eq(s.from, nil, "row " .. i .. ": no typed where-from")
+    end
 end
 
 T["known: a step in the spell's zone from elsewhere is one cast away"] = function(t)
@@ -25,10 +37,40 @@ T["known: a step in the spell's zone from elsewhere is one cast away"] = functio
     t.eq(step, { label = "Cast Teleport: Moonglade", text = true, spell = "Teleport: Moonglade" })
 end
 
-T["not known: says where the spell comes from, and is marked to learn"] = function(t)
+-- Section 618: not known, and no trainer window has listed it: the class
+-- trainer, and no level. Fails before: the typed "from level 10".
+T["not known, no trainer record: learn from your class trainer, no level"] = function(t)
     local step = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", function() return false end)
     t.eq(step, { label = "Learn Teleport: Moonglade", text = true, spell = "Teleport: Moonglade",
-                 learn = true, detail = "your class trainer, from level 10" })
+                 learn = true, detail = N.TRAVEL_FROM })
+    t.eq(N.TRAVEL_FROM:find("%d"), nil, "no level in the words")
+    local none = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", function() return false end,
+        function() return nil end)
+    t.eq(none and none.detail, N.TRAVEL_FROM, "a record without the spell: still no level")
+end
+
+-- Section 618: the level only from the player's own trainer window.
+T["not known, with a trainer record: that record's level"] = function(t)
+    local step = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", function() return false end,
+        function(name) return name == "Teleport: Moonglade" and 14 or nil end)
+    t.eq(step and step.detail, N.TRAVEL_FROM_LEVEL:format(14))
+    local known = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", function() return true end,
+        function() return 14 end)
+    t.eq(known, { label = "Cast Teleport: Moonglade", text = true, spell = "Teleport: Moonglade" },
+        "known: cast, no level")
+end
+
+T["trainer record: the level a saved trainer list gives the spell"] = function(t)
+    local lists = {
+        a = { npc = "Turak Runetotem", rows = { { name = "Moonfire", state = "known", level = 4 },
+                                                { name = "Teleport: Moonglade", state = "unavailable", level = 10 } } },
+        b = { npc = "Other", rows = { { name = "Teleport: Moonglade", state = "unavailable" } } },
+    }
+    t.eq(N.TravelSpellLevel(lists, "Teleport: Moonglade"), 10)
+    t.eq(N.TravelSpellLevel(lists, "Hibernate"), nil, "not listed: no level")
+    t.eq(N.TravelSpellLevel(nil, "Teleport: Moonglade"), nil)
+    t.eq(N.TravelSpellLevel({ x = { rows = { { name = "Teleport: Moonglade", level = 0 } } } }, "Teleport: Moonglade"),
+        nil, "no plain level: none")
 end
 
 T["known not said: no step, never taken as known"] = function(t)
