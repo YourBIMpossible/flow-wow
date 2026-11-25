@@ -283,6 +283,9 @@ return {
     "Nav/BossKills.lua",
     -- Lead section 318: the Dungeon Quests window, on the kit (after Kit and the dungeon data).
     "UI/DungeonWindow.lua",
+    -- DISPATCH §652 slice 1: the Dungeon Quests menu, the card grid and the
+    -- detail view with the B-55 badge (after DungeonWindow, the dungeon data).
+    "UI/DungeonMenu.lua",
     -- G34: hover over an action button and press a key (after Kit and Diag).
     "UI/HoverBind.lua",
     "UI/HelpPages.lua",
