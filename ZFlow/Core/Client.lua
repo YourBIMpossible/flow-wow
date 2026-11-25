@@ -14027,26 +14027,111 @@ function ns.make.client(env)
     -- NEED. Not tested in game.
     ---------------------------------------------------------------------
 
-    -- A2-27: the open NPC chat's options, { { id, name } } in the game's
-    -- order; a field the game leaves out (or hides) is left out. nil when
-    -- the read is missing or fails. C_GossipInfo.GetOptions(), each a
-    -- GossipOptionUIInfo (gossipOptionID, name); Flow reads o.name the same
-    -- way (flow-wow Modules/Nav/Places.lua:422-427).
-    function c.gossipOptions()
-        local g = env.C_GossipInfo
-        if type(g) ~= "table" then return nil end
-        local ok, list = call(g.GetOptions)
-        if not ok or type(list) ~= "table" then return nil end
-        local out = {}
-        for _, o in ipairs(list) do
-            if type(o) == "table" then
-                local row = {}
-                if type(o.gossipOptionID) == "number" and not hidden(o.gossipOptionID) then row.id = o.gossipOptionID end
-                if type(o.name) == "string" and not hidden(o.name) then row.name = o.name end
-                out[#out + 1] = row
+    -- A2-27: the open NPC chat's options, { { id, name, icon, type } } in
+    -- the game's order; a field the game leaves out (or hides) is left out.
+    -- nil when the read is missing or fails. C_GossipInfo.GetOptions(),
+    -- each a GossipOptionUIInfo (gossipOptionID, name, icon); Flow reads
+    -- o.name the same way (flow-wow Modules/Nav/Places.lua:422-427).
+    -- `type` is the game's own lower-case option type, which
+    -- Nav/ServiceSeen.lua GossipKinds reads: from the older
+    -- GetGossipOptions() pairs (text, type, text, type, ...) when the client
+    -- still has it, matched by place in the list; else from the option's
+    -- icon by GOSSIP_ICON_TYPES. An icon not in the table gives no type.
+    -- Without C_GossipInfo the pairs alone are read. Not seen on 16001:
+    -- whether GetGossipOptions is there, and the icon file IDs (ASSUMED,
+    -- public data for later clients) until the diagnostics' gossip lines
+    -- (Core/Diag.lua) show them at a vendor, an innkeeper, a banker and a
+    -- flight master.
+    -- (One do-block: these helpers add no local to this function, which is
+    -- near Lua 5.1's limit of 200 locals.)
+    do
+        local GOSSIP_ICON_TYPES = {
+            [132060] = "vendor",  -- Interface\GossipFrame\VendorGossipIcon, ASSUMED
+            [132057] = "taxi",    -- Interface\GossipFrame\TaxiGossipIcon, ASSUMED
+            [132050] = "banker",  -- Interface\GossipFrame\BankerGossipIcon, ASSUMED
+            [132052] = "binder",  -- Interface\GossipFrame\BinderGossipIcon, ASSUMED
+        }
+        -- The older read's types by place, { [i] = type } and its texts; nil
+        -- when the client has no such read or it fails.
+        local function gossipPairs()
+            if type(env.GetGossipOptions) ~= "function" then return nil end
+            local answer = { call(env.GetGossipOptions) }
+            if not answer[1] then return nil end
+            local types, texts, i = {}, {}, 0
+            for n = 2, #answer, 2 do
+                i = i + 1
+                local text, kind = answer[n], answer[n + 1]
+                if type(text) == "string" and not hidden(text) then texts[i] = text end
+                if type(kind) == "string" and not hidden(kind) and kind ~= "" then types[i] = string.lower(kind) end
             end
+            return types, texts, i
         end
-        return out
+        function c.gossipOptions()
+            local types, texts, count = gossipPairs()
+            local g = env.C_GossipInfo
+            if type(g) ~= "table" then
+                if types == nil then return nil end
+                local out = {}
+                for i = 1, count do out[i] = { name = texts[i], type = types[i] } end
+                return out
+            end
+            local ok, list = call(g.GetOptions)
+            if not ok or type(list) ~= "table" then return nil end
+            local out = {}
+            for i, o in ipairs(list) do
+                if type(o) == "table" then
+                    local row = {}
+                    if type(o.gossipOptionID) == "number" and not hidden(o.gossipOptionID) then row.id = o.gossipOptionID end
+                    if type(o.name) == "string" and not hidden(o.name) then row.name = o.name end
+                    if type(o.icon) == "number" and not hidden(o.icon) then row.icon = o.icon end
+                    if types ~= nil then row.type = types[i] end
+                    if row.type == nil and row.icon ~= nil then row.type = GOSSIP_ICON_TYPES[row.icon] end
+                    out[#out + 1] = row
+                end
+            end
+            return out
+        end
+
+        -- The diagnostics' gossip lines (Core/Diag.lua): each option of the
+        -- open NPC chat as the game gives it, raw, so the icon file IDs above
+        -- can be checked on 16001. One line each, "id=<n> icon=<n> name=<text>"
+        -- with "?" for a field missing or hidden; the older read's pairs follow
+        -- as "pair <i>: <text> / <type>". nil when neither read answers. Reads
+        -- only: no option is chosen.
+        local function rawField(v)
+            if v == nil or hidden(v) then return "?" end
+            return tostring(v)
+        end
+        function c.gossipRawLines()
+            local lines = {}
+            local g = env.C_GossipInfo
+            local answered = false
+            if type(g) == "table" then
+                local ok, list = call(g.GetOptions)
+                if ok and type(list) == "table" then
+                    answered = true
+                    for _, o in ipairs(list) do
+                        if type(o) == "table" then
+                            lines[#lines + 1] = "id=" .. rawField(o.gossipOptionID) .. " icon=" .. rawField(o.icon)
+                                .. " name=" .. rawField(o.name)
+                        end
+                    end
+                end
+            end
+            if type(env.GetGossipOptions) == "function" then
+                local answer = { call(env.GetGossipOptions) }
+                if answer[1] then
+                    answered = true
+                    local i = 0
+                    for n = 2, #answer, 2 do
+                        i = i + 1
+                        lines[#lines + 1] = "pair " .. i .. ": " .. rawField(answer[n]) .. " / " .. rawField(answer[n + 1])
+                    end
+                end
+            end
+            if not answered then return nil end
+            return lines
+        end
     end
 
     -- A2-21: the game's quest tracker and Questie's tracker, hidden or let
