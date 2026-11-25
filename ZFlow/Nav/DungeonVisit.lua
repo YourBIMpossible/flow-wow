@@ -35,6 +35,17 @@
 --                      its own run time. Before the first kill the summary
 --                      is the whole dungeon's and one line says the wing is
 --                      not known yet.
+--                      Two wings one after the other (Twin, lead section
+--                      550): wings that are instances of one name (the
+--                      Scarlet Monastery's) look like walking back in. When
+--                      a boss of another wing dies after you came back in,
+--                      the first wing's run ends where you left it and the
+--                      new wing is a run of its own from when you came in,
+--                      with its own entering lines, said then (V.Split).
+--                      One instance with two wings (Blackrock Spire,
+--                      Stratholme): you never leave between them, so there
+--                      is one run, and the last boss killed decides which
+--                      wing it is recorded under, whole.
 --
 --   worth it?          (B-54, section 496 item 3) one line, "Your last run:
 --                      about 1.8 times your questing XP per hour", in the
@@ -74,6 +85,8 @@
 --   V.KillLine(kills, reported, total) -> the line of bosses killed
 --       (total: how many bosses the wing has, when the wing is known)
 --   V.Key(run) -> the name a run's time is kept under
+--   V.Split(run, as) -> old, fresh, or nothing: the run cut in two when a
+--       boss tells a wing other than the run's after you came back in
 --   V.Step(run, name, now) -> run, changed, finished, seconds, xp
 --       the saved run after an event: name is the dungeon you are in (nil:
 --       outside), now the clock (nil: not known). finished: the name of a
@@ -91,8 +104,10 @@
 -- Saved data also: char V.SAMPLES = { { t, xp } } the XP gained outside
 -- dungeons, the newest V.SAMPLES_MAX; char V.RUN_XP = { [run name] = xp }
 -- the XP gained in the last run of each, kept with its time.
--- Saved data: char V.RUN = { name, as, said, t, left }: the run you are in
--- (as: the wing's run name, once the wing is known)
+-- Saved data: char V.RUN = { name, as, said, t, left, back, backLeft,
+-- xpBack }: the run you are in (as: the wing's run name, once the wing is
+-- known; back, backLeft, xpBack: when you last came back in, when you had
+-- left, and the XP until then, kept for V.Split)
 -- (t: the clock at entering, left: at leaving), so a reload inside it says
 -- nothing twice and keeps its start. char V.TIMES = { [dungeon name] =
 -- seconds }: the last run of each.
@@ -301,6 +316,26 @@ function V.Key(run)
     return run.name
 end
 
+-- Twin, lead section 550: a boss tells a wing other than the run's, after
+-- you came back in. The run is cut in two: old ends where you left it, and
+-- fresh is the new wing's, from when you came in, its lines not said yet.
+-- Nothing when the run has no wing yet, the wing is the same, or you never
+-- left (one instance with two wings).
+function V.Split(run, as)
+    if type(run) ~= "table" or type(run.as) ~= "string" or type(as) ~= "string" or as == run.as then return nil end
+    if not clockOk(run.back) or not clockOk(run.backLeft) then return nil end
+    local old = { name = run.name, as = run.as, t = run.t, left = run.backLeft }
+    local fresh = { name = run.name, as = as, t = run.back }
+    local before = 0
+    if num(run.xpBack) and run.xpBack > 0 then
+        before = run.xpBack
+        old.xp = before
+    end
+    if num(run.xp) and run.xp - before > 0 then fresh.xp = run.xp - before end
+    if run.noXp == true then old.noXp, fresh.noXp = true, true end
+    return old, fresh
+end
+
 function V.RunTime(run)
     if type(run) ~= "table" or not clockOk(run.t) or not clockOk(run.left) or run.left < run.t then return nil end
     return run.left - run.t
@@ -338,6 +373,11 @@ function V.Step(run, name, now)
             if run.left == nil then return run, false end
             -- Out and back in soon: the same run goes on.
             if t and clockOk(run.left) and t >= run.left and t - run.left < V.GRACE then
+                -- With the wing known, this may be another wing of the same
+                -- name: where the run stood is kept for V.Split.
+                if type(run.as) == "string" then
+                    run.back, run.backLeft, run.xpBack = t, run.left, num(run.xp) and run.xp or 0
+                end
                 run.left = nil
                 return run, true
             end
@@ -658,7 +698,14 @@ function V.Declare(k, diag)
         if name ~= nil and type(r) == "table" and r.name == name then
             local as = wingTitle(name)
             if as and r.as ~= as then
-                r.as = as
+                -- Another wing after coming back in: two runs (section 550).
+                local old, fresh = V.Split(r, as)
+                if old then
+                    record(V.Key(old), V.RunTime(old), V.RunXp(old))
+                    r = fresh
+                else
+                    r.as = as
+                end
                 changed = true
             end
         end
