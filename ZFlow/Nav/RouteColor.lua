@@ -6,7 +6,7 @@ local _, ns = ...
 -- all to ask it, so what you see on one is what you see on the others.
 -- Pure Lua 5.1: no client calls, no saved data.
 --
---   r, g, b, family, hex = RC.Of(step, yards, palette)
+--   r, g, b, family, hex = RC.Of(step, yards, palette, byDistance)
 --     step     a table, or nil for a plain step. Two things are read:
 --                state   "away" (the step is in another zone), "here" (you
 --                        are in its area), "corpse"; anything else: on the
@@ -22,13 +22,19 @@ local _, ns = ...
 --     palette  "standard" or the colour-blind one ("colourBlind", the saved
 --              word of N.ARROW_PALETTES; "colorblind" in any case too);
 --              anything else is the standard one
+--     byDistance  the player's one-colour setting (N43): false gives the
+--              one-colour row of that palette (far, mid and near all its
+--              near colour; away and here as they are); anything else
+--              gives the distance colours. Only the distance family reads
+--              it: the waypoint is a colour of its own, and the profession
+--              ramp is the echo's, not the arrow's.
 --     family   what the colour stands for: "distance", "waypoint",
 --              "profession" or "corpse"
 --     hex      the colour as six hex digits, "FFD91A"
 --
 -- What the colours mean (Muse's rules 1 to 3):
 --   waypoint    green, always, at any distance and in any zone: RC.WAYPOINT
---               (1EFF00; colour-blind 009E73).
+--               (1EFF00; colour-blind 0072B2).
 --   profession  purple always means professions. One ramp, dim far to
 --               bright near, over the same distances as the route's
 --               (N.COLOR_FAR to N.COLOR_NEAR): RC.PROFESSION. In another
@@ -60,7 +66,7 @@ local function rgb(hex)
 end
 
 -- By palette key (the keys of N.ARROW_PALETTE).
-RC.WAYPOINT = { standard = rgb("1EFF00"), colourBlind = rgb("009E73") }
+RC.WAYPOINT = { standard = rgb("1EFF00"), colourBlind = rgb("0072B2") }
 RC.PROFESSION = {
     standard = { far = rgb("7B4BA6"), near = rgb("A335EE") },
     colourBlind = { far = rgb("8E6BBF"), near = rgb("CC79A7") },
@@ -101,7 +107,7 @@ local function answer(r, g, b, family)
     return r, g, b, family, RC.Hex(r, g, b)
 end
 
-function RC.Of(step, yards, palette)
+function RC.Of(step, yards, palette, byDistance)
     if type(step) ~= "table" then step = nil end
     local key = RC.PaletteKey(palette)
     local state, family = "zone", nil
@@ -132,6 +138,6 @@ function RC.Of(step, yards, palette)
         return answer(P.far[1] + (P.near[1] - P.far[1]) * near, P.far[2] + (P.near[2] - P.far[2]) * near,
             P.far[3] + (P.near[3] - P.far[3]) * near, "profession")
     end
-    local r, g, b = N.ArrowColor(state, yards, N.ArrowPaletteOf(key))
+    local r, g, b = N.ArrowColor(state, yards, N.ArrowPaletteOf(key, byDistance))
     return answer(r, g, b, "distance")
 end
