@@ -62,6 +62,16 @@ jobs:
       # The Z-Flow line (ZFlow/): its own structure rules, its generated TOC
       # still matching manifest.lua, and its offline tests on the fake client.
       # Without these a broken Z-Flow commit shows green here.
+      # Worker branches leave the TOC to the lead (see the note at the top), so
+      # on any ref other than zflow and main the TOC is regenerated here, in the
+      # runner only (nothing is committed), and the run judges the code instead
+      # of failing on a TOC the lead writes at merge. zflow and main still fail
+      # on a stale TOC.
+      - name: Z-Flow TOC regenerated for worker branches (not committed)
+        if: github.ref_name != 'zflow' && github.ref_name != 'main'
+        shell: pwsh
+        run: ./tools/zflow-toc.ps1
+
       - name: Z-Flow structure (tools/zflow-structure.ps1)
         shell: pwsh
         run: ./tools/zflow-structure.ps1
