@@ -180,11 +180,11 @@ end
 
 tests["E-35 PostLine: a silver under the seen price, whole silver"] = function(t)
     t.eq(L.PostLine(5000), "Suggested post: 49s each (1s under the 50s last seen; advice only, nothing is posted)")
-    t.eq(L.PostLine(1234), "Suggested post: 11s each (1s 34c under the 12s 34c last seen; advice only, nothing is posted)")
+    t.eq(L.PostLine(1234), "Suggested post: 11s each (1.34s under the 12.3s last seen; advice only, nothing is posted)")
 end
 
-tests["E-35 PostLine: the legacy floors (under a silver: none; 1s 50c: 1s)"] = function(t)
-    t.eq(L.PostLine(150), "Suggested post: 1s each (50c under the 1s 50c last seen; advice only, nothing is posted)")
+tests["E-35 PostLine: the legacy floors (under a silver: none; 1.5s: 1s)"] = function(t)
+    t.eq(L.PostLine(150), "Suggested post: 1s each (50c under the 1.5s last seen; advice only, nothing is posted)")
     t.eq(L.PostLine(99), nil)
     t.eq(L.PostLine(nil), nil)
     t.eq(L.PostLine("x"), nil)

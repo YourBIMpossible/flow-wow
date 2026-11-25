@@ -81,7 +81,7 @@ tests["price e2e E-35: the suggested post price follows the latest look, and pos
     local c = boot()
     c.auctionResult(LINEN, { unitPrice = 1234 })
     local lines = say(c, "price " .. LINEN)
-    t.eq(lines[#lines], T("Suggested post: 11s each (1s 34c under the 12s 34c last seen; advice only, nothing is posted)"))
+    t.eq(lines[#lines], T("Suggested post: 11s each (1.34s under the 12.3s last seen; advice only, nothing is posted)"))
     noneActs(t, c)
 end
 

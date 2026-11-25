@@ -14,6 +14,7 @@ local _, ns = ...
 --
 --   result = PriceLookup.Find(item, itemInfo, book)     pure; nil: not an item
 --   lines  = PriceLookup.Run(k, rest)                   what to say, no title
+--   line   = PriceLookup.PostLine(seen)                 E-35 suggested post, or nil
 --   PriceLookup.Start(k, diag) -> { run = fn }          adds the word
 --
 --   result = { key, name (nil when not read),
@@ -76,6 +77,22 @@ function Lookup.Find(item, itemInfo, book)
     return { key = key, name = name, quality = quality, sell = sell, buy = buy }
 end
 
+-- E-35: the suggested post price for an item last seen at `seen` copper
+-- each in the player's own searches. The rule is the legacy one, kept in
+-- Items/Posting.lua (Posting.Price: a silver under, whole silver, never
+-- under one silver). Advice only: nothing posts, and nothing is prefilled.
+-- nil when no price is suggested (none seen, or under a silver each).
+function Lookup.PostLine(seen)
+    if not isCount(seen) then return nil end
+    local Posting = ns.Posting
+    if type(Posting) ~= "table" or type(Posting.Price) ~= "function" then return nil end
+    local ask = Posting.Price(seen)
+    if not isCount(ask) then return nil end
+    local coin = ns.Prices.Coin
+    return "Suggested post: " .. tostring(coin(ask)) .. " each (" .. tostring(coin(seen - ask)) .. " under the "
+        .. tostring(coin(seen)) .. " last seen; advice only, nothing is posted)"
+end
+
 local function trim(text)
     return (tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""))
 end
@@ -105,7 +122,13 @@ function Lookup.Run(k, rest)
         and type(client) == "table" and type(client.clock) == "function" then
         local e = log.Read(k.store, client, result.key)
         if e then
-            for _, line in ipairs(chart.TipLines(chart.Points(e), client.clock())) do lines[#lines + 1] = line end
+            local points = chart.Points(e)
+            for _, line in ipairs(chart.TipLines(points, client.clock())) do lines[#lines + 1] = line end
+            local last = points[#points]
+            if type(last) == "table" then
+                local post = Lookup.PostLine(last.price)
+                if post then lines[#lines + 1] = post end
+            end
         end
     end
     return lines
