@@ -5414,3 +5414,34 @@ do
         return c
     end
 end
+
+-- E-new-8 (Items/AuctionOverDisenchant.lua): whether a bag stack is bound,
+-- as the real client's bagItems() is asked to give it (CLIENT NEED): each
+-- row's bound is true (bound to you), false (tradeable) or left out (not
+-- known). c.setBagBound(item, on) marks every stack of that item (an item
+-- ID or link, matched by ID); on = true or false, anything else forgets it.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local bound = {}
+        local rows = c.bagItems
+        function c.setBagBound(item, on)
+            local id = ns.Items.Id(item)
+            if id == nil then return end
+            if type(on) == "boolean" then bound[id] = on else bound[id] = nil end
+        end
+        function c.bagItems()
+            local out = rows()
+            if type(out) ~= "table" then return out end
+            for _, row in ipairs(out) do
+                if type(row) == "table" then
+                    local id = ns.Items.Id(row.item)
+                    if id ~= nil and bound[id] ~= nil then row.bound = bound[id] end
+                end
+            end
+            return out
+        end
+        return c
+    end
+end
