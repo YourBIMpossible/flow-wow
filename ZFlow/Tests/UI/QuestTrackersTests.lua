@@ -58,6 +58,10 @@ local function boot(t, o)
     if o.calls ~= false then
         c[Q.CALL[Q.GAME]] = made(Q.GAME)
         c[Q.CALL[Q.QUESTIE]] = made(Q.QUESTIE)
+    else
+        -- The fake has both names (lead section 702); this client has neither.
+        c[Q.CALL[Q.GAME]] = nil
+        c[Q.CALL[Q.QUESTIE]] = nil
     end
     if o.questie ~= false then
         local function touch() w.touched = w.touched + 1 end

@@ -99,6 +99,27 @@ return {
         t.eq({ c.hideQuestieTracker(false) }, { false, "lockdown" })
     end,
 
+    ["lease tracker show names (lead 702): show is the hide call turned around"] = function(t)
+        local env = frameEnv()
+        env.InCombatLockdown = function() return false end
+        local c = ns.make.client(env)
+        local game, questie = trackerFrame(), trackerFrame()
+        env.QuestWatchFrame, env.Questie_BaseFrame = game, questie
+        t.eq({ c.showQuestWatch(false) }, { true, "done" })
+        t.eq(game:IsShown(), false, "show off hides the game tracker")
+        t.eq({ c.showQuestWatch(true) }, { true, "done" })
+        t.eq(game:IsShown(), true, "show on brings it back")
+        t.eq({ c.showQuestieTracker(false) }, { true, "done" })
+        t.eq(questie:IsShown(), false)
+        env.InCombatLockdown = function() return true end
+        t.eq({ c.showQuestieTracker(true) }, { false, "lockdown" })
+        local fake = ns.make.fakeClient()
+        fake.showQuestWatch(false)
+        t.eq(fake.trackerHidden("game"), true, "the fake answers the same names")
+        fake.showQuestWatch(true)
+        t.eq(fake.trackerHidden("game"), false)
+    end,
+
     ["lease inputBox: one popup of our own key, fn gets the typed text"] = function(t)
         local env = frameEnv()
         env.StaticPopupDialogs = {}

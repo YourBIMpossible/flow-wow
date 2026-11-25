@@ -5302,6 +5302,7 @@ end
 -- other branches' end blocks for the same reads are kept at merge.
 --   c.setGossipOptions(list|nil)       gossipOptions()
 --   hideGameTracker(on), hideQuestieTracker(on) -> true, "done" |
+--     showQuestWatch(on), showQuestieTracker(on): the same, turned around;
 --     false, "lockdown" (combatLockdown() not false); c.trackerHidden(which)
 --   inputBox(prompt, fn) -> true; c.typeInputBox(text) accepts it
 --   onBoughtBack(fn); c.fireBoughtBack(link)
@@ -5330,6 +5331,8 @@ do
         end
         function c.hideGameTracker(on) return hide("game", on) end
         function c.hideQuestieTracker(on) return hide("questie", on) end
+        function c.showQuestWatch(on) return c.hideGameTracker(on ~= true) end
+        function c.showQuestieTracker(on) return c.hideQuestieTracker(on ~= true) end
         function c.trackerHidden(which) return trackers[which] == true end
         function c.inputBox(_, fn)
             if type(fn) ~= "function" then return nil end

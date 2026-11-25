@@ -13924,6 +13924,10 @@ function ns.make.client(env)
     end
     function c.hideGameTracker(hide) return trackerHide("game", hide) end
     function c.hideQuestieTracker(hide) return trackerHide("questie", hide) end
+    -- Lead section 702: UI/QuestTrackers.lua asks by the show form (true
+    -- shows the tracker); each name is the hide call turned around.
+    function c.showQuestWatch(on) return c.hideGameTracker(on ~= true) end
+    function c.showQuestieTracker(on) return c.hideQuestieTracker(on ~= true) end
 
     -- A1-40: a popup with one line to type in; fn(text) on Accept or Enter.
     -- true when shown, nil when the popup calls are missing or refuse.
