@@ -99,6 +99,35 @@ tests["zone notice: on a flight, in an instance or in a fight is busy; not known
     t.eq(Z().Busy(nil, nil, nil), false)
 end
 
+-- A capital city is no questing zone. The predecessor was silent there
+-- (a city never had a row of its own); here whereNext does not list a
+-- city either, so without this rule every visit to a capital would raise
+-- the notice. Red before: there was no Z.City, and a city was not busy.
+tests["zone notice: a capital city is told apart, any other map is not"] = function(t)
+    t.ok(type(Z().City) == "function", "Z.City is there")
+    if type(Z().City) ~= "function" then return end
+    local walled = ns.Nav.GATE_WALLED
+    t.ok(type(walled) == "table" and next(walled) ~= nil, "the capitals of Nav/Gates.lua are there")
+    if type(walled) ~= "table" then return end
+    for map in pairs(walled) do
+        t.eq(Z().City(map), true, "a capital: " .. tostring(map))
+    end
+    t.eq(Z().City(BARE), false, "a zone that is no capital")
+    t.eq(Z().City(nil), false)
+end
+
+tests["zoneNotice module: in a capital city there is no notice, however long the player stays"] = function(t)
+    local city = next(ns.Nav.GATE_WALLED or {})
+    t.ok(city ~= nil, "a capital to stand in")
+    if city == nil then return end
+    local k, c = start({ zone = city })
+    settle(c)
+    t.eq(notice(k), nil, "no notice in a city")
+    wait(c, Z().SETTLE * 3)
+    t.eq(notice(k), nil, "nor later")
+    t.eq(k.problems:count(), 0)
+end
+
 tests["zone notice: a zone is listed when whereNext's answer holds its map"] = function(t)
     local list = listed()
     t.ok(Z().Listed(list, WOOD) == list[1], "the zone's own row")

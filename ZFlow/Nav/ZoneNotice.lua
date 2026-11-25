@@ -42,6 +42,8 @@ local _, ns = ...
 -- Pure:
 --   Z.Settled(seconds, wait) -> bool
 --   Z.Busy(onTaxi, instance, inCombat) -> bool; instance = { inside, kind }
+--   Z.City(map) -> bool: one of the six capitals (Nav/Gates.lua); the
+--     module counts a city as busy, so no notice is raised in one
 --   Z.Listed(list, map) -> whereNext's row for the map, or nil
 --   Z.Better(list, map) -> { map, name, count } (a copy) or nil: the first
 --     row of whereNext's answer that is another map with a quest
@@ -123,6 +125,15 @@ end
 function Z.Busy(onTaxi, instance, inCombat)
     if onTaxi == true or inCombat == true then return true end
     return type(instance) == "table" and instance.inside == true
+end
+
+-- Is the map one of the capital cities (the six of Nav/Gates.lua,
+-- N.GATE_WALLED, looked up when asked)? A city has no quests of its own
+-- to count and is no place to be told to quest elsewhere; the predecessor
+-- was silent there because a city never had a row of its own.
+function Z.City(map)
+    local walled = N.GATE_WALLED
+    return map ~= nil and type(walled) == "table" and walled[map] ~= nil
 end
 
 function Z.Listed(list, map)
@@ -288,7 +299,8 @@ function Z.Declare(k)
             at.since = now
         end
         local s = { zone = zone, on = on(), answered = api.answer(zone) ~= nil,
-            busy = Z.Busy(ask(c, "onTaxi"), ask(c, "instance"), ask(c, "inCombat")),
+            -- A capital city is no questing zone: silent there, as busy is.
+            busy = Z.Busy(ask(c, "onTaxi"), ask(c, "instance"), ask(c, "inCombat")) or Z.City(zone),
             settled = now ~= nil and at.since ~= nil and Z.Settled(now - at.since) }
         if not Z.MayAsk(s) or at.asks >= Z.ASKS then
             put(nil)
