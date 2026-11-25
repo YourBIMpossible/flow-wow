@@ -449,7 +449,7 @@ local function buffFoodOf(client, pack, role, pole)
                         local gain = BF.Gain(lines)
                         local score
                         if values then score = BF.Score(gain, values) else score = BF.ScoreByRole(gain, as, mana) end
-                        foods[#foods + 1] = { id = id, name = info.name, score = score }
+                        foods[#foods + 1] = { id = id, name = info.name, score = score, gain = gain }
                     end
                 end
             end
@@ -457,10 +457,21 @@ local function buffFoodOf(client, pack, role, pole)
     end
     -- The second answer: true when some item could not be read, so the
     -- answer may change when it arrives (section 236).
+    -- The third answer (D-13): every fight food read, with what it gives.
     local best = BF.Best(pole == true and fishing or foods)
-    if best then return { name = best.name, item = best.id, score = best.score }, unread end
-    if unread then return nil, true end
-    return {}, false
+    if best then return { name = best.name, item = best.id, score = best.score }, unread, foods end
+    if unread then return nil, true, foods end
+    return {}, false, foods
+end
+
+-- Parity row D-13 (lead section 668): every Well Fed fight food in your
+-- bags, { { id, name, score, gain } } in bag order, scored as the
+-- suggestion is; nil when the bags could not be read. The role used is the
+-- second answer. For Rotation/FoodWord.lua; the suggestion is unchanged.
+function D.Foods(client, pack, role)
+    if type(client) ~= "table" then return nil end
+    local _, _, foods = buffFoodOf(client, pack, role, false)
+    return foods, roleIn(pack, role) or "dps"
 end
 
 -- Section 229 (F-1): the food read, kept between bag changes and skipped in

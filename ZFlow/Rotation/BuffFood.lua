@@ -33,6 +33,10 @@ local _, ns = ...
 --   BuffFood.Best(foods)               the best of { id, score } rows, or nil;
 --                                      one worth nothing, or whose score is
 --                                      not known, is never picked
+--   BuffFood.WhyText(foods, role, fed) the lines of `<slash> food` (D-13):
+--                                      every food, best first, what each
+--                                      gives, its score, the pick and when.
+--                                      As Flow's BuffItems.lua FoodWhyText.
 
 local BF = {}
 ns.BuffFood = BF
@@ -197,4 +201,49 @@ function BF.Best(foods)
             and (not best or BF.Before(it, best)) then best = it end
     end
     return best
+end
+
+-- Parity row D-13 (lead section 668): the food list's words.
+BF.WHY_HEAD = "Well Fed food for %s (* is the one suggested: out of a fight, when Well Fed is not on you, "
+    .. "after your other steps; not while eating, mounted or on a flight path):"
+BF.WHY_NONE = "Well Fed food: none in your bags."
+BF.WHY_FED = "You are Well Fed, so none is suggested now."
+
+local function gainText(gain)
+    local parts = {}
+    for stat, n in pairs(type(gain) == "table" and gain or {}) do
+        if type(n) == "number" then parts[#parts + 1] = n .. " " .. tostring(stat) end
+    end
+    table.sort(parts)
+    if #parts == 0 then return "no stat the score weighs" end
+    return table.concat(parts, ", ")
+end
+
+function BF.WhyText(foods, role, fed)
+    local list = {}
+    for _, it in ipairs(type(foods) == "table" and foods or {}) do
+        if type(it) == "table" and type(it.name) == "string" then list[#list + 1] = it end
+    end
+    if #list == 0 then return { BF.WHY_NONE } end
+    -- Best first; a score not known last; then the lower item id.
+    table.sort(list, function(a, b)
+        local sa, sb = type(a.score) == "number", type(b.score) == "number"
+        if sa ~= sb then return sa end
+        if sa and a.score ~= b.score then return a.score > b.score end
+        return (a.id or 0) < (b.id or 0)
+    end)
+    local best = BF.Best(list)
+    local lines = { BF.WHY_HEAD:format(tostring(role)) }
+    for _, it in ipairs(list) do
+        local line = "  " .. (it == best and "* " or "") .. it.name .. ": " .. gainText(it.gain)
+        if type(it.score) == "number" then
+            line = line .. ("; score %.1f"):format(it.score)
+            if it.score <= 0 then line = line .. "; does nothing for you: never suggested" end
+        else
+            line = line .. "; never suggested"
+        end
+        lines[#lines + 1] = line
+    end
+    if fed then lines[#lines + 1] = BF.WHY_FED end
+    return lines
 end
