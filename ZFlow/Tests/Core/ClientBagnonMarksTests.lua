@@ -98,4 +98,29 @@ tests["bagnon: none loaded, nothing hooked and the Blizzard path is unchanged"] 
     t.eq(c.markBagSlots({ { bag = 0, slot = 1, text = "x" } }), 0)
 end
 
+tests["bagnon: with Bagnon and Blizzard bags both present, onBagRedraw follows both"] = function(t)
+    local Item = bagnonClass()
+    local env = hookEnv({ NUM_CONTAINER_FRAMES = 0, Bagnon = { Item = Item } })
+    function env.ContainerFrame_Update() end
+    local c = ns.make.client(env)
+    local runs = 0
+    t.eq(c.onBagRedraw(function() runs = runs + 1 end), true, "followed")
+    env.ContainerFrame_Update()
+    t.eq(runs, 1, "a Blizzard bag redraw still reaches the listener with Bagnon hooked")
+    local a = Item.new(0, 1)
+    c.markBagKinds({ [0] = { [1] = "up.tga" } })
+    a:Update()
+    t.eq(shown(a.tex), "up.tga", "and the Bagnon button is still marked")
+end
+
+tests["bagnon: the ContainerItem class name is tried too"] = function(t)
+    local Item = bagnonClass()
+    local env = hookEnv({ NUM_CONTAINER_FRAMES = 0, Bagnon = { ContainerItem = Item } })
+    local c = ns.make.client(env)
+    local a = Item.new(3, 2)
+    c.markBagKinds({ [3] = { [2] = "c.tga" } })
+    a:Update()
+    t.eq(shown(a.tex), "c.tga", "a ContainerItem button is marked")
+end
+
 return tests

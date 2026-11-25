@@ -9611,7 +9611,7 @@ function ns.make.client(env)
     -- player's bags are that add-on's own buttons, so neither reached them.
     -- First guess, not seen in game: the add-on's global table (Bagnon,
     -- else BagBrother) holds its item button class as Item (older releases:
-    -- ItemSlot); each button answers GetBag() (else a bag field) with its
+    -- ItemSlot, or ContainerItem); each button answers GetBag() (else a bag field) with its
     -- bag and GetID() with its slot, and the class's Update runs whenever a
     -- button is drawn. Update is followed with hooksecurefunc on the class
     -- (a post-hook: the add-on's own code runs unchanged); each button it
@@ -9645,7 +9645,7 @@ function ns.make.client(env)
         for _, name in ipairs(bagExt.NAMES) do
             local okA, addon = pcall(function() return env[name] end)
             if okA and type(addon) == "table" then
-                for _, field in ipairs({ "Item", "ItemSlot" }) do
+                for _, field in ipairs({ "Item", "ItemSlot", "ContainerItem" }) do
                     local okK, class = pcall(function() return addon[field] end)
                     local okU, upd = pcall(function() return type(class) == "table" and class.Update end)
                     if okK and type(class) == "table" and not bagExt.hooked[class]
@@ -13457,9 +13457,11 @@ function ns.make.client(env)
             bagExt.listening = true
             pcall(c.listen, "ADDON_LOADED", function(name) pcall(c.bagAddonLoaded, name) end)
         end
-        if bagExt.hook() then bagFollowed = true end
+        -- The bag add-on hook goes beside the Blizzard ones, never instead:
+        -- Blizzard's bank and bags can still show with Bagnon on.
+        local ext = bagExt.hook()
         if bagFollowed then return true end
-        if type(env.hooksecurefunc) ~= "function" then return nil end
+        if type(env.hooksecurefunc) ~= "function" then return ext and true or nil end
         if type(env.ContainerFrame_Update) == "function"
             and pcall(env.hooksecurefunc, "ContainerFrame_Update", bagRedrawAll) then
             bagFollowed = true
@@ -13470,7 +13472,7 @@ function ns.make.client(env)
             and pcall(env.hooksecurefunc, combined, "UpdateItems", bagRedrawAll) then
             bagFollowed = true
         end
-        return bagFollowed or nil
+        return (bagFollowed or ext) and true or nil
     end
 
     -- Lead section 303 (d), the in-dungeon tracker: the name of the instance
