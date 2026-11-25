@@ -80,7 +80,8 @@ function SR.Keys()
 end
 
 function SR.IsPiece(recipe, slot, info)
-    local r = type(recipe) == "table" and find(recipe.key) or nil
+    local r
+    if type(recipe) == "table" then r = find(recipe.key) end
     if r == nil then return false end
     local want = r.pieces[slot]
     if want == nil then return false end
@@ -104,7 +105,8 @@ local function hasSkill(client, skill)
 end
 
 function SR.For(recipe, client)
-    local r = type(recipe) == "table" and find(recipe.key) or nil
+    local r
+    if type(recipe) == "table" then r = find(recipe.key) end
     if r == nil then return nil, SR.NO_RECIPE end
     local worn = read(client, "wornLinks")
     if type(worn) ~= "table" then return nil, SR.CANT_READ_WORN end
@@ -123,7 +125,8 @@ function SR.For(recipe, client)
         else
             local unread = false
             for _, row in ipairs(bags) do
-                local item = type(row) == "table" and row.item or nil
+                local item
+                if type(row) == "table" then item = row.item end
                 if set.slots[slot] == nil and type(item) == "string" then
                     local yes = SR.IsPiece(r, slot, read(client, "itemInfo", item))
                     if yes == nil then
