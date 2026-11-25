@@ -59,6 +59,9 @@ local function start(opts)
         st.events[st.n] = map or false
     end)
     k:Boot()
+    -- Lead sections 659 and 661: the setting is OFF as made. Every case
+    -- below but the ones about the default switches it on first.
+    if not opts.asMade then k.settings:set(Z().SETTING, true) end
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
@@ -174,12 +177,34 @@ end
 
 -- ---------------------------------------------------------------- module
 
-tests["zoneNotice module: started, and its setting is on as Flow's was"] = function(t)
-    local k = start()
+-- Lead sections 659 and 661 (Zen's CHANGES-1): the setting is OFF as made,
+-- until the bar is drawn and seen in game; and only a plain true is on.
+-- Red before: the default was on, and anything but a plain false was on.
+tests["zoneNotice module: started, and its setting is off as made, so there is no notice"] = function(t)
+    local k, c, st = start({ asMade = true })
     t.eq(Z().NAME, "zoneNotice")
     t.eq((k:ModuleState(Z().NAME)), "started")
-    t.eq(k.settings:get(Z().SETTING), true)
+    t.eq(k.settings:get(Z().SETTING), false, "off until the player switches it on")
+    settle(c)
+    t.eq(notice(k), nil, "off as made: no notice in a zone that would have one")
+    t.eq(st.asks, 0, "and whereNext is not asked")
+    k.settings:set(Z().SETTING, true)
+    wait(c, 2 * Z().CHECK)
+    t.ok(notice(k) ~= nil, "switched on: the notice")
     t.eq(k.problems:count(), 0)
+end
+
+tests["zoneNotice module: a setting that cannot be read is off"] = function(t)
+    local k, c, st = start()
+    local real = k.settings.get
+    k.settings.get = function(self, key, ...)
+        if key == Z().SETTING then error("the setting cannot be read") end
+        return real(self, key, ...)
+    end
+    settle(c)
+    k.settings.get = real
+    t.eq(notice(k), nil, "not readable: off, no notice")
+    t.eq(st.asks, 0, "and whereNext is not asked")
 end
 
 tests["zoneNotice module: a zone whereNext lists gives no notice"] = function(t)
@@ -540,6 +565,7 @@ local function real(zone)
     k:Module({ name = "zoneLeft", provides = { Left = function() return {}, 0 end } })
     Z().Declare(k)
     k:Boot()
+    k.settings:set(Z().SETTING, true)
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
