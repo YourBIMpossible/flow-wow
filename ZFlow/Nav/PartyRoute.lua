@@ -336,11 +336,15 @@ end
 -- FLOW-PARITY B-42 and B-44 (Flow PartyHelp.lua:206-236, :311): whose quests
 -- the route covers. "mine" (default), "theirs" (one member's: "Just <name>'s
 -- quests") or "combined" (everyone on the party route). Progress per member
--- is a list of { title, complete } rows; it arrives with B-41 (quest
--- progress exchange), fed in through Progress(name, rows).
+-- is B-41's (Nav/PartyProgress.lua): { [quest id] = { complete, objectives =
+-- { { have, need } } } }, fed in from the partyProgress module on this
+-- module's own tick (FEED_EVERY; lead section 843.2), and through
+-- Progress(name, rows).
+P.FEED_EVERY = 2
 function P.ToDo(rows)
     local n = 0
-    for _, q in ipairs(type(rows) == "table" and rows or {}) do
+    if type(rows) ~= "table" then return 0 end
+    for _, q in pairs(rows) do
         if type(q) == "table" and q.complete ~= true then n = n + 1 end
     end
     return n
@@ -363,19 +367,45 @@ function P.Covered(scope, who, progress, joined)
     return out
 end
 
--- The steps whose quest someone covered still has to do; every step when
--- nobody else is covered.
+-- The steps for the covered members' quests, as Flow's PartyHelp.lua H.Keep
+-- (:381-399) and H.QuestsOnly (:404-411; lead section 843.2): a step of a
+-- quest someone covered has, by quest id; an objective step only while
+-- their objective is not finished (have < need); a turn-in when they have
+-- the quest; the party route's own steps (kind "party"). Any other step is
+-- left out. Every step when nobody else is covered.
+local function objectiveOpen(e, i)
+    if e.complete == true then return false end
+    local o = nil
+    if type(e.objectives) == "table" then o = e.objectives[i] end
+    if type(o) ~= "table" then return false end
+    return type(o.have) == "number" and type(o.need) == "number" and o.have < o.need
+end
+
 function P.KeepFor(steps, covered)
     if type(covered) ~= "table" then return steps end
-    local want = {}
-    for _, rows in pairs(covered) do
-        for _, q in ipairs(type(rows) == "table" and rows or {}) do
-            if type(q) == "table" and q.complete ~= true and type(q.title) == "string" then want[q.title] = true end
-        end
-    end
     local out = {}
-    for _, st in ipairs(type(steps) == "table" and steps or {}) do
-        if type(st) == "table" and want[st.label] then out[#out + 1] = st end
+    local list = {}
+    if type(steps) == "table" then list = steps end
+    for _, st in ipairs(list) do
+        local keep = false
+        if type(st) == "table" then
+            if st.party == true or st.kind == "party" then keep = true end
+            if not keep and st.quest ~= nil then
+                for _, rows in pairs(covered) do
+                    local e = nil
+                    if type(rows) == "table" then e = rows[st.quest] end
+                    if type(e) == "table" then
+                        if st.turnIn == true or st.objective == nil then
+                            keep = true
+                        elseif objectiveOpen(e, st.objective) then
+                            keep = true
+                        end
+                    end
+                    if keep then break end
+                end
+            end
+        end
+        if keep then out[#out + 1] = st end
     end
     return out
 end
@@ -425,6 +455,7 @@ function P.Declare(k, diag)
     -- B-42, B-44, B-45: whose quests, who joined, whom we asked.
     local scope, focus = "mine", nil
     local progress, joined, asked = {}, {}, {}
+    local feed
 
     local function client() return ctx and ctx.client or k.client end
     local function id() return k.id or ns.id end
@@ -702,6 +733,19 @@ function P.Declare(k, diag)
         say(P.HELP_ASK:format(who, P.ToDo(rows)) .. " " .. P.HelpChoices(id().addon, who))
     end
 
+    -- Lead section 843.2: each member's progress from the partyProgress
+    -- module (B-41), given to Progress (which asks once, B-44).
+    function feed()
+        local pp = k.use and k.use("partyProgress")
+        if type(pp) ~= "table" or type(pp.Names) ~= "function" or type(pp.Progress) ~= "function" then return end
+        local okN, names = pcall(pp.Names)
+        if not okN or type(names) ~= "table" then return end
+        for _, name in ipairs(names) do
+            local okP, rows = pcall(pp.Progress, name)
+            if okP and type(rows) == "table" then api.Progress(name, rows) end
+        end
+    end
+
     function api.Keep()
         if following then
             local tr = k.use and k.use("tripRoute")
@@ -794,6 +838,8 @@ function P.Declare(k, diag)
                      SetScope = api.SetScope, Scope = api.Scope, Filter = api.Filter, Progress = api.Progress,
                      RouteLeader = api.RouteLeader,
                      Line = function() return api.Line() end },
+        -- Lead section 843.2: B-41's progress, read on our own tick.
+        ticks = { { every = P.FEED_EVERY, when = "always", run = function() feed() end } },
         start = function(c)
             ctx = c
             local cl = c.client

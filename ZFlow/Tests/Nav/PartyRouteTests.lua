@@ -169,7 +169,7 @@ tests["party route: just their quests keeps your steps of their quests, by quest
         { quest = 11, turnIn = true, label = "Hand in" },    -- they hand it in too: kept
         { quest = 12, objective = 1, label = "Wolves" },     -- not theirs: dropped
         { label = "Sell junk" },                             -- no quest: dropped
-        { label = "Party stop", party = true },              -- the party route's own: kept
+        { label = "Party stop", kind = "party" },            -- the party route's own: kept
     }
     local kept = P().KeepFor(steps, { Al = PROG.Al })
     local labels = {}
