@@ -91,6 +91,27 @@ function SB.Parse(lines)
     return nil
 end
 
+-- The game's line in a tooltip whose item it is still fetching (English;
+-- a first guess for other languages, where an unloaded item then reads as
+-- loaded, as before this check).
+SB.RETRIEVING = "Retrieving item information"
+
+-- True when tooltip lines are all there: at least one line of text and
+-- none of them the game's fetching line.
+function SB.Loaded(lines)
+    if type(lines) ~= "table" then return false end
+    local any = false
+    for _, l in ipairs(lines) do
+        local text = l
+        if type(l) == "table" then text = l.left or l.text end
+        if type(text) == "string" and text ~= "" then
+            if text:find(SB.RETRIEVING, 1, true) then return false end
+            any = true
+        end
+    end
+    return any
+end
+
 function SB.Find(id, lines, get)
     local known = SB.Known(id, get)
     if known then return known end
@@ -146,7 +167,11 @@ local function boosterOf(client, item)
         local ok, got = pcall(client.itemLines, id)
         if ok then lines = got end
     end
-    return SB.Parse(lines), type(lines) == "table"
+    local b = SB.Parse(lines)
+    -- Lazy's review (lead section 551): "not a booster" is settled only on
+    -- text that is all there. No lines yet, or the game's own line while it
+    -- fetches the item, is not an answer: the item is asked again.
+    return b, b ~= nil or SB.Loaded(lines)
 end
 
 -- The facts for the sell rules. bag: entries with .key. Skills not read:
@@ -209,8 +234,12 @@ function SB.Cards(client, find)
             local b = find(client, item)
             local name = nil
             if b then name = nameOf(client, item) end
-            if b and name then
-                local s = type(r[b.skill]) == "table" and r[b.skill] or {}
+            -- Lazy's review (lead section 551): a skill with no rank in the
+            -- read may be learned and only under a closed header, so "learn
+            -- it first" would be a guess. No card until the rank is a number.
+            local s = nil
+            if b and type(r[b.skill]) == "table" then s = r[b.skill] end
+            if b and name and s and type(s.rank) == "number" and s.rank == s.rank then
                 out[#out + 1] = { id = SB.PROMPT .. tostring(id), text = SB.Card(name, b, s.rank, s.max) }
             end
         end
