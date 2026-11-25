@@ -33,8 +33,11 @@
 --   one when it is not kept), and the player's one-colour setting
 --   ("arrow.byDistance", N43) is passed through, so the trail keeps it
 --   when it is on: one colour, the near one, instead of the distance
---   ramp. Colour is never read from the arrow's own frame: the trail
---   asks the same function the arrow does, so the two cannot disagree.
+--   ramp. Under one-colour the arrow keeps its flat colour for a waypoint
+--   or profession step, so the leg does too: the family is skipped and
+--   the flat row wins (lead section 617). Colour is never read from the
+--   arrow's own frame: the trail asks the same function the arrow does,
+--   so the two cannot disagree.
 --   The yards to the next stop are worked out here from your position, the
 --   stop's place and the map's size (MRL.Yards); when they are not known
 --   the leg is drawn as far. A next stop on another map is drawn grey
@@ -214,6 +217,11 @@ end
 -- one, for the route legs; the waypoint and the X are colours of their
 -- own and do not read it. When the contract is not loaded, the old route
 -- blue, so the trail still draws.
+--   One-colour (lead section 617): the arrow keeps its flat colour for a
+--   waypoint or profession step (Nav/ArrowView.lua, the flatRow branch),
+--   so the first leg must too. When byDistance is false the family is
+--   skipped here and the distance colour — the flat row — wins, so the
+--   leg is the arrow's colour, whatever the arrow shows.
 function MRL.Paint(kind, step, yards, palette, byDistance)
     local RC = ns.RouteColor
     if type(RC) ~= "table" or type(RC.Of) ~= "function" then
@@ -230,7 +238,14 @@ function MRL.Paint(kind, step, yards, palette, byDistance)
         local r, g, b = RC.Of({ family = "waypoint" }, nil, palette)
         return r, g, b, MRL.FIRST_ALPHA
     end
-    local r, g, b = RC.Of(step, yards, palette, byDistance)
+    -- One-colour: skip the family, so the distance colour (the flat row)
+    -- wins and the leg matches the arrow's flat colour (lead section 617).
+    local colourStep = step
+    if byDistance == false and type(step) == "table" and type(RC.FAMILIES) == "table"
+        and (RC.FAMILIES[step.family] or RC.FAMILIES[step.kind]) then
+        colourStep = { state = step.state }
+    end
+    local r, g, b = RC.Of(colourStep, yards, palette, byDistance)
     if kind == "first" then return r, g, b, MRL.FIRST_ALPHA end
     return r, g, b, MRL.REST_ALPHA
 end
