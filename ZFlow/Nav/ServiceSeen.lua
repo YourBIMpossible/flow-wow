@@ -58,7 +58,10 @@ local _, ns = ...
 -- nothing is written at all. A new place past ServiceSeen.MAX entries is
 -- not written. A store that refuses a write is left as it was.
 --
---   ServiceSeen.Seen(kind, client, store) -> report   one sighting read
+--   ServiceSeen.Seen(kind, client, store[, visit]) -> report   one sighting
+--     read. visit: the key of the place the last gossip window was saved
+--     under; a service window of that same place is the same visit and is
+--     not counted again (n stays), though what it says is still taken.
 --   ServiceSeen.GossipKinds(options)      -> kinds    pure: the option rule
 --   ServiceSeen.Gossip(client, store)     -> report or nil   one gossip read
 --   ServiceSeen.Declare(k)                -> api      declares the module
@@ -176,7 +179,11 @@ end
 -- list of kinds its options showed, kind being the first of them. A gossip
 -- window is no merchant window: whether the npc repairs and what it sells
 -- are not read there, and marks already saved stay.
-local function save(kind, client, store, gossip)
+-- visit (lead section 657): the key of the place the last gossip window
+-- was saved under, or nil. A service window of that same npc is the same
+-- visit: everything it says is taken, and the sighting is not counted
+-- again.
+local function save(kind, client, store, gossip, visit)
     local report = { kind = "service", service = kind }
     if gossip then report.services, report.gossip = gossip, true end
     if not KINDS[kind] then return refuse(report, "not a kind of service") end
@@ -242,7 +249,10 @@ local function save(kind, client, store, gossip)
     end
     if report.moved ~= false then e.map, e.x, e.y = pos.map, pos.x, pos.y end
     if now then e.seen = now end
-    e.n = (finite(e.n) and e.n or 0) + 1
+    local counted = 0
+    if finite(e.n) then counted = e.n end
+    if gossip or visit == nil or visit ~= key or counted < 1 then counted = counted + 1 end
+    e.n = counted
 
     -- The store is asked first, with the table as it is; only when it says
     -- yes is the key set.
@@ -254,8 +264,8 @@ local function save(kind, client, store, gossip)
     return report
 end
 
-function ServiceSeen.Seen(kind, client, store)
-    return save(kind, client, store, nil)
+function ServiceSeen.Seen(kind, client, store, visit)
+    return save(kind, client, store, nil, visit)
 end
 
 -- Pure: the kinds a list of gossip options shows, in the order of the
@@ -293,6 +303,9 @@ end
 function ServiceSeen.Declare(k)
     local api = {}
     local last
+    -- The key of the place the last gossip window was saved under: one
+    -- visit, counted once (lead section 657). Kept for the session only.
+    local visit
     function api.last() return last end
     k:Module({
         name = ServiceSeen.NAME,
@@ -306,14 +319,21 @@ function ServiceSeen.Declare(k)
             if type(ctx.client.watchBank) == "function" then ctx.client.watchBank() end
             for _, row in ipairs(ServiceSeen.EVENTS) do
                 ctx.bus:on(ServiceSeen.NAME, row.event, function()
-                    last = ServiceSeen.Seen(row.kind, ctx.client, ctx.store)
+                    last = ServiceSeen.Seen(row.kind, ctx.client, ctx.store, visit)
+                    -- A window of another place ends the gossip visit.
+                    if type(last) == "table" and last.ok and last.key ~= visit then visit = nil end
                 end)
             end
             -- A window with no service among its options is no sighting:
             -- the last report stays.
             ctx.bus:on(ServiceSeen.NAME, ServiceSeen.GOSSIP_EVENT, function()
                 local report = ServiceSeen.Gossip(ctx.client, ctx.store)
-                if report then last = report end
+                if report then
+                    last = report
+                    -- The visit this gossip window began: its service
+                    -- windows are not counted again.
+                    if report.ok then visit = report.key end
+                end
             end)
         end,
     })
