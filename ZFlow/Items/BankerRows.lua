@@ -23,9 +23,15 @@ local _, ns = ...
 --
 --   BR.BankRows(items) -> { { key, name, count } } by name, or nil (not seen)
 --   BR.BankHeader(rows, at, now) -> the line above the bank's rows
---   BR.SellRows(bags, bank[, rules]) -> rows; bags and bank: { { key, name, count,
---     quality, decision } }. A row: { key, name, count, quality, reason,
---     kept = true | nil, bank = true | nil, next = "keep" | "sell" }
+--   BR.SellRows(bags, bank[, rules[, taken]]) -> rows; bags and bank: { {
+--     key, name, count, quality, decision } } (bank's also classID, step,
+--     quest, hold). A row: { key, name, count, quality, reason,
+--     kept = true | nil, bank = true | nil, next = "keep" | "sell" }; a bank
+--     row is BankTakeOut's row (also id, take, mine, slots). taken: rows
+--     already made by BankTakeOut (List().rows); then bank is not read.
+--     E-19 join: the bank half is BankTakeOut.Rows, so a banked weapon,
+--     armor or quest thing is not offered to sell (Flow's B.NOT_OUT), and
+--     one whose kind (classID) was not read is not offered either.
 --   BR.SellNote(rows, atBank) -> the line above the to-sell rows
 --   BR.NextChoice(kept, reset) -> "sell" | "keep" | nil
 -- Lead section 767.3c: as Flow's B.TakeOutRows (:321-326), a bank thing the
@@ -121,11 +127,6 @@ local function sellRule(d)
     return nil
 end
 
-local function words(v)
-    if type(v) == "string" and v ~= "" then return v end
-    return nil
-end
-
 local function row(e, extra)
     local r = { key = e.key, name = nameOf(e), count = e.count, quality = e.quality }
     for k, v in pairs(extra) do r[k] = v end
@@ -137,7 +138,30 @@ end
 -- Bank.lua reads it, context.bankRules), passed in. A thing whose rule is
 -- "bank" is never taken out of the bank (Flow B.TakeOutRows :316; Twin,
 -- lead section 774). nil: no rules.
-function BR.SellRows(bags, bank, rules)
+-- E-19 one-source join: the bank half is BankTakeOut's rule (Items/
+-- BankTakeOut.lua Rows, Flow's B.TakeOutRows): rows handed in as taken
+-- (BankTakeOut.List().rows), else BankTakeOut.Rows on bank's entries (their
+-- step, quest and hold, and a sell where the decision sells). A thing to
+-- sell needs its kind read (classID), and a weapon, armor or quest thing is
+-- never offered to sell (NOT_OUT); one a route step, quest or hold wants is.
+local function bankHalf(bank, rules)
+    local items, sold = {}, {}
+    for _, e in ipairs(listOf(bank)) do
+        if type(e) == "table" and e.key ~= nil then
+            items[#items + 1] = e
+            local d = e.decision
+            if type(d) == "table" and d.action ~= "keep" and sells(d) then
+                local s = { key = e.key, name = e.name, count = e.count, quality = e.quality,
+                            reason = sellReason(d) or BR.NO_REASON }
+                if sellRule(d) == "yourChoice" then s.mine = true end
+                sold[#sold + 1] = s
+            end
+        end
+    end
+    return ns.BankTakeOut.Rows(items, sold, rules, nil)
+end
+
+function BR.SellRows(bags, bank, rules, taken)
     local out, kept, inBank = {}, {}, {}
     for _, e in ipairs(listOf(bags)) do
         if type(e) == "table" and type(e.decision) == "table" then
@@ -153,32 +177,19 @@ function BR.SellRows(bags, bank, rules)
             end
         end
     end
-    for _, e in ipairs(listOf(bank)) do
-        -- You keep it in the bank: not listed, whatever wants it.
-        local banked = type(rules) == "table" and type(e) == "table" and e.key ~= nil and rules[e.key] == "bank"
-        if banked then e = nil end
-        if type(e) == "table" and words(e.step) then
-            local r = row(e, { bank = true, take = "route", reason = e.step })
-            r.next = nil
-            inBank[#inBank + 1] = r
-        elseif type(e) == "table" and words(e.quest) then
-            local r = row(e, { bank = true, take = "quest", reason = e.quest })
-            r.next = nil
-            inBank[#inBank + 1] = r
-        elseif type(e) == "table" and words(e.hold) then
-            -- Lead section 776: held by a reservation no route stop names
-            -- (Items/TakeOutWhy.lua HoldFor), with its own reason.
-            local r = row(e, { bank = true, take = "hold", reason = e.hold })
-            r.next = nil
-            inBank[#inBank + 1] = r
-        elseif type(e) == "table" and type(e.decision) == "table" and e.decision.action ~= "keep"
-            and sells(e.decision) then
-            local r = row(e, { bank = true, take = "sell", reason = sellReason(e.decision) or BR.NO_REASON })
-            if sellRule(e.decision) == "yourChoice" then r.mine = true end
+    -- You keep it in the bank (rules): not listed, whatever wants it; the
+    -- order is the rule's own (one sort by name, then key).
+    local rows = taken
+    if type(rows) ~= "table" then rows = bankHalf(bank, rules) end
+    for _, t in ipairs(listOf(rows)) do
+        if type(t) == "table" and t.key ~= nil then
+            local r = {}
+            for k, v in pairs(t) do r[k] = v end
+            r.name = nameOf(t)
+            r.bank = true
             inBank[#inBank + 1] = r
         end
     end
-    table.sort(inBank, byName)
     for _, r in ipairs(kept) do out[#out + 1] = r end
     for _, r in ipairs(inBank) do out[#out + 1] = r end
     return out
