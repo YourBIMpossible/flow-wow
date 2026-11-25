@@ -11,7 +11,7 @@ local _, ns = ...
 -- Questie), is put after its name.
 --   rows  = DL.Rows(book, itemName, nameOf)  { { npc, name, times, looted,
 --           share } } most often first; nameOf(item key) -> the item's name
---   lines = DL.Lines(rows, levelOf)          at most MAX; levelOf(npc) ->
+--   lines = DL.Lines(rows, levelOf)          at most MAX, then DL.MORE; levelOf(npc) ->
 --           min, max (or nil)
 -- Pure. Showing the lines on the words-only step (Nav/QuestSource.lua's
 -- worded step, shown by UI/Arrow.lua) needs the store and the item read
@@ -23,6 +23,9 @@ ns.Nav.DropLines = DL
 DL.MAX = 6           -- as Flow's MOB_LINES
 DL.LINE = "%s: %d of your %d loots"
 DL.SHARE = " (%d%%)"
+-- Lead section 808: past MAX, how many more mobs drop it (as Flow's
+-- Goals.lua:467-469), in our own words.
+DL.MORE = "%d more mobs also drop it"
 
 local function count(v) return type(v) == "number" and v == v and v >= 0 and v ~= math.huge end
 
@@ -68,7 +71,8 @@ function DL.Lines(rows, levelOf)
         local name = r.name
         if type(levelOf) == "function" then
             local ok, lo, hi = pcall(levelOf, r.npc)
-            if ok and count(lo) then
+            -- (A level of 0 is no level: shown only when it is above 0.)
+            if ok and count(lo) and lo > 0 then
                 if count(hi) and hi ~= lo then name = name .. " (" .. lo .. "-" .. hi .. ")"
                 else name = name .. " (" .. lo .. ")" end
             end
@@ -77,5 +81,6 @@ function DL.Lines(rows, levelOf)
         if r.share then line = line .. DL.SHARE:format(r.share) end
         out[#out + 1] = line
     end
+    if #rows > DL.MAX then out[#out + 1] = DL.MORE:format(#rows - DL.MAX) end
     return out
 end
