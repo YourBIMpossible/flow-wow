@@ -168,15 +168,10 @@ function SK.New(k)
         if slot.needs == "flowButton" or slot.needs == "selfButton" then
             local FBm = ns.FlowButton
             if type(FBm) ~= "table" then return "There is no Flow button in this version." end
-            local setting, label, ask = FBm.SETTING, FBm.LABEL, "made"
-            if slot.needs == "selfButton" then setting, label, ask = FBm.SELF_SETTING, FBm.SELF_LABEL, "selfMade" end
-            local okOn, on = false, nil
-            if type(k.settings) == "table" then okOn, on = pcall(k.settings.get, k.settings, setting) end
-            if not okOn or on ~= true then
-                return "Switch on \"" .. tostring(label) .. "\" first: the button is made only then."
-            end
             -- Step 5: the layout row is Step 1's (Rotation/FlowButton.lua);
             -- read only once it is declared, so this works before it lands.
+            -- First (lead section 647 item 3a): in the Combined layout the
+            -- self button is never made, so "switch it on" would mislead.
             if type(k.settings) == "table" and type(k.settings.row) == "function" then
                 local okRow, row = pcall(k.settings.row, k.settings, SK.LAYOUT_SETTING)
                 if okRow and row then
@@ -186,6 +181,13 @@ function SK.New(k)
                         if why then return why end
                     end
                 end
+            end
+            local setting, label, ask = FBm.SETTING, FBm.LABEL, "made"
+            if slot.needs == "selfButton" then setting, label, ask = FBm.SELF_SETTING, FBm.SELF_LABEL, "selfMade" end
+            local okOn, on = false, nil
+            if type(k.settings) == "table" then okOn, on = pcall(k.settings.get, k.settings, setting) end
+            if not okOn or on ~= true then
+                return "Switch on \"" .. tostring(label) .. "\" first: the button is made only then."
             end
             local fbApi, fbMade = k.flowButton, false
             if type(fbApi) == "table" and type(fbApi[ask]) == "function" then
