@@ -443,6 +443,22 @@ tests["zoneNotice module: an answer saved before is read at the next login"] = f
     t.eq(k2.use(Z().NAME).Answer(BARE), "no")
 end
 
+tests["zoneNotice module: a zone kept as one of yours, or as No thanks, before this login is not asked about"] = function(t)
+    local k, c, st = start()
+    k.store:set("char", Z().YES, { [BARE] = true })
+    k.store:set("char", Z().NO, { [OTHER] = true })
+    local api = k.use(Z().NAME)
+    settle(c)
+    t.eq(notice(k), nil)
+    t.eq(api.Answer(BARE), Z().SAID_YES)
+    enter(c, OTHER)
+    settle(c)
+    t.eq(notice(k), nil)
+    t.eq(api.Answer(OTHER), Z().SAID_NO)
+    t.eq(st.asks, 0)
+    t.eq(st.n, 0)
+end
+
 tests["zoneNotice module: Forget drops the zone's answer, and it is asked about again"] = function(t)
     local k, c = start()
     settle(c)
