@@ -18,7 +18,7 @@ tests["click report: what each button does, and a dead plain click"] = function(
     t.eq(CC().Report(nil), { CC().CLICKS_UNKNOWN }, "not known")
     t.eq(CC().Report({}), { CC().CLICKS_NONE }, "none listed")
     local heal = { type = 1, actionID = 2050, button = "LeftButton", modifiers = 1 }
-    local lines = CC().Report({ TARGET, MENU, heal }, function(id) return id == 2050 and "Lesser Heal" or nil end)
+    local lines = CC().Report({ TARGET, MENU, heal }, function(id) if id == 2050 then return "Lesser Heal" end return nil end)
     t.eq(lines[1], "Left button: target it")
     t.eq(lines[2], "Right button: open its menu")
     t.eq(lines[3], "Modifier 1 + left button: cast Lesser Heal")
