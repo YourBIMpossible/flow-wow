@@ -66,7 +66,7 @@ WW.NAMES = { repair = "repair vendor", vendor = "vendor", flight = "flight maste
 WW.NONE = "no %s is known yet: each one is learned when you use it, so visit one and try again; nothing changed."
 -- A1-40: the waypoint box's line, and what is said with no box to open.
 WW.PROMPT = "Type or paste a waypoint: coordinates, a zone and coordinates, a place (repair, bank, inn...)"
-    .. " or a party member's name.\ne.g. 45.2 63.1  or  Far Fields 45.2 63.1 Camp  or  repair"
+    .. " or a party member's name.\ne.g. 45.2 63.1  or  <zone name> 45.2 63.1 <label>  or  repair"
 WW.NO_BOX = "the waypoint box cannot be opened here; type the way word instead."
 WW.EMPTY = "nothing was typed; nothing changed."
 
