@@ -161,6 +161,11 @@ function Sets.Saved(store)
     return out
 end
 
+-- C-42-keep (lead section 791): the client each store's module started
+-- with, so Facts can read the game's own equipment sets for every caller
+-- (the sell list, the bank list, the loot note, the tooltip) as it is.
+local clientOf = setmetatable({}, { __mode = "k" })
+
 function Sets.Facts(store)
     local facts, any = {}, false
     for _, s in ipairs(Sets.Saved(store)) do
@@ -175,7 +180,42 @@ function Sets.Facts(store)
             any = true
         end
     end
-    return any and facts or nil
+    -- C-42-keep (lead section 791): as Flow's sets, the pieces of the game's
+    -- own equipment sets are held too, matched by item ID (the game gives a
+    -- set's items as IDs; an item with a random suffix is keyed by more than
+    -- its ID, so such a piece is not matched). Read only.
+    local c = nil
+    if type(store) == "table" then c = clientOf[store] end
+    local list = nil
+    if type(c) == "table" and type(c.equipmentSets) == "function" then
+        local ok, got = pcall(c.equipmentSets)
+        if ok and type(got) == "table" then list = got end
+    end
+    if list then
+        for _, g in ipairs(list) do
+            if type(g) == "table" and type(g.name) == "string" and g.name ~= "" and type(g.items) == "table" then
+                local ids = {}
+                for _, id in pairs(g.items) do
+                    if type(id) == "number" and id > 0 then ids[#ids + 1] = id end
+                end
+                table.sort(ids)
+                for _, id in ipairs(ids) do
+                    local key = ns.Items.Key(id)
+                    if key ~= nil then
+                        local names = facts[key]
+                        if not names then
+                            names = {}
+                            facts[key] = names
+                        end
+                        if names[#names] ~= g.name then names[#names + 1] = g.name end
+                        any = true
+                    end
+                end
+            end
+        end
+    end
+    if not any then return nil end
+    return facts
 end
 
 -- The imported sets: { { name, pieces } } sorted by name.
@@ -407,6 +447,8 @@ function Sets.Declare(k, diag)
         needs = { "client", "store" },
         provides = { Hooked = api.hooked, Errors = api.errors },
         start = function(ctx)
+            -- C-42-keep: Facts reads the game's sets through this client.
+            if type(ctx.store) == "table" then clientOf[ctx.store] = ctx.client end
             if type(ctx.client.onItemTooltip) ~= "function" then return end
             local got = ctx.client.onItemTooltip(function(link, add)
                 if type(add) ~= "function" then return end
