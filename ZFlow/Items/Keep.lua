@@ -120,7 +120,8 @@ end
 -- again. Silent when it is already there, names no item, or the saved data
 -- is not loaded. -> lines, changed (as Run).
 function Keep.BoughtBack(k, item)
-    local key = item ~= nil and ns.Items.Key(tostring(item)) or nil
+    local key
+    if item ~= nil then key = ns.Items.Key(tostring(item)) end
     if key == nil then return {}, false end
     local list = listOf(k)
     if not list or list[key] then return {}, false end
