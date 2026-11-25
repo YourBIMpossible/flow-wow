@@ -122,7 +122,8 @@ tests["follow: the arrow menu has a row per party member while in a group"] = fu
     if type(row) ~= "table" or type(row.children) ~= "table" then return end
     local keys = {}
     for i, r in ipairs(row.children) do keys[i] = r.key end
-    t.eq(keys, { "follow.party1", "follow.party2", "follow.stop" })
+    -- Parity A1-42: each member also has "Waypoint at <name>".
+    t.eq(keys, { "follow.party1", "wayat.party1", "follow.party2", "wayat.party2", "follow.stop" })
     t.eq(ns.ArrowMenu.Action("follow.party2", {}), { follow = "party2" })
     t.eq(ns.ArrowMenu.Action("follow", {}), { open = "follow" })
     k.use("follow").Pick("party2")

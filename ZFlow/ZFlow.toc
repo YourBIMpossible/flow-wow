@@ -234,6 +234,8 @@ UI\MinimapPlace.lua
 UI\MinimapButton.lua
 Nav\Trails.lua
 Nav\Follow.lua
+Nav\WayWords.lua
+Nav\WayTips.lua
 Nav\Nodes.lua
 UI\Chat.lua
 Nav\PartyRoute.lua
@@ -249,8 +251,10 @@ Nav\TravelAdvice.lua
 Nav\InvitePrompt.lua
 Items\QuestBags.lua
 Spells\TrainAdvice.lua
+Spells\Talents.lua
 Nav\RoutePickups.lua
 Nav\RidingStep.lua
+Nav\MountMilestone.lua
 Items\ProfPlan.lua
 Items\ProfSources.lua
 Items\VendorWares.lua

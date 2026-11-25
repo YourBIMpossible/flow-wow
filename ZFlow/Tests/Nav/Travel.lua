@@ -51,18 +51,22 @@ tests["travel via: a spell to learn is no shortcut; where to learn it is said un
     t.eq(step, boars(), "the chosen step is not changed")
 end
 
-tests["travel via: a spell to learn with no trainer known says the spell alone"] = function(t)
+-- Parity B-32: with no place of its own, the class trainer (legacy
+-- Modules/Nav/TravelSpells.lua:89).
+tests["travel via: a spell to learn with no place of its own is learned at the class trainer"] = function(t)
     local learn = { label = "Learn " .. SPELL, text = true, spell = SPELL, learn = true }
-    t.eq(N.TravelVia(boars(), { spell = learn }, false).hint, "Learn " .. SPELL)
+    t.eq(N.TravelVia(boars(), { spell = learn }, false).hint, "Learn " .. SPELL .. " (" .. T.LEARN_AT .. ")")
 end
 
-tests["travel via: the learn line gives way to a real way, a flight's own line and walking"] = function(t)
+tests["travel via: the learn line gives way to a real way and walking, and comes before the no-flight line"] = function(t)
     local hearth = { label = "Hearth to Nighthaven", text = true, saves = 900 }
     local out, how = N.TravelVia(boars(), { spell = LEARN, hearth = hearth }, false)
     t.eq(how, "hearth", "the stone is still the action")
     t.eq(out.hint, nil)
     local hinted = N.TravelVia(boars(), { spell = LEARN, flightHint = "No flight learned to there yet" }, false)
-    t.eq(hinted.hint, "No flight learned to there yet", "the flight's line is kept as it was")
+    t.eq(hinted.hint, "Learn " .. SPELL .. " (your class trainer)", "parity B-32: the spell before the no-flight line")
+    local flightOnly = N.TravelVia(boars(), { flightHint = "No flight learned to there yet" }, false)
+    t.eq(flightOnly.hint, "No flight learned to there yet", "no spell to learn: the flight's line as it was")
     local walked = N.TravelVia(boars(), { spell = LEARN }, true)
     t.eq(walked.hint, nil, "walking: no travel line")
     local had = boars(); had.hint = "Through the cave"

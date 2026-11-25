@@ -95,7 +95,62 @@ tests["party route: a route shared by one client is offered to and taken by the 
     t.eq(count(b, "route take"), 1, "one offer line")
     t.eq(count(a, "route take"), 0, "the sharer is not offered its own route")
     slash(b, "route take")
-    t.eq(first(b), "Boars", "the taken route's first stop is on the other client's arrow")
+    t.eq(first(b), "Anna: Boars", "the taken route's first stop is on the other client's arrow")
+end
+
+-- FLOW-PARITY B-36: the offer has two links; the player clicks one.
+tests["party route: the offer's two links follow the route or keep your own"] = function(t)
+    local a, b = pair()
+    slash(a, "route"); slash(a, "route share")
+    local kind = ns.Nav.PartyRoute.Kind(ns.id.addon)
+    t.ok(said(b, "[Follow party route]") and said(b, "[Keep my route]"), "two choices on the offer line")
+    t.eq(first(b), ns.Arrow.NO_QUEST, "nothing is taken before a click")
+    t.eq(b.clickLink(kind .. ":keep"), 1)
+    t.ok(said(b, "Keeping your own route; the route from Anna is not taken."))
+    t.eq(first(b), ns.Arrow.NO_QUEST, "keep leaves the route as it was")
+    t.eq(b.clickLink(kind .. ":take"), 1)
+    t.ok(said(b, "No party route to take."), "a kept offer is gone")
+    local c, d = pair()
+    slash(c, "route"); slash(c, "route share")
+    local sent = #d.addonSent
+    t.eq(d.clickLink(kind .. ":take"), 1)
+    t.ok(said(d, "Following the route from Anna"))
+    t.eq(first(d), "Anna: Boars", "follow puts the shared route on the arrow")
+    t.eq(#d.addonSent, sent, "a click sends nothing")
+end
+
+-- FLOW-PARITY B-38: share, take and keep by the slash word alone.
+tests["party route: route keep by word keeps your own route; route take after it has nothing"] = function(t)
+    local a, b = pair()
+    slash(a, "route"); slash(a, "route share")
+    local sent = #b.addonSent
+    slash(b, "route keep")
+    t.ok(said(b, "Keeping your own route; the route from Anna is not taken."))
+    t.eq(first(b), ns.Arrow.NO_QUEST, "the arrow is as it was")
+    slash(b, "route take")
+    t.ok(said(b, "No party route to take."), "the kept offer is gone")
+    t.eq(#b.addonSent, sent, "keep sends nothing")
+    slash(b, "route keep")
+    t.eq(count(b, "No party route to take."), 2, "keep with no offer says so")
+end
+
+-- FLOW-PARITY B-43: whose step it is, and "(done for you)" from the own log.
+tests["party route: taken steps name the member and say done for you"] = function(t)
+    local a = boot("Anna")
+    local b = boot("Bert", { { id = 401, title = "Boars", complete = true,
+        objectives = { { text = "Boars slain: 4/4", done = true } } } })
+    a.linkAddon(b); b.linkAddon(a)
+    slash(a, "route"); slash(a, "route share")
+    local sent = #b.addonSent
+    slash(b, "route take")
+    t.eq(first(b), "Anna: Boars (done for you)", "own log has it complete")
+    t.eq(#b.addonSent, sent, "labelling sends nothing")
+    local P = ns.Nav.PartyRoute
+    t.eq(P.Label("Anna-Elsewhere", { label = "Herbs" }, {}).label, "Anna: Herbs", "the part after the dash is left off")
+    local long = string.rep("x", 39)
+    local got = P.Label("Anna", { label = long }, { { title = long, complete = true } })
+    t.eq(got.label, long, "never cut")
+    t.eq(got.detail, "Anna's step, done for you")
 end
 
 tests["party route: a refused send says not shared and nothing else changes"] = function(t)
@@ -144,7 +199,7 @@ tests["party route: a late joiner asks and the sharer answers once"] = function(
     slash(b, "route ask")
     t.eq(#a.addonSent, again, "a second ask at once is not answered")
     slash(b, "route take")
-    t.eq(first(b), "Boars")
+    t.eq(first(b), "Anna: Boars")
 end
 
 tests["party route: a lost chunk says the route is incomplete"] = function(t)
@@ -183,6 +238,42 @@ tests["party route: the setting row is off by default"] = function(t)
     local row = addon.settings:row(ns.Nav.PartyRoute.SETTING)
     t.eq(row and row.default, false)
     t.eq(row and row.group, "travel.route")
+end
+
+
+-- FLOW-PARITY B-40: one line under the arrow says which route it walks and
+-- how to switch. It sends nothing.
+local function has(c, text)
+    local a = c.arrows[1]
+    for _, l in ipairs(a and a.lines or {}) do
+        if l == text then return true end
+    end
+    return false
+end
+
+tests["party route: a line under the arrow offers the route, then says it is followed and how to drop it"] = function(t)
+    local P = ns.Nav.PartyRoute
+    local a, b = pair()
+    slash(a, "route"); slash(a, "route share")
+    local sent = #b.addonSent
+    t.ok(has(b, P.LINE_OFFER:format("Anna", ns.id.slash)), "the offer line is under the arrow")
+    slash(b, "route take")
+    t.eq(first(b), "Anna: Boars")
+    t.ok(has(b, P.LINE_FOLLOW:format("Anna", ns.id.slash)), "the follow line replaces it")
+    t.eq(has(b, P.LINE_OFFER:format("Anna", ns.id.slash)), false)
+    slash(b, "route keep")
+    t.ok(said(b, P.DROPPED:format("Anna")))
+    t.eq(first(b), ns.Arrow.NO_QUEST, "the party route is dropped")
+    t.eq(has(b, P.LINE_FOLLOW:format("Anna", ns.id.slash)), false, "no line once dropped")
+    t.eq(#b.addonSent, sent, "the line and the switch send nothing")
+    t.eq(has(a, P.LINE_OFFER:format("Anna", ns.id.slash)), false, "the sharer gets no line")
+end
+
+tests["party route: the line words, pure"] = function(t)
+    local P = ns.Nav.PartyRoute
+    t.eq(P.Line(nil, nil, "/zf"), nil)
+    t.eq(P.Line("Anna", nil, "/zf"), "Party route from Anna: /zf route take to follow it.")
+    t.eq(P.Line("Anna", "Bert", "/zf"), "Following Bert's route: /zf route keep for your own.")
 end
 
 return tests

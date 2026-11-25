@@ -286,6 +286,9 @@ return {
     -- the nodes you gathered (after the arrow, Waypoint and Gather).
     "Nav/Trails.lua",
     "Nav/Follow.lua",
+    -- Lead section 460 (A1-39, A1-41, A1-42): /way zone names, places, members.
+    "Nav/WayWords.lua",
+    "Nav/WayTips.lua",
     "Nav/Nodes.lua",
     -- N60a: copy chat text and clickable web addresses in chat (after the settings page).
     "UI/Chat.lua",
@@ -313,10 +316,14 @@ return {
     "Items/QuestBags.lua",
     -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
     "Spells/TrainAdvice.lua",
+    -- C-61, C-49: talent points, the unlocked line and the spend prompt (after the advisor).
+    "Spells/Talents.lua",
     -- Lead section 375 item 7 (TN-1): the quest route's pick-ups (after RoutePlan, DungeonStates).
     "Nav/RoutePickups.lua",
     -- G45: the riding step and its advisor line (after the advisor, the arrow and Prices).
     "Nav/RidingStep.lua",
+    -- FLOW-PARITY B-25 (lead section 460): save up, learn riding, then the mount (after RidingStep).
+    "Nav/MountMilestone.lua",
     -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).
     "Items/ProfPlan.lua",
     -- P-COACH C3 (section 382): where the plan's short materials come from (after ProfPlan, Prices).

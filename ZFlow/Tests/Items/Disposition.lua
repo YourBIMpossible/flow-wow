@@ -233,8 +233,9 @@ tests["disposition: deciding changes neither the item nor the context"] = functi
     t.ok(item.count == 12 and item.key == 2318 and item.rule == nil and item.action == nil, "the item is as it was")
     t.ok(c.level == 10 and c.rules == nil and next(c.choices.keep) == nil, "the context too")
     -- 17 since L6-B ported Flow's eight keep rules (nine before); 18 with
-    -- the skill booster rule (lead section 337 item 2).
-    t.eq(#D.RULES, 18, "and the built-in list has its eighteen rules")
+    -- the skill booster rule (lead section 337 item 2); 19 with the
+    -- outgrown food and drink rule (G5, lead section 451).
+    t.eq(#D.RULES, 19, "and the built-in list has its nineteen rules")
 end
 
 return tests
