@@ -434,15 +434,15 @@ end
 
 -- D-26 (lead section 738): the key's press reaches the audit through the
 -- client's press read (client.onKeyPress, a CLIENT NEED; the fake's
--- "§ D-26" block plays a press with c.pressKey). Screenshots stay as they were (lead section 746).
+-- "§ D-26" block plays a press with c.pressRotationKey). Screenshots stay as they were (lead section 746).
 tests["press audit module: a press of the key is counted, through the client's press read"] = function(t)
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(1, 2)
-    c.pressKey()
-    c.pressKey()
+    c.pressRotationKey()
+    c.pressRotationKey()
     local data = addon.pressAudit.data()
     local n = 0
     for _, v in pairs(type(data) == "table" and data.counts or {}) do n = n + v end

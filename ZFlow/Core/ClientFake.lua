@@ -5230,7 +5230,8 @@ end
 -- § D-26 (Rotation/Audit.lua; lead section 746): one CLIENT NEED, stubbed
 -- here (Core/Client.lua has it since the batch-3 lead commit).
 --   c.onKeyPress(fn) -> cancel: fn() at each press of the rotation key.
---   c.pressKey() plays one press: calls every fn not cancelled.
+--   c.pressRotationKey() plays one press: calls every fn not cancelled
+--     (not c.pressKey(chord), the key-capture overlay's own fake).
 do
     local make = ns.make.fakeClient
     ns.make.fakeClient = function(...)
@@ -5242,7 +5243,7 @@ do
             fns[#fns + 1] = entry
             return function() entry.cancelled = true end
         end
-        function c.pressKey()
+        function c.pressRotationKey()
             for _, e in ipairs(fns) do
                 if not e.cancelled then e.fn() end
             end
