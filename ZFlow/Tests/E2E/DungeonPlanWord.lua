@@ -124,7 +124,9 @@ tests["dungeons word: an unknown name lists the close matches"] = function(t)
     t.eq(none[1], ns.id.title .. ": no dungeon called \"zzz\".")
     t.eq(none[2], "  " .. tostring(W.SEE_ALL):format(ns.id.slash))
     local trip = addon.use(ns.Nav.TripRoute.NAME)
-    t.eq(trip and trip.View(), nil, "nothing is planned")
+    -- The route planned by itself (section 562 item 7, on zflow) may be
+    -- there; the word plans nothing the player walks.
+    t.eq(trip and trip.Step(), nil, "nothing is planned")
     t.eq(addon.problems:count(), base, "no new problem")
 end
 

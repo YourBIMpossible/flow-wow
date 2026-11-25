@@ -183,7 +183,9 @@ tests["route modes surface: with no route yet a pick is only saved"] = function(
     b.click("right"); b.choose("route"); b.choose("mode:complete")
     t.eq(addon.settings:get(T().MODE_KEY), "Everything")
     local trip = addon.use(T().NAME)
-    t.eq(type(trip) == "table" and trip.Lines(), nil, "no route was planned by the pick")
+    -- The route planned by itself (section 562 item 7, on zflow) may be
+    -- there; the pick plans nothing the player walks.
+    t.eq(type(trip) == "table" and trip.Step(), nil, "no route was planned by the pick")
 end
 
 return tests

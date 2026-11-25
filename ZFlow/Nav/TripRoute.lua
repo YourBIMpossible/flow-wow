@@ -1603,10 +1603,17 @@ function T.Declare(k, diag)
     -- menu, the word) plans the current quest route again at once. With no
     -- route yet the choice waits for the next plan.
     local cancelWatch = {}
+    -- A route planned by itself stays one when planned again for a new
+    -- mode or order (section 562 item 7 with section 651).
     local function replan()
         if route and route.kind == "quests" then
-            local ok, err = pcall(api.Plan)
-            if not ok then k.problems:add(T.NAME, "replan", tostring(err)) end
+            local wasAuto = route.auto == true
+            local ok, r = pcall(api.Plan)
+            if not ok then
+                k.problems:add(T.NAME, "replan", tostring(r))
+            elseif wasAuto and type(r) == "table" then
+                r.auto = true
+            end
         end
     end
 
