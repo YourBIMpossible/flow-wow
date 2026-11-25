@@ -13,7 +13,8 @@ local _, ns = ...
 --   tierSeen  char "learned.facts.tierSeen":
 --             { [profession] = { cap, category } }
 --   here      { position = { map, x, y }, zone = { cont }, faction,
---               mapSize = function(map) -> { w, h } in yards, or nil }
+--               mapSize = function(map) -> { w, h } in yards, or nil,
+--               level = the player's level (client.level) }
 --             every field may be absent: what is not known is not guessed.
 --
 --   step = { label = "<profession> trainer", place = { cont, map, x, y },
@@ -34,10 +35,12 @@ local _, ns = ...
 -- A profession gets a step when all of these hold; the reason names the
 -- first that does not:
 --   "no reading"   skill and max are both finite numbers, max above 0
---   "not capped"   skill has reached max
+--   "not capped"   skill has reached max, or N.ProfNextRankReady (A2-09)
 --   "visited"      visitedAtCap is not this max (the player was already
 --                  taken to a trainer at this cap)
 --   "unavailable"  tierSeen does not say "unavailable" at this very cap
+--   "level"        (capped) tierSeen at this cap names a level, here.level
+--                  is known and below it (A2-09)
 --   "no trainer"   a saved npc trains it and has a map and x, y in 0..1
 --   "faction"      such an npc was seen by a character of here.faction; an
 --                  npc with no factions, or a faction not known, is no target
@@ -67,7 +70,8 @@ local N = ns.Nav
 -- Yards from the trainer inside which the player is "here". A first guess.
 N.PROF_NEAR = 10
 
-local RANK = { ["no reading"] = 0, ["not capped"] = 1, visited = 2, unavailable = 3, ["no trainer"] = 4, faction = 5 }
+local RANK = { ["no reading"] = 0, ["not capped"] = 1, visited = 2, unavailable = 3, level = 4,
+               ["no trainer"] = 5, faction = 6 }
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -125,14 +129,36 @@ local function choose(list, here)
     return best, true
 end
 
+-- A2-09 (lead section 667). N.ProfNextRankReady(r, said, level) -> bool.
+-- The next rank can be trained before the cap: what the trainer window
+-- showed for this cap (said = tierSeen[profession]: cap, skill, level, read
+-- from the trainer's services, GetTrainerServiceLevelReq / skill line) says
+-- so, and this player has that skill and level. Nothing said, said for
+-- another cap, a level not known, or red at the trainer: false. The cap
+-- itself is not this rule (forProfession handles it). No rank, level or
+-- skill number is authored here.
+function N.ProfNextRankReady(r, said, level)
+    if type(r) ~= "table" or not (finite(r.skill) and finite(r.max)) then return false end
+    if r.skill >= r.max then return false end
+    if type(said) ~= "table" or said.cap ~= r.max or said.category == "unavailable" then return false end
+    if not (finite(said.skill) and said.skill > 0 and finite(said.level) and said.level > 0) then return false end
+    if not finite(level) then return false end
+    return r.skill >= said.skill and level >= said.level
+end
+
 -- One profession: its trainer and whether that is on the player's map, or
 -- nil and the reason.
 local function forProfession(prof, r, npcs, tierSeen, here)
-    if r.skill < r.max then return nil, "not capped" end
+    local said
+    if type(tierSeen) == "table" then said = tierSeen[prof] end
+    if r.skill < r.max and not N.ProfNextRankReady(r, said, here.level) then return nil, "not capped" end
     if r.visitedAtCap == r.max then return nil, "visited" end
-    local said = type(tierSeen) == "table" and tierSeen[prof] or nil
     if type(said) == "table" and said.category == "unavailable" and said.cap == r.max then
         return nil, "unavailable"
+    end
+    if type(said) == "table" and said.cap == r.max and finite(said.level) and finite(here.level)
+        and here.level < said.level then
+        return nil, "level"
     end
     local placed, usable = false, {}
     if type(npcs) == "table" then
@@ -236,6 +262,7 @@ function N.ProfStepFrom(client, store)
             zone = ask(client, "zone"),
             faction = ask(client, "faction"),
             mapSize = function(map) return ask(client, "mapSize", map) end,
+            level = ask(client, "level"),
         })
 end
 
