@@ -161,6 +161,16 @@ tests["map flights: nil and odd inputs give the same answers as before"] = funct
     t.eq(to[#to], "Land here for your next step.", "no step text")
     _, to = MF.TipLines({ name = "A", kind = "have", role = "to" }, "Kill boars", nil)
     t.eq(to[#to], "Land here for your next step: Kill boars.")
+    t.eq(MF.Click(nil, "A"), { from = "A" }, "no selection yet: a pick")
+    t.eq(MF.Click("odd", nil), {}, "a selection that is no table: none")
+    t.eq(MF.SegDist(3, 4, 0, 0, 0, 0), 5, "a line of no length: the distance to its point")
+    t.eq(MF.LineAt(nil, 0, 0, 10), nil, "no lines: none")
+    t.eq(MF.CanFly(nil, { kind = "have" }), false, "no pin: false, not nil")
+    t.eq(MF.CanFly({ kind = "have", cont = 1 }, { kind = "have", cont = 1 }), true)
+    t.eq(MF.CanFly({ kind = "have", cont = 1 }, { kind = "new", cont = 1 }), false)
+    local have = { name = "A", kind = "have", cont = 1 }
+    t.eq((MF.FlightText(have, { name = "B", kind = "have", cont = 1 }, 61, nil, nil)), "A to B: 61 s (your last flight)",
+        "no fmt: seconds")
 end
 
 return tests

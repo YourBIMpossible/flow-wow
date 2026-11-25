@@ -63,9 +63,9 @@ local function placed(t)
 end
 
 function MF.Pins(known, masters, learned, onRoute, air, same)
-    same = finite(same) and same or MF.SAME
-    known = type(known) == "table" and known or {}
-    masters = type(masters) == "table" and masters or {}
+    if not finite(same) then same = MF.SAME end
+    if type(known) ~= "table" then known = {} end
+    if type(masters) ~= "table" then masters = {} end
     local out, used = {}, {}
     for name, f in pairs(known) do
         if placed(f) then
@@ -104,24 +104,29 @@ function MF.Pins(known, masters, learned, onRoute, air, same)
     end
     local seen = {}
     for _, fm in ipairs(masters) do
-        local name = type(fm) == "table" and fm.name or nil
+        local name = nil
+        if type(fm) == "table" then name = fm.name end
         if name and placed(fm) and not used[name] and not seen[name] then
             local has = false
             if type(learned) == "function" then
                 local ok, yes = pcall(learned, fm)
-                has = ok and yes and true or false
+                if ok and yes then has = true end
             end
             if not has then
                 seen[name] = true
                 out[#out + 1] = {
                     name = name, kind = "new", cont = fm.cont, wx = fm.wx, wy = fm.wy,
                     map = fm.map, x = fm.x, y = fm.y, npc = name,
-                    onRoute = (type(onRoute) == "table" and onRoute[name]) and true or nil,
                 }
+                if type(onRoute) == "table" and onRoute[name] then out[#out].onRoute = true end
             end
         end
     end
-    local function rank(p) return (p.role and 3) or (p.kind == "have" and 2) or 1 end
+    local function rank(p)
+        if p.role then return 3 end
+        if p.kind == "have" then return 2 end
+        return 1
+    end
     table.sort(out, function(a, b)
         if rank(a) ~= rank(b) then return rank(a) < rank(b) end
         return tostring(a.name) < tostring(b.name)
@@ -137,10 +142,13 @@ function MF.TipLines(pin, stepText, airText)
         if pin.npc then lines[#lines + 1] = "Flight master: " .. pin.npc end
         lines[#lines + 1] = "You have this flight path: you can fly here."
         if pin.role == "from" then
-            lines[#lines + 1] = "Fly from here: your next step is quicker by air"
-                .. (airText and (", " .. airText .. " in all") or "") .. "."
+            local line = "Fly from here: your next step is quicker by air"
+            if airText then line = line .. ", " .. airText .. " in all" end
+            lines[#lines + 1] = line .. "."
         elseif pin.role == "to" then
-            lines[#lines + 1] = "Land here for your next step" .. (stepText and (": " .. stepText) or "") .. "."
+            local line = "Land here for your next step"
+            if stepText then line = line .. ": " .. stepText end
+            lines[#lines + 1] = line .. "."
         end
         return pin.name, lines
     end
@@ -224,7 +232,7 @@ end
 -- The selection after a click on a flight master: one pick, and any click
 -- on a master while one is picked clears it.
 function MF.Click(sel, name)
-    sel = type(sel) == "table" and sel or {}
+    if type(sel) ~= "table" then sel = {} end
     if not name then return sel end
     if not sel.from then return { from = name } end
     return {}
@@ -234,7 +242,8 @@ end
 function MF.SegDist(px, py, ax, ay, bx, by)
     local dx, dy = bx - ax, by - ay
     local len2 = dx * dx + dy * dy
-    local t = len2 > 0 and ((px - ax) * dx + (py - ay) * dy) / len2 or 0
+    local t = 0
+    if len2 > 0 then t = ((px - ax) * dx + (py - ay) * dy) / len2 end
     if t < 0 then t = 0 elseif t > 1 then t = 1 end
     return dist(px, py, ax + t * dx, ay + t * dy)
 end
@@ -242,7 +251,8 @@ end
 -- The line the mouse is on or near: lines = { { name, ax, ay, bx, by } }.
 function MF.LineAt(lines, px, py, reach)
     local best, bestD
-    for _, l in ipairs(type(lines) == "table" and lines or {}) do
+    if type(lines) ~= "table" then return nil end
+    for _, l in ipairs(lines) do
         local d = MF.SegDist(px, py, l.ax, l.ay, l.bx, l.by)
         if d <= reach and (not bestD or d < bestD) then best, bestD = l.name, d end
     end
@@ -251,8 +261,8 @@ end
 
 -- Can you fly between two pins? Both are flight paths you have, on one continent.
 function MF.CanFly(a, b)
-    return (type(a) == "table" and type(b) == "table" and a.kind == "have" and b.kind == "have"
-        and a.cont == b.cont) and true or false
+    if type(a) ~= "table" or type(b) ~= "table" then return false end
+    return a.kind == "have" and b.kind == "have" and a.cont == b.cont
 end
 
 function MF.Short(name)
@@ -271,7 +281,9 @@ function MF.FlightText(a, b, flown, estimate, fmt)
         if b.kind ~= "have" then need[#need + 1] = b.npc or MF.Short(b.name) end
         return route .. ": you can't fly it yet (learn the flight path at " .. table.concat(need, " and ") .. " first)", false
     end
-    fmt = type(fmt) == "function" and fmt or function(s) return string.format("%.0f", math.floor(s + 0.5)) .. " s" end
+    if type(fmt) ~= "function" then
+        fmt = function(s) return string.format("%.0f", math.floor(s + 0.5)) .. " s" end
+    end
     if finite(flown) then return route .. ": " .. fmt(flown) .. " (your last flight)", true end
     if finite(estimate) then return route .. ": about " .. fmt(estimate), true end
     return route .. ": flight time not known yet", true
