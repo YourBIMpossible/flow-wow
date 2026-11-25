@@ -179,14 +179,20 @@ local function does(b, spellName)
     return "nothing"
 end
 
+-- Our own words (section 757, F-32 CHANGES-1).
+CC.DEAD = "Clicking a party or target frame with just the %s does nothing now. %s"
+CC.DEAD_MOVED = "\"%s\" is bound, but only with a modifier key or on another mouse button."
+CC.DEAD_NONE = "\"%s\" is not bound to any mouse button."
+CC.LOST = "\"%s\" is not bound to any mouse button, because the %s on unit frames now does something else."
+
 function CC.DeadLine(button, name, elsewhere)
-    local why = "has no button"
-    if elsewhere then why = "sits on another button or needs a modifier" end
-    return ("A plain %s on a unit frame does nothing: \"%s\" %s."):format(button, name, why)
+    local why = CC.DEAD_NONE:format(name)
+    if elsewhere then why = CC.DEAD_MOVED:format(name) end
+    return CC.DEAD:format(button, why)
 end
 
 function CC.LostLine(name, button)
-    return ("\"%s\" has no button: your plain %s does something else on unit frames."):format(name, button)
+    return CC.LOST:format(name, button)
 end
 
 function CC.Problems(bindings)

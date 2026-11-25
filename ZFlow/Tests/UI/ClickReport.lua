@@ -26,11 +26,14 @@ tests["click report: what each button does, and a dead plain click"] = function(
     local moved = { type = 3, actionID = 1, button = "LeftButton", modifiers = 2 }
     local dead = CC().Report({ MENU, moved })
     t.eq(dead[2], "Modifier 2 + left button: target it")
-    t.eq(dead[3], CC().WARN .. CC().DeadLine("left button", "Target", true), "Target needs a modifier now")
+    t.eq(dead[3], CC().WARN .. "Clicking a party or target frame with just the left button does nothing now. "
+        .. "\"Target\" is bound, but only with a modifier key or on another mouse button.", "Target needs a modifier now")
     t.eq(dead[#dead], CC().FIX)
     t.eq(CC().Problems({ MENU, { type = 1, actionID = 5, button = "LeftButton", modifiers = 0 } }),
-        { CC().LostLine("Target", "left button") }, "a spell took the plain left button: Target has none")
-    t.eq(CC().Problems({ MENU }), { CC().DeadLine("left button", "Target", false) }, "nothing on the left button at all")
+        { "\"Target\" is not bound to any mouse button, because the left button on unit frames now does something else." },
+        "a spell took the plain left button: Target has none")
+    t.eq(CC().Problems({ MENU }), { "Clicking a party or target frame with just the left button does nothing now. "
+        .. "\"Target\" is not bound to any mouse button." }, "nothing on the left button at all")
 end
 
 tests["click report: what is under the mouse"] = function(t)
