@@ -867,6 +867,9 @@ function T.Declare(k, diag)
     local function movedFar(here)
         if type(autoPos) ~= "table" or type(here) ~= "table" or here.map ~= autoPos.map then return true end
         if not finite(here.x) or not finite(here.y) then return false end
+        -- Planned while the place on the map was not known (Twin's note 1):
+        -- there is nothing to measure from, so plan again.
+        if not finite(autoPos.x) or not finite(autoPos.y) then return true end
         local w, h = scale(here)
         local dx, dy = (here.x - autoPos.x) * w, (here.y - autoPos.y) * h
         return math.sqrt(dx * dx + dy * dy) >= T.AUTO_MOVED
