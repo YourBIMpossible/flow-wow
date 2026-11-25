@@ -27,7 +27,8 @@ tests["arrow menu rows: an ordered list, each with key, words, enabled-when and 
         t.ok(e.when == "always" or e.when == "outOfFight", e.key .. ": enabled-when")
         t.eq(type(e.action), "table", e.key .. ": an action")
     end
-    t.eq(keys, { "windows.advice", "windows.setup", "windows.banker", "route.zoneFirst" })
+    t.eq(keys, { "windows.advice", "windows.setup", "windows.banker", "route.zoneFirst", "style.distance",
+        "waypoint.clear" })
 end
 
 tests["arrow menu rows: each action is one Z-Flow already has"] = function(t)
@@ -36,6 +37,9 @@ tests["arrow menu rows: each action is one Z-Flow already has"] = function(t)
     t.eq(R().Action("windows.setup"), { slash = ns.SetupList.WORD })
     t.eq(R().Action("windows.banker"), { slash = ns.Banker.WORD })
     t.eq(R().Action("route.zoneFirst"), { toggle = "nav.zoneFirst" })
+    -- Zen-3 CHANGES (lead section 733): two more that Z-Flow has.
+    t.eq(R().Action("style.distance"), { toggle = "arrow.byDistance" })   -- UI/Arrow.lua:138
+    t.eq(R().Action("waypoint.clear"), { slash = "way clear" })           -- UI/Arrow.lua:1580-1632
     t.eq(R().Action("nope"), nil)
     local a = R().Action("windows.advice")
     a.slash = "changed"
@@ -45,7 +49,7 @@ end
 tests["arrow menu rows: as menu rows, Setup off in a fight, the toggle ticked as set"] = function(t)
     if type(R()) ~= "table" then return t.ok(false, "not loaded") end
     local out = R().Rows({ inCombat = false, settings = { ["nav.zoneFirst"] = true } })
-    t.eq(byKey(out, "windows.setup"), { key = "windows.setup", text = "Flow Setup" })
+    t.eq(byKey(out, "windows.setup"), { key = "windows.setup", text = ns.SetupList.HEADER })
     t.eq(byKey(out, "route.zoneFirst").checked, true)
     local fight = R().Rows({ inCombat = true, settings = { ["nav.zoneFirst"] = false } })
     t.eq(byKey(fight, "windows.setup").disabled, true, "in a fight")
@@ -57,6 +61,30 @@ tests["arrow menu rows: as menu rows, Setup off in a fight, the toggle ticked as
     t.eq(#R().Rows(nil), #R().ENTRIES, "no state: still every row")
 end
 
+-- Zen-3 CHANGES (lead section 733): the window rows are worded by each
+-- panel's own title, read when asked; clearing the waypoint is greyed when
+-- the state shows none.
+tests["arrow menu rows: the window rows use each panel's own title"] = function(t)
+    if type(R()) ~= "table" then return t.ok(false, "not loaded") end
+    local out = R().Rows({ inCombat = false })
+    t.eq(byKey(out, "windows.advice").text, ns.Advisor.TITLE)
+    t.eq(byKey(out, "windows.setup").text, ns.SetupList.HEADER)
+    t.eq(byKey(out, "windows.banker").text, ns.BankList.TITLE)
+    local was = ns.Advisor.TITLE
+    ns.Advisor.TITLE = "Changed"
+    local now = byKey(R().Rows({ inCombat = false }), "windows.advice").text
+    ns.Advisor.TITLE = was
+    t.eq(now, "Changed", "read when asked")
+end
+
+tests["arrow menu rows: clearing the waypoint is offered only with one set"] = function(t)
+    if type(R()) ~= "table" then return t.ok(false, "not loaded") end
+    t.eq(byKey(R().Rows({ waypoint = true }), "waypoint.clear").disabled, nil)
+    t.eq(byKey(R().Rows({ waypoint = false }), "waypoint.clear").disabled, true)
+    t.eq(byKey(R().Rows({}), "waypoint.clear").disabled, true, "not known: greyed")
+    t.eq(byKey(R().Rows({ settings = { ["arrow.byDistance"] = false } }), "style.distance").checked, false)
+end
+
 tests["arrow menu rows: what Flow's menu has and Z-Flow cannot do yet is listed as a need"] = function(t)
     if type(R()) ~= "table" then return t.ok(false, "not loaded") end
     local keys = {}
@@ -65,8 +93,14 @@ tests["arrow menu rows: what Flow's menu has and Z-Flow cannot do yet is listed 
         t.ok(n.need == "CLIENT NEED" or n.need == "LEAD NEED", n.key .. ": who")
         t.ok(type(n.flow) == "string" and n.flow ~= "", n.key .. ": the Flow cite")
     end
-    t.eq(keys, { "route.order", "route.zonesSelected", "route.unhideAll", "route.shown", "waypoint.prompt",
-        "waypoint.mapOnly", "waypoint.clear", "party.shared", "windows.meters", "style.distance" })
+    t.eq(keys, { "route.zonesSelected", "route.unhideAll", "waypoint.prompt", "waypoint.mapOnly", "party.shared",
+        "windows.meters" })
+    local covered = {}
+    for i, c in ipairs(R().COVERED) do
+        covered[i] = { c.key, c.setting }
+        t.ok(type(c.by) == "string" and c.by:find("triproute-modes", 1, true) ~= nil, c.key .. ": covered by")
+    end
+    t.eq(covered, { { "route.order", "nav.routeSort" }, { "route.shown", "nav.routeShown" } })
 end
 
 return tests
