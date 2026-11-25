@@ -162,6 +162,25 @@ tests["bank take out: weapons, armor and quest things are held back from the sel
         "the same weapon and armor, only sold: not listed")
 end
 
+-- E-19 join CHANGES-2 (§885): a hold covers only what it holds. The part
+-- the sell rules still sell (they already leave the held part out) keeps its
+-- sell row, and the hold row counts the held part, not the whole bank count.
+-- Fails before: the hold row takes the whole thing and no sell row is made.
+tests["bank take out: a hold keeps only its count; the free part is still offered for sale"] = function(t)
+    local held = { { key = 4865, name = "Ruined Pelt", count = 3, quality = 0, classID = 15,
+                     hold = "for one of your item goals", holdCount = 2 } }
+    local rows = T.Rows(held, { sell(4865, "Ruined Pelt", 1) }, nil, nil)
+    t.eq(#rows, 2, "a hold row and a sell row")
+    local by = {}
+    for _, r in ipairs(rows) do by[r.take] = r end
+    t.eq(by[T.HOLD] and by[T.HOLD].count, 2, "the held part")
+    t.eq(by[T.SELL] and by[T.SELL].count, 1, "the free part the sell rules sell")
+    t.eq((T.Rows(held, {}, nil, nil))[1].count, 2, "nothing sold: the hold row alone")
+    local wanted = { { key = 4865, name = "Ruined Pelt", count = 3, quality = 0, classID = 15,
+                       quest = "Pelts", hold = "held", holdCount = 2 } }
+    t.eq(#T.Rows(wanted, { sell(4865, "Ruined Pelt", 1) }, nil, nil), 1, "a quest still takes the whole thing")
+end
+
 tests["bank take out: kept in the bank, nothing takes it out"] = function(t)
     local sells = { sell(4865, "Ruined Pelt", 3), sell(9001, "Broken Fang", 7) }
     local rules = { [9002] = "bank", [9003] = "bank", [9004] = "bank", [4865] = "bank", [9006] = "carry" }

@@ -80,4 +80,16 @@ tests["banker rows: a held thing is taken out with the hold's reason, after the 
     t.eq(rows[1] and { rows[1].take, rows[1].reason, rows[1].next }, { "hold", "for one of your item goals", nil })
 end
 
+-- E-19 join CHANGES-2 (§885): how many a hold keeps in the bank, so the
+-- hold row says the held part. Fails before: no count is given.
+tests["take out why: a hold gives how many it keeps in the bank"] = function(t)
+    local claim = { kind = "item", key = 4865, amount = 2, activity = "goal" }
+    local reason, n = TW().HoldFor(4865, { { claim = claim, from = { bank = 2 } } })
+    t.eq(reason, TW().REASONS.goal)
+    t.eq(n, 2)
+    local out = TW().Fill({ { key = 4865, name = "Ruined Pelt", count = 3 } }, nil, {},
+        { { claim = claim, unknown = "bank", got = 0 } })
+    t.eq({ out[1].hold, out[1].holdCount }, { TW().REASONS.goal, 2 }, "an unseen bank's share")
+end
+
 return tests
