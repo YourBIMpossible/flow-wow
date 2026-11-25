@@ -451,4 +451,68 @@ tests["plate quests starts: the plate of such a mob is marked, its kind starts"]
     t.eq(m and m.kinds, { "starts" })
 end
 
+-- C-19 (lead section 723): walking every Questie quest is a large pass, so
+-- it is sliced as Nav/DungeonRead.lua's R.Step: at most PQ.SLICE quests a
+-- frame, out of a fight only, never in one frame; "starts" is not known
+-- (no mark) until the pass is done. Fails before: one pass in one call.
+local function manyDb(n)
+    local db = startsDb()
+    for i = 1, n do db.QuestPointers[1000 + i] = true end
+    return db
+end
+
+tests["plate quests starts pass: at most PQ.SLICE quests a step, the answer only when done"] = function(t)
+    t.eq(PQ.SLICE, 200)
+    t.eq(type(PQ.StartsPass), "function")
+    t.eq(type(PQ.StartsStep), "function")
+    if type(PQ.StartsPass) ~= "function" or type(PQ.StartsStep) ~= "function" then return end
+    local db, ctx = manyDb(450), startsCtx()
+    local st = PQ.StartsPass(db, ctx)
+    t.eq(st.state, "building")
+    t.eq(PQ.StartsResult(st), nil, "not known before the pass")
+    PQ.StartsStep(st, db, ctx)
+    t.eq(st.at, PQ.SLICE, "one slice")
+    t.eq(st.state, "building")
+    t.eq(PQ.StartsResult(st), nil, "not known halfway")
+    local steps = 1
+    while st.state == "building" and steps < 10 do
+        PQ.StartsStep(st, db, ctx)
+        steps = steps + 1
+    end
+    t.eq(steps, 3, "455 quests: three slices")
+    t.eq(st.state, "ready")
+    local got = PQ.StartsResult(st)
+    t.eq(got and got[OLDBONE] and got[OLDBONE][1].quest, 201)
+    t.eq(PQ.Starts(db, ctx)[OLDBONE][1].quest, 201, "the whole pass at once gives the same")
+    t.eq(PQ.StartsPass(nil, ctx).state, "none", "no Questie: nothing to walk")
+end
+
+tests["plate quests starts pass: it waits out a fight, then marks the mob"] = function(t)
+    local c = ns.make.fakeClient()
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    PQ.Declare(k, d)
+    c.setLevel(10)
+    c.setQuestLog(log())
+    c.setQuestieModule("QuestieDB", manyDb(900))
+    c.setQuestDone(202, true)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.setCombat(true)
+    c.fire("PLAYER_ENTERING_WORLD")
+    mob(c, "nameplate1", OLDBONE)
+    c.advance(5, 20)
+    local m = markOf(c, "nameplate1")
+    t.ok(m == nil or m.shown == false, "in a fight the pass does not move: no mark yet")
+    c.setCombat(false)
+    c.advance(1, 1)
+    m = markOf(c, "nameplate1")
+    t.ok(m == nil or m.shown == false, "one frame is one slice: not done")
+    c.advance(1, 10)
+    m = markOf(c, "nameplate1")
+    t.eq(m and m.shown, true, "done: the mob is marked")
+    t.eq(m and m.says, PQ.MARK)
+end
+
 return tests
