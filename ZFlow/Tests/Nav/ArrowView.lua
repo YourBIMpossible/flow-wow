@@ -555,6 +555,13 @@ T["A1-06: with the one-colour setting every arrow is the one flat colour"] = fun
     colour(t, N.ArrowView(state({ palette = flat }, { family = "waypoint" })).quest.colour, fr, fg, fb, "waypoint")
     colour(t, N.ArrowView(state({ palette = flat }, { family = "profession" })).quest.colour, fr, fg, fb,
         "profession step")
+    -- Lead section 646 item 3: with Muse's one-colour fix (2722c664) the
+    -- first leg of a waypoint or profession step is flat too: arrow = leg.
+    for _, family in ipairs({ "waypoint", "profession" }) do
+        local lr, lg, lb = MRL.Paint("first", { family = family, state = "zone" }, 300, "standard", false)
+        colour(t, N.ArrowView(state({ palette = flat }, { family = family })).quest.colour, lr, lg, lb,
+            family .. ": the arrow is its map first leg")
+    end
 end
 
 T["R7: a palette row gives back its palette word"] = function(t)
