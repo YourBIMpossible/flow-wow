@@ -14,10 +14,16 @@ local _, ns = ...
 --
 --   TL.Kind(stop) -> "objective" | "turnin" | "pickup" | "town" | "run" | nil
 --   TL.Count(stop) -> "2/8" | nil
---   TL.Rows(view, here[, max]) -> rows, more | nil
+--   TL.Rows(view, here[, max]) -> rows, more, nLeft | nil
 --     rows: { label, kind, count, detail, dist, held (why) | nil,
 --             current = true on the first step not held }, in route order,
---     at most max (TL.MAX); more: how many are left out. nil: no route.
+--     at most max (TL.MAX); more: how many route steps are left out.
+--     Then, in the rows left over, the steps that can't be placed
+--     (View().left): { label, kind, detail, left = why }, no distance, never
+--     current; nLeft counts them all, shown or not. As Flow's tracker: its
+--     blocked goals after the plan (Modules/Nav/RouteTracker.lua:504-519),
+--     all of them counted for the lock (:476, RT.Title :458-460).
+--     nil: no route and nothing left.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 local TL = {}
@@ -43,7 +49,11 @@ function TL.Count(stop)
 end
 
 function TL.Rows(view, here, max)
-    if type(view) ~= "table" or type(view.stops) ~= "table" or #view.stops == 0 then return nil end
+    if type(view) ~= "table" then return nil end
+    local stops, left = view.stops, view.left
+    if type(stops) ~= "table" then stops = {} end
+    if type(left) ~= "table" then left = {} end
+    if #stops == 0 and #left == 0 then return nil end
     max = tonumber(max) or TL.MAX
     local dists = {}
     local T = N.Trip
@@ -54,7 +64,7 @@ function TL.Rows(view, here, max)
         end
     end
     local rows, now = {}, false
-    for i, s in ipairs(view.stops) do
+    for i, s in ipairs(stops) do
         if i > max then break end
         local label = "?"
         if type(s) == "table" and s.label ~= nil then label = s.label end
@@ -69,5 +79,16 @@ function TL.Rows(view, here, max)
         end
         rows[#rows + 1] = row
     end
-    return rows, math.max(0, #view.stops - max)
+    for _, l in ipairs(left) do
+        if #rows >= max then break end
+        local label, why = "?", "?"
+        if type(l) == "table" then
+            if l.label ~= nil then label = l.label end
+            if l.why ~= nil then why = l.why end
+        end
+        local row = { label = tostring(label), kind = TL.Kind(l), left = tostring(why) }
+        if type(l) == "table" and l.detail ~= nil then row.detail = l.detail end
+        rows[#rows + 1] = row
+    end
+    return rows, math.max(0, #stops - max), #left
 end

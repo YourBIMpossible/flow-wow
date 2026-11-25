@@ -54,4 +54,37 @@ tests["tracker list: at most max, then how many more; no route, nothing"] = func
     t.eq(TL().Rows(nil, HERE), nil)
 end
 
+-- The steps that can't be placed (TripRoute View().left, with why) come
+-- after the route's, in the rows left over, as Flow's tracker lists its
+-- blocked goals after the plan (Modules/Nav/RouteTracker.lua:504-519) and
+-- counts them all for the lock (:476, RT.Title :458-460).
+tests["tracker list: steps that can't be placed follow the route's, with why"] = function(t)
+    local v = view({ { label = "Boars", quest = 8, objective = 1, place = { map = 1, x = 0.5, y = 0.6 } } })
+    v.left = { { quest = 9, label = "Find Kurl", detail = "Kurl's Map", why = "no place known" },
+               { quest = 10, label = "Deliver", why = "level 12" } }
+    local rows, more, nLeft = TL().Rows(v, HERE, 2)
+    t.eq(#rows, 2, "the route's step, then one that can't be placed")
+    t.eq(more, 0)
+    t.eq(nLeft, 2, "all of them counted")
+    t.eq(rows[1].label, "Boars")
+    t.eq(rows[1].current, true)
+    t.eq(rows[2].label, "Find Kurl")
+    t.eq(rows[2].left, "no place known")
+    t.eq(rows[2].detail, "Kurl's Map")
+    t.eq(rows[2].current, nil, "never the current step")
+    t.eq(rows[2].dist, nil, "no place, no distance")
+    local full = view({ { label = "A", place = { map = 1, x = 0.5, y = 0.5 } },
+                        { label = "B", place = { map = 1, x = 0.5, y = 0.5 } } })
+    full.left = v.left
+    local r2, _, n2 = TL().Rows(full, HERE, 2)
+    t.eq(#r2, 2, "a full list leaves them out")
+    t.eq(r2[2].left, nil)
+    t.eq(n2, 2, "but still counts them")
+    local only = view({})
+    only.left = v.left
+    local r3 = TL().Rows(only, HERE)
+    t.eq(r3 and #r3, 2, "nothing on the route: they are still listed")
+    t.eq(r3 and r3[1].current, nil)
+end
+
 return tests
