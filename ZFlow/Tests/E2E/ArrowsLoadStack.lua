@@ -3,10 +3,13 @@ local _, ns = ...
 -- quest arrow at load and moved to its place only after a restack or a
 -- move. Through the real entry: the whole add-on on a fake client, a
 -- second login with the saved data of the first. While the game gives no
--- facing (at load, or for a moment after) the needle could not point, its
--- room in the stack was dropped and its frame took the quest arrow's
--- place. The player now sees two arrows, one over the other, from the
--- first frame of the login, and they stay there when the facing comes.
+-- facing (at load, or for a moment after) the profession arrow could not
+-- point, its room in the stack was dropped and its frame took the quest
+-- arrow's place. The player now sees two arrows from the first frame of
+-- the login, and they stay there when the facing comes. Since lead section
+-- 476 the profession arrow is the quest arrow's echo: behind it and below
+-- it. The quest is north and the anvil east, so the echo is slid straight
+-- down, one arrow and a gap; with no facing it stands there too.
 -- Made-up recipes, items and places. Offline test only: Needs game test.
 local tests = {}
 local N = ns.Nav
@@ -47,14 +50,17 @@ local function firstSession()
     return c.saved(ns.id.accountDB), c.saved(ns.id.charDB)
 end
 
-local RISE = 56 + N.NeedleClearance(56) + N.STACK_GAP
+local DROP = 56 + N.ARROW_GAP
 
 local function stacked(t, c, when)
     local q, p = c.arrows[1], c.arrows[2]
     t.eq(q.shown, true, when .. ": the quest arrow")
     t.eq(p.shown, true, when .. ": the profession arrow")
     t.eq(p.point[3], q.point[3], when .. ": same column")
-    t.eq(p.point[4] - q.point[4], RISE, when .. ": one over the other, not on it")
+    t.eq(q.point[4] - p.point[4], DROP, when .. ": the echo one arrow and a gap below, not on it")
+    t.eq(q.under, false, when .. ": the quest arrow in front")
+    t.eq(p.under, false, when .. ": slid below, the echo is not behind: it takes the mouse itself")
+    t.ok(p.lookIs ~= "needle", when .. ": no needle")
 end
 
 tests["arrow load: no facing yet at login: two arrows, stacked, from the first frame"] = function(t)
@@ -72,7 +78,7 @@ tests["arrow load: no facing yet at login: two arrows, stacked, from the first f
     c.setFacing(0)
     c.advance(2, 8)
     stacked(t, c, "facing back")
-    t.ok(c.arrows[2].drawn.body ~= 0, "the needle is drawn once it can point")
+    t.ok(c.arrows[2].drawn.body ~= 0, "the echo is drawn once it can point")
     t.eq(addon.problems:count(), before)
 end
 

@@ -63,7 +63,11 @@ T["only the fields the arrow view names"] = function(t)
                  other = "dropped" },
     })
     t.eq(keys(s), { layout = true, screenW = true, screenH = true, size = true, defaultPoint = true,
-                    gate = true, palette = true, player = true, facingKnown = true, quest = true, prof = true })
+                    gate = true, palette = true, player = true, facingKnown = true, quest = true, prof = true,
+                    spread = true })
+    -- The quest step lies due north, the profession step due east.
+    near(t, s.spread, math.pi / 2, "spread: the angle between the two bearings")
+    t.eq(N.ViewState(client(), { quest = share(1411, 0.5, 0.3) }).spread, nil, "one step only: no spread")
     t.eq(keys(s.quest), { hasStep = true, overlay = true, target = true, here = true, distance = true,
                           travel = true, textHeight = true })
     t.eq(keys(s.prof), { on = true, hasStep = true, target = true, here = true, distance = true,
@@ -175,6 +179,43 @@ T["what is handed in is not changed, and the state shares no table with it"] = f
     t.eq(steps.quest, share(1411, 0.5, 0.3))
     s.prof.own[1] = 0
     t.eq(own[1], 1)
+end
+
+-- Lead section 510 (CHANGES-1). The quest step lies due north; the profession
+-- step 200 yards off at `deg` degrees east of north.
+local function at(deg)
+    local a = deg * math.pi / 180
+    return { quest = share(1411, 0.5, 0.3),
+             prof = share(1411, 0.5 + 200 * math.sin(a) / 1000, 0.5 - 200 * math.cos(a) / 500),
+             view = { gate = "open", screenW = 1024, screenH = 768 } }
+end
+
+T["the echo's last place is kept per client: two reads in a row at 29 to 31 degrees do not flip it"] = function(t)
+    local c = client()
+    local function slid(deg)
+        local s = N.ViewState(c, at(deg))
+        local first = N.ArrowView(s).prof.slid
+        t.eq(N.ArrowView(s).prof.slid, first, deg .. ": the same state gives the same answer twice")
+        return first
+    end
+    t.eq(slid(31), true, "31 first: slid")
+    t.eq(slid(29), true, "then 29: still slid, inside the band")
+    t.eq(slid(31), true, "then 31: slid")
+    t.eq(slid(24), false, "then 24: past the band, tucked under")
+    t.eq(slid(31), false, "then 31: still tucked under, inside the band")
+    t.eq(slid(29), false, "then 29: tucked under")
+    t.eq(slid(36), true, "then 36: past the band, slid")
+    -- Another client has its own answer.
+    t.eq(N.ArrowView(N.ViewState(client(), at(29))).prof.slid, false, "a fresh client at 29: the plain edge")
+    t.eq(N.ArrowView(N.ViewState(client(), at(31))).prof.slid, true, "a fresh client at 31: the plain edge")
+end
+
+T["with no spread the echo's last place is dropped"] = function(t)
+    local c = client()
+    t.eq(N.ArrowView(N.ViewState(c, at(31))).prof.slid, true, "31: slid")
+    local s = N.ViewState(c, { quest = share(1411, 0.5, 0.3), view = { gate = "open" } })
+    t.eq(s.echoSlid, nil, "one step only: nothing carried")
+    t.eq(N.ArrowView(N.ViewState(c, at(29))).prof.slid, false, "29 after that: the plain edge again")
 end
 
 return T

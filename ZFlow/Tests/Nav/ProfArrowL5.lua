@@ -5,14 +5,13 @@ local _, ns = ...
 -- separation), and restacked, with the profession lane fed by a C4 step.
 -- Function only: the look is not seen offline.
 --
--- Stacked means one over the other, not one behind the other (DISPATCH 407
--- item 2). These rows were written for the first stack, where the
--- profession needle stood behind the quest arrow on the same spot. The
--- profession stack (41a906f7, Nav/ArrowLayout.lua) stands it above the
--- quest arrow on its own, in its own colour and at full strength, so the
--- two never overlap or read as one. That is the layout kept (section 405
--- item 5: stacked or separate, profession text one side, levelling text
--- the other), so the rows below hold the stack as it is drawn now.
+-- Stacked means the echo (lead section 476): the profession arrow is the
+-- quest arrow again, purple and see-through, behind it and a little below
+-- (tucked under while the two steps lie close; one arrow and a gap below
+-- when they lie apart). It replaced the needle that stood one rise above
+-- the quest arrow (DISPATCH 407 item 2, 41a906f7). Stacked or separate,
+-- profession text one side, levelling text the other (section 405 item
+-- 5), so the rows below hold the stack as it is drawn now.
 
 local N = ns.Nav
 local tests = {}
@@ -29,22 +28,27 @@ local function layoutOf(saved)
         prof = { hasStep = fed() }, screenW = 1920, screenH = 1080, size = 56 })
 end
 
-tests["prof arrow L5: the profession lane is fed and stands over the quest arrow"] = function(t)
+tests["prof arrow L5: the profession lane is fed and stands behind the quest arrow as its echo"] = function(t)
     t.eq(fed(), true, "the C4 lane gives a step")
     local l = layoutOf({})
     t.eq(l.stacked, true, "stacked by default")
     t.eq(l.prof.shown, true, "the profession arrow is shown")
-    t.eq(l.prof.above, true, "over the quest arrow")
-    t.eq(l.prof.behind, false, "not behind it")
+    t.eq(l.prof.above, nil, "not over the quest arrow")
+    t.eq(l.prof.behind, true, "behind it")
+    t.eq(l.prof.echo, true, "as its echo")
     t.eq(l.prof.anchor, "screen", "on its own place")
-    t.eq(l.prof.look, "needle", "still the needle")
-    t.eq(l.prof.tint, "own", "in its own colour")
-    t.eq(l.prof.alpha, 1, "at full strength")
+    t.eq(l.prof.look, "echo", "drawn as the echo")
+    t.eq(l.prof.tint, "echo", "in the echo's purple")
+    t.eq(l.prof.alpha, N.ECHO_ALPHA, "see-through")
     t.eq(l.quest.small, false, "the quest arrow keeps its size")
+    t.eq(l.quest.scale, 1, "and its scale"); t.eq(l.quest.alpha, 1, "and its strength")
     local q, p = l.quest.position, l.prof.position
     t.eq(p[3], q[3], "same column")
-    t.eq(p[4] - q[4], 56 + N.NeedleClearance(56) + N.STACK_GAP,
-        "one arrow, the needle's turning room and a gap higher: the two never overlap")
+    t.eq(p[4] - q[4], -N.ECHO_NEST, "tucked under the quest arrow by the nest")
+    local s = N.ArrowLayout({ layout = {}, gate = "open", quest = { hasStep = true }, slid = true,
+        prof = { hasStep = fed() }, screenW = 1920, screenH = 1080, size = 56 })
+    t.eq(s.quest.position, q, "slid: the quest arrow does not move")
+    t.eq(s.prof.position[4] - q[4], -(56 + N.ARROW_GAP), "slid: one arrow and a gap lower")
 end
 
 tests["prof arrow L5: the first separation puts the profession arrow directly below"] = function(t)
@@ -62,15 +66,16 @@ tests["prof arrow L5: the first separation puts the profession arrow directly be
     t.eq(p[4], 904 - 56 - N.ARROW_GAP, "one arrow and a gap lower")
 end
 
-tests["prof arrow L5: restacked, it stands over the quest arrow again; a second separation keeps its place"] = function(t)
+tests["prof arrow L5: restacked, it stands behind the quest arrow again; a second separation keeps its place"] = function(t)
     local saved = N.ArrowApply({}, { op = "mode", mode = "separate" }, CTX)
     saved = N.ArrowApply(saved, { op = "move", key = "prof", point = { "BOTTOMLEFT", "BOTTOMLEFT", 100, 100 } }, CTX)
     saved = N.ArrowApply(saved, { op = "restack" }, CTX)
     local l = layoutOf(saved)
     t.eq(l.stacked, true, "restacked")
-    t.eq(l.prof.above, true, "over the quest arrow again")
+    t.eq(l.prof.behind, true, "behind the quest arrow again")
+    t.eq(l.prof.echo, true, "its echo again")
     t.eq(l.prof.anchor, "screen", "on its own place")
-    t.eq(l.prof.position[4] > l.quest.position[4], true, "higher than the quest arrow")
+    t.eq(l.prof.position[4] - l.quest.position[4], -N.ECHO_NEST, "tucked under the quest arrow")
     t.eq(l.prof.shown, true, "and still fed")
     saved = N.ArrowApply(saved, { op = "mode", mode = "separate" }, CTX)
     t.eq(layoutOf(saved).prof.position[3], 100, "its own place is kept")

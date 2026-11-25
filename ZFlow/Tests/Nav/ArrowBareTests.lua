@@ -1,6 +1,6 @@
 -- A bare arrow (owner decision D2): the frame and its text stay, the arrow
 -- art is not drawn. Asked for through N.ArrowAim (bare = true) when the
--- direction is not known; N.ArrowView says it of a profession needle that
+-- direction is not known; N.ArrowView says it of a profession arrow that
 -- is "off" and still has its text to show. Pure: no game client.
 local _, ns = ...
 
@@ -88,24 +88,27 @@ T["bare: the arrows drawn from lines draw nothing"] = function(t)
     end
 end
 
-T["view: a needle that is off with a step is bare, and is not drawn"] = function(t)
+T["view: a profession arrow that is off with a step is bare, and is not drawn"] = function(t)
     local blind = N.ArrowView(state({ layout = SEPARATE, facingKnown = false }))
     t.eq(blind.prof.mode, "off")
-    t.eq(blind.prof.shown, false, "no needle")
+    t.eq(blind.prof.shown, false, "no arrow")
     t.eq(blind.prof.bare, true)
     t.eq(blind.prof.text.shown, true, "its text is shown")
     t.eq(blind.prof.text.to, "prof", "on its own frame")
 end
 
-T["view: stacked and off, the text is on the needle's own frame, above; the quest lines below"] = function(t)
+T["view: stacked and off, the text is on the profession arrow's own frame, below; the quest lines above"] = function(t)
     local off = N.ArrowView(state(nil, nil, { bearingKnown = false }))
     t.eq(off.prof.mode, "off")
     t.eq(off.prof.shown, false)
     t.eq(off.prof.bare, true)
     t.eq(off.prof.text.shown, true)
     t.eq(off.prof.text.to, "prof")
-    t.eq(off.prof.text.side, "above", "its lines above")
-    t.eq(off.quest.text.side, "below", "the quest lines below")
+    t.eq(off.prof.text.side, "below", "its lines below")
+    t.eq(off.prof.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW }, "hung under its frame")
+    t.eq(off.quest.text.side, "above", "the quest lines above")
+    t.eq(off.quest.text.point, { "BOTTOM", "TOP", 0, N.TEXT_GAP_ABOVE }, "stood over the quest arrow")
+    t.eq(off.prof.point, off.quest.point, "no echo drawn: its frame on the quest arrow's place")
     -- A quest stop no longer switches the profession arrow off: not bare.
     local onPoint = N.ArrowView(state(nil, { distance = 5 }))
     t.eq(onPoint.prof.mode, "arrow", "the quest step is at its point: it still points")
@@ -113,7 +116,7 @@ T["view: stacked and off, the text is on the needle's own frame, above; the ques
     t.eq(onPoint.prof.text.shown, true)
 end
 
-T["view: a needle that points or stands as the ring is not bare"] = function(t)
+T["view: a profession arrow that points or stands as the ring is not bare"] = function(t)
     t.eq(N.ArrowView(state()).prof.bare, false)
     t.eq(N.ArrowView(state(nil, nil, { here = true })).prof.bare, false)
 end
@@ -125,7 +128,7 @@ T["view: no step, the setting off, or a shut gate: not bare"] = function(t)
     t.eq(N.ArrowView(state({ gate = "corpse" }, nil, { bearingKnown = false })).prof.bare, false)
 end
 
-T["view: hidden by the player, an off needle is not bare"] = function(t)
+T["view: hidden by the player, an off profession arrow is not bare"] = function(t)
     local hidden = { arrows = { hidden = { prof = true } } }
     t.eq(N.ArrowView(state({ layout = hidden }, nil, { bearingKnown = false })).prof.bare, false)
 end
@@ -134,15 +137,22 @@ T["view: the quest arrow is never said to be bare here"] = function(t)
     t.eq(N.ArrowView(state()).quest.bare, nil)
 end
 
-T["view: stacked and off, the needle's lines take room"] = function(t)
-    -- Arrow top 20 under the screen top: the needle's two lines (28) and
-    -- their gap do not fit above it, so the arrow is moved down for them.
-    local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -20 } } } }
-    local off = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28, bearingKnown = false }))
+T["view: stacked and off, the profession arrow's lines take room"] = function(t)
+    -- Arrow bottom 20 over the screen bottom: the profession step's two
+    -- lines (28) and their gap do not fit under it, so the arrow is moved
+    -- up for them. No echo is drawn, so no room is kept for one.
+    local low = { arrows = { points = { quest = { "BOTTOM", "BOTTOM", 0, 20 } } } }
+    local off = N.ArrowView(state({ layout = low }, { textHeight = 14 }, { textHeight = 28, bearingKnown = false }))
     t.eq(off.prof.mode, "off")
-    t.eq(off.prof.text.side, "above", "over the quest arrow")
-    t.eq(off.quest.text.side, "below", "the quest line under it")
-    t.eq(off.quest.point[4], -(28 + N.TEXT_GAP_ABOVE), "moved down by the lines and their gap")
+    t.eq(off.prof.text.side, "below", "under the quest arrow")
+    t.eq(off.quest.text.side, "above", "the quest line over it")
+    t.eq(off.quest.point[4], 28 + N.TEXT_GAP_BELOW, "moved up by the lines and their gap")
+    t.eq(off.prof.point, off.quest.point, "the text frame with it")
+    -- Arrow top 10 under the screen top: the quest line (14) and its gap
+    -- do not fit over it, so the arrow is moved down for them.
+    local top = { arrows = { points = { quest = { "TOP", "TOP", 0, -10 } } } }
+    off = N.ArrowView(state({ layout = top }, { textHeight = 14 }, { textHeight = 28, bearingKnown = false }))
+    t.eq(off.quest.point[4], -(14 + N.TEXT_GAP_ABOVE), "moved down by the quest line and its gap")
     t.eq(off.prof.point, off.quest.point, "the text frame with it")
 end
 

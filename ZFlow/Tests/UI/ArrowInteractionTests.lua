@@ -261,18 +261,24 @@ return {
         t.eq(k.problems:count(), 0)
     end,
 
-    ["hover: stacked, each arrow has its own tooltip with its own lines"] = function(t)
+    -- Lead section 510 (CHANGES-2). The demo gives no spread, so the echo
+    -- stands slid below the quest arrow: nothing covers it.
+    ["hover: stacked and slid below, each arrow says its own step, and the echo has its menu"] = function(t)
         local k, c = start()
         if not has(t, c) then return end
         local q, p = c.arrows[1], c.arrows[2]
-        t.eq(p.under, false, "the profession arrow is over the quest arrow, not under it, and takes the mouse")
+        t.eq(p.under, false, "slid below: the echo is not behind, it takes the mouse itself")
+        t.eq(q.under, false, "the quest arrow in front")
         q.hover(true)
         t.ok(hasLine(q.tipLines, "Demo: north"))
-        t.ok(not hasLine(q.tipLines, "Demo: east"), "the quest arrow's tooltip is the quest step's alone")
+        t.ok(not hasLine(q.tipLines, "Demo: east"), "the quest arrow does not say the echo's step: the echo says it")
         q.hover(false)
         p.hover(true)
         t.ok(hasLine(p.tipLines, "Profession arrow"))
         t.ok(hasLine(p.tipLines, "Demo: east"))
+        p.hover(false)
+        p.click("right")
+        t.ok(type(p.menuItems) == "table" and #p.menuItems > 0, "a right-click on the slid echo opens its menu")
         t.eq(k.problems:count(), 0)
     end,
 

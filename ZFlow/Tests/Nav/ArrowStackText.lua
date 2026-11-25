@@ -1,11 +1,9 @@
--- Lead section 387 R2 (zflow-prof-feed): with both arrows stacked, the
--- profession step's text stands ABOVE the stacked arrows and the quest text
--- BELOW, wherever the stack is on the screen, when the lines fit there.
+-- Lead section 476 (it turns section 387 R2 round): with both arrows
+-- stacked, the profession arrow is the echo behind and below the quest
+-- arrow, so the quest text stands ABOVE the quest arrow and the profession
+-- step's text BELOW the echo, wherever the stack is on the screen.
 -- Separate arrows keep their own placement. Pure (N.ArrowView); made-up
 -- sizes only. Not tested in game.
---
--- Red before the code: stacked, the quest lines went above in the top half
--- of the screen and the profession lines took the other side (section 341).
 local _, ns = ...
 
 local N = ns.Nav
@@ -23,17 +21,19 @@ end
 
 local T = {}
 
-T["stacked: profession text above, quest text below, top or bottom half"] = function(t)
+T["stacked: quest text above, profession text below, top or bottom half"] = function(t)
     local low = { arrows = { points = { quest = { "BOTTOMLEFT", "BOTTOMLEFT", 100, 100 } } } }
     for name, layout in pairs({ default = {}, ["bottom half"] = low }) do
         local v = N.ArrowView(state(layout))
         t.eq(v.stacked, true, name .. ": stacked")
+        t.eq(v.prof.behind, false, name .. ": slid below (no spread): the echo is not behind")
+        t.eq(v.quest.point[4] - v.prof.point[4], 56 + N.ARROW_GAP, name .. ": and under it, not over it")
         t.eq(v.prof.text.shown, true, name)
-        t.eq(v.prof.text.to, "prof", name .. ": on the needle's own frame")
-        t.eq(v.prof.text.side, "above", name .. ": the profession step above")
-        t.eq(v.prof.text.point, { "BOTTOM", "TOP", 0, 7 }, name .. ": clear of the needle")
-        t.eq(v.quest.text.side, "below", name .. ": the quest text below")
-        t.eq(v.quest.text.point, { "TOP", "BOTTOM", 0, -2 }, name .. ": the needle is over the quest arrow, not under it")
+        t.eq(v.prof.text.to, "prof", name .. ": on the echo's own frame")
+        t.eq(v.prof.text.side, "below", name .. ": the profession step below")
+        t.eq(v.prof.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW }, name .. ": under the echo, the plain gap")
+        t.eq(v.quest.text.side, "above", name .. ": the quest text above")
+        t.eq(v.quest.text.point, { "BOTTOM", "TOP", 0, N.TEXT_GAP_ABOVE }, name .. ": over the quest arrow, the plain gap")
     end
 end
 

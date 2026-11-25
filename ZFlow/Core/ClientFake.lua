@@ -739,11 +739,13 @@ function ns.make.fakeClient(opts)
         -- pointer comes (true) or goes. choose: the player clicks the menu
         -- row with this key; the menu closes first, as on the client. The
         -- fake does not refuse a row that is not offered: the caller must.
+        -- As the client (Core/Client.lua, OnMouseUp, OnEnter, OnLeave): an
+        -- arrow under the other one hears no click and no hover.
         function h.click(button)
-            if clicked then clicked(button) end
+            if clicked and not h.under then clicked(button) end
         end
         function h.hover(on)
-            if hovered then hovered(on and true or false) end
+            if hovered and not h.under then hovered(on and true or false) end
         end
         function h.choose(key)
             local fn = pick
