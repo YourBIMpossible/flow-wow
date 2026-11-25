@@ -6,7 +6,7 @@ local _, ns = ...
 -- research: Modules/Items/Vendor.lua:718-720 (BuybackItem hook, then
 -- sell.never). Made-up items. Not tested in game.
 --
--- Fails before the change: the fake has no c.buyBack, and nothing marks a
+-- Fails before the change: the fake has no c.fireBoughtBack, and nothing marks a
 -- bought-back item keep.
 local tests = {}
 
@@ -42,9 +42,9 @@ end
 tests["keep buy-back: an item bought back at the merchant is never sold again"] = function(t)
     local c = boot()
     c.setMerchantOpen(true)
-    t.eq(type(c.buyBack), "function", "the fake has the buy-back")
-    if type(c.buyBack) ~= "function" then return end
-    c.buyBack("item:" .. FANG)
+    t.eq(type(c.fireBoughtBack), "function", "the fake has the buy-back")
+    if type(c.fireBoughtBack) ~= "function" then return end
+    c.fireBoughtBack("item:" .. FANG)
     c.advance(0.1, 2)
     t.eq(never(c)[FANG], true, "on the character's never-sell list")
     t.ok(said(c, "Broken Fang bought back, so it is now on your never-sell list."), "the player is told")
@@ -55,10 +55,10 @@ end
 tests["keep buy-back: buying it back twice tells the player once"] = function(t)
     local c = boot()
     c.setMerchantOpen(true)
-    if type(c.buyBack) ~= "function" then t.ok(false, "no c.buyBack") return end
-    c.buyBack("item:" .. FANG)
+    if type(c.fireBoughtBack) ~= "function" then t.ok(false, "no c.fireBoughtBack") return end
+    c.fireBoughtBack("item:" .. FANG)
     local n = #c.printed
-    c.buyBack("item:" .. FANG)
+    c.fireBoughtBack("item:" .. FANG)
     t.eq(#c.printed, n, "nothing more said")
 end
 

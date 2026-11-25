@@ -5001,7 +5001,7 @@ end
 -- the player buys an item back on the merchant's Buyback tab (in game: a
 -- hooksecurefunc on BuybackItem, the link read with GetBuybackItemLink
 -- before the buy, as Flow's Modules/Items/Vendor.lua:718-720).
--- c.buyBack(item) is that buy.
+-- c.fireBoughtBack(item) is that buy.
 do
     local make = ns.make.fakeClient
     ns.make.fakeClient = function(...)
@@ -5012,7 +5012,7 @@ do
             fns[#fns + 1] = fn
             return true
         end
-        function c.buyBack(item)
+        function c.fireBoughtBack(item)
             for _, fn in ipairs({ unpack(fns) }) do fn(item) end
         end
         return c

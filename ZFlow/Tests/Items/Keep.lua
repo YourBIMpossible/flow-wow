@@ -242,7 +242,7 @@ end
 -- E-13 (lead section 660; Flow Modules/Items/Vendor.lua:718-720): an item
 -- the player buys back is put on the never-sell list, so it is not sold
 -- again. The buy-back read is client.onBoughtBack (CLIENT NEED, stubbed in
--- the fake: c.buyBack(item) is the player's buy-back).
+-- the fake: c.fireBoughtBack(item) is the player's buy-back).
 tests["keep: an item bought back goes on the never-sell list and says so"] = function(t)
     local k, c = start()
     local lines, changed = K.BoughtBack(k, LINK)
@@ -275,9 +275,9 @@ end
 
 tests["keep: the player's buy-back through the client puts it on the list and tells them"] = function(t)
     local _, c = start()
-    t.eq(type(c.buyBack), "function", "the fake has the buy-back")
-    if type(c.buyBack) ~= "function" then return end
-    c.buyBack(LINK)
+    t.eq(type(c.fireBoughtBack), "function", "the fake has the buy-back")
+    if type(c.fireBoughtBack) ~= "function" then return end
+    c.fireBoughtBack(LINK)
     t.eq(never(c)[97], true)
     t.ok(said(c, "Broken Fang bought back, so it is now on your never-sell list."))
 end
