@@ -24,6 +24,9 @@ end
 -- (Section 187 section 7: nav.mapFlights and nav.taxiMark left it; their
 -- modules now read them.)
 local UNREAD = {
+    -- Section 624 Step 5 (UI/SettingsKeys.lua) reads the layout row only once
+    -- Step 1 (Rotation/FlowButton.lua) declares it; Step 1 is not merged yet.
+    ["flowButton.layout"] = true,
 }
 
 -- Every string held in a field named SETTING (or ending _SETTING) anywhere
