@@ -29,7 +29,21 @@ local Lookup = {}
 ns.PriceLookup = Lookup
 
 Lookup.WORD = "price"
-Lookup.USAGE = "say price <item link> (or an item ID)."
+Lookup.USAGE = "say price <item link>, an item name or an item ID."
+
+-- E-42 (§611): a name no item answers to. Said so; no price is made up.
+function Lookup.NotFound(text)
+    return 'No known item is called "' .. tostring(text) .. '": link it, or use its item ID.'
+end
+
+-- E-42: an item name -> its item ID through the client's name read
+-- (CLIENT NEED client.itemIdByName; stubbed in Core/ClientFake.lua), or nil.
+local function idByName(client, text)
+    if type(client) ~= "table" or type(client.itemIdByName) ~= "function" then return nil end
+    local ok, id = pcall(client.itemIdByName, text)
+    if not ok then return nil end
+    return ns.Items.Key(id)
+end
 
 local function isCount(n)
     return type(n) == "number" and n == n and n >= 0 and n < math.huge
@@ -75,8 +89,16 @@ function Lookup.Run(k, rest)
         read = function(item) return client.itemInfo(ns.Items.Id(item) or item) end
     end
     local book = k.store:get("account", "learned.prices")
-    local result = Lookup.Find(trim(rest), read, type(book) == "table" and book or nil)
-    if not result then return { Lookup.USAGE } end
+    local text = trim(rest)
+    if text == "" then return { Lookup.USAGE } end
+    local item = text
+    if ns.Items.Key(text) == nil then
+        item = idByName(client, text)
+        if item == nil then return { Lookup.NotFound(text) } end
+    end
+    if type(book) ~= "table" then book = nil end
+    local result = Lookup.Find(item, read, book)
+    if not result then return { Lookup.NotFound(text) } end
     local lines = ns.ItemPresent.PriceLines(result)
     local log, chart = ns.AuctionLog, ns.PriceChart
     if type(result.key) == "number" and type(log) == "table" and type(chart) == "table"

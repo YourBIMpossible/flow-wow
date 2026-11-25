@@ -4995,3 +4995,29 @@ do
         return c
     end
 end
+
+-- § E-42 (Items/PriceLookup.lua, CLIENT NEED, §663): an item's ID by its
+-- name, as the real client would answer GetItemInfo(name)'s link for an item
+-- it has seen. The fake answers from the setItemInfo rows, any case; nil
+-- when no row has that name. Client.lua does not have this read yet.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local rows = nil
+        local setItemInfo = c.setItemInfo
+        function c.setItemInfo(map)
+            rows = map
+            return setItemInfo(map)
+        end
+        function c.itemIdByName(name)
+            if type(name) ~= "string" or type(rows) ~= "table" then return nil end
+            local want = name:lower()
+            for id, row in pairs(rows) do
+                if type(row) == "table" and type(row.name) == "string" and row.name:lower() == want then return id end
+            end
+            return nil
+        end
+        return c
+    end
+end
