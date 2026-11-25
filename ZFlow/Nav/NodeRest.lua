@@ -8,13 +8,15 @@ local _, ns = ...
 --           it rests the same.
 -- Next() is the nearest kept node that is not resting. Rests are for this
 -- session only, as Flow's: nothing is saved.
--- Not here yet: a caller. The arrow and `nodes go` still take Nodes'
--- nearest; using Next() there is a later hook.
+-- The caller: Nav/ProfStep.lua:1270-1279 (N.ProfPlace.From) asks
+-- Resting(node) and passes a resting node over, so the gathering step of
+-- the profession arrow points at the next one. `nodes go` still takes
+-- Nodes' nearest.
 -- Compared with Flow Modules/Nav/Nav.lua SPOT_REST, cleared, N:NearestSpot,
 -- N.ClearSpotNear (LOOT_OPENED, 12 yd) and N.SpotEmpty / watchSpot (15 yd,
--- 4 s): the same numbers. Flow works on Questie's spawn spots of the
--- current step and stops watching in combat; here it is your own kept
--- nodes, and combat is not looked at.
+-- 4 s): the same numbers, and no watching in combat (Flow Nav.lua:4551).
+-- Flow works on Questie's spawn spots of the current step; here it is your
+-- own kept nodes.
 -- LOOK ONLY: nothing is looted, cast or moved. Not tested in game.
 --
 -- Pure:
@@ -97,7 +99,18 @@ function NR.Declare(k)
         atKey, atSince = nil, nil
     end
 
+    -- Is the player in combat? Only a plain yes counts.
+    local function fighting()
+        local c = ctx and ctx.client
+        if type(c) ~= "table" or type(c.inCombat) ~= "function" then return false end
+        local ok, on = pcall(c.inCombat)
+        return ok and on == true
+    end
+
     local function tick()
+        -- No watching in combat (Flow Nav.lua:4551): standing by a node in
+        -- a fight says nothing about it, and the watch starts again after.
+        if fighting() then atKey, atSince = nil, nil return end
         local list, t = nearest(), now()
         local r = list and NR.Next(list, rests, t)
         if not (r and finite(r.d) and r.d < NR.EMPTY_YARDS) then atKey, atSince = nil, nil return end
