@@ -33,14 +33,26 @@ tests["prof text: no tooltip without a step"] = function(t)
     t.eq(PT().Tip(nil), nil, "no state")
 end
 
+-- Plexy CHANGES-1 (section 852): the left click is named only when the
+-- caller says opening works; else the hint is the right click alone.
 tests["prof text: the tooltip is the header, the step lines, then the hint"] = function(t)
-    local out = PT().Tip({ step = STEP })
+    local out = PT().Tip({ step = STEP }, true)
     t.ok(type(out) == "table", "lines")
     t.eq(#out, 4, "four lines")
-    t.eq(out[1], "Profession step", "header")
+    t.eq(out[1], PT().HEADER, "header")
     t.eq(out[2], "Train Journeyman Skinning", "first step line")
     t.eq(out[3], "120 yards", "second step line")
-    t.eq(out[4], "Left-click: open the step. Right-click: menu.", "hint")
+    t.eq(out[4], PT().HINT_OPEN, "hint names both clicks")
+end
+
+tests["prof text: with nothing to open the hint names the right click only"] = function(t)
+    for _, canOpen in ipairs({ false, "yes" }) do
+        local out = PT().Tip({ step = STEP }, canOpen)
+        t.eq(out and out[#out], PT().HINT_MENU, "right click only")
+    end
+    local plain = PT().Tip({ step = STEP })
+    t.eq(plain and plain[#plain], PT().HINT_MENU, "not said: right click only")
+    t.ok(type(PT().HINT_MENU) == "string" and PT().HINT_MENU ~= PT().HINT_OPEN, "two hints")
 end
 
 tests["prof text: no hit while the text is off"] = function(t)
