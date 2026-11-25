@@ -23,7 +23,12 @@ local _, ns = ...
 --                               true when the place is off the minimap
 --     handle.hide()
 --
---   MinimapPin.Update(client, store, state) -> report   one look
+--   FLOW-PARITY A2-23: with no waypoint set, the pin shows where the quest
+--   arrow points now, its step of any kind (the arrow's Heading, UI/
+--   Arrow.lua), as legacy Flow's pin sits at the arrow's point
+--   (Modules/Nav/MinimapPin.lua P:Update, :384-408). Your waypoint first.
+--   MinimapPin.Target(waypoint, heading) -> place | nil, Pin.NONE   (pure)
+--   MinimapPin.Update(client, store, state[, heading]) -> report   one look
 --     state: a table kept between looks (the handle is made once).
 --     report = { shown = true, x, y, edge, distance }
 --            or { shown = false, reason }
@@ -46,6 +51,7 @@ Pin.SETTING = "nav.waypointPin"
 Pin.LABEL = "Show your waypoint on the minimap"
 Pin.HELP = "Puts a green dot on the minimap for a waypoint you set yourself, so you can see it without opening the map."
 Pin.OFF = "turned off"
+Pin.NONE = "no waypoint"   -- nothing to pin: no waypoint, and the arrow points nowhere
 Pin.EVERY = 0.1        -- seconds between looks. A first guess.
 Pin.SIZE = 12          -- how wide the pin is. A first guess.
 
@@ -77,15 +83,26 @@ local function handleOf(client, state)
     return state.handle
 end
 
-function Pin.Update(client, store, state)
+local function placed(p)
+    return type(p) == "table" and p.map ~= nil and type(p.x) == "number" and type(p.y) == "number"
+        and p.x == p.x and p.y == p.y
+end
+
+function Pin.Target(waypoint, heading)
+    if placed(waypoint) then return waypoint end
+    if placed(heading) then return heading end
+    return nil, Pin.NONE
+end
+
+function Pin.Update(client, store, state, heading)
     if type(state) ~= "table" then state = {} end
     local W = N.Waypoint
     local slot
     if type(store) == "table" and type(store.get) == "function" then
         slot = store:get(W.SCOPE, W.PATH)
     end
-    local target = W.Get(slot)
-    if not target then return hidden(state, "no waypoint") end
+    local target, none = Pin.Target(W.Get(slot), heading)
+    if not target then return hidden(state, none) end
 
     local seen = ask(client, "minimap")
     local mini
@@ -144,7 +161,14 @@ function Pin.Declare(k)
                     last = hidden(state, Pin.OFF)
                     return last
                 end
-                last = Pin.Update(client, ctx.store, state)
+                -- A2-23: where the quest arrow points now (its provides).
+                local heading
+                local arrow = k.use and k.use("arrow")
+                if type(arrow) == "table" and type(arrow.Heading) == "function" then
+                    local okH, h = pcall(arrow.Heading)
+                    if okH then heading = h end
+                end
+                last = Pin.Update(client, ctx.store, state, heading)
                 return last
             end
             ctx.sched:every(Pin.NAME, Pin.EVERY, look)
