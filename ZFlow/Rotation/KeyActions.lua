@@ -389,7 +389,8 @@ function KA.Read(client, input, pack, role, lockdown)
     -- answer counts; not read is nil, never "no lure".
     if s.on.fishing and s.pole == true then
         local we = ask(client, "weaponEnchant")
-        local main = type(we) == "table" and we.main or nil
+        local main
+        if type(we) == "table" then main = we.main end
         if type(main) == "table" and type(main.has) == "boolean" then s.poleLured = main.has end
     end
     local channel = ask(client, "channel")
