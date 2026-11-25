@@ -61,7 +61,7 @@ N.TripRoute = T
 T.NAME = "tripRoute"
 T.WORD = "route"
 T.HELP = "plan your quests on this map in order and walk them with the arrow; route skip, route new, route off;"
-    .. " route mode quests|optimal|complete; route steps <number>|all"
+    .. " route mode quests|optimal|complete; route sort xp|distance; route steps <number>|all"
 T.SETTING = "quest.route"
 T.ARRIVE_YARDS = 10      -- a run stop is reached this close
 T.ARRIVE_SHARE = 0.01    -- the same when the map's size is not known
@@ -419,6 +419,52 @@ function T.HubFirst(stops, here, size, radius, free)
     return ordered
 end
 
+-- FLOW-PARITY A1-29: sort by XP. The XP is the player's own Questie's
+-- (QuestXP:GetQuestLogRewardXP(questId), Questie 12.12.0
+-- Database/QuestXP/QuestieXP.lua:93, read through client.questieModule;
+-- no XP data ships here). 0, nil or a read that raises is not known.
+T.SORT_PATH = "nav.routeSort"     -- account: "xp" or "distance"
+T.SORT_SAID = {
+    xp = "Route: the quests worth the most XP first (from Questie); the rest by distance after them.",
+    distance = "Route: shortest walk first.",
+}
+T.SORT_HOW = "Pick one with the route word: sort xp or sort distance."
+T.SORT_NO_XP = "Questie gives no XP for these quests, so the route stays shortest first."
+function T.SortOf(v)
+    if v == "xp" then return "xp" end
+    return "distance"
+end
+
+function T.XpOf(mod)
+    return function(id)
+        if type(mod) ~= "table" or type(mod.GetQuestLogRewardXP) ~= "function" or id == nil then return nil end
+        local ok, xp = pcall(mod.GetQuestLogRewardXP, mod, id)
+        if ok and finite(xp) and xp > 0 then return xp end
+        return nil
+    end
+end
+
+-- Stops of quests worth the most XP first (a quest's stops keep their
+-- planned order); stops whose XP is not known, and town stops, after them
+-- in their planned order.
+function T.SortXp(stops, xpOf)
+    local known, unknown = {}, {}
+    for i, s in ipairs(type(stops) == "table" and stops or {}) do
+        local xp
+        if type(xpOf) == "function" and s.quest ~= nil then xp = xpOf(s.quest) end
+        if finite(xp) then known[#known + 1] = { i = i, xp = xp, s = s }
+        else unknown[#unknown + 1] = s end
+    end
+    table.sort(known, function(a, b)
+        if a.xp ~= b.xp then return a.xp > b.xp end
+        return a.i < b.i
+    end)
+    local out = {}
+    for _, e in ipairs(known) do out[#out + 1] = e.s end
+    for _, s in ipairs(unknown) do out[#out + 1] = s end
+    return out, #known
+end
+
 -- FLOW-PARITY A1-29: how many steps show. The first n of the route (nil:
 -- all) and how many more there are.
 T.SHOWN_PATH = "nav.routeShown"   -- account, the word's choice
@@ -699,6 +745,14 @@ function T.Declare(k, diag)
         return "optimal"
     end
 
+    local function sortBy()
+        local st = ctx and ctx.store
+        if type(st) ~= "table" or type(st.get) ~= "function" then return "distance" end
+        local ok, v = pcall(st.get, st, "account", T.SORT_PATH)
+        if ok then return T.SortOf(v) end
+        return "distance"
+    end
+
     local function shownCount()
         local st = ctx and ctx.store
         if type(st) ~= "table" or type(st.get) ~= "function" then return nil end
@@ -878,13 +932,23 @@ function T.Declare(k, diag)
             r.left = type(r.left) == "table" and r.left or {}
             r.left[#r.left + 1] = a
         end
-        -- A1-30: the hub tour first. Room in the quest log is not read yet
-        -- (a CLIENT NEED), so every close pick-up joins the tour. A stop the
-        -- tour moved gets its straight-line leg again.
-        if T.ModeFlags(mode()).hub then
-            local w, h, known = scale(here)
-            if known then
-                local moved = T.HubFirst(r.stops, here, { w = w, h = h }, T.HUB_YARDS, nil)
+        -- A1-29: sort by XP, from the player's Questie. A1-30: else the hub
+        -- tour first. Room in the quest log is not read yet (a CLIENT NEED),
+        -- so every close pick-up joins the tour. A stop moved gets its
+        -- straight-line leg again.
+        local w, h, known = scale(here)
+        local moved
+        if sortBy() == "xp" then
+            local okMod, mod = pcall(c.questieModule, "QuestXP")
+            if not okMod then mod = nil end
+            local nKnown
+            moved, nKnown = T.SortXp(r.stops, T.XpOf(mod))
+            if nKnown == 0 then r.note = T.SORT_NO_XP end
+        elseif T.ModeFlags(mode()).hub and known then
+            moved = T.HubFirst(r.stops, here, { w = w, h = h }, T.HUB_YARDS, nil)
+        end
+        do
+            if moved then
                 local changed = false
                 for i, s in ipairs(moved) do
                     if s ~= r.stops[i] then changed = true end
@@ -892,7 +956,9 @@ function T.Declare(k, diag)
                 if changed then
                     local fx, fy = here.x, here.y
                     for _, s in ipairs(moved) do
-                        if not s.cast and finite(fx) and finite(s.place.x) then
+                        if not known then
+                            s.leg, s.secs = nil, nil
+                        elseif not s.cast and finite(fx) and finite(s.place.x) then
                             local dx, dy = (s.place.x - fx) * w, (s.place.y - fy) * h
                             s.leg = math.sqrt(dx * dx + dy * dy)
                             s.secs = T.Seconds(s.leg)
@@ -1131,6 +1197,18 @@ function T.Declare(k, diag)
             if ctx then pcall(ctx.store.set, ctx.store, "account", T.MODE_PATH, arg) end
             say({ T.MODE_SAID[arg] })
             api.Plan()
+            say(api.Lines() or { T.DONE })
+            return
+        end
+        if word == "sort" then
+            if arg ~= "xp" and arg ~= "distance" then
+                say({ T.SORT_SAID[sortBy()], T.SORT_HOW })
+                return
+            end
+            if ctx then pcall(ctx.store.set, ctx.store, "account", T.SORT_PATH, arg) end
+            say({ T.SORT_SAID[arg] })
+            local r = api.Plan()
+            if r and r.note == T.SORT_NO_XP then say({ T.SORT_NO_XP }) end
             say(api.Lines() or { T.DONE })
             return
         end
