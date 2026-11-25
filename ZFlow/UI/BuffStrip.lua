@@ -51,13 +51,13 @@ B.GONE = "ran out"
 B.GONE_TEXT = "Cast it again."
 B.LABEL = "Show your class buffs and their time left"
 -- Owner's report (lead section 561 item 6): "I have no idea what these are
--- or why they're there." The strip says what it is in one line the first
--- time it shows (this session only; B.EXPLAINED keeps that it was said),
--- and it can be closed: closing it switches the setting off and one chat
--- line says how to turn it back on.
+-- or why they're there." The strip says what it is in one line every time
+-- it shows (lead section 578 point A), and it can be closed: closing it
+-- switches the setting off and one chat line says how to turn it back on,
+-- by the click and by the word.
 B.ABOUT = "Your own class buffs and the time each has left. Close this to switch it off."
-B.CLOSED = "\"%s\" is switched off. To show it again, open the settings (%s settings) and turn on \"%s\" under Combat."
-B.EXPLAINED = "layout.explained.buffStrip"
+B.CLOSED = "\"%s\" is switched off. To show it again, left-click the Flow button on your minimap (or type %s"
+    .. " settings) and turn on \"%s\" under Combat."
 B.ABOUT_ROWS = 2     -- rows of room for the one line, which may wrap
 B.HELP = "A small strip under your player frame lists your own class buffs with the time left, and names one that ran out so you can cast it again."
 
@@ -136,7 +136,6 @@ end
 function B.Declare(k)
     local api = {}
     local ctx, handle, rows
-    local about            -- nil: not looked up yet; false: said before; else the line
     local seen, gone = {}, {}
 
     local function ask(name, ...)
@@ -229,15 +228,8 @@ function B.Declare(k)
         if type(list) ~= "table" or type(buffs) ~= "table" or ask("dead") == true then return hide() end
         rows = B.Rows(list, buffs, track(list, buffs, ask("now")))
         if #rows == 0 then return hide() end
-        -- The first time it shows it says what it is, for this session.
-        if about == nil then
-            about = false
-            local okE, said = pcall(k.store.get, k.store, "account", B.EXPLAINED)
-            if okE and said ~= true then
-                about = B.ABOUT
-                pcall(k.store.set, k.store, "account", B.EXPLAINED, true)
-            end
-        end
+        -- Every time it shows it says what it is (section 578 point A).
+        local about = B.ABOUT
         local height = B.Height(rows, about)
         local tree, why = ns.Kit.Window({ id = B.ID, title = (k.id or ns.id).title .. ": " .. B.HEADER,
             width = B.WIDTH, height = height, closable = true, escape = false, children = B.Children(rows, about) })

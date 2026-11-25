@@ -74,12 +74,10 @@ Advisor.DEFAULT_POINT = { "TOPRIGHT", "TOPRIGHT", -220, -200 }
 -- also the plain panel's first line. Advisor.TITLE is the words after it.
 Advisor.TITLE = "Advice"
 -- Owner's report (lead sections 561 item 6 and 564 R8): the panel says what
--- it is in one short row under its title the first time it shows
--- (Advisor.EXPLAINED keeps for the account that it was said). A section
--- row, so it is never read as one of the prompts; the plain panel the
--- window falls back to does not carry it.
+-- it is in one short row under its title every time it shows (lead
+-- section 578 point A). A section row, so it is never read as one of the
+-- prompts; the plain panel the window falls back to does not carry it.
 Advisor.ABOUT = "Things worth doing now, such as a repair."
-Advisor.EXPLAINED = "layout.explained.advisor"
 Advisor.KIT_ID = "Advisor"
 Advisor.KIT_WIDTH = 320
 -- G32: the panel opened on purpose.
@@ -152,7 +150,6 @@ function Advisor.Declare(k, diag)
     -- host: the kit window with the plain panel behind it (UI/KitHost.lua).
     -- closed: the player closed the window; a new prompt opens it again.
     local host, ctx, cancelWatch
-    local about            -- nil: not looked up yet; false: said before; else the line
     local closed = false
     -- asked: the player opened the panel on purpose (G32); the window then
     -- shows with no prompt and is not held back. Closing it ends the ask.
@@ -198,20 +195,10 @@ function Advisor.Declare(k, diag)
         end
         -- The plain panel has no title of its own: the title is its first line.
         local title = Advisor.Title(k.id or ns.id)
-        -- The first time it shows it says what it is, for this session.
-        if about == nil then
-            about = false
-            if ctx and ctx.store then
-                local okE, said = pcall(ctx.store.get, ctx.store, "account", Advisor.EXPLAINED)
-                if okE and said ~= true then
-                    about = Advisor.ABOUT
-                    pcall(ctx.store.set, ctx.store, "account", Advisor.EXPLAINED, true)
-                end
-            end
-        end
         local rows = { title }
         for i = 1, #lines do rows[#rows + 1] = lines[i] end
-        host.draw(Advisor.View(lines, title, about or nil), rows)
+        -- Every time it shows it says what it is (section 578 point A).
+        host.draw(Advisor.View(lines, title, Advisor.ABOUT), rows)
         if not closed then host.show(true) end
     end
 
