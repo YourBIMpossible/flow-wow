@@ -23,6 +23,25 @@ tests["buff items: each kind told by its own tooltip"] = function(t)
     t.eq(BI.Kind({ "Shiny Bauble", "Use: When applied to your fishing pole, increases Fishing by 25 for 10 min." }),
         nil, "a lure is the fishing key's")
     t.eq(BI.Kind(nil), nil)
+    -- Twin's review (lead section 715): a heal over time with a duration is
+    -- still a heal, no buff item.
+    t.eq(BI.Kind({ "Healing Draught", "Use: Restores 20 health per 5 sec for 30 min." }), nil,
+        "a restore with a duration")
+end
+
+-- Twin's review: the self button's slot is a weapon hand or nothing.
+tests["buff items: a target slot other than the two weapon hands is dropped"] = function(t)
+    local FB = ns.FlowButton
+    local function slotOf(e)
+        for _, row in ipairs(FB.Rows(e)) do
+            if row.attr == "1:target-slot" then return row.value end
+        end
+        return "no row"
+    end
+    t.eq(slotOf({ item = "item:1", targetSlot = 16 }), 16)
+    t.eq(slotOf({ item = "item:1", targetSlot = 17 }), 17)
+    t.eq(slotOf({ item = "item:1", targetSlot = 18 }), nil, "18 is dropped")
+    t.eq(slotOf({ spell = "Power Word: Fortitude", targetSlot = 16 }), nil, "a spell has no slot")
 end
 
 tests["buff items: a stone or oil fits the weapon it is for"] = function(t)
