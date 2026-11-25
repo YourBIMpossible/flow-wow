@@ -131,4 +131,54 @@ tests["route pickups: a battleground quest is a candidate only with the setting 
     t.eq((P.Candidate(q({ zoneOrSort = 17 }), ctx())), true)
 end
 
+-- Row A2-03 (lead section 667): pick-ups off the planned route become
+-- candidate next steps, nearest first.
+local function pick(id, x, y, label)
+    return { kind = "pickup", quest = id, label = label or ("Pick up: Q" .. id .. " (Giver)"),
+             place = { map = MAP, x = x, y = y } }
+end
+local HERE = { map = MAP, x = 0.5, y = 0.5, size = { w = 1000, h = 1000 } }
+
+tests["next steps: pick-ups already on the route are left out"] = function(t)
+    local route = { stops = { { quest = 801, label = "Pick up: Q801 (Giver)" }, { quest = 5, label = "Rats" } } }
+    local out = N.RoutePickups.NextSteps(route, { pick(801, 0.5, 0.6), pick(802, 0.5, 0.7) }, HERE)
+    t.eq(#out, 1)
+    t.eq(out[1].quest, 802)
+end
+
+tests["next steps: nearest first, each with a label and a place"] = function(t)
+    local out = N.RoutePickups.NextSteps({ stops = {} },
+        { pick(811, 0.9, 0.5), pick(812, 0.55, 0.5), pick(813, 0.7, 0.5) }, HERE)
+    t.eq(#out, 3)
+    t.eq(out[1].quest, 812)
+    t.eq(out[2].quest, 813)
+    t.eq(out[3].quest, 811)
+    t.eq(out[1].kind, "next")
+    t.eq(out[1].label, "Pick up: Q812 (Giver)")
+    t.eq(out[1].why, N.RoutePickups.OFF_ROUTE)
+    t.eq(out[1].place.x, 0.55)
+end
+
+tests["next steps: a pick-up on another map or with no place is not a step"] = function(t)
+    local other = pick(821, 0.5, 0.5); other.place.map = MAP + 1
+    local none = { kind = "pickup", quest = 822, label = "Pick up: Q822 (Giver)" }
+    local out = N.RoutePickups.NextSteps({ stops = {} }, { other, none, pick(823, 0.6, 0.5) }, HERE)
+    t.eq(#out, 1)
+    t.eq(out[1].quest, 823)
+end
+
+tests["next steps: no route keeps every pick-up; bad input gives none"] = function(t)
+    t.eq(#N.RoutePickups.NextSteps(nil, { pick(831, 0.6, 0.5) }, HERE), 1)
+    t.eq(#N.RoutePickups.NextSteps({ stops = {} }, nil, HERE), 0)
+    t.eq(#N.RoutePickups.NextSteps({ stops = {} }, { pick(832, 0.6, 0.5) }, nil), 0)
+end
+
+tests["next steps: at most max, ties by quest id"] = function(t)
+    local out = N.RoutePickups.NextSteps({ stops = {} },
+        { pick(843, 0.6, 0.5), pick(842, 0.4, 0.5), pick(841, 0.5, 0.9) }, HERE, 2)
+    t.eq(#out, 2)
+    t.eq(out[1].quest, 842)
+    t.eq(out[2].quest, 843)
+end
+
 return tests

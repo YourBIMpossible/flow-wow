@@ -32,6 +32,13 @@ local _, ns = ...
 --     ctx.battlegrounds is true.
 --   P.Nearest(list, here, max) -> every classQuest item on here.map first,
 --     then the max nearest of the rest
+--   P.NextSteps(route, pickups, here, max) -> the pick-ups whose quest is
+--     not a stop of route (row A2-03, lead section 667; the rule of legacy
+--     Flow's Goals.lua "pickups" nav goal: a quest to accept is a goal the
+--     arrow may offer), on here.map, nearest first, at most max (P.MAX);
+--     each { kind = "next", quest, label, why = P.OFF_ROUTE, place }.
+--     route: the shape TripRoute's View/Current give ({ stops = { { quest } } })
+--     or nil; pickups: what P.Read gives.
 -- Client reads: P.Read(client, here, log) -> list or nil, why.
 -- Not tested in game.
 ns.Nav = ns.Nav or {}
@@ -49,6 +56,7 @@ P.SKIPPED = "skipped: more than " .. N.DETOUR .. " yd off the way"
 P.WHY_NO_QUESTIE = "No quests to pick up added: Questie is not loaded."
 P.WHY_NO_LIST = "No quests to pick up added: Questie gave no quest list."
 P.WHY_BATTLEGROUND = "a battleground quest (the setting is off)"
+P.OFF_ROUTE = "a quest to pick up off the planned route"
 P.WHY_NO_LEVEL = "No quests to pick up added: your level is not known yet."
 
 local function list(v) return type(v) == "table" and v or {} end
@@ -138,6 +146,40 @@ function P.Nearest(items, here, max)
     for _, c in ipairs(cls) do kept[#kept + 1] = c.item end
     for i = 1, math.min(#out, tonumber(max) or P.MAX) do kept[#kept + 1] = out[i].item end
     return kept
+end
+
+function P.NextSteps(route, pickups, here, max)
+    if type(here) ~= "table" then return {} end
+    local onRoute = {}
+    local stops = {}
+    if type(route) == "table" then stops = list(route.stops) end
+    for _, s in ipairs(stops) do
+        if type(s) == "table" and s.quest ~= nil then onRoute[s.quest] = true end
+    end
+    local w, h = 1, 1
+    if type(here.size) == "table" and finite(here.size.w) and finite(here.size.h) then
+        w, h = here.size.w, here.size.h
+    end
+    local canMeasure = finite(here.x) and finite(here.y)
+    local found = {}
+    for _, it in ipairs(list(pickups)) do
+        local p
+        if type(it) == "table" then p = it.place end
+        if type(p) == "table" and p.map == here.map and finite(p.x) and finite(p.y)
+            and it.quest ~= nil and not onRoute[it.quest] and type(it.label) == "string" then
+            local d = 0
+            if canMeasure then d = ((p.x - here.x) * w) ^ 2 + ((p.y - here.y) * h) ^ 2 end
+            found[#found + 1] = { d = d, step = { kind = "next", quest = it.quest, label = it.label,
+                why = P.OFF_ROUTE, place = { map = p.map, x = p.x, y = p.y } } }
+        end
+    end
+    table.sort(found, function(a, b)
+        if a.d ~= b.d then return a.d < b.d end
+        return (tonumber(a.step.quest) or 0) < (tonumber(b.step.quest) or 0)
+    end)
+    local out = {}
+    for i = 1, math.min(#found, tonumber(max) or P.MAX) do out[i] = found[i].step end
+    return out
 end
 
 -- --------------------------------------------------------------- reads
