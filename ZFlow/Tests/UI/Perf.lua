@@ -91,9 +91,9 @@ end
 
 tests["perf command: 'all' is the whole word, in any capitals, through the slash command"] = function(t)
     local count = router()
-    t.eq((count("perf")), 1 + P.DEFAULT_ROWS + 2, "the default")
-    t.eq((count("PERF ALL")), 1 + 14 + 1, "all, however it is typed")
-    t.eq((count("perf 3")), 1 + 3 + 2)
+    t.eq((count("perf")), 1 + 1 + P.DEFAULT_ROWS + 2, "memory and the default")
+    t.eq((count("PERF ALL")), 1 + 1 + 14 + 1, "memory and all, however it is typed")
+    t.eq((count("perf 3")), 1 + 1 + 3 + 2)
     local n, last = count("perf small")
     t.eq(n, 1, "a word that only contains 'all' is not 'all'")
     t.eq(last, ns.id.title .. ": " .. P.Usage(ns.id.slash))

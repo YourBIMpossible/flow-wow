@@ -16,6 +16,13 @@
 --   lines = Perf.Run(k, rest)
 --   Perf.Start(k, diag) -> { run = fn }
 --
+-- F-07 (lead section 557): the word also says, first, the memory the
+-- add-on holds: client.addonMemory() in KB (the game's
+-- GetAddOnMemoryUsage, read in Core/Client.lua). With no such read, or one
+-- that raises or answers no number, the line says it is not known.
+--
+--   line = Perf.MemoryLine(kb)   pure
+--
 -- report: { [owner] = { calls, ms, errors } }. A row that is no table is
 -- left out; a time that is not a number is "not known", never 0. An empty
 -- report is Perf.NONE; no report, or one with no row that can be read, is
@@ -34,6 +41,20 @@ Perf.UNREAD = "Could not read the timings: nothing to show."
 
 local function isCount(n)
     return type(n) == "number" and n == n and n >= 0 and n < math.huge
+end
+
+Perf.NO_MEMORY = "Memory in use: not known."
+
+function Perf.MemoryLine(kb)
+    if not isCount(kb) then return Perf.NO_MEMORY end
+    return "Memory in use: " .. string.format("%.1f", kb / 1024) .. " MB."
+end
+
+local function readMemory(client)
+    if type(client) ~= "table" or type(client.addonMemory) ~= "function" then return nil end
+    local ok, kb = pcall(client.addonMemory)
+    if not ok then return nil end
+    return kb
 end
 
 function Perf.Rows(report)
@@ -152,6 +173,10 @@ end
 function Perf.Start(k, diag)
     local function run(rest)
         local lines = Perf.Run(k, rest)
+        local slash = type(k.id) == "table" and k.id.slash or ns.id.slash
+        if lines[1] ~= Perf.Usage(slash) then
+            table.insert(lines, 1, Perf.MemoryLine(readMemory(k.client)))
+        end
         for i = 1, #lines do k.client.print(k.id.title .. ": " .. lines[i]) end
     end
     if diag and type(diag.commands) == "table" then
