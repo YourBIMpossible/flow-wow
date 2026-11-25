@@ -25,9 +25,11 @@ local _, ns = ...
 --     q in the shape S.State takes; ctx = { level, log = { [id] = true },
 --     done(id) -> true | false | nil (not known), me (S.Eligible),
 --     grouped (true | false | nil), holdOn (false: the hold is off),
---     lowOn (true: low-level quests are kept, Nav/LowQuests.lua, A2-05) };
---     q.elite: Questie's group (elite) tag, true | false | nil. Hard and
---     elite quests are held while solo (Nav/QuestHold.lua, C-12).
+--     lowOn (true: low-level quests are kept, Nav/LowQuests.lua, A2-05),
+--     battlegrounds (true: battleground quests are offered) };
+--     q.zoneOrSort: Questie's zone or sort; a battleground quest
+--     (Nav/BattlegroundQuests.lua, A2-06) is passed over unless
+--     ctx.battlegrounds is true.
 --   P.Nearest(list, here, max) -> every classQuest item on here.map first,
 --     then the max nearest of the rest
 -- Client reads: P.Read(client, here, log) -> list or nil, why.
@@ -46,6 +48,7 @@ P.GIVER = "quest giver"
 P.SKIPPED = "skipped: more than " .. N.DETOUR .. " yd off the way"
 P.WHY_NO_QUESTIE = "No quests to pick up added: Questie is not loaded."
 P.WHY_NO_LIST = "No quests to pick up added: Questie gave no quest list."
+P.WHY_BATTLEGROUND = "a battleground quest (the setting is off)"
 P.WHY_NO_LEVEL = "No quests to pick up added: your level is not known yet."
 
 local function list(v) return type(v) == "table" and v or {} end
@@ -91,6 +94,8 @@ function P.Candidate(q, ctx)
             myLevel = tonumber(ctx.level), grouped = ctx.grouped, on = ctx.holdOn })
         if held then return false, holdWhy end
     end
+    local bg = N.BattlegroundQuests
+    if bg and bg.Is(q) and ctx.battlegrounds ~= true then return false, P.WHY_BATTLEGROUND end
     for _, id in ipairs(list(q.preQuestGroup)) do
         if done(id) == false then return false, "an earlier quest first" end
     end
@@ -177,6 +182,12 @@ local function lowOn()
     return false
 end
 
+local function battlegroundsOn()
+    local bg = N.BattlegroundQuests
+    if bg and type(bg.On) == "function" then return bg.On() end
+    return false
+end
+
 local function mapOf(zones, area)
     if type(zones.GetUiMapIdByAreaId) ~= "function" then return nil end
     local ok, m = pcall(zones.GetUiMapIdByAreaId, area)
@@ -226,6 +237,7 @@ function P.Read(client, here, log, opts)
         done = function(id) return ask(client, "questDone", id) end,
         low = low,
         grouped = ask(client, "grouped"), holdOn = holdOn(), lowOn = lowOn(),
+        battlegrounds = battlegroundsOn(),
     }
     local found, areaMap, npcs = {}, {}, {}
     for id in pairs(db.QuestPointers) do
@@ -255,7 +267,7 @@ function P.Read(client, here, log, opts)
                         exclusiveTo = qt.exclusiveTo, requiredRaces = qt.requiredRaces,
                         requiredClasses = qt.requiredClasses, requiredMinRep = qt.requiredMinRep,
                         requiredMaxRep = qt.requiredMaxRep, requiredSkill = qt.requiredSkill,
-                        requiredSpell = qt.requiredSpell, elite = eliteTag(db, id),
+                        requiredSpell = qt.requiredSpell, elite = eliteTag(db, id), zoneOrSort = qt.zoneOrSort,
                         giverFaction = type(npc.friendlyToFaction) == "string" and npc.friendlyToFaction or nil }
                     if type(qt.name) == "string" and P.Candidate(q, ctx) then
                         local who = type(npc.name) == "string" and npc.name ~= "" and npc.name or P.GIVER

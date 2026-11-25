@@ -26,6 +26,8 @@ local function questie()
                   Starts = { NPC = { 9201 } } },
         [609] = { Id = 609, name = "Later Oath", level = 10, requiredLevel = 10, requiredClasses = 1,
                   preQuestSingle = { 699 }, Starts = { NPC = { 9201 } } },
+        [610] = { Id = 610, name = "Gulch Duty", level = 18, requiredLevel = 12, zoneOrSort = 3277,
+                  Starts = { NPC = { 9203 } } },
         [606] = { Id = 606, name = "Too High", level = 26, requiredLevel = 25, Starts = { NPC = { 9201 } } },
     }
     local npcs = {
@@ -33,6 +35,7 @@ local function questie()
         [9102] = { name = "Herb Thing", spawns = { [40] = { { 20, 50 } } } },
         [9103] = { name = "Smith", spawns = { [40] = { { 55, 50 } } } },
         [9201] = { name = "Marshal", friendlyToFaction = "AH", spawns = { [40] = { { 40, 52 } } } },
+        [9203] = { name = "Herald", friendlyToFaction = "AH", spawns = { [40] = { { 45, 50 } } } },
         [9202] = { name = "Hermit", friendlyToFaction = "AH", spawns = { [40] = { { 50, 95 } } } },
     }
     local db = { QuestPointers = {} }
@@ -140,6 +143,21 @@ tests["route pickups: the player's class quest below the window is offered, othe
     t.ok(said(c, "Pick up your class quest: Old Oath (Marshal)") ~= nil, "the class quest")
     t.ok(said(c, "Holy Oath") == nil, "another class's quest is not offered")
     t.ok(said(c, "Later Oath") == nil, "a class quest waiting on an earlier quest is not offered")
+end
+
+tests["route pickups: battleground quests stay off until the setting is on"] = function(t)
+    local c, addon = boot()
+    local row = addon.settings:row(ns.Nav.BattlegroundQuests.SETTING)
+    t.eq(row and row.group, "travel.route")
+    t.eq(row and row.default, false)
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    t.ok(said(c, "Pick up: Lost Pages (Marshal)") ~= nil, "the ordinary pick-up")
+    t.ok(said(c, "Gulch Duty") == nil, "the battleground quest is left out")
+    addon.settings:set(ns.Nav.BattlegroundQuests.SETTING, true)
+    c.slashes[ns.id.slash]("route new")
+    c.advance(1, 5)
+    t.ok(said(c, "Pick up: Gulch Duty (Herald)") ~= nil, "on: the battleground quest is offered")
 end
 
 return tests

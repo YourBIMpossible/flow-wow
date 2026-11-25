@@ -340,6 +340,7 @@ return {
     "Spells/Talents.lua",
     -- Lead section 375 item 7 (TN-1): the quest route's pick-ups (after RoutePlan, DungeonStates).
     "Nav/StepNeeds.lua",
+    "Nav/BattlegroundQuests.lua",
     "Nav/RoutePickups.lua",
     "Nav/RidingNames.lua",
     "Nav/QuestHold.lua",
