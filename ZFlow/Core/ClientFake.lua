@@ -4995,3 +4995,30 @@ do
         return c
     end
 end
+
+-- § B-10 (Nav/MapFlights.lua): a click on a flight master's pin of the
+-- world map. h.onClick(fn) keeps fn(name, button), as the real mapPins
+-- handle is asked to (CLIENT NEED: the pin's OnClick calls it with the
+-- pin's name); h.click(name, button) clicks it ("LeftButton" when not given).
+-- (B-11 needs no hook: the pins carry their own title and tip lines.)
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local mapPins = c.mapPins
+        function c.mapPins(...)
+            local h = mapPins(...)
+            if type(h) ~= "table" then return h end
+            local clicks = {}
+            function h.onClick(fn)
+                if type(fn) == "function" then clicks[#clicks + 1] = fn end
+                return true
+            end
+            function h.click(name, button)
+                for _, fn in ipairs(clicks) do fn(name, button or "LeftButton") end
+            end
+            return h
+        end
+        return c
+    end
+end
