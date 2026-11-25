@@ -478,4 +478,35 @@ tests["dungeon visit R-04: a quest picked up inside is listed, marked so"] = fun
         tostring(lines[2]))
 end
 
+-- R-05 (lead section 777; Plexy's note): a running average of your runs of
+-- each dungeon, as Flow's Modules/Nav/Dungeons.lua D.LearnTime (:398-406,
+-- the last 10 runs) behind its "About N min". The last run stays at
+-- dungeon.times as before (old saved data reads the same); the average is
+-- kept beside it at dungeon.average as { avg, n } (seconds), started from an
+-- old last time when there is one. One run: "Last run here: ..." as
+-- before; two or more: the average. Fails before: only the last was kept.
+tests["dungeon timing R-05: a running average of the last ten runs, as Flow's"] = function(t)
+    local V = ns.DungeonVisit
+    t.eq(V.KEEP, 10)
+    t.eq(V.Average(nil, 1800), { avg = 1800, n = 1 })
+    t.eq(V.Average({ avg = 1800, n = 1 }, 2400), { avg = 2100, n = 2 })
+    t.eq(V.Average({ avg = 1800, n = 10 }, 2400), { avg = 1860, n = 10 }, "ten at most")
+    t.eq(V.ReadAverage(1500), { avg = 1500, n = 1 }, "an old last time is one run")
+    t.eq(V.ReadAverage({ avg = 1500, n = 3 }), { avg = 1500, n = 3 })
+    t.eq(V.ReadAverage("x"), nil)
+    t.eq(V.AverageLine({ avg = 1500, n = 1 }), V.LastLine(1500), "one run: the last line, as before")
+    t.eq(V.AverageLine({ avg = 1500, n = 3 }), V.AVERAGE:format(V.TimeText(1500), 3))
+    t.eq(V.AverageLine(nil), V.LAST_UNKNOWN)
+end
+
+tests["dungeon timing R-05: runs are averaged and said; the last stays where it was"] = function(t)
+    local c, addon = boot({ clock = 1000, char = { dungeon = { times = { ["The Deadmines"] = 20 * 60 } } } })
+    runFor(c, 30 * 60, 1000)
+    t.eq(addon.store:get("char", "dungeon.times"), { ["The Deadmines"] = 30 * 60 }, "the last run, as before")
+    t.eq(addon.store:get("char", "dungeon.average"), { ["The Deadmines"] = { avg = 25 * 60, n = 2 } },
+        "started from the old last time, then this run")
+    walkIn(c)
+    t.ok(trackerHas(c, ns.DungeonVisit.AVERAGE:format(ns.DungeonVisit.TimeText(25 * 60), 2)), "the tracker says the average")
+end
+
 return tests

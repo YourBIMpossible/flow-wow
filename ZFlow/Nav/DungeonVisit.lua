@@ -138,6 +138,14 @@ V.SHORT = 300
 V.LONG = 240 * 60
 V.LAST = "Last run here: %s"
 V.LAST_UNKNOWN = "Last run here: time not known yet."
+-- R-05 (lead section 777): a running average of your runs of a dungeon, as
+-- Flow's Modules/Nav/Dungeons.lua D.LearnTime (:398-406): the last KEEP runs
+-- (the run's length rules are V.SHORT and V.LONG above). Kept per character
+-- at AVG_PATH as { avg, n } in seconds, beside the last run at V.TIMES
+-- (which stays as it was, so old saved data reads the same).
+V.KEEP = 10
+V.AVG_PATH = "dungeon.average"
+V.AVERAGE = "Your runs here: about %s (%d runs)."
 V.MINUTE, V.MINUTES = "1 minute", "%d minutes"
 V.HOUR, V.HOURS = "1 hour", "%d hours"
 V.HELP = "say the dungeon you are in: your quests for it and the bosses killed"
@@ -380,6 +388,30 @@ function V.TimeText(seconds)
     return table.concat(parts, " ")
 end
 
+function V.Average(rec, seconds)
+    if not clockOk(seconds) then return rec end
+    if type(rec) ~= "table" or not clockOk(rec.avg) then return { avg = seconds, n = 1 } end
+    local n = math.min((tonumber(rec.n) or 1) + 1, V.KEEP)
+    return { avg = rec.avg + (seconds - rec.avg) / n, n = n }
+end
+
+-- An average as saved, or an old last time (one run); nil otherwise.
+function V.ReadAverage(v)
+    if clockOk(v) then return { avg = v, n = 1 } end
+    if type(v) == "table" and clockOk(v.avg) then return { avg = v.avg, n = tonumber(v.n) or 1 } end
+    return nil
+end
+
+-- One run: the last line, as before; more: the average.
+function V.AverageLine(rec)
+    if type(rec) ~= "table" or not clockOk(rec.avg) then return V.LAST_UNKNOWN end
+    local n = tonumber(rec.n) or 1
+    if n < 2 then return V.LastLine(rec.avg) end
+    local text = V.TimeText(rec.avg)
+    if not text then return V.LAST_UNKNOWN end
+    return V.AVERAGE:format(text, n)
+end
+
 function V.LastLine(seconds)
     local text = V.TimeText(seconds)
     if not text then return V.LAST_UNKNOWN end
@@ -520,6 +552,11 @@ function V.Declare(k, diag)
         if not ctx or type(name) ~= "string" or not clockOk(seconds) then return end
         if seconds < V.SHORT or seconds > V.LONG then return end
         local times = saved(V.TIMES)
+        -- R-05: the average, started from an old last time when there is one.
+        local avgs = saved(V.AVG_PATH)
+        local cur = V.ReadAverage(avgs[name]) or V.ReadAverage(times[name])
+        avgs[name] = V.Average(cur, seconds)
+        save(V.AVG_PATH, avgs, "average")
         times[name] = seconds
         save(V.TIMES, times, "times")
         local gained = saved(V.RUN_XP)
@@ -596,7 +633,11 @@ function V.Declare(k, diag)
             name = ask(client(), "instanceName")
         end
         if type(name) ~= "string" or name == "" then return nil end
-        return V.LastLine(lastOf(wingTitle(name) or name))
+        local run = wingTitle(name) or name
+        -- R-05: the average once there is one; else the last time, as before.
+        local avg = V.ReadAverage(pick(V.AVG_PATH, run))
+        if avg then return V.AverageLine(avg) end
+        return V.LastLine(lastOf(run))
     end
 
     -- The kills line; in a known wing only that wing's bosses count, out of
