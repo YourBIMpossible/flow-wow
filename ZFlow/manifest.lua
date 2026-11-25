@@ -235,6 +235,7 @@ return {
     "Items/Banker.lua",
     "Items/Posting.lua",
     "Items/Trader.lua",
+    "Items/DealList.lua",
     "Nav/Try.lua",
     { "Core/Capture.lua", dev = true },
     { "Core/CaptureEvidence.lua", dev = true },
