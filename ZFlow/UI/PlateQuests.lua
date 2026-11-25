@@ -163,16 +163,136 @@ local function learnedFrom(book, itemId)
     return out
 end
 
+-- Parity rows C-17 and C-18, the data half (lead section 715), as Flow's
+-- Modules/QuestMarks.lua (:1-20): what you do to a marked mob. Each entry
+-- of PQ.Index carries what = "kill" | "loot" | "use". A creature objective
+-- is "use" when the player's Questie says the quest hands an item
+-- (quest.sourceItemId, a number) and the log line does not say "slain"
+-- (the game's own words, as "Tested Silithid: 1/5"); else "kill". An item
+-- objective is "loot". Read from Questie at runtime; nothing copied.
+PQ.KINDS = { "kill", "loot", "use", "starts" }
+function PQ.MonsterKind(quest, text)
+    if type(quest) == "table" and type(quest.sourceItemId) == "number" and quest.sourceItemId > 0
+        and type(text) == "string" and not text:lower():find("slain", 1, true) then
+        return "use"
+    end
+    return "kill"
+end
+
+-- The kinds in a plate's list, each once, in PQ.KINDS order.
+function PQ.Kinds(list)
+    local has = {}
+    if type(list) == "table" then
+        for _, e in ipairs(list) do
+            if type(e) == "table" and type(e.what) == "string" then has[e.what] = true end
+        end
+    end
+    local out = {}
+    for _, kind in ipairs(PQ.KINDS) do
+        if has[kind] then out[#out + 1] = kind end
+    end
+    return out
+end
+
+-- Parity row C-19, the data half (lead sections 720/721), as Flow's
+-- Modules/QuestMarks.lua (:24-26): the mobs that drop an item that starts
+-- a quest you can take. From the player's own Questie at runtime: each
+-- quest of db.QuestPointers whose Starts.Item lists an item, kept when
+-- Nav/RoutePickups.lua P.Candidate(q, ctx) says you can take it (not in
+-- your log, not done, for you, in reach, earlier quests done); then each
+-- item's npcDrops. ctx is P.Candidate's: { level, log, me, done }.
+-- -> { [npc id] = { { quest, label = PQ.MARK, kind = "start", from =
+-- "questie", what = "starts" } } }. Anything missing or failing: {}.
+-- Walking every quest is a large pass (lead section 723), sliced as
+-- Nav/DungeonRead.lua's R.Step: PQ.StartsPass makes the state, each
+-- PQ.StartsStep files the next n (PQ.SLICE) quests, PQ.StartsResult is
+-- nil until it is done. The module steps it once a frame, out of a fight
+-- only. PQ.Starts(db, ctx) walks the whole pass at once (tests, pure use).
+PQ.SLICE = 200
+
+function PQ.StartsPass(db, ctx)
+    local P = ns.Nav and ns.Nav.RoutePickups
+    if type(db) ~= "table" or type(ctx) ~= "table" or type(db.QuestPointers) ~= "table"
+        or type(db.GetQuest) ~= "function" or type(P) ~= "table" or type(P.Candidate) ~= "function" then
+        return { state = "none", out = {} }
+    end
+    local list = {}
+    for id in pairs(db.QuestPointers) do
+        if type(id) == "number" then list[#list + 1] = id end
+    end
+    table.sort(list)
+    return { state = "building", ids = list, at = 0, out = {} }
+end
+
+function PQ.StartsStep(st, db, ctx, n)
+    if type(st) ~= "table" or st.state ~= "building" then return end
+    local P = ns.Nav and ns.Nav.RoutePickups
+    if type(db) ~= "table" or type(P) ~= "table" or type(P.Candidate) ~= "function" then
+        st.state = "none"
+        return
+    end
+    local stop = math.min(#st.ids, st.at + (tonumber(n) or PQ.SLICE))
+    for i = st.at + 1, stop do
+        local id = st.ids[i]
+        local q = dbCall(db, "GetQuest", id)
+        local items
+        if type(q) == "table" and type(q.Starts) == "table" then items = q.Starts.Item end
+        if type(items) == "table" and #items > 0 then
+            local cand = { Id = id, level = q.level, requiredLevel = q.requiredLevel,
+                preQuestSingle = q.preQuestSingle, preQuestGroup = q.preQuestGroup,
+                exclusiveTo = q.exclusiveTo, requiredRaces = q.requiredRaces,
+                requiredClasses = q.requiredClasses, requiredMinRep = q.requiredMinRep,
+                requiredMaxRep = q.requiredMaxRep, requiredSkill = q.requiredSkill,
+                requiredSpell = q.requiredSpell }
+            local okC, can = pcall(P.Candidate, cand, ctx)
+            if okC and can == true then
+                for _, itemId in ipairs(ids(items)) do
+                    local item = dbCall(db, "GetItem", itemId)
+                    if type(item) == "table" then
+                        for _, npc in ipairs(ids(item.npcDrops)) do
+                            local list = st.out[npc]
+                            if list == nil then
+                                list = {}
+                                st.out[npc] = list
+                            end
+                            list[#list + 1] = { quest = id, label = PQ.MARK, kind = "start", from = "questie",
+                                                what = "starts" }
+                        end
+                    end
+                end
+            end
+        end
+    end
+    st.at = stop
+    if st.at >= #st.ids then st.state = "ready" end
+end
+
+-- The pass's answer once it is done: "ready" its list; "none" (nothing to
+-- walk) or "failed" (a step raised) an empty one, never a part-filled
+-- list; else nil: not known yet.
+function PQ.StartsResult(st)
+    if type(st) ~= "table" then return nil end
+    if st.state == "ready" then return st.out end
+    if st.state == "none" or st.state == "failed" then return {} end
+    return nil
+end
+
+function PQ.Starts(db, ctx)
+    local st = PQ.StartsPass(db, ctx)
+    while st.state == "building" do PQ.StartsStep(st, db, ctx) end
+    return PQ.StartsResult(st) or {}
+end
+
 function PQ.Index(rows, db, book)
     local out = {}
     if type(rows) ~= "table" or type(db) ~= "table" then return out end
-    local function add(npc, quest, label, kind, from)
+    local function add(npc, quest, label, kind, from, what)
         local list = out[npc]
         if list == nil then
             list = {}
             out[npc] = list
         end
-        list[#list + 1] = { quest = quest, label = label, kind = kind, from = from }
+        list[#list + 1] = { quest = quest, label = label, kind = kind, from = from, what = what }
     end
     for _, row in ipairs(rows) do
         if type(row) == "table" and row.complete ~= true and row.failed ~= true then
@@ -186,7 +306,8 @@ function PQ.Index(rows, db, book)
                     if type(o) == "table" and o.done ~= true and type(od) == "table" then
                         local label = PQ.Progress(o.text) or PQ.MARK
                         if od.Type == "monster" then
-                            for _, npc in ipairs(ids(od.Id)) do add(npc, row.id, label, "kill", "questie") end
+                            local what = PQ.MonsterKind(quest, o.text)
+                            for _, npc in ipairs(ids(od.Id)) do add(npc, row.id, label, "kill", "questie", what) end
                         elseif od.Type == "item" then
                             local seen = {}
                             local item = dbCall(db, "GetItem", od.Id)
@@ -194,13 +315,13 @@ function PQ.Index(rows, db, book)
                             if type(item) == "table" then drops = item.npcDrops end
                             for _, npc in ipairs(ids(drops)) do
                                 seen[npc] = true
-                                add(npc, row.id, label, "drop", "questie")
+                                add(npc, row.id, label, "drop", "questie", "loot")
                             end
                             for _, itemId in ipairs(ids(od.Id)) do
                                 for _, npc in ipairs(learnedFrom(book, itemId)) do
                                     if not seen[npc] then
                                         seen[npc] = true
-                                        add(npc, row.id, label, "drop", "learned")
+                                        add(npc, row.id, label, "drop", "learned", "loot")
                                     end
                                 end
                             end
@@ -283,8 +404,108 @@ function PQ.Declare(k, diag)
         shownOn[unit] = true
     end
 
+    -- C-17/C-18: what a marked plate is for, for the icons the drawing lane
+    -- makes: { kinds, label, target } or nil (no mark, not a nameplate
+    -- unit, not on screen). target: client.plateIsTarget(unit), a CLIENT
+    -- NEED (UnitIsUnit(unit, "target"), stubbed in Core/ClientFake.lua);
+    -- true or false, nil when not read. Read only, never chosen.
+    function api.markOf(unit)
+        if type(unit) ~= "string" or not unit:find("^nameplate%d+$") or not inView[unit] then return nil end
+        if not ctx or not on() or type(index) ~= "table" then return nil end
+        local client = ctx.client
+        if ask(client, "canAttack", unit) ~= true then return nil end
+        local id = ask(client, "plateCreature", unit)
+        local list
+        if id ~= nil then list = index[id] end
+        local label = PQ.Label(list)
+        if label == nil then return nil end
+        local target = ask(client, "plateIsTarget", unit)
+        if type(target) ~= "boolean" then target = nil end
+        return { kinds = PQ.Kinds(list), label = label, target = target }
+    end
+
     local function drawAll()
         for unit in pairs(inView) do drawOne(unit) end
+    end
+
+    -- C-19: the log's own index, the starts pass and its answer.
+    local logIndex, pass, passDb, passCtx, cancelPass, startsGot
+    local passKey   -- the log and level the pass is for (lead section 727)
+
+    local function merged()
+        local out = {}
+        for npc, list in pairs(logIndex or {}) do
+            local copy = {}
+            for i, e in ipairs(list) do copy[i] = e end
+            out[npc] = copy
+        end
+        for npc, list in pairs(startsGot or {}) do
+            local into = out[npc]
+            if into == nil then
+                into = {}
+                out[npc] = into
+            end
+            for _, e in ipairs(list) do into[#into + 1] = e end
+        end
+        return out
+    end
+
+    local function stopPass()
+        if cancelPass then pcall(cancelPass) end
+        cancelPass = nil
+    end
+
+    -- One slice a frame, only while the client says plainly you are out of
+    -- a fight; in one (or not known) the pass waits.
+    local function stepPass()
+        if not ctx or type(pass) ~= "table" then return stopPass() end
+        if ask(ctx.client, "inCombat") ~= false then return end
+        local ok = pcall(PQ.StartsStep, pass, passDb, passCtx)
+        if not ok then pass.state = "failed" end
+        local got = PQ.StartsResult(pass)
+        if got ~= nil then
+            stopPass()
+            startsGot = got
+            pass = nil
+            if type(logIndex) == "table" then
+                index = merged()
+                drawAll()
+            end
+        end
+    end
+
+    local function startPass(db, client, rows)
+        local level = tonumber(ask(client, "level"))
+        local inLog, keys = {}, {}
+        for _, row in ipairs(rows) do
+            if type(row) == "table" and row.id ~= nil then
+                inLog[row.id] = true
+                keys[#keys + 1] = tostring(row.id) .. ":" .. tostring(row.complete) .. ":" .. tostring(row.failed)
+            end
+        end
+        table.sort(keys)
+        -- Section 727: walked again only when the log or your level changed;
+        -- the same log again (a loading screen) keeps the pass or its answer.
+        local key = tostring(level) .. "|" .. table.concat(keys, ",")
+        if key == passKey and db == passDb and (pass ~= nil or startsGot ~= nil) then return end
+        stopPass()
+        startsGot, pass, passKey = nil, nil, key
+        if not level then return end
+        local S = ns.DungeonStates
+        local class = ask(client, "class")
+        local classId
+        if class and type(S) == "table" and type(S.CLASS_ID) == "table" then classId = S.CLASS_ID[class] end
+        passDb = db
+        passCtx = { level = level, log = inLog,
+            me = { raceId = ask(client, "raceId"), classId = classId, faction = ask(client, "faction") },
+            done = function(id) return ask(client, "questDone", id) end }
+        local ok, st = pcall(PQ.StartsPass, db, passCtx)
+        if not ok or type(st) ~= "table" or st.state ~= "building" then return end
+        pass = st
+        if type(client.onFrame) == "function" then
+            local okF, cancel = pcall(client.onFrame, stepPass)
+            if okF and type(cancel) == "function" then cancelPass = cancel end
+        end
     end
 
     local function read()
@@ -302,6 +523,14 @@ function PQ.Declare(k, diag)
             return
         end
         local ok, got = pcall(PQ.Index, rows, db, ctx.store:get("char", PQ.DROPS))
+        -- C-19: the mobs that drop an item starting a quest you can take,
+        -- read by a sliced pass (stepPass, a slice a frame, out of a fight);
+        -- not known, so not marked, until it is done.
+        if ok and type(got) == "table" then
+            logIndex = got
+            startPass(db, client, rows)
+            got = merged()
+        end
         if ok and type(got) == "table" then
             index, source = got, "questie"
         else
@@ -361,7 +590,7 @@ function PQ.Declare(k, diag)
     k:Module({
         name = PQ.NAME,
         needs = { "client", "settings", "bus", "sched", "store" },
-        provides = { Status = api.status, Lines = api.lines },
+        provides = { Status = api.status, Lines = api.lines, MarkOf = api.markOf },
         start = function(c)
             ctx = c
             cancelPlates = ask(c.client, "plates", onPlate)
@@ -385,6 +614,8 @@ function PQ.Declare(k, diag)
             pending = nil
             if type(cancelLook) == "function" then pcall(cancelLook) end
             cancelLook = nil
+            stopPass()
+            pass, startsGot, logIndex, passKey = nil, nil, nil, nil
             hideAll()
             inView, marks, shownOn, index, source = {}, {}, {}, nil, "none"
         end,
