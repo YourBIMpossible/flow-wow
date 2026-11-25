@@ -404,4 +404,34 @@ tests["plate threat module: the pulse is the shared one where the kernel has it"
     t.eq(l and l.alphaNow, 1, "steady again")
 end
 
+-- Zen-3's D-32 note (lead section 729): a glow is taken out of the set it
+-- was put in, even when the shared pulse goes off in between.
+tests["plate threat module: a glow leaves the set it joined"] = function(t)
+    local c = ns.make.fakeClient()
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.setGrouped(true)
+    c.advance(1, 2)
+    local shared = addon.use(ns.Pulse.NAME)
+    if not (shared and type(shared.remove) == "function") then
+        t.ok(false, "the shared pulse is reachable")
+        return
+    end
+    enemy(c, "nameplate1", 3, 120)
+    c.setCombat(true)
+    c.advance(0.5, 1)
+    t.eq(shared.count(), 1, "in the shared set")
+    local removed, remove = 0, shared.remove
+    shared.remove = function(...)
+        removed = removed + 1
+        return remove(...)
+    end
+    addon:SwitchOff(ns.Pulse.NAME, "test")
+    c.setThreat("nameplate1", 3, 80)
+    c.advance(0.5, 1)
+    t.eq(removed, 1, "taken out of the shared set it joined, not a set of its own")
+end
+
 return tests
