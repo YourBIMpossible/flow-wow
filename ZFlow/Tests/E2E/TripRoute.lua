@@ -424,4 +424,24 @@ tests["trip route words: sort xp with no XP from Questie says so and stays short
     t.ok(first(c) ~= "Herbs", "the order is the shortest walk: " .. tostring(first(c)))
 end
 
+-- A2-16: the route list says each quest stop's XP, from the game's reward
+-- read where the client has it (client.questRewardXp, a CLIENT NEED; set
+-- on the fake here), else from Questie; nothing when neither knows.
+tests["trip route words: the route list says each quest's XP, the game's first"] = function(t)
+    local c = boot()
+    c.questRewardXp = function(id) return ({ [401] = 450 })[id] end
+    c.setQuestieModule("QuestXP", xpModule({ [401] = 999, [402] = 900 }))
+    c.slashes[ns.id.slash]("route")
+    local boars, herbs, bandages
+    for _, line in ipairs(c.printed) do
+        local l = tostring(line)
+        if l:find("Boars", 1, true) then boars = l end
+        if l:find("Herbs", 1, true) then herbs = l end
+        if l:find("Bandages", 1, true) then bandages = l end
+    end
+    t.ok(boars ~= nil and boars:find("450 XP", 1, true) ~= nil, "the game's answer: " .. tostring(boars))
+    t.ok(herbs ~= nil and herbs:find("900 XP", 1, true) ~= nil, "Questie's: " .. tostring(herbs))
+    t.ok(bandages ~= nil and bandages:find("XP", 1, true) == nil, "neither knows: no XP said: " .. tostring(bandages))
+end
+
 return tests

@@ -150,4 +150,31 @@ tests["near first: by XP, a big quest far off waits behind a fair one close by"]
     t.eq(plain[1].label, "Far big", "no place known: XP alone")
 end
 
+-- A2-16 (lead section 660): the XP of a quest from the game's own reward
+-- read first (GetQuestLogRewardXP, a CLIENT NEED), then the player's
+-- Questie; never an estimate (section 611).
+tests["quest XP: the game's reward first, then Questie, else not known"] = function(t)
+    local game = function(id)
+        if id == 4 then error("no read") end
+        return ({ [1] = 450, [2] = 0 })[id]
+    end
+    local questie = function(id) return ({ [1] = 999, [2] = 300, [4] = 120 })[id] end
+    local xpOf = T().XpFrom(game, questie)
+    t.eq(xpOf(1), 450, "the game's answer wins")
+    t.eq(xpOf(2), 300, "the game says 0: Questie's")
+    t.eq(xpOf(3), nil, "neither knows")
+    t.eq(xpOf(4), 120, "a game read that raises: Questie's")
+    t.eq(T().XpFrom(nil, nil)(1), nil)
+end
+
+tests["quest XP: a stop's line says its XP when known, nothing when not"] = function(t)
+    local route = { label = "straight", stops = {
+        { label = "Boars", place = { map = 1, x = 0.5, y = 0.5 }, xp = 450 },
+        { label = "Herbs", place = { map = 1, x = 0.5, y = 0.5 } },
+    } }
+    local lines = T().Lines(route, 1)
+    t.ok(lines[2]:find(T().XP_PART:format(450), 1, true) ~= nil, lines[2])
+    t.ok(lines[3]:find("XP", 1, true) == nil, lines[3])
+end
+
 return tests
