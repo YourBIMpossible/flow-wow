@@ -326,6 +326,7 @@ return {
     -- C-61, C-49: talent points, the unlocked line and the spend prompt (after the advisor).
     "Spells/Talents.lua",
     -- Lead section 375 item 7 (TN-1): the quest route's pick-ups (after RoutePlan, DungeonStates).
+    "Nav/BattlegroundQuests.lua",
     "Nav/RoutePickups.lua",
     "Nav/QuestHold.lua",
     "Nav/LowQuests.lua",
