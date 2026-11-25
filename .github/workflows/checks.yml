@@ -73,3 +73,12 @@ jobs:
       - name: Z-Flow offline tests (tools/zflow-tests.ps1)
         shell: pwsh
         run: ./tools/zflow-tests.ps1
+      - name: Z-Flow coverage (tools/zflow-coverage.ps1)
+        shell: pwsh
+        run: ./tools/zflow-coverage.ps1
+      - name: Z-Flow settings lint (tools/zflow-settings-lint.ps1)
+        shell: pwsh
+        run: ./tools/zflow-settings-lint.ps1
+      - name: Z-Flow player text (tools/zflow-text.ps1)
+        shell: pwsh
+        run: ./tools/zflow-text.ps1
