@@ -26,14 +26,26 @@ function PT.Click(button, state)
 end
 
 -- The tooltip's lines, or nil without a step (Flow Nav.lua:4425-4426).
-function PT.Tip(state)
+PT.HEADER = "Profession step"
+PT.HINT_OPEN = "Left-click: open the step. Right-click: menu."
+PT.HINT_MENU = "Right-click: menu."
+
+-- canOpen: true only when a left click really opens the step (the caller
+-- has a step card to show). Until then the hint names the right click
+-- alone, so the tooltip never promises what does not happen (Plexy
+-- CHANGES-1, section 852).
+function PT.Tip(state, canOpen)
     if type(state) ~= "table" or type(state.step) ~= "table" then return nil end
-    local out = { "Profession step" }
+    local out = { PT.HEADER }
     local lines = state.step.lines
     if type(lines) == "table" then
         for i = 1, #lines do out[#out + 1] = tostring(lines[i]) end
     end
-    out[#out + 1] = "Left-click: open the step. Right-click: menu."
+    if canOpen == true then
+        out[#out + 1] = PT.HINT_OPEN
+    else
+        out[#out + 1] = PT.HINT_MENU
+    end
     return out
 end
 
