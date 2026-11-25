@@ -11,7 +11,28 @@ local _, ns = ...
 --   api       = GearRewardMark.Declare(k[, packs])
 --     api.marked()   the choice marked now, or nil
 --     api.errors()   how many times the pick could not be worked out
---   ns.use(GearRewardMark.NAME) -> { Marked = api.marked, Errors = api.errors }
+--   ns.use(GearRewardMark.NAME) -> { Marked = api.marked, Errors = api.errors,
+--                                    Board = api.board }
+--
+-- Parity row C-37, the data half (lead section 668), as Flow's
+-- Modules/Gear/QuestRewards.lua (:147-149) and SpecBadge.lua (:35, :100):
+-- for each choice, its verdict for each spec of your class, and its sell
+-- price, with the best seller. The badges and the coin are the drawing
+-- lane's; the one mark above is unchanged.
+--   board, why = GearRewardMark.Board(client, packs, role)
+--     board = { roles = { role, ... } (the specs the class pack has
+--               weights for, sorted), chosen = role or nil,
+--               choices = { { index, link, roles = { [role] = verdict },
+--                             sell = copper or nil }, ... },
+--               bestSell = index or nil }
+--     verdict: "upgrade", "same", "worse", "cannot" (you cannot use it) or
+--     "notGear"; a role left out is not known yet (the item or its verdict
+--     not read): never a guess. sell: the game's sell price
+--     (itemInfo().sellPrice). bestSell: the one choice that sells for the
+--     most; nil when any price is not read, two tie, or none sells.
+--     nil and why (GearRewardMark.WHY) when the choices are not read or
+--     fewer than two. Reads only, as Pick.
+--   api.board() -> the board now while a reward window is open, else nil
 --
 -- Pick: the index of the choice to mark, or nil and why (GearRewardMark.WHY).
 --   client.questChoices()  { { index, link } ... } for the open choice; nil
@@ -127,6 +148,78 @@ function RM.Pick(client, packs, role)
     return best
 end
 
+-- C-37: one choice's verdict for one role, as Pick reads it: "upgrade",
+-- "same", "worse", "cannot", "notGear", or nil when not known yet.
+local function verdictOf(gear, pack, role, level, skills)
+    local lines, detail = ns.GearVerdict.Lines(gear, { pack = pack, role = role, level = level, skills = skills })
+    if lines == nil then
+        if finite(gear.classID) then return "notGear" end
+        return nil
+    end
+    local can
+    if type(detail) == "table" and type(detail.use) == "table" then can = detail.use.can end
+    if can == false then return "cannot" end
+    if can ~= true then return nil end
+    local res = type(detail.result) == "table" and detail.result or {}
+    local v = res.verdict
+    if v == "upgrade" then
+        if finite(res.delta) and res.delta >= ns.GearTooltip.SAME then return "upgrade" end
+        return "same"
+    end
+    if v == "same" or v == "worse" then return v end
+    return nil
+end
+
+function RM.Board(client, packs, role)
+    local rows = ask(client, "questChoices")
+    if type(rows) ~= "table" then return nil, RM.WHY.unread end
+    if #rows < 2 then return nil, RM.WHY.single end
+    local class = ask(client, "class")
+    local pack
+    if type(packs) == "table" and class ~= nil then pack = packs[class] end
+    local roles = rolesFor(pack, nil)
+    local chosen
+    if type(role) == "string" and type(pack) == "table" and type(pack.weights) == "table"
+        and type(pack.weights[role]) == "table" then
+        chosen = role
+    end
+    local level = ask(client, "level")
+    local skills
+    local okSkills, readSkills = pcall(ask, client, "weaponSkills")
+    if okSkills and type(readSkills) == "table" then skills = readSkills end
+    local board = { roles = roles, chosen = chosen, choices = {} }
+    local best, bestPrice, tie, allPrices = nil, 0, false, true
+    for i = 1, #rows do
+        local row = type(rows[i]) == "table" and rows[i] or {}
+        local index = i
+        if finite(row.index) then index = row.index end
+        local entry = { index = index, roles = {} }
+        local link = row.link
+        if type(link) == "string" and link ~= "" then
+            entry.link = link
+            local gear = ask(client, "gear", link)
+            if type(gear) == "table" then
+                for r = 1, #roles do
+                    entry.roles[roles[r]] = verdictOf(gear, pack, roles[r], level, skills)
+                end
+            end
+            local info = ask(client, "itemInfo", link)
+            local price = type(info) == "table" and info.sellPrice or nil
+            if finite(price) and price >= 0 then entry.sell = price end
+        end
+        if entry.sell == nil then
+            allPrices = false
+        elseif entry.sell > bestPrice then
+            best, bestPrice, tie = index, entry.sell, false
+        elseif entry.sell == bestPrice and entry.sell > 0 then
+            tie = true
+        end
+        board.choices[#board.choices + 1] = entry
+    end
+    if allPrices and not tie then board.bestSell = best end
+    return board
+end
+
 -- G14 coin (section 393): when no choice is an upgrade, the choice that
 -- sells for the most, to take and sell. nil when the choices or any price
 -- are not read, two prices tie, or nothing sells.
@@ -155,6 +248,14 @@ function RM.Declare(k, packs)
     local seen = {}
     function api.marked() return marked end
     function api.errors() return errors end
+    -- C-37: the board while a reward window is open. A read that raises
+    -- gives nil, as no board.
+    function api.board()
+        if not open or not ctx then return nil end
+        local ok, b = pcall(RM.Board, ctx.client, packs or ns.Packs, ctx.settings:get(RM.ROLE))
+        if ok and type(b) == "table" then return b end
+        return nil
+    end
 
     local function show(index, kind)
         marked = nil
@@ -244,7 +345,7 @@ function RM.Declare(k, packs)
                 .. " You pick; it takes nothing.",
             group = "gear", synonyms = { "reward", "quest", "choice", "mark", "upgrade" },
         } },
-        provides = { Marked = api.marked, Errors = api.errors },
+        provides = { Marked = api.marked, Errors = api.errors, Board = api.board },
         start = function(c)
             ctx = c
             -- The repeat starts once 2 or more choices are read (LF-1): a
