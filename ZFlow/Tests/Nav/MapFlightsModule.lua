@@ -175,7 +175,8 @@ tests["mapFlights module: each pin carries its words for the tooltip"] = functio
     t.eq(p and p.title, "Home Post")
     local tip = p and p.tip or {}
     t.eq(tip[1], "You have this flight path: you can fly here.")
-    t.eq(tip[#tip], MF.TIP_PICK, "what a click does")
+    t.eq(tip[#tip - 1], MF.TIP_PICK, "what a click does")
+    t.eq(tip[#tip], MF.TIP_POINT, "what a right click does (B-12)")
 end
 
 tests["mapFlights module: a click picks a master and lines go to the others; the next click clears"] = function(t)
@@ -200,8 +201,8 @@ tests["mapFlights module: a click picks a master and lines go to the others; the
     t.eq(far and far.picked, nil)
     t.eq(pinNamed(h, "Home Post").picked, true)
     local tip = far and far.tip or {}
-    t.eq(tip[#tip - 1], "Home Post to Far Post: flight time not known yet", "the flight from the one picked")
-    t.eq(tip[#tip], MF.TIP_CLEAR)
+    t.eq(tip[#tip - 2], "Home Post to Far Post: flight time not known yet", "the flight from the one picked")
+    t.eq(tip[#tip - 1], MF.TIP_CLEAR)
     c.advance(2, 8)
     t.eq(#h.lines, 2, "it stays picked")
     h.click("Far Post")
@@ -226,6 +227,41 @@ tests["mapFlights module: a pick that leaves the map is dropped"] = function(t)
     c.setWorldMap(1414)
     c.advance(2, 8)
     t.eq(#h.lines, 0, "and it stays dropped")
+end
+
+-- B-12 (lead section 783): a right click on a flight master sets your own
+-- waypoint on it through the existing waypoint path (Nav/Waypoint.lua
+-- W.SetAt, as Alt + click on the map); a right click on the same one again
+-- takes it off. As Flow's MF.RightClick / MF.PointAt / MF.WaypointOn
+-- (Modules/Nav/MapFlights.lua:194-238). Fails before: a right click does
+-- nothing.
+tests["mapFlights module: a right click sets your waypoint on a master; again takes it off"] = function(t)
+    local k, c = start({ on = true })
+    c.setWorldMap(1414)
+    c.advance(2, 8)
+    local h = c.mapPinSets[1]
+    if type(h.click) ~= "function" then return t.ok(false, "no click") end
+    local W = ns.Nav.Waypoint
+    local slot = W.Slot(k.store)
+    t.eq(W.Get(slot), nil, "no waypoint first")
+    h.click("Home Post", "RightButton")
+    local wp = W.Get(slot)
+    t.ok(wp ~= nil, "a waypoint is set")
+    t.eq(wp and wp.map, 1414, "on the shown map")
+    t.ok(wp and math.abs(wp.x - 0.052) < 1e-9 and math.abs(wp.y - 0.25) < 1e-9, "where the pin is")
+    t.eq(wp and wp.label, MF.PointLabel({ name = "Home Post" }))
+    c.advance(2, 8)
+    local p = pinNamed(h, "Home Post")
+    t.eq(p and p.tip[#p.tip], MF.TIP_UNPOINT, "its tip says a right click takes it off")
+    t.eq(c.mapPinSets[1].lines[1], nil, "nothing picked by a right click")
+    h.click("Home Post", "RightButton")
+    t.eq(W.Get(slot), nil, "the same again: taken off")
+    h.click("Far Post", "RightButton")
+    t.eq(W.Get(slot) and W.Get(slot).label, MF.PointLabel({ name = "Far Post" }))
+    h.click("Home Post", "RightButton")
+    t.eq(W.Get(slot) and W.Get(slot).label, MF.PointLabel({ name = "Home Post" }), "another master: moved there")
+    h.click("Nowhere", "RightButton")
+    t.eq(W.Get(slot) and W.Get(slot).label, MF.PointLabel({ name = "Home Post" }), "no pin: nothing changes")
 end
 
 return tests
