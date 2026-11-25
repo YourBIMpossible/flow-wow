@@ -47,8 +47,9 @@ SelfTest.HEAD = "self-test: %d pass (%d with no answer now), %d fail, %d missing
 SelfTest.LINE = "  %s: %s"
 SelfTest.LINE_WHY = "  %s: fail (%s)"
 SelfTest.WHY_MAX = 80
--- The add-on's name before the head line, when the identity gives none.
-SelfTest.TITLE = "Z-Flow"
+-- The add-on's name before the head line, when the identity handed in gives
+-- none: the add-on's own identity title (Core/Identity.lua loads first).
+SelfTest.TITLE = ns.id.title
 
 -- The reads asked, in this order. Each takes nothing and only reads.
 SelfTest.READS = {

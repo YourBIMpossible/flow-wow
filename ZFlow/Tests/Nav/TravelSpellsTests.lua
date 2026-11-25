@@ -107,7 +107,6 @@ T["from client: class, position, the map's name and known by the spell number"] 
     client.spellId = function(name) return name == "Teleportieren: Mondlichtung" and 18960 or nil end
     t.eq(N.TravelSpellStepFrom(STEP, client).label, "Cast Teleport: Moonglade",
         "the number is asked by the client's own name for the spell")
-    client.spell = function(id) asked = id; return id == 18960 and { known = true } or nil end
     client.spellId = function(name) return name == "Teleport: Moonglade" and 18960 or nil end
     client.spell = function() return { known = false } end
     t.eq(N.TravelSpellStepFrom(STEP, client).hint, "Teleport: Moonglade needs level 10")

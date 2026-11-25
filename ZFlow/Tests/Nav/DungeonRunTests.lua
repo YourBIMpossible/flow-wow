@@ -22,7 +22,8 @@ tests["dungeon run: leave keeps the run and turns the route off"] = function(t)
 end
 
 tests["dungeon run: back plans the run again, only its steps"] = function(t)
-    local s, effect = DR().Act(copy(RUN), "leave")
+    local s = DR().Act(copy(RUN), "leave")
+    local effect
     s, effect = DR().Act(s, "back")
     t.eq(s.only, true); t.eq(effect, "plan")
 end

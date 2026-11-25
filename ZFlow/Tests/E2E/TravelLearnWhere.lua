@@ -9,7 +9,7 @@ local _, ns = ...
 -- N.TRAVEL_SPELLS. Not tested in game.
 
 local tests = {}
-local Flights, Travel = ns.Nav.Flights, ns.Nav.Travel
+local Flights = ns.Nav.Flights
 
 local MOONGLADE = 1450
 local TELEPORT, TELEPORT_ID = "Teleport: Moonglade", 18960
