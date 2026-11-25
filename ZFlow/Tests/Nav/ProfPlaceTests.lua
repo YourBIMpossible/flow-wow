@@ -493,4 +493,37 @@ tests["prof feed: the no-place line comes right under the step's own words, befo
     t.eq(F().Step(result).lines, { LEARN.text, "Open your Cooking window once" }, "no line handed in: as before")
 end
 
+-- Parity row A1-21 (Nav/NodeRest.lua): a gathered node that is resting
+-- (just looted, or found empty) is not the one a gathering step points at;
+-- the next one is. Red before: PP.From hands on every node, resting or not.
+tests["prof place: a resting node is passed over, the next one is pointed at"] = function(t)
+    if not has(t) then return end
+    local list = {
+        { node = { x = 0.6, y = 0.5, prof = "Mining", id = 1 }, d = 10 },
+        { node = { x = 0.7, y = 0.5, prof = "Mining", id = 2 }, d = 20 },
+    }
+    local rested = { [1] = true }
+    local function use(name)
+        if name == "nodes" then return { Nearest = function() return list, true end } end
+        if name == "nodeRest" then return { Resting = function(n) return rested[n.id] == true end } end
+        return nil
+    end
+    local client = { position = function() return { map = 1411, x = 0.5, y = 0.5 } end }
+    local step = { kind = "gather_skill", text = "Gather to raise Mining", gather = "Mining" }
+    local to = PP().Of(step, "Mining", PP().From(client, nil, use, "node", {}))
+    t.eq(to, { map = 1411, x = 0.7, y = 0.5 }, "the node that is not resting")
+    rested = {}
+    to = PP().Of(step, "Mining", PP().From(client, nil, use, "node", {}))
+    t.eq(to, { map = 1411, x = 0.6, y = 0.5 }, "rested again: the nearest one")
+    rested = { [1] = true, [2] = true }
+    t.eq(PP().Of(step, "Mining", PP().From(client, nil, use, "node", {})), nil, "every one resting: none, and none made up")
+    -- No rest module (it failed to load): every node counts, as before.
+    local function plain(name)
+        if name == "nodes" then return use(name) end
+        return nil
+    end
+    to = PP().Of(step, "Mining", PP().From(client, nil, plain, "node", {}))
+    t.eq(to, { map = 1411, x = 0.6, y = 0.5 }, "no rest module: as before")
+end
+
 return tests
