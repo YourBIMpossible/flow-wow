@@ -161,25 +161,20 @@ function N.ArrowView(state)
     local scale, alpha = 1, 1
     if travel then scale = N.TRAVEL_ARROW_SCALE end
     local qState = qMode == "corpse" and "corpse" or N.ArrowState(state.player, q.target, questHere)
-    -- R7 (lead section 564): a waypoint or profession step takes RC.Of's
-    -- colour, as the map lines do; a route step keeps N.ArrowColor with the
-    -- palette row (RC.Of's distance colour is the same sum, and the row keeps
-    -- the one-colour choice).
+    -- The arrow wears the colour of its step's first map leg (A1-06, lead
+    -- sections 643 and 645; UI/MapRouteLines.lua MRL.Paint). By distance, a
+    -- waypoint or profession step takes RC.Of's colour (R7, lead section
+    -- 564) and a route step N.ArrowColor with the palette row, the same sum.
+    -- With the one-colour setting (far, mid and near all one colour, the
+    -- player's saved choice) every step, waypoint and profession too, keeps
+    -- the one flat colour, as the map's first leg does.
     local qr, qg, qb
     local RC = ns.RouteColor
     local qFamily = q.family
-    -- A1-06 (lead section 643): the arrow wears the route's colour, the one
-    -- the map line of the same step gets (MRL.Paint asks RC.Of the same way).
-    -- The one-colour setting (far, mid and near all one colour) is the
-    -- player's saved choice: it reaches RC.Of as byDistance false, so route
-    -- steps keep the one flat colour (N.ArrowColor with the saved row, the
-    -- same sum as RC.Of); a waypoint stays green and a
-    -- profession step purple, as their map lines are.
     local flatRow = type(state.palette) == "table" and state.palette.far ~= nil
         and state.palette.far == state.palette.near
-    if RC and type(RC.Of) == "function" and RC.FAMILIES[qFamily] and qState ~= "corpse" then
-        qr, qg, qb = RC.Of({ family = qFamily, state = qState }, q.distance, N.ArrowPaletteWord(state.palette),
-            not flatRow)
+    if RC and type(RC.Of) == "function" and RC.FAMILIES[qFamily] and qState ~= "corpse" and not flatRow then
+        qr, qg, qb = RC.Of({ family = qFamily, state = qState }, q.distance, N.ArrowPaletteWord(state.palette))
     else
         qr, qg, qb = N.ArrowColor(qState, q.distance, state.palette)
     end
