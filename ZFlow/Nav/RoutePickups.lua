@@ -41,11 +41,13 @@ local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
 end
 
-local function inReach(level, reqLevel, qLevel)
+-- low (FLOW-PARITY A1-25, the "everything" route): quests far below your
+-- level count too.
+local function inReach(level, reqLevel, qLevel, low)
     if tonumber(reqLevel) and tonumber(reqLevel) > level then return false, "from level " .. reqLevel end
     local l = tonumber(qLevel)
     if l and l > level + S.LEVEL_ABOVE then return false, "above you" end
-    if l and l > 0 and l < level - P.BELOW then return false, "far below you" end
+    if low ~= true and l and l > 0 and l < level - P.BELOW then return false, "far below you" end
     return true
 end
 
@@ -59,7 +61,7 @@ function P.Candidate(q, ctx)
     for _, ex in ipairs(list(q.exclusiveTo)) do
         if log[ex] or done(ex) == true then return false, "ruled out by a quest you did" end
     end
-    local ok, why = inReach(tonumber(ctx.level) or 0, q.requiredLevel, q.level)
+    local ok, why = inReach(tonumber(ctx.level) or 0, q.requiredLevel, q.level, ctx.low)
     if not ok then return false, why end
     for _, id in ipairs(list(q.preQuestGroup)) do
         if done(id) == false then return false, "an earlier quest first" end
@@ -155,7 +157,8 @@ local function giverPoint(zones, spawns, here, areaMap)
 end
 
 -- log: { [id] = true } of the quests in the player's log.
-function P.Read(client, here, log)
+function P.Read(client, here, log, opts)
+    local low = type(opts) == "table" and opts.low == true
     local db, zones = questie(client, "QuestieDB"), questie(client, "ZoneDB")
     if not db or not zones or type(db.GetQuest) ~= "function" then return nil, P.WHY_NO_QUESTIE end
     if type(db.QuestPointers) ~= "table" then return nil, P.WHY_NO_LIST end
@@ -167,11 +170,12 @@ function P.Read(client, here, log)
         me = { raceId = ask(client, "raceId"), classId = class and S.CLASS_ID[class] or nil,
                faction = ask(client, "faction") },
         done = function(id) return ask(client, "questDone", id) end,
+        low = low,
     }
     local found, areaMap, npcs = {}, {}, {}
     for id in pairs(db.QuestPointers) do
         if type(id) == "number" and not ctx.log[id]
-            and inReach(level, quick(db, id, "requiredLevel"), quick(db, id, "questLevel")) then
+            and inReach(level, quick(db, id, "requiredLevel"), quick(db, id, "questLevel"), low) then
             local ok, qt = pcall(db.GetQuest, id)
             local starts = ok and type(qt) == "table" and type(qt.Starts) == "table" and qt.Starts or nil
             local giver = starts and type(starts.NPC) == "table" and starts.NPC[1] or nil

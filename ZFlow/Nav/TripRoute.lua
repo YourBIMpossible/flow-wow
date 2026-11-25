@@ -60,7 +60,8 @@ N.TripRoute = T
 
 T.NAME = "tripRoute"
 T.WORD = "route"
-T.HELP = "plan your quests on this map in order and walk them with the arrow; route skip, route new, route off"
+T.HELP = "plan your quests on this map in order and walk them with the arrow; route skip, route new, route off;"
+    .. " route mode quests|optimal|complete; route sort xp|distance; route steps <number>|all"
 T.SETTING = "quest.route"
 T.ARRIVE_YARDS = 10      -- a run stop is reached this close
 T.ARRIVE_SHARE = 0.01    -- the same when the map's size is not known
@@ -367,6 +368,208 @@ function T.Town(o)
     return out, aside
 end
 
+-- FLOW-PARITY A1-25: the route modes, a port of legacy Flow's N:Mode and
+-- N.ModeKinds (Modules/Nav/Nav.lua:1415-1446). "quests": your log only;
+-- "optimal" (the default): pick-ups and town stops too, the hub tour
+-- first; "complete": everything, pick-ups far below your level too. Each
+-- mode only sets the switches this route already has.
+T.MODES = { "quests", "optimal", "complete" }
+-- Lead section 713: a Settings row's place must start with settings. (Core/
+-- Settings.lua); these are the rows' own places, read and written by the
+-- route word, the rows, the route menu and the store watch alike.
+T.MODE_PATH = "settings.nav.routeMode"   -- account
+-- Lead section 651 (Muse's MUSE-TO-WHITE-ROUTE-MODES.md): the same choice
+-- as a Settings row and in the route menu. The Settings kit shows a choice
+-- by its saved value, so the saved value is the words the player reads;
+-- T.ModeOf turns them (or the typed word) back into the mode.
+T.MODE_KEY = "nav.routeMode"
+T.MODE_LABELS = { quests = "My quests only", optimal = "Today's route", complete = "Everything" }
+function T.ModeOf(v)
+    for _, m in ipairs(T.MODES) do
+        if v == m or v == T.MODE_LABELS[m] then return m end
+    end
+    return "optimal"
+end
+T.MODE_HOW = "Pick one with the route word: mode quests, mode optimal or mode complete."
+T.MORE = "... and %d more stops."
+T.MODE_SAID = {
+    quests = "Route: the quests in your log only.",
+    optimal = "Route: your quests, quests to pick up on the way and town stops.",
+    complete = "Route: everything, quests far below your level too.",
+}
+function T.ModeFlags(mode)
+    if mode == "quests" then return { pickups = false, town = false, low = false, hub = false } end
+    if mode == "complete" then return { pickups = true, town = true, low = true, hub = true } end
+    return { pickups = true, town = true, low = false, hub = true }
+end
+
+-- FLOW-PARITY A1-30: the hub tour first, a port of legacy Flow's
+-- N.HubBusiness and N:PickupKeys (Nav.lua:3149-3197). Turn-ins and quests
+-- to pick up within radius yards of the player come first, nearest first;
+-- pick-ups only as many as the quest log has room for (free free slots,
+-- plus one for each turn-in, which frees one; nil: room not known, every
+-- close pick-up). Close town stops (T.TOWN_KINDS) count with the turn-ins.
+-- Objectives and cast stops are never hub business; the rest keep their
+-- planned order.
+-- A tuning choice, not a game fact: legacy Flow's HUB_RADIUS (Nav.lua:3125),
+-- how close counts as "this hub's business".
+T.HUB_YARDS = 250
+local function yardsTo(s, here, size)
+    if s.cast or type(s.place) ~= "table" or not finite(s.place.x) or not finite(s.place.y) then return nil end
+    local dx, dy = (s.place.x - here.x) * size.w, (s.place.y - here.y) * size.h
+    return math.sqrt(dx * dx + dy * dy)
+end
+
+function T.HubFirst(stops, here, size, radius, free)
+    local out = {}
+    for i, s in ipairs(type(stops) == "table" and stops or {}) do out[i] = s end
+    if type(here) ~= "table" or not finite(here.x) or not finite(here.y) or type(size) ~= "table"
+        or not finite(size.w) or not finite(size.h) then
+        return out
+    end
+    radius = finite(radius) and radius or T.HUB_YARDS
+    local turnins, pickups = {}, {}
+    for i, s in ipairs(out) do
+        local d = yardsTo(s, here, size)
+        if d and d <= radius then
+            -- Town stops (sell, repair, riding, hearth) are the hub's business
+            -- too, as in Flow, so a near vendor is not put behind a turn-in
+            -- (lead section 655; Tests/E2E/TripRouteTownDone.lua).
+            if s.turnIn == true or T.TOWN_KINDS[s.kind] then turnins[#turnins + 1] = { i = i, d = d }
+            elseif s.kind == "pickup" then pickups[#pickups + 1] = { i = i, d = d } end
+        end
+    end
+    local function near(a, b) return a.d < b.d end
+    table.sort(pickups, near)
+    local hub = {}
+    for _, e in ipairs(turnins) do hub[#hub + 1] = e end
+    local room = #pickups
+    if finite(free) then room = math.max(0, math.min(room, free + #turnins)) end
+    for j = 1, room do hub[#hub + 1] = pickups[j] end
+    if #hub == 0 then return out end
+    table.sort(hub, near)
+    local taken, ordered = {}, {}
+    for _, e in ipairs(hub) do
+        taken[e.i] = true
+        ordered[#ordered + 1] = out[e.i]
+    end
+    for i, s in ipairs(out) do
+        if not taken[i] then ordered[#ordered + 1] = s end
+    end
+    return ordered
+end
+
+-- FLOW-PARITY A1-29: sort by XP. The XP is the player's own Questie's
+-- (QuestXP:GetQuestLogRewardXP(questId), Questie 12.12.0
+-- Database/QuestXP/QuestieXP.lua:93, read through client.questieModule;
+-- no XP data ships here). 0, nil or a read that raises is not known.
+T.SORT_PATH = "settings.nav.routeSort"   -- account
+T.SORT_SAID = {
+    xp = "Route: the quests worth the most XP first (from Questie); the rest by distance after them.",
+    distance = "Route: shortest walk first.",
+}
+T.SORT_HOW = "Pick one with the route word: sort xp or sort distance."
+T.SORT_NO_XP = "Questie gives no XP for these quests, so the route stays shortest first."
+T.SORT_KEY = "nav.routeSort"
+T.SORTS = { "distance", "xp" }
+T.SORT_LABELS = { distance = "Shortest first", xp = "Most XP first" }
+function T.SortOf(v)
+    if v == "xp" or v == T.SORT_LABELS.xp then return "xp" end
+    return "distance"
+end
+
+-- FLOW-PARITY A2-16: a quest's XP from the game's own reward read first
+-- (client.questRewardXp(id): GetQuestLogRewardXP, as legacy Flow's
+-- XpValue.lua:34-38 reads it; a CLIENT NEED, used when the client has it),
+-- then the player's Questie (T.XpOf). 0, nil or a read that raises is not
+-- known. Flow's estimate by quest level (XpValue.lua:20-32) is not used:
+-- a number not read from the game or Questie is never said (section 611).
+T.XP_PART = "%d XP"
+function T.XpFrom(game, questie)
+    return function(id)
+        if id == nil then return nil end
+        if type(game) == "function" then
+            local ok, xp = pcall(game, id)
+            if ok and finite(xp) and xp > 0 then return xp end
+        end
+        if type(questie) == "function" then
+            local ok, xp = pcall(questie, id)
+            if ok and finite(xp) and xp > 0 then return xp end
+        end
+        return nil
+    end
+end
+
+function T.XpOf(mod)
+    return function(id)
+        if type(mod) ~= "table" or type(mod.GetQuestLogRewardXP) ~= "function" or id == nil then return nil end
+        local ok, xp = pcall(mod.GetQuestLogRewardXP, mod, id)
+        if ok and finite(xp) and xp > 0 then return xp end
+        return nil
+    end
+end
+
+-- FLOW-PARITY A2-15: near steps first, the rule of legacy Flow's
+-- Modules/Nav/NearFirst.lua on ref origin/buff-fishing-prof-path (it is not
+-- on origin/HEAD d78839f7; F.Multiplier, :46-52): a stop up to NEAR_YARDS
+-- away counts as it is; beyond, it counts NEAR_SPAN yards for one more
+-- time, at most NEAR_MAX times. Flow's tuning, not a game fact. As in Flow
+-- (F.Applies, :36-43) it reweighs the XP order only: shortest first already
+-- goes by travel alone. Flow's extra weight for item-drop steps is left
+-- out: a stop here does not know whether its objective is a drop.
+T.NEAR_YARDS, T.NEAR_SPAN, T.NEAR_MAX = 300, 700, 3
+function T.NearMul(d)
+    if not finite(d) or d <= T.NEAR_YARDS then return 1 end
+    return math.min(T.NEAR_MAX, 1 + (d - T.NEAR_YARDS) / T.NEAR_SPAN)
+end
+
+-- Stops of quests worth the most XP first (a quest's stops keep their
+-- planned order); stops whose XP is not known, and town stops, after them
+-- in their planned order. With here and size (yards) known, a stop's XP is
+-- divided by T.NearMul of its distance (A2-15).
+function T.SortXp(stops, xpOf, here, size)
+    local measure = type(here) == "table" and finite(here.x) and finite(here.y) and type(size) == "table"
+        and finite(size.w) and finite(size.h)
+    local known, unknown = {}, {}
+    for i, s in ipairs(type(stops) == "table" and stops or {}) do
+        local xp
+        if type(xpOf) == "function" and s.quest ~= nil then xp = xpOf(s.quest) end
+        if finite(xp) then
+            if measure then xp = xp / T.NearMul(yardsTo(s, here, size)) end
+            known[#known + 1] = { i = i, xp = xp, s = s }
+        else
+            unknown[#unknown + 1] = s
+        end
+    end
+    table.sort(known, function(a, b)
+        if a.xp ~= b.xp then return a.xp > b.xp end
+        return a.i < b.i
+    end)
+    local out = {}
+    for _, e in ipairs(known) do out[#out + 1] = e.s end
+    for _, s in ipairs(unknown) do out[#out + 1] = s end
+    return out, #known
+end
+
+-- FLOW-PARITY A1-29: how many steps show. The first n of the route (nil:
+-- all) and how many more there are.
+T.SHOWN_PATH = "settings.nav.routeShown" -- account
+T.SHOWN_KEY = "nav.routeShown"
+T.SHOWN_ALL = "All"
+T.SHOWN_CHOICES = { "5", "10", "15", "20", T.SHOWN_ALL }
+function T.Shown(route, n)
+    if type(route) ~= "table" or type(route.stops) ~= "table" then return nil end
+    local out = {}
+    for key, v in pairs(route) do out[key] = v end
+    out.stops = {}
+    local total = #route.stops
+    local upto = total
+    if finite(n) and n >= 1 then upto = math.min(total, math.floor(n)) end
+    for i = 1, upto do out.stops[i] = route.stops[i] end
+    out.more = total - upto
+    return out
+end
+
 function T.Plan(rows, places, here, legs, pickups, note)
     here = type(here) == "table" and here or {}
     if here.map == nil then return nil, T.WHY_NO_MAP end
@@ -567,6 +770,8 @@ function T.Lines(route, at)
         elseif s.detail ~= nil then
             parts[#parts + 1] = tostring(s.detail)
         end
+        -- A2-16: the quest's XP when the game or Questie gave it.
+        if finite(s.xp) and s.xp > 0 then parts[#parts + 1] = T.XP_PART:format(math.floor(s.xp + 0.5)) end
         parts[#parts + 1] = dist
         local secs = route.yards ~= false and (finite(s.secs) and s.secs or (finite(s.leg) and T.Seconds(s.leg))) or nil
         local time = secs and T.TimeWords(secs)
@@ -689,7 +894,36 @@ function T.Declare(k, diag)
         return not (ok and v == false)
     end
 
+    -- A1-25: the mode the route word picked (account), optimal when none.
+    local function mode()
+        local st = ctx and ctx.store
+        if type(st) ~= "table" or type(st.get) ~= "function" then return "optimal" end
+        local ok, v = pcall(st.get, st, "account", T.MODE_PATH)
+        if ok then return T.ModeOf(v) end
+        return "optimal"
+    end
+
+    local function sortBy()
+        local st = ctx and ctx.store
+        if type(st) ~= "table" or type(st.get) ~= "function" then return "distance" end
+        local ok, v = pcall(st.get, st, "account", T.SORT_PATH)
+        if ok then return T.SortOf(v) end
+        return "distance"
+    end
+
+    local function shownCount()
+        local st = ctx and ctx.store
+        if type(st) ~= "table" or type(st.get) ~= "function" then return nil end
+        local ok, v = pcall(st.get, st, "account", T.SHOWN_PATH)
+        -- A number as text ("5", the Settings list; the word's own count too).
+        local n
+        if ok then n = tonumber(v) end
+        if finite(n) and n >= 1 then return n end
+        return nil
+    end
+
     local function pickupsOn()
+        if not T.ModeFlags(mode()).pickups then return false end
         local s = ctx and ctx.settings
         if type(s) ~= "table" or type(s.get) ~= "function" then return true end
         local ok, v = pcall(s.get, s, T.PICKUP_SETTING)
@@ -697,6 +931,7 @@ function T.Declare(k, diag)
     end
 
     local function townOn()
+        if not T.ModeFlags(mode()).town then return false end
         local s = ctx and ctx.settings
         if type(s) ~= "table" or type(s.get) ~= "function" then return true end
         local ok, v = pcall(s.get, s, T.TOWN_SETTING)
@@ -830,7 +1065,7 @@ function T.Declare(k, diag)
             for _, row in ipairs(rows) do
                 if type(row) == "table" and row.id ~= nil then log[row.id] = true end
             end
-            pickups, note = RP.Read(c, here, log)
+            pickups, note = RP.Read(c, here, log, { low = T.ModeFlags(mode()).low })
         end
         local function extrasOf(town)
             local extras = {}
@@ -860,6 +1095,50 @@ function T.Declare(k, diag)
         for _, a in ipairs(aside or {}) do
             r.left = type(r.left) == "table" and r.left or {}
             r.left[#r.left + 1] = a
+        end
+        -- A1-29: sort by XP, from the player's Questie. A1-30: else the hub
+        -- tour first. Room in the quest log is not read yet (a CLIENT NEED),
+        -- so every close pick-up joins the tour. A stop moved gets its
+        -- straight-line leg again.
+        local w, h, known = scale(here)
+        local moved
+        -- A2-16: each quest stop's XP, the game's reward read first, then Questie.
+        local okMod, mod = pcall(c.questieModule, "QuestXP")
+        if not okMod then mod = nil end
+        local xpOf = T.XpFrom(function(id) return ask(c, "questRewardXp", id) end, T.XpOf(mod))
+        for _, s in ipairs(r.stops) do
+            if s.quest ~= nil then s.xp = xpOf(s.quest) end
+        end
+        if sortBy() == "xp" then
+            local nKnown
+            local sizeNow
+            if known then sizeNow = { w = w, h = h } end
+            moved, nKnown = T.SortXp(r.stops, xpOf, here, sizeNow)
+            if nKnown == 0 then r.note = T.SORT_NO_XP end
+        elseif T.ModeFlags(mode()).hub and known then
+            moved = T.HubFirst(r.stops, here, { w = w, h = h }, T.HUB_YARDS, nil)
+        end
+        do
+            if moved then
+                local changed = false
+                for i, s in ipairs(moved) do
+                    if s ~= r.stops[i] then changed = true end
+                end
+                if changed then
+                    local fx, fy = here.x, here.y
+                    for _, s in ipairs(moved) do
+                        if not known then
+                            s.leg, s.secs = nil, nil
+                        elseif not s.cast and finite(fx) and finite(s.place.x) then
+                            local dx, dy = (s.place.x - fx) * w, (s.place.y - fy) * h
+                            s.leg = math.sqrt(dx * dx + dy * dy)
+                            s.secs = T.Seconds(s.leg)
+                            fx, fy = s.place.x, s.place.y
+                        end
+                    end
+                    r.stops = moved
+                end
+            end
         end
         route, at, readAt = r, 1, ask(c, "now")
         return r
@@ -1014,9 +1293,20 @@ function T.Declare(k, diag)
                  place = { map = s.place.map, x = s.place.x, y = s.place.y } }
     end
 
+    -- A1-29: with a count picked by the route word, the first that many
+    -- stops from the current one, then how many more.
     function api.Lines()
         if not route then return nil end
-        return T.Lines(route, at)
+        local n = shownCount()
+        if not n then return T.Lines(route, at) end
+        local rest = {}
+        for key, v in pairs(route) do rest[key] = v end
+        rest.stops = {}
+        for i = at, #route.stops do rest.stops[#rest.stops + 1] = route.stops[i] end
+        local shown = T.Shown(rest, n)
+        local lines = T.Lines(shown, 1)
+        if type(lines) == "table" and shown.more > 0 then lines[#lines + 1] = T.MORE:format(shown.more) end
+        return lines
     end
 
     -- G48 (Nav/PartyRoute.lua): a copy of the stops still to walk, or nil.
@@ -1066,6 +1356,14 @@ function T.Declare(k, diag)
         for _, line in ipairs(lines) do tell(line) end
     end
 
+    -- The words' saved choices (account); nothing is saved without a store.
+    local function keep(path, value)
+        local st = ctx and ctx.store
+        if type(st) ~= "table" or type(st.set) ~= "function" then return false end
+        local ok = pcall(st.set, st, "account", path, value)
+        return ok
+    end
+
     function api.Word(rest)
         local word = tostring(rest or ""):lower():match("^%s*(%S*)")
         if word == "off" or word == "clear" then
@@ -1075,6 +1373,41 @@ function T.Declare(k, diag)
         end
         if word == "skip" or word == "next" then
             if api.Skip() then say(api.Lines()) else say({ T.DONE }) end
+            return
+        end
+        -- A1-25 and A1-29: route mode <quests|optimal|complete>, route steps <n|all>.
+        local arg = tostring(rest or ""):lower():match("^%s*%S+%s+(%S+)")
+        if word == "mode" then
+            if arg ~= "quests" and arg ~= "optimal" and arg ~= "complete" then
+                say({ T.MODE_SAID[mode()], T.MODE_HOW })
+                return
+            end
+            keep(T.MODE_PATH, T.MODE_LABELS[arg])
+            say({ T.MODE_SAID[arg] })
+            api.Plan()
+            say(api.Lines() or { T.DONE })
+            return
+        end
+        if word == "sort" then
+            if arg ~= "xp" and arg ~= "distance" then
+                say({ T.SORT_SAID[sortBy()], T.SORT_HOW })
+                return
+            end
+            keep(T.SORT_PATH, T.SORT_LABELS[arg])
+            say({ T.SORT_SAID[arg] })
+            local r = api.Plan()
+            if r and r.note == T.SORT_NO_XP then say({ T.SORT_NO_XP }) end
+            say(api.Lines() or { T.DONE })
+            return
+        end
+        if word == "steps" then
+            local n = tonumber(arg)
+            if n and n >= 1 then
+                keep(T.SHOWN_PATH, tostring(math.floor(n)))
+            else
+                keep(T.SHOWN_PATH, nil)
+            end
+            say(api.Lines() or { T.DONE })
             return
         end
         -- The route planned by itself is planned again by the word, as one the
@@ -1191,7 +1524,7 @@ function T.Declare(k, diag)
 
     -- Section 564 R6: the route kept in saved data when it changed: a new
     -- route, a stop gone, a step on, no route.
-    local function keep()
+    local function keepRoute()
         if not ctx then return end
         local gone = 0
         for _, s in ipairs(route and route.stops or {}) do
@@ -1209,6 +1542,40 @@ function T.Declare(k, diag)
         end
     end
 
+    -- Lead section 651: Muse's three rows, under "The way there".
+    local modeChoices, sortChoices = {}, {}
+    for i, m in ipairs(T.MODES) do modeChoices[i] = T.MODE_LABELS[m] end
+    for i, s in ipairs(T.SORTS) do sortChoices[i] = T.SORT_LABELS[s] end
+    k:Setting({ key = T.MODE_KEY, scope = "account", type = "choice", choices = modeChoices,
+        default = T.MODE_LABELS.optimal, path = T.MODE_PATH,
+        label = "What the route includes", group = "travel.route",
+        help = "My quests only: only the quests in your log. No pick-ups, no town stops, no hub tour."
+            .. " Today's route: today's route, with nearby turn-ins and pick-ups first."
+            .. " Everything: today's route, plus pick-ups far below your level.",
+        synonyms = { "route", "mode", "includes", "quests", "everything", "pick" } })
+    k:Setting({ key = T.SORT_KEY, scope = "account", type = "choice", choices = sortChoices,
+        default = T.SORT_LABELS.distance, path = T.SORT_PATH,
+        label = "Order the route by", group = "travel.route",
+        help = "Shortest first: the nearest stops first, so you walk the least."
+            .. " Most XP first: the quests worth the most XP first, from Questie. The rest by distance.",
+        synonyms = { "route", "order", "sort", "xp", "experience", "distance", "shortest" } })
+    k:Setting({ key = T.SHOWN_KEY, scope = "account", type = "choice", choices = T.SHOWN_CHOICES,
+        default = T.SHOWN_ALL, path = T.SHOWN_PATH,
+        label = "How many stops to show", group = "travel.route",
+        help = "The route lists this many stops, then says how many more there are.",
+        synonyms = { "route", "stops", "steps", "count", "list", "many" } })
+
+    -- Section 651: a mode or sort changed anywhere (Settings, the route
+    -- menu, the word) plans the current quest route again at once. With no
+    -- route yet the choice waits for the next plan.
+    local cancelWatch = {}
+    local function replan()
+        if route and route.kind == "quests" then
+            local ok, err = pcall(api.Plan)
+            if not ok then k.problems:add(T.NAME, "replan", tostring(err)) end
+        end
+    end
+
     k:Module({
         name = T.NAME,
         needs = { "client", "store", "settings" },
@@ -1216,10 +1583,15 @@ function T.Declare(k, diag)
                      Lines = api.Lines, Current = api.Current, View = api.View },
         ticks = { { every = T.AUTO_EVERY, when = "always", run = function()
             auto()
-            keep()
+            keepRoute()
         end } },
         start = function(c)
             ctx = c
+            if type(c.store) == "table" and type(c.store.watch) == "function" then
+                for _, path in ipairs({ T.MODE_PATH, T.SORT_PATH }) do
+                    cancelWatch[#cancelWatch + 1] = c.store:watch("account", path, replan)
+                end
+            end
             -- The route kept from the last session, there again at once.
             local ok, kept = pcall(c.store.get, c.store, "char", T.SAVED)
             if ok then
@@ -1230,7 +1602,11 @@ function T.Declare(k, diag)
                 end
             end
         end,
-        stop = function() route, at = nil, 1 end,
+        stop = function()
+            for _, cancel in ipairs(cancelWatch) do pcall(cancel) end
+            cancelWatch = {}
+            route, at = nil, 1
+        end,
     })
     return api
 end
