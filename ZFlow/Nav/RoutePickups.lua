@@ -23,7 +23,10 @@ local _, ns = ...
 --   P.IsClassQuest(q, me) -> true when q is for me.classId alone
 --   P.Candidate(q, ctx) -> true | false, why
 --     q in the shape S.State takes; ctx = { level, log = { [id] = true },
---     done(id) -> true | false | nil (not known), me (S.Eligible) }
+--     done(id) -> true | false | nil (not known), me (S.Eligible),
+--     grouped (true | false | nil), holdOn (false: the hold is off) };
+--     q.elite: Questie's group (elite) tag, true | false | nil. Hard and
+--     elite quests are held while solo (Nav/QuestHold.lua, C-12).
 --   P.Nearest(list, here, max) -> every classQuest item on here.map first,
 --     then the max nearest of the rest
 -- Client reads: P.Read(client, here, log) -> list or nil, why.
@@ -80,6 +83,12 @@ function P.Candidate(q, ctx)
     if not ok then
         local req = tonumber(q.requiredLevel)
         if not P.IsClassQuest(q, ctx.me) or (req and req > level) then return false, why end
+    end
+    local hold = N.QuestHold
+    if hold then
+        local held, holdWhy = hold.Held({ level = tonumber(q.level), elite = q.elite,
+            myLevel = tonumber(ctx.level), grouped = ctx.grouped, on = ctx.holdOn })
+        if held then return false, holdWhy end
     end
     for _, id in ipairs(list(q.preQuestGroup)) do
         if done(id) == false then return false, "an earlier quest first" end
@@ -146,6 +155,21 @@ local function quick(db, id, name)
     return nil
 end
 
+-- Questie's group tag (QuestieDB.IsGroupQuest: its quest tag is ELITE):
+-- true | false, or nil when not known.
+local function eliteTag(db, id)
+    if type(db.IsGroupQuest) ~= "function" then return nil end
+    local ok, v = pcall(db.IsGroupQuest, id)
+    if ok and type(v) == "boolean" then return v end
+    return nil
+end
+
+local function holdOn()
+    local hold = N.QuestHold
+    if hold and type(hold.On) == "function" then return hold.On() end
+    return true
+end
+
 local function mapOf(zones, area)
     if type(zones.GetUiMapIdByAreaId) ~= "function" then return nil end
     local ok, m = pcall(zones.GetUiMapIdByAreaId, area)
@@ -194,6 +218,7 @@ function P.Read(client, here, log, opts)
                faction = ask(client, "faction") },
         done = function(id) return ask(client, "questDone", id) end,
         low = low,
+        grouped = ask(client, "grouped"), holdOn = holdOn(),
     }
     local found, areaMap, npcs = {}, {}, {}
     for id in pairs(db.QuestPointers) do
@@ -223,7 +248,7 @@ function P.Read(client, here, log, opts)
                         exclusiveTo = qt.exclusiveTo, requiredRaces = qt.requiredRaces,
                         requiredClasses = qt.requiredClasses, requiredMinRep = qt.requiredMinRep,
                         requiredMaxRep = qt.requiredMaxRep, requiredSkill = qt.requiredSkill,
-                        requiredSpell = qt.requiredSpell,
+                        requiredSpell = qt.requiredSpell, elite = eliteTag(db, id),
                         giverFaction = type(npc.friendlyToFaction) == "string" and npc.friendlyToFaction or nil }
                     if type(qt.name) == "string" and P.Candidate(q, ctx) then
                         local who = type(npc.name) == "string" and npc.name ~= "" and npc.name or P.GIVER
