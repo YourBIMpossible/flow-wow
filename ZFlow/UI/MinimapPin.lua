@@ -100,6 +100,25 @@ function Pin.Target(waypoint, heading, followed)
     return nil, Pin.NONE
 end
 
+-- Lead section 749: Nav/Follow.lua's Step reads the party (client.party)
+-- on every call. The pin asks it at most every FOLLOW_EVERY seconds, and in
+-- a fight (or a fight not known) not at all: the answer it holds stands
+-- (nothing held: not followed). memo is the pin's own table; now the
+-- client's clock (nil: asked each look); read() -> truthy when following.
+Pin.FOLLOW_EVERY = 0.5
+function Pin.Followed(memo, now, fight, read)
+    if type(memo) ~= "table" then memo = {} end
+    if fight ~= false then return memo.value == true end
+    if type(now) == "number" and type(memo.at) == "number" and now - memo.at < Pin.FOLLOW_EVERY then
+        return memo.value == true
+    end
+    local ok, v = pcall(read)
+    memo.value = false
+    if ok and v then memo.value = true end
+    memo.at = now
+    return memo.value
+end
+
 function Pin.Update(client, store, state, heading, followed)
     if type(state) ~= "table" then state = {} end
     local W = N.Waypoint
@@ -174,13 +193,23 @@ function Pin.Declare(k)
                     local okH, h = pcall(arrow.Heading)
                     if okH then heading = h end
                 end
-                -- A party member you point at (Nav/Follow.lua) is a waypoint's colour.
-                local followed = false
-                local follow = k.use and k.use("follow")
-                if type(follow) == "table" and type(follow.Step) == "function" then
-                    local okF, f = pcall(follow.Step)
-                    followed = okF and type(f) == "table"
+                -- A party member you point at (Nav/Follow.lua) is a waypoint's
+                -- colour; read at most every FOLLOW_EVERY, never in a fight.
+                local now, fight
+                if type(client.now) == "function" then
+                    local okN, v = pcall(client.now)
+                    if okN and type(v) == "number" then now = v end
                 end
+                if type(client.inCombat) == "function" then
+                    local okC, v = pcall(client.inCombat)
+                    if okC and type(v) == "boolean" then fight = v end
+                end
+                state.follow = state.follow or {}
+                local followed = Pin.Followed(state.follow, now, fight, function()
+                    local follow = k.use and k.use("follow")
+                    if type(follow) ~= "table" or type(follow.Step) ~= "function" then return false end
+                    return type(follow.Step()) == "table"
+                end)
                 last = Pin.Update(client, ctx.store, state, heading, followed)
                 return last
             end
