@@ -9623,7 +9623,12 @@ function ns.make.client(env)
     bagExt.NAMES = { "Bagnon", "BagBrother" }
     -- bag, slot of a replacement button, or nil.
     function bagExt.where(b)
-        local okC, cached = pcall(function() return type(b.info) == "table" and b.info.cached end)
+        local okC, cached
+        if type(b.IsCached) == "function" then
+            okC, cached = method(b, "IsCached")
+        else
+            okC, cached = pcall(function() return type(b.info) == "table" and b.info.cached end)
+        end
         if okC and cached then return nil end
         local okB, bag = method(b, "GetBag")
         if not okB or type(bag) ~= "number" then

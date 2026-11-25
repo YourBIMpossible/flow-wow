@@ -123,4 +123,15 @@ tests["bagnon: the ContainerItem class name is tried too"] = function(t)
     t.eq(shown(a.tex), "c.tga", "a ContainerItem button is marked")
 end
 
+tests["bagnon: a button whose IsCached() is true is not painted"] = function(t)
+    local Item = bagnonClass()
+    local env = hookEnv({ NUM_CONTAINER_FRAMES = 0, Bagnon = { Item = Item } })
+    local c = ns.make.client(env)
+    local a = Item.new(3, 2)
+    function a:IsCached() return true end
+    c.markBagKinds({ [3] = { [2] = "c.tga" } })
+    a:Update()
+    t.eq(shown(a.tex), nil, "a cached button (IsCached, no info.cached) is passed over")
+end
+
 return tests
