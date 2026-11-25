@@ -221,4 +221,76 @@ tests["reward mark: look only - no acting call from any path"] = function(t)
     t.eq(looked, {}, "no acting name looked up on the client")
 end
 
+-- Parity row C-37, the data half (lead section 668): for each reward
+-- choice, what it is for each of your class's specs, and its sell price,
+-- with the best seller marked. As Flow's Modules/Gear/QuestRewards.lua
+-- (:147-149) and SpecBadge.lua (:35, :100): a badge for each spec on each
+-- choice, and a coin on the best to sell. The marks are the drawing
+-- lane's. Fails before: there is no Board.
+local function board(addon) return addon.use(ns.GearRewardMark.NAME).Board() end
+
+tests["reward board: each choice's verdict for each spec, and its sell price"] = function(t)
+    local c, addon = boot({ role = "dps" })
+    c.setItemInfo({ [22] = { sellPrice = 40 }, [23] = { sellPrice = 90 }, [24] = { sellPrice = 15 } })
+    c.setQuestChoices(choices(WEAK, STRONG, TOUGH))
+    c.fire("QUEST_COMPLETE")
+    local b = board(addon)
+    t.ok(type(b) == "table", "a board while the window is open")
+    if type(b) ~= "table" then return end
+    t.eq(b.roles, { "dps", "tank" }, "the class's specs, sorted")
+    t.eq(b.chosen, "dps")
+    t.eq(#b.choices, 3)
+    t.eq(b.choices[1].index, 1)
+    t.eq(b.choices[1].roles, { dps = "worse", tank = "worse" }, "the weak helm is worse for both")
+    t.eq(b.choices[2].roles.dps, "upgrade", "strength for dps")
+    t.eq(b.choices[3].roles.tank, "upgrade", "stamina for a tank")
+    t.eq(b.choices[2].sell, 90)
+    t.eq(b.bestSell, 2, "the strength helm sells for the most")
+    t.eq(newProblems(addon), 0)
+end
+
+-- Zen-3's review of C-37 (lead section 701): a choice's verdict follows the
+-- tooltip's rule (Gear/Tooltip.lua T.Lines): an upgrade or a worse that
+-- would print as 0.0 is "same"; with no finite delta there is no verdict,
+-- and the spec is left out. Fails before: a tiny worse stayed "worse".
+tests["reward board: the verdict follows the tooltip's rule"] = function(t)
+    local V = ns.GearRewardMark.Verdict
+    local same = ns.GearTooltip.SAME
+    t.eq(V({ verdict = "worse", delta = -0.01 }), "same", "a tiny worse")
+    t.eq(V({ verdict = "upgrade", delta = 0.01 }), "same", "a tiny upgrade")
+    t.eq(V({ verdict = "upgrade", delta = same }), "upgrade")
+    t.eq(V({ verdict = "worse", delta = -same }), "worse")
+    t.eq(V({ verdict = "same", delta = 0 }), "same")
+    t.eq(V({ verdict = "upgrade" }), nil, "no delta: no verdict")
+    t.eq(V({ verdict = "worse", delta = 0 / 0 }), nil, "not a number: no verdict")
+    t.eq(V({ verdict = "none", delta = 1 }), nil)
+    t.eq(V(nil), nil)
+end
+
+tests["reward board: a price not read, or two the same, marks no best seller"] = function(t)
+    local c, addon = boot({ role = "dps" })
+    c.setItemInfo({ [23] = { sellPrice = 90 } })
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.fire("QUEST_COMPLETE")
+    t.eq(board(addon).bestSell, nil, "one price not read")
+    t.eq(board(addon).choices[1].sell, nil)
+    c.setItemInfo({ [23] = { sellPrice = 90 }, [24] = { sellPrice = 90 } })
+    t.eq(board(addon).bestSell, nil, "a tie")
+end
+
+tests["reward board: a choice not read yet has no verdict, and no window has no board"] = function(t)
+    local c, addon = boot({ role = "dps" })
+    t.eq(board(addon), nil, "no reward window open")
+    c.setQuestChoices({ { index = 1, link = WEAK }, { index = 2 } })
+    c.fire("QUEST_COMPLETE")
+    local b = board(addon)
+    t.eq(b.choices[2].roles, {}, "not read: no verdict, never a guess")
+    t.eq(b.choices[1].roles.dps, "worse")
+    c.setQuestChoices(nil)
+    t.eq(board(addon), nil, "the choices not read")
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.fire("QUEST_FINISHED")
+    t.eq(board(addon), nil, "the window closed")
+end
+
 return tests
