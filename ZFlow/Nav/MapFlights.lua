@@ -164,6 +164,9 @@ MF.TIP_CLEAR = "Click: take the lines away."
 MF.TIP_POINT = "Right-click: set your waypoint here; again to take it off."
 MF.TIP_UNPOINT = "Right-click: take your waypoint off it."
 MF.POINT_LABEL = "%s (flight master)"
+-- Said once when a right click takes your waypoint off a flight master
+-- (Flow's MF.RightClick prints the same news; our words, section 757).
+MF.UNPOINTED = "Waypoint at %s taken off: the arrow follows your route again."
 
 -- The label a right click gives your waypoint on a pin.
 function MF.PointLabel(pin)
@@ -443,6 +446,10 @@ function MF.Declare(k)
         if not slot then return false end
         if MF.WaypointOn(W.Get(slot), pin, { map = map, x = pin.x, y = pin.y }) then
             W.Clear(slot)
+            local c = ctx.client
+            if type(c) == "table" and type(c.print) == "function" then
+                pcall(c.print, ns.id.title .. ": " .. MF.UNPOINTED:format(MF.Short(pin.name)))
+            end
         else
             local wp = W.SetAt(slot, map, pin.x, pin.y, MF.PointLabel(pin))
             if not wp then return false end
