@@ -13949,6 +13949,29 @@ function ns.make.client(env)
         return true
     end
 
+    -- A1-13 (Nav/StepCard.lua, lead section 826): the step card's "Quest
+    -- log" action picks the quest in the game's own quest log, as Flow's
+    -- N:OpenInGame (Modules/Nav/Nav.lua:4282-4288 at b657e6e5). First
+    -- guesses, not seen in game on 16001: C_QuestLog.SetSelectedQuest(id),
+    -- else SelectQuestLogEntry(index) with the quest's place in the log.
+    -- The log window is not opened here (the player opens it; opening it
+    -- from add-on code would taint it).
+    --   c.selectQuest(id) -> true, or false and why: "bad" (not a number),
+    --     "noCall" (neither call), "notInLog", "raised"
+    function c.selectQuest(id)
+        if type(id) ~= "number" then return false, "bad" end
+        local group = env.C_QuestLog
+        if type(group) == "table" and type(group.SetSelectedQuest) == "function" then
+            if pcall(group.SetSelectedQuest, id) then return true end
+            return false, "raised"
+        end
+        if type(env.SelectQuestLogEntry) ~= "function" then return false, "noCall" end
+        local index = questLogIndex(id)
+        if index == nil then return false, "notInLog" end
+        if pcall(env.SelectQuestLogEntry, index) then return true end
+        return false, "raised"
+    end
+
     -- KNOW lane reads (lead section 487, Zen's lease). Only reads: nothing
     -- is cast, clicked, placed or sent. First guesses from classic's call
     -- names; none was seen in game on 16001.

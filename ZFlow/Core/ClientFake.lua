@@ -5573,3 +5573,24 @@ do
         return c
     end
 end
+
+-- § A1-13 (Nav/StepCard.lua): c.selectQuest(id), as the real client's
+-- (C_QuestLog.SetSelectedQuest, else SelectQuestLogEntry): true, or false
+-- and why. c.selectedQuest() says which quest was picked last;
+-- c.setSelectQuestCall(false) makes the call absent ("noCall").
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local picked, present = nil, true
+        function c.setSelectQuestCall(on) present = on ~= false end
+        function c.selectedQuest() return picked end
+        function c.selectQuest(id)
+            if type(id) ~= "number" then return false, "bad" end
+            if not present then return false, "noCall" end
+            picked = id
+            return true
+        end
+        return c
+    end
+end
