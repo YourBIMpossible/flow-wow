@@ -1,4 +1,4 @@
-# Static checks on every push and pull request: the same lint a contributor
+# Static checks on each integrated candidate: the same lint a contributor
 # runs before committing (tools/lint.ps1: luacheck with .luacheckrc, texture
 # paths, game globals in tests, functions defined twice, close buttons), plus
 # tools/check-structure.ps1 (Flow.toc lists every file and only real ones; no
@@ -8,26 +8,55 @@
 # end do the same for ZFlow/.
 name: Checks
 
-# Pushes run the checks only on the integration branches. Worker branches
-# (zflow-<lane>-<item>) start with a tests-only red commit and leave the
-# manifest and TOC lines to the lead, so they cannot pass on their own; the
-# lead runs the full set on each delivered head before merging it. A worker
-# branch can still be checked on demand with workflow_dispatch.
+# One remote verification path: a push of an integrated candidate to zflow or
+# main. Worker branches are verified locally by their author (the same
+# tools/*.ps1 steps below) and handed off by exact SHA; the lead integrates
+# them, verifies the batch locally, and pushes zflow once per candidate. There
+# is no pull_request or workflow_dispatch trigger, so no worker branch, PR or
+# hand-started run uses this workflow. A failed run is rerun (gh run rerun)
+# only for an infrastructure fault such as a failed apt install or runner loss.
 on:
   push:
     branches: [main, zflow]
-  # Feature PRs into zflow on the fork stay draft while their owner builds
-  # them; the job is skipped for a draft and runs once the PR is marked ready.
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A newer push to the same branch cancels the older run: the newer candidate
+# contains it, so the older result would be obsolete before it finished.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Reuse a result instead of repeating it: when this exact commit already
+  # passed this workflow (for example main fast-forwarded to a zflow tip that
+  # passed), the checks job is skipped and this job names the earlier run.
+  reuse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      actions: read
+    outputs:
+      verified: ${{ steps.find.outputs.verified }}
+    steps:
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prior=$(gh api "repos/${{ github.repository }}/actions/workflows/checks.yml/runs?head_sha=${{ github.sha }}&status=success&per_page=5" \
+            --jq "[.workflow_runs[] | select(.id != ${{ github.run_id }})][0].html_url // empty")
+          if [ -n "$prior" ]; then
+            echo "Commit ${{ github.sha }} already passed Checks: $prior"
+            echo "verified=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No earlier passing Checks run for ${{ github.sha }}; running the checks."
+            echo "verified=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    needs: reuse
+    if: needs.reuse.outputs.verified != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -61,17 +90,8 @@ jobs:
 
       # The Z-Flow line (ZFlow/): its own structure rules, its generated TOC
       # still matching manifest.lua, and its offline tests on the fake client.
-      # Without these a broken Z-Flow commit shows green here.
-      # Worker branches leave the TOC to the lead (see the note at the top), so
-      # on any ref other than zflow and main the TOC is regenerated here, in the
-      # runner only (nothing is committed), and the run judges the code instead
-      # of failing on a TOC the lead writes at merge. zflow and main still fail
-      # on a stale TOC.
-      - name: Z-Flow TOC regenerated for worker branches (not committed)
-        if: github.ref_name != 'zflow' && github.ref_name != 'main'
-        shell: pwsh
-        run: ./tools/zflow-toc.ps1
-
+      # Without these a broken Z-Flow commit shows green here. Only zflow and
+      # main reach this workflow, so a stale TOC always fails.
       - name: Z-Flow structure (tools/zflow-structure.ps1)
         shell: pwsh
         run: ./tools/zflow-structure.ps1
