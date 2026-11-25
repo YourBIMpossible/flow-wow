@@ -515,6 +515,13 @@ function V.Declare(k, diag)
 
     -- B-54: the "about N times" line for the run of that name, or nil when
     -- the run's rate or your questing rate is not measured.
+    -- B-55: the same ratio as a number (Nav/DungeonBadge.lua), or nil.
+    function api.Ratio(name)
+        if not ctx or type(name) ~= "string" or name == "" then return nil end
+        local rate = V.RateFrom(saved(V.SAMPLES), ask(client(), "clock"))
+        return V.Ratio(pick(V.RUN_XP, name), pick(V.TIMES, name), rate)
+    end
+
     function api.RateLine(name)
         if not ctx or type(name) ~= "string" or name == "" then return nil end
         -- Asked for a rate: from now on this character's XP is measured.
@@ -803,7 +810,7 @@ function V.Declare(k, diag)
     k:Module({
         name = V.NAME,
         needs = { "client", "store", "settings", "bus", "sched" },
-        provides = { Lines = api.Lines, LastLine = api.LastLine, RateLine = api.RateLine,
+        provides = { Lines = api.Lines, LastLine = api.LastLine, RateLine = api.RateLine, Ratio = api.Ratio,
                      Measuring = api.Measuring },
         start = function(c)
             ctx = c
