@@ -26,8 +26,9 @@
 -- "Point the arrow here (your waypoint)" (MapOverlay.lua:193-208,
 -- M.PointHere). The rest of Flow's menu (go here next, hide) is not here.
 --
--- LOOK ONLY: nothing is moved, targeted, cast or sent; a click only
--- changes what the map's card says.
+-- LOOK ONLY: nothing is moved, targeted, cast or sent. A left click
+-- changes what the map's card says; a right click sets or clears your own
+-- waypoint (saved data only, nothing in the game changes).
 --
 --   MR.Pins(rows, map) -> pins   (pure) the marks for the shown map
 --   MR.Card(rows, map, info) -> card or nil   (pure) the zone card
