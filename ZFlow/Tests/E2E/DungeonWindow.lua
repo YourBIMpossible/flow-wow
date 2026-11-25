@@ -51,7 +51,8 @@ local function boot(opts)
     c.setSaved(ns.id.accountDB, opts.account or {}); c.setSaved(ns.id.charDB, {})
     c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction(opts.faction or "Alliance"); c.setLevel(18)
     for _, id in ipairs({ 101, 103, 108, 201 }) do c.setQuestDone(id, false) end
-    if opts.log then c.setQuestLog(opts.log) end
+    -- R-02: the quest log read (empty unless given); opts.noLog: not read.
+    if not opts.noLog then c.setQuestLog(opts.log or {}) end
     c.setZone(1, 1436); c.setPosition(1436, 0.5, 0.5)
     if opts.questie ~= false then
         local db, zones = questie(opts.inside)
