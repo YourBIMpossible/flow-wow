@@ -384,5 +384,7 @@ return {
     "Gear/BagUpgrades.lua",
     -- E-27: the inventory word, every bag item with its verdict (after SellList, Reservations, Diag).
     "UI/InventoryList.lua",
+    -- FLOW-PARITY A2-14: zones with quests to take at your level, data only (after QuestRead, DungeonStates).
+    "Nav/WhereNext.lua",
     },
 }
