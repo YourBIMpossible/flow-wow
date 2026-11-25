@@ -191,7 +191,7 @@ end
 tests["quest offers: QO.Listed is what both the list and clear count"] = function(t)
     t.eq(type(QO.Listed), "function", "QO.Listed")
     if type(QO.Listed) ~= "function" then return end
-    local l = { [5] = { firstAt = 90 }, [3] = { firstAt = 95 }, ["7"] = { firstAt = 95 }, [9] = { firstAt = 1 } }
+    local l = { [5] = { firstAt = 90 }, [3] = { firstAt = 95 }, ["7"] = { firstAt = 95 }, [9] = { firstAt = -1000 } }
     t.eq(QO.Listed(l, 100), { 3, 5 }, "numbers only, dropped now, in order")
     t.eq(QO.Listed(nil, 100), {})
     local _, c, _, d = start({ offered = { ids = {}, titles = {} },

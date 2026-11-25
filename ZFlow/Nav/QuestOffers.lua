@@ -80,6 +80,19 @@ function QO.Dropped(list, id, now)
     return false
 end
 
+-- The quests dropped now, as quest numbers in order: what the word lists
+-- and what clear counts (one helper, so the two always agree; a key that
+-- is no quest number is neither listed nor counted).
+function QO.Listed(list, now)
+    local ids = {}
+    if type(list) ~= "table" then return ids end
+    for id in pairs(list) do
+        if type(id) == "number" and QO.Dropped(list, id, now) then ids[#ids + 1] = id end
+    end
+    table.sort(ids)
+    return ids
+end
+
 function QO.Note(list, id, onOffer, now, npc)
     if type(list) ~= "table" then return nil end
     if onOffer then
@@ -182,12 +195,9 @@ function QO.Declare(k, diag)
     -- Empties the whole list (a pause that has run out too) and returns how
     -- many quests were dropped right now: the ones the word lists.
     function api.clear()
-        local l, t, n, any = list(), now(), 0, false
-        for id in pairs(l) do
-            any = true
-            if QO.Dropped(l, id, t) then n = n + 1 end
-        end
-        if ctx and any then ctx.store:set("char", QO.PATH, {}) end
+        local l = list()
+        local n = #QO.Listed(l, now())
+        if ctx and next(l) ~= nil then ctx.store:set("char", QO.PATH, {}) end
         return n
     end
 
@@ -260,11 +270,8 @@ function QO.Declare(k, diag)
             say(string.format(QO.CLEARED, api.clear()))
             return
         end
-        local l, t, ids = list(), now(), {}
-        for id in pairs(l) do
-            if type(id) == "number" and QO.Dropped(l, id, t) then ids[#ids + 1] = id end
-        end
-        table.sort(ids)
+        local l = list()
+        local ids = QO.Listed(l, now())
         if #ids == 0 then say(QO.NONE) return end
         say(string.format(QO.HEAD, #ids))
         for _, id in ipairs(ids) do
