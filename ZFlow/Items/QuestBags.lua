@@ -9,6 +9,18 @@ local _, ns = ...
 --   buy       while a vendor window is open, an item it sells that an open
 --             objective of a quest in the log still needs: "Buy Bundle of
 --             Wood from a vendor for the quest Stormwind Errand."
+--   auction   (parity row C-11, lead section 603) an item an open objective
+--             still needs, with an auction price this player saw
+--             (Items/AuctionLog.lua) and no vendor price known (the price
+--             book's "vendor" kind): "Buy 5 Earthroot at the auction house
+--             for the quest Gathering the Cure: about 12s each when you
+--             last looked (1g)." The item's ID is Questie's (the quest's
+--             ObjectiveData[i], Type "item", as UI/PlateQuests.lua reads
+--             it); without Questie nothing is said. As Flow
+--             Modules/Quests/QuestBuy.lua QB.Steps / QB.Line: a price seen
+--             at the auction house is the test that it can be bought there.
+--             Flow also made it an optional route step near an auctioneer;
+--             here it is words only.
 -- Which quest asked for which item is learned from the player's own quest
 -- log (objective text "Name: 3/8"), never from a table. An item never seen
 -- asked for, a hand-in not known, an item kind not read, a log, bag or
@@ -23,6 +35,9 @@ local _, ns = ...
 --   Q.WareName(ware, info)              a ware's item name, or nil
 --   Q.ToBuy(rows, wares)                { { item, quest }, ... }
 --   Q.BuyText(list)                     the line, or nil
+--   Q.AuctionBuys(rows, itemOf, ahPrice, vendorSells)
+--                                       { { item, quest, left, price }, ... }
+--   Q.AuctionText(list, coin)           the line, or nil
 --
 -- Reads (existing, Core/Client.lua): questLog (through ns.Nav.QuestLogRows),
 -- questDone, bagItems, itemInfo, merchantItems, watchMerchant.
@@ -45,6 +60,10 @@ Q.MAX_NAMES = 3
 Q.LEFT_ONE = "%s is left over from a finished quest: you can sell or destroy it."
 Q.LEFT_MANY = "%s are left over from finished quests: you can sell or destroy them."
 Q.BUY = "Buy %s from a vendor for the quest %s."
+Q.AUCTION_PROMPT = "items.questAuction"
+Q.AUCTION = "Buy %d %s at the auction house for the quest %s: about %s each when you last looked (%s)."
+Q.AUCTION_ONE_MORE = " 1 more item too."
+Q.AUCTION_MORE = " %d more items too."
 
 local function ask(client, name, ...)
     if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end
@@ -159,6 +178,53 @@ function Q.BuyText(list)
     return table.concat(lines, " ")
 end
 
+-- "Name: n/m" -> m - n, or nil.
+local function leftOf(text)
+    if type(text) ~= "string" then return nil end
+    local have, need = text:match(":%s*(%d+)%s*/%s*(%d+)%s*$")
+    have, need = tonumber(have), tonumber(need)
+    if not have or not need or need <= have then return nil end
+    return need - have
+end
+
+function Q.AuctionBuys(rows, itemOf, ahPrice, vendorSells)
+    local out, seen = {}, {}
+    if type(rows) ~= "table" or type(itemOf) ~= "function" or type(ahPrice) ~= "function" then return out end
+    for _, r in ipairs(rows) do
+        if type(r) == "table" and r.complete ~= true and r.failed ~= true and type(r.title) == "string"
+            and type(r.objectives) == "table" then
+            for i, o in ipairs(r.objectives) do
+                local name, left
+                if type(o) == "table" and o.done ~= true then name = Q.ObjectiveItem(o.text) end
+                if name then left = leftOf(o.text) end
+                local okId, id = false, nil
+                if left then okId, id = pcall(itemOf, r.id, i) end
+                if okId and type(id) == "number" and not seen[id] then
+                    local okV, sold = true, false
+                    if type(vendorSells) == "function" then okV, sold = pcall(vendorSells, id) end
+                    local okP, price = pcall(ahPrice, id)
+                    if okV and sold ~= true and okP and type(price) == "number" and price == price
+                        and price > 0 and price < math.huge then
+                        seen[id] = true
+                        out[#out + 1] = { item = name, quest = r.title, left = left, price = price }
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+function Q.AuctionText(list, coin)
+    if type(list) ~= "table" or #list == 0 or type(coin) ~= "function" then return nil end
+    local f = list[1]
+    local line = Q.AUCTION:format(f.left, tostring(f.item), tostring(f.quest), coin(math.floor(f.price)),
+        coin(math.ceil(f.left * f.price)))
+    if #list == 2 then line = line .. Q.AUCTION_ONE_MORE
+    elseif #list > 2 then line = line .. Q.AUCTION_MORE:format(#list - 1) end
+    return line
+end
+
 local EVENTS = { "QUEST_LOG_UPDATE", "QUEST_TURNED_IN", "QUEST_REMOVED", "BAG_UPDATE",
                  "MERCHANT_SHOW", "MERCHANT_CLOSED" }
 
@@ -173,7 +239,8 @@ function Q.Declare(k)
             key = Q.SETTING, scope = "char", type = "bool", default = true,
             label = "Quest items in your bags",
             help = "Names quest items left over from quests you have handed in, and items a vendor you have "
-                .. "open sells that a quest in your log needs. It only advises: nothing is sold, destroyed or bought.",
+                .. "open sells that a quest in your log needs, or that you saw at the auction house. "
+                .. "It only advises: nothing is sold, destroyed, bought or posted.",
             group = "bags",
             synonyms = { "quest", "leftover", "vendor", "buy", "bags", "sell" },
         } },
@@ -211,18 +278,47 @@ function Q.Declare(k)
                 return out
             end
 
+            -- C-11 reads: Questie's item ID for objective i, the last auction
+            -- price seen here, whether a vendor price is known.
+            local function itemOf(quest, i)
+                local db = ask(client, "questieModule", "QuestieDB")
+                if type(db) ~= "table" or type(db.GetQuest) ~= "function" then return nil end
+                local okQ, q = pcall(db.GetQuest, quest)
+                local od = okQ and type(q) == "table" and type(q.ObjectiveData) == "table" and q.ObjectiveData[i]
+                if type(od) ~= "table" or od.Type ~= "item" then return nil end
+                local id = od.Id
+                if type(id) == "table" then id = id[1] end
+                return type(id) == "number" and id or nil
+            end
+            local function ahPrice(id)
+                local AL = ns.AuctionLog
+                local e = AL and AL.Read(ctx.store, client, id)
+                local h
+                if type(e) == "table" then h = e.h end
+                return type(h) == "table" and #h >= 2 and h[#h] or nil
+            end
+            local function vendorSells(id)
+                local book = ctx.store:get("account", "learned.prices")
+                local key = ns.Items and ns.Items.Key(id)
+                if type(book) ~= "table" or key == nil then return false end
+                local p = ns.Prices.Get(book, key, "vendor")
+                return type(p) == "table" and type(p.value) == "number"
+            end
+
             refresh = function()
                 local rows = ns.Nav.QuestLogRows(client)
                 local owners = ctx.store:table("char", Q.PATH)
                 if type(rows) == "table" and type(owners) == "table" then Q.Learn(owners, rows) end
-                local left, buy
+                local left, buy, auction
                 if ctx.settings:get(Q.SETTING) ~= false and type(rows) == "table" then
                     left = Q.LeftoverText(Q.Leftovers(owners, rows, bag(),
                         function(id) return ask(client, "questDone", id) end))
                     if ask(client, "merchantOpen") == true then buy = Q.BuyText(Q.ToBuy(rows, wares())) end
+                    auction = Q.AuctionText(Q.AuctionBuys(rows, itemOf, ahPrice, vendorSells), ns.Prices.Coin)
                 end
                 show(Q.LEFTOVER_PROMPT, left)
                 show(Q.BUY_PROMPT, buy)
+                show(Q.AUCTION_PROMPT, auction)
             end
 
             ask(client, "watchMerchant")
