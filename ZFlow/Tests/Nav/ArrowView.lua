@@ -542,10 +542,19 @@ T["R7: the quest arrow's colour is RC.Of's for its step"] = function(t)
     colour(t, N.ArrowView(state()).quest.colour, dr, dg, db, "a route step: by distance")
 end
 
-T["R7: with the one-colour setting a waypoint arrow keeps the saved flat colour"] = function(t)
+-- A1-06 (lead sections 643 and 645): with the one-colour setting the arrow
+-- is the one flat colour for every step, waypoint and profession too, as
+-- the map's first leg is (Muse's one-colour fix to MRL.Paint).
+T["A1-06: with the one-colour setting every arrow is the one flat colour"] = function(t)
     local flat = N.ArrowPaletteOf("standard", false)
-    local r, g, b = N.ArrowColor("zone", 300, flat)
-    colour(t, N.ArrowView(state({ palette = flat }, { family = "waypoint" })).quest.colour, r, g, b, "flat")
+    local fr, fg, fb = N.ArrowColor("zone", 300, flat)
+    local MRL = ns.MapRouteLines
+    local rr, rg, rb = MRL.Paint("first", { state = "zone" }, 300, "standard", false)
+    colour(t, { fr, fg, fb }, rr, rg, rb, "the flat colour is the map's first leg for a route step")
+    colour(t, N.ArrowView(state({ palette = flat })).quest.colour, fr, fg, fb, "route step")
+    colour(t, N.ArrowView(state({ palette = flat }, { family = "waypoint" })).quest.colour, fr, fg, fb, "waypoint")
+    colour(t, N.ArrowView(state({ palette = flat }, { family = "profession" })).quest.colour, fr, fg, fb,
+        "profession step")
 end
 
 T["R7: a palette row gives back its palette word"] = function(t)
