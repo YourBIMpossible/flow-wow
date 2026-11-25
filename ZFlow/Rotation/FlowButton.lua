@@ -501,8 +501,10 @@ function FB.Declare(k)
             u.wanted = { hold = hold }
             after(kf:want(u.wanted))
             -- The face follows the rotation going off or on while the
-            -- button holds nothing. A secure button: out of a fight only.
-            if turned and u.hold == nil and lockdown() == false then icon(nil) end
+            -- button holds nothing; while off, the word is drawn again on
+            -- every call, so no earlier face (a reload, a late view) stays.
+            -- A secure button: out of a fight only.
+            if (turned or u.wordOnly) and u.hold == nil and lockdown() == false then icon(nil) end
         end
 
         function u.try()
@@ -585,7 +587,7 @@ function FB.Declare(k)
         if type(h) ~= "table" or type(h.spell) ~= "string" or ns.cast.ATTACK[h.spell] ~= true then return end
         local pick = FB.FightPick(lastView)
         if pick == nil then return end
-        units.flow.want(true, pick, units.flow.why)
+        units.flow.want(true, pick, units.flow.why, units.flow.wordOnly)
     end
 
     k:Module({

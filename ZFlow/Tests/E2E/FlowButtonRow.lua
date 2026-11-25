@@ -193,8 +193,9 @@ tests["flow row: rotation off, the Flow button shows no question mark"] = functi
     addon.settings:set(D.SETTING, false); c.advance(3, 5)
     t.eq(held(c, FLOW), nil, "off: the Flow button holds nothing")
     t.eq(question(c, FLOW), false, "off: no question mark")
-    t.eq(face(c, FLOW).dimmed, "picture", "the last spell, dimmed")
-    t.eq(rowOf(c, FLOW).slots[1].icon, "tex:Power Word: Fortitude", "its own picture")
+    -- Lead section 533: the word Flow, not the last spell's picture.
+    t.eq(face(c, FLOW).empty, true, "the plain face")
+    t.eq(face(c, FLOW).dimmed, "word", "the word Flow")
     t.eq(rowOf(c, FLOW).slots[1].attrs.type, nil, "a click casts nothing")
     noMacros(t, c)
 end
