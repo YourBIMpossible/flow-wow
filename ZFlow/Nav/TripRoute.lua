@@ -400,12 +400,16 @@ T.MORE = "... and %d more stops."
 T.MODE_SAID = {
     quests = "Route: the quests in your log only.",
     optimal = "Route: your quests, quests to pick up on the way and town stops.",
-    complete = "Route: everything, quests far below your level too.",
+    complete = "Route: everything, quests far below your level and battleground quests too.",
 }
+-- battleground (row A1-25b): Everything offers battleground quests as if
+-- their row were ticked, as legacy Flow's "complete" route did
+-- (b657e6e5:Modules/Nav/Nav.lua:1350,1354, lowQuests and battlegrounds on
+-- only for "complete"). Other routes leave it to the row.
 function T.ModeFlags(mode)
-    if mode == "quests" then return { pickups = false, town = false, low = false, hub = false } end
-    if mode == "complete" then return { pickups = true, town = true, low = true, hub = true } end
-    return { pickups = true, town = true, low = false, hub = true }
+    if mode == "quests" then return { pickups = false, town = false, low = false, hub = false, battleground = false } end
+    if mode == "complete" then return { pickups = true, town = true, low = true, hub = true, battleground = true } end
+    return { pickups = true, town = true, low = false, hub = true, battleground = false }
 end
 
 -- FLOW-PARITY A1-30: the hub tour first, a port of legacy Flow's
@@ -1077,7 +1081,8 @@ function T.Declare(k, diag)
             for _, row in ipairs(rows) do
                 if type(row) == "table" and row.id ~= nil then log[row.id] = true end
             end
-            pickups, note = RP.Read(c, here, log, { low = T.ModeFlags(mode()).low })
+            pickups, note = RP.Read(c, here, log, { low = T.ModeFlags(mode()).low,
+                battleground = T.ModeFlags(mode()).battleground })
         end
         local function extrasOf(town)
             local extras = {}
@@ -1592,7 +1597,7 @@ function T.Declare(k, diag)
         label = "What the route includes", group = "travel.route",
         help = "My quests only: only the quests in your log. No pick-ups, no town stops, no hub tour."
             .. " Today's route: today's route, with nearby turn-ins and pick-ups first."
-            .. " Everything: today's route, plus pick-ups far below your level.",
+            .. " Everything: today's route, plus pick-ups far below your level and battleground quests.",
         synonyms = { "route", "mode", "includes", "quests", "everything", "pick" } })
     k:Setting({ key = T.SORT_KEY, scope = "account", type = "choice", choices = sortChoices,
         default = T.SORT_LABELS.distance, path = T.SORT_PATH,

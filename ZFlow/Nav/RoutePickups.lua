@@ -230,6 +230,15 @@ local function battlegroundsOn()
     return false
 end
 
+-- Row A1-25b: the Everything route (opts.battleground, T.ModeFlags) offers
+-- battleground quests whatever their row says, as legacy Flow's "complete"
+-- route did (b657e6e5:Modules/Nav/Nav.lua:1354); any other route follows
+-- the row (A2-06).
+function P.BattlegroundsOn(opts)
+    if type(opts) == "table" and opts.battleground == true then return true end
+    return battlegroundsOn() == true
+end
+
 local function mapOf(zones, area)
     if type(zones.GetUiMapIdByAreaId) ~= "function" then return nil end
     local ok, m = pcall(zones.GetUiMapIdByAreaId, area)
@@ -279,7 +288,7 @@ function P.Read(client, here, log, opts)
         done = function(id) return ask(client, "questDone", id) end,
         low = low,
         grouped = ask(client, "grouped"), holdOn = holdOn(), lowOn = lowOn(),
-        battlegrounds = battlegroundsOn(),
+        battlegrounds = P.BattlegroundsOn(opts),
     }
     local found, areaMap, npcs = {}, {}, {}
     for id in pairs(db.QuestPointers) do
