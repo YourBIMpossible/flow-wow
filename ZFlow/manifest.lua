@@ -121,6 +121,7 @@ return {
         "Rotation/Spec.lua",
         "Rotation/Fights.lua",
         "UI/FightLog.lua",
+        "Rotation/Profiler.lua",
         "Classes/Druid.lua",
         "Classes/Hunter.lua",
         "Classes/Mage.lua",
