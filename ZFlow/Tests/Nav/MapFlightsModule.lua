@@ -30,6 +30,7 @@ local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, {})
     c.setMapCorners(1414, { cont = 1, ox = 0, oy = 0, ex = 10000, ey = 0, sx = 0, sy = 1000 })
     c.setMapCorners(1411, { cont = 1, ox = 0, oy = 0, ex = 1000, ey = 0, sx = 0, sy = 500 })
     c.setMapCorners(1430, { cont = 0, ox = 0, oy = 0, ex = 1000, ey = 0, sx = 0, sy = 1000 })

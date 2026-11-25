@@ -153,10 +153,32 @@ end
 -- What a click does, in a pin's tooltip (our words, section 757).
 MF.TIP_PICK = "Click: lines to where you can fly from here."
 MF.TIP_CLEAR = "Click: take the lines away."
+MF.TIP_POINT = "Right-click: set your waypoint here; again to take it off."
+MF.TIP_UNPOINT = "Right-click: take your waypoint off it."
+MF.POINT_LABEL = "%s (flight master)"
+
+-- The label a right click gives your waypoint on a pin.
+function MF.PointLabel(pin)
+    local name = pin.npc
+    if name == nil then name = pin.name end
+    return MF.POINT_LABEL:format(tostring(name))
+end
+
+-- Is your waypoint the one a right click on this pin set? wp: Nav/
+-- Waypoint.lua's { map, x, y, label } or nil; spot: { map, x, y }.
+function MF.WaypointOn(wp, pin, spot)
+    if type(wp) ~= "table" or type(pin) ~= "table" then return false end
+    if wp.label ~= nil and wp.label == MF.PointLabel(pin) then return true end
+    if type(spot) == "table" and wp.map == spot.map and type(wp.x) == "number" and type(spot.x) == "number"
+        and type(wp.y) == "number" and type(spot.y) == "number" then
+        return math.abs(wp.x - spot.x) < 0.005 and math.abs(wp.y - spot.y) < 0.005
+    end
+    return false
+end
 
 -- A drawn pin's tooltip: its title, then its lines. picked: the pin picked
 -- (nil: none). stepText, airText: as TipLines.
-function MF.PinTip(pin, picked, stepText, airText)
+function MF.PinTip(pin, picked, stepText, airText, pointed)
     local title, lines = MF.TipLines(pin, stepText, airText)
     if type(picked) == "table" and picked.name ~= pin.name then
         lines[#lines + 1] = (MF.FlightText(picked, pin))
@@ -165,6 +187,11 @@ function MF.PinTip(pin, picked, stepText, airText)
         lines[#lines + 1] = MF.TIP_CLEAR
     else
         lines[#lines + 1] = MF.TIP_PICK
+    end
+    if pointed then
+        lines[#lines + 1] = MF.TIP_UNPOINT
+    else
+        lines[#lines + 1] = MF.TIP_POINT
     end
     return title, lines
 end
@@ -276,8 +303,13 @@ end
 --   (MF.Click): lines go from it to every other pin on the map (MF.Links:
 --   can = you can fly it), the next step's flight line is not drawn while
 --   one is picked, and the next click clears. A pick no longer on the map
---   is dropped. Look only: a click changes only what the map shows. The
---   colours and the look are the drawing's. Not tested in game.
+--   is dropped. The colours and the look are the drawing's.
+--   B-12 (lead section 783): a right click on a pin sets your own waypoint
+--   on it through Nav/Waypoint.lua W.SetAt (the same path as Alt + click
+--   on the map), labelled MF.PointLabel; a right click on the master your
+--   waypoint is already on takes it off (W.Clear). As Flow's MF.RightClick,
+--   MF.PointAt and MF.WaypointOn (Modules/Nav/MapFlights.lua:194-238).
+--   Nothing else is changed. Not tested in game.
 MF.NAME = "mapFlights"
 MF.EVERY = 0.5          -- seconds between looks
 MF.ROW_LABEL = "Show my flight paths on the world map"
@@ -366,8 +398,11 @@ function MF.Declare(k)
         if sel.from ~= nil and at[sel.from] == nil then sel = {} end
         local picked = nil
         if sel.from ~= nil then picked = at[sel.from] end
+        local W = ns.Nav and ns.Nav.Waypoint
+        local wp = nil
+        if type(W) == "table" then wp = W.Get(W.Slot(ctx.store)) end
         for _, pin in ipairs(out) do
-            pin.title, pin.tip = MF.PinTip(pin, picked)
+            pin.title, pin.tip = MF.PinTip(pin, picked, nil, nil, MF.WaypointOn(wp, pin, { map = map, x = pin.x, y = pin.y }))
             if picked == pin then pin.picked = true end
         end
         local lines = MF.Links(out, sel.from)
@@ -382,9 +417,32 @@ function MF.Declare(k)
 
     -- A click on the pin named `name`: a left click picks it or clears the
     -- pick (MF.Click), then the map is drawn again. Anything else: nothing.
+    -- A right click: your waypoint on it, or off it when it is already on
+    -- it (Nav/Waypoint.lua, nothing else).
+    local function point(pin)
+        local W = ns.Nav and ns.Nav.Waypoint
+        if type(W) ~= "table" or not handle then return false end
+        local okMap, map = pcall(handle.map)
+        if not okMap or map == nil then return false end
+        local slot = W.Slot(ctx.store)
+        if not slot then return false end
+        if MF.WaypointOn(W.Get(slot), pin, { map = map, x = pin.x, y = pin.y }) then
+            W.Clear(slot)
+        else
+            local wp = W.SetAt(slot, map, pin.x, pin.y, MF.PointLabel(pin))
+            if not wp then return false end
+        end
+        return true
+    end
+
     function api.click(name, button)
-        if button ~= nil and button ~= "LeftButton" then return false end
         if name == nil or onMap[name] == nil then return false end
+        if button == "RightButton" then
+            local done = point(onMap[name])
+            api.draw()
+            return done
+        end
+        if button ~= nil and button ~= "LeftButton" then return false end
         sel = MF.Click(sel, name)
         api.draw()
         return true
@@ -397,7 +455,7 @@ function MF.Declare(k)
 
     k:Module({
         name = MF.NAME,
-        needs = { "client", "settings" },
+        needs = { "client", "settings", "store" },
         ticks = { { every = MF.EVERY, when = "always", run = function() api.draw() end } },
         start = function(c) ctx = c end,
         stop = function() clear() end,
