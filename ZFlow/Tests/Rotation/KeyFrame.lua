@@ -752,4 +752,23 @@ tests["form key: the handler's secure code copies each slot of the state entered
     t.eq(text:find("macro", 1, true), nil, "never a macro")
 end
 
+-- Lead section 701: the data half on the fake's "§ D-04" stub. The fake's
+-- own button and state handler, with the client's own lock.
+tests["form key: on the fake client's stub the handler gets the forms out of a fight only"] = function(t)
+    local c = ns.make.fakeClient()
+    t.eq(c.stateHandler({ name = "x" }), nil, "off as made")
+    c.useStateHandler(true)
+    local button = c.secureButton({ name = "Key" })
+    local sh = c.stateHandler({ name = "Forms", button = button, state = ns.cast.STATE })
+    c.setCombat(true)
+    local kf = K.New({ button = button, handler = sh, lockdown = c.combatLockdown, form = function() return 0 end })
+    t.eq(kf:want(formPlan()).state, "waiting", "in a fight: nothing")
+    t.eq(sh.drivers, {})
+    c.setCombat(false)
+    t.eq(kf:try().state, "set")
+    t.eq(sh.attrs["key-3"], "Claw")
+    t.eq(#sh.drivers, 1)
+    t.eq(sh.snippets, { ns.cast.FORM_SNIPPET })
+end
+
 return tests
