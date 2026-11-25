@@ -377,5 +377,6 @@ return {
     "Gear/BagUpgrades.lua",
     -- E-27: the inventory word, every bag item with its verdict (after SellList, Reservations, Diag).
     "UI/InventoryList.lua",
+    "Items/BankTakeOut.lua", -- E-19: the bank take out list, data only (after HaveTip, Reservations, BankList, Banker).
     },
 }
