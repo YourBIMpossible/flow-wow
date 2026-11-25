@@ -453,6 +453,22 @@ function T.TownDone(stop, now)
     return now.bind == stop.inn
 end
 
+-- Twin's plan, note 3 (lead sections 545 and 552): the places the inn for
+-- the set-hearthstone stop is chosen from are the route's own stops, each
+-- on its own map: the quest steps and pick-ups it plans. Never a town stop,
+-- and never a spot the route does not go to (an objective already done, the
+-- turn-in of a quest not finished).
+function T.InnSpots(stops)
+    local out = {}
+    for _, s in ipairs(type(stops) == "table" and stops or {}) do
+        if type(s) == "table" and not T.TOWN_KINDS[s.kind] and type(s.place) == "table"
+            and s.place.map ~= nil and finite(s.place.x) and finite(s.place.y) then
+            out[#out + 1] = { map = s.place.map, x = s.place.x, y = s.place.y }
+        end
+    end
+    return out
+end
+
 function T.Live(stop, rows)
     if type(stop) ~= "table" then return false end
     if stop.kind == "pickup" then
@@ -711,25 +727,28 @@ function T.Declare(k, diag)
             end
             pickups, note = RP.Read(c, here, log)
         end
-        local spots = {}
-        local function spotAt(sp)
-            local pt = type(sp) == "table" and type(sp.points) == "table" and sp.points[1] or nil
-            if type(pt) == "table" and finite(pt.x) and finite(pt.y) then
-                spots[#spots + 1] = { map = here.map, x = pt.x, y = pt.y }
-            end
+        local function extrasOf(town)
+            local extras = {}
+            for _, p in ipairs(town) do extras[#extras + 1] = p end
+            for _, p in ipairs(type(pickups) == "table" and pickups or {}) do extras[#extras + 1] = p end
+            return extras
         end
-        for _, q in pairs(places or {}) do
-            if type(q) == "table" then
-                spotAt(q.turnIn)
-                for _, o in pairs(type(q.objectives) == "table" and q.objectives or {}) do spotAt(o) end
-            end
-        end
-        local extras = {}
-        local town, aside = townStops(c, here, spots)
-        for _, p in ipairs(town) do extras[#extras + 1] = p end
-        for _, p in ipairs(type(pickups) == "table" and pickups or {}) do extras[#extras + 1] = p end
-        local r, why = T.Plan(rows, places or {}, here, legs, extras, note)
+        -- Note 3: the route is planned first with no inn. The inn is then
+        -- chosen from that route's own stops (T.InnSpots), and only when
+        -- one is chosen is the route planned again with its stop in. One
+        -- more plan for each route word, never one a frame.
+        local town, aside = townStops(c, here, nil)
+        local r, why = T.Plan(rows, places or {}, here, legs, extrasOf(town), note)
         if not r then return nil, why, note end
+        local withInn, asideInn = townStops(c, here, T.InnSpots(r.stops))
+        local hasInn = false
+        for _, p in ipairs(withInn) do
+            if type(p) == "table" and p.kind == "hearth" then hasInn = true end
+        end
+        if hasInn then
+            local again = T.Plan(rows, places or {}, here, legs, extrasOf(withInn), note)
+            if again then r, aside = again, asideInn end
+        end
         for _, a in ipairs(aside or {}) do
             r.left = type(r.left) == "table" and r.left or {}
             r.left[#r.left + 1] = a
