@@ -55,18 +55,43 @@ local function button(lock)
     return h
 end
 
+-- D-04 (lead section 697): a hand-written state handler, what the LEAD
+-- NEED client.stateHandler describes. Each call refuses while locked.
+local function handler(lock)
+    local h = { attrs = {}, drivers = {}, snippets = {}, inLock = 0 }
+    function h.setAttribute(attr, value)
+        if lock() ~= false then h.inLock = h.inLock + 1 return false, "lockdown" end
+        h.attrs[attr] = value
+        return true
+    end
+    function h.driver(condition)
+        if lock() ~= false then h.inLock = h.inLock + 1 return false, "lockdown" end
+        h.drivers[#h.drivers + 1] = condition
+        return true
+    end
+    function h.snippet(text)
+        if lock() ~= false then h.inLock = h.inLock + 1 return false, "lockdown" end
+        h.snippets[#h.snippets + 1] = text
+        return true
+    end
+    return h
+end
+
 -- A key frame over a hand-written button and a lock the test holds.
 local function make(opts)
     opts = opts or {}
     local s = { lock = false, form = opts.form }
     local function lock() return s.lock end
     local h = (not opts.noButton) and button(lock) or nil
+    local sh
+    if opts.handler then sh = handler(lock) end
     local kf = K.New({
         button = h,
+        handler = sh,
         lockdown = lock,
         form = (not opts.noForm) and function() return s.form end or nil,
     })
-    return kf, h, s
+    return kf, h, s, sh
 end
 
 local function joined(lines) return table.concat(lines, "\n") end
@@ -667,6 +692,64 @@ tests["key frame module: the word and its help are given to the slash command"] 
     t.eq(type(diag.commands[K.WORD]), "function")
     t.eq(type(K.HELP), "string")
     t.eq(diag.help[K.WORD], K.HELP)
+end
+
+-- Parity row D-04 (lead section 697), as Flow's Modules/Rotation/Cast.lua
+-- (:877-932): a secure state handler holds each form's spells and a state
+-- driver on the forms; in a fight the handler's own secure code copies the
+-- row of the form you enter onto the button. All of it is set out of a
+-- fight only. Fails before: the handler is never given anything.
+tests["form key: out of a fight the handler gets each form's row, its code and the driver"] = function(t)
+    local kf, _, _, sh = make({ handler = true })
+    local st = kf:want(formPlan())
+    t.eq(st.state, "set")
+    t.eq(sh.attrs["key-0"], "Wrath", "no form: Wrath")
+    t.eq(sh.attrs["key-3"], "Claw", "in the cat form: Claw")
+    t.eq(sh.snippets, { ns.cast.FORM_SNIPPET }, "its secure code, once")
+    t.eq(#sh.drivers, 1, "one driver")
+    t.ok(type(sh.drivers[1]) == "string" and sh.drivers[1]:find("[form:3] 3", 1, true) ~= nil, tostring(sh.drivers[1]))
+end
+
+tests["form key: the same plan again sets nothing more; a changed one sets only what changed"] = function(t)
+    local kf, _, _, sh = make({ handler = true })
+    kf:want(formPlan())
+    kf:try(true)
+    t.eq(#sh.drivers, 1, "the driver is not set again")
+    t.eq(#sh.snippets, 1, "nor the code")
+    local changed = ns.KeyPlan({ keys = { none = { key = "Wrath", ctrl = "Moonfire" }, Cat = { key = "Rake" } } },
+        { forms = { { name = "Cat", index = 3 } } })
+    kf:want(changed)
+    t.eq(sh.attrs["key-3"], "Rake")
+    t.eq(#sh.snippets, 1, "the code once")
+end
+
+tests["form key: in a fight nothing is given to the handler; it waits"] = function(t)
+    local kf, _, s, sh = make({ handler = true })
+    s.lock = true
+    local st = kf:want(formPlan())
+    t.eq(st.state, "waiting")
+    t.eq(sh.attrs, {})
+    t.eq(sh.drivers, {})
+    t.eq(sh.inLock, 0, "not even asked while locked")
+    s.lock = false
+    kf:try()
+    t.eq(sh.attrs["key-3"], "Claw", "after the fight")
+end
+
+tests["form key: with no handler the button is set as before"] = function(t)
+    local kf, h = make()
+    t.eq(kf:want(formPlan()).state, "set")
+    t.eq(h.attrs.spell, "Wrath")
+end
+
+tests["form key: the handler's secure code copies each slot of the state entered"] = function(t)
+    local text = ns.cast.FORM_SNIPPET
+    t.ok(type(text) == "string" and text ~= "", "a code text")
+    for _, part in ipairs({ "GetFrameRef(\"key\")", "\"key-\" .. newstate", "\"ctrl-\" .. newstate",
+        "\"shift-\" .. newstate", "\"alt-\" .. newstate", "\"more-\" .. newstate", "\"*spell-ctrl\"" }) do
+        t.ok(text:find(part, 1, true) ~= nil, "it reads " .. part)
+    end
+    t.eq(text:find("macro", 1, true), nil, "never a macro")
 end
 
 return tests
