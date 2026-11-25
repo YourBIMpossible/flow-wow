@@ -73,4 +73,19 @@ tests["step detail: no route, nothing"] = function(t)
     t.eq(SD().Rows({ stops = {} }), {})
 end
 
+-- Zen-3's read (lead section 753): View() keeps held steps, and the arrow
+-- walks the first one not held (Flow's drawer reads current.goal, Nav.lua
+-- :4177). That one is the drawer's step; held ones are listed under Then
+-- with why; Blocked only when the arrow's own step is held (all are).
+tests["step detail: the arrow's step is the first not held; held ones are listed with why"] = function(t)
+    if type(SD()) ~= "table" then return t.ok(false, "not loaded") end
+    local view = { stops = stops(3) }
+    view.stops[1].held = "not complete yet"
+    view.stops[2].title = "Wanted: Gnolls"
+    t.eq(texts(SD().Rows(view)), {
+        "Wanted: Gnolls",
+        "Then (2 steps)", "  1. Step 1 (not complete yet)", "  3. Step 3",
+    })
+end
+
 return tests
