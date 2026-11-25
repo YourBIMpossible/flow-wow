@@ -315,7 +315,7 @@ tests["reward ask: a choice at the turn-in is said once, with the best for your 
     later(c)
     local lines = asked(c)
     t.eq(#lines, 1, "once")
-    t.ok(lines[1] ~= nil and lines[1]:find(ns.GearRewardMark.ASK_BEST:format("Strong Helm", "dps"), 1, true) ~= nil,
+    t.ok(lines[1] ~= nil and lines[1]:find(ns.GearRewardMark.ASK_BEST:format("Strong Helm", "damage"), 1, true) ~= nil,
         tostring(lines[1]))
     t.ok(lines[1] ~= nil and lines[1]:find(ns.GearRewardMark.ASK_SELL:format("Strong Helm"), 1, true) ~= nil,
         "and to sell")
@@ -348,7 +348,23 @@ tests["reward ask: the line names no choice it cannot read, and never picks"] = 
         { index = 2, roles = { dps = "upgrade" } } }, bestSell = 1 }
     t.eq(RM.AskLine(board, function() return nil end, "dps"), RM.ASK, "names not read: the plain ask")
     t.eq(RM.AskLine(board, function(i) return ({ "A", "B" })[i] end, "dps"),
-        RM.ASK .. " " .. RM.ASK_BEST:format("B", "dps") .. " " .. RM.ASK_SELL:format("A"))
+        RM.ASK .. " " .. RM.ASK_BEST:format("B", "damage") .. " " .. RM.ASK_SELL:format("A"))
+end
+
+-- C-03 follow-up (lead sections 720/721): the line says the role's word
+-- from Rotation/Role.lua's Ro.WORDS ("damage", "healing", "tanking"),
+-- never its key ("dps"). Fails before: "for dps".
+tests["reward ask: the role is named by its word, not its key"] = function(t)
+    local RM = ns.GearRewardMark
+    local function line(role)
+        local board = { chosen = role, choices = { { index = 1, roles = { [role] = "upgrade" } } } }
+        return RM.AskLine(board, function() return "Helm" end, role)
+    end
+    t.eq(line("dps"), RM.ASK .. " Helm is the best upgrade for damage.")
+    t.eq(line("heal"), RM.ASK .. " Helm is the best upgrade for healing.")
+    t.eq(line("tank"), RM.ASK .. " Helm is the best upgrade for tanking.")
+    t.eq(line("dps"):find("for dps", 1, true), nil, "never the key")
+    t.eq(line("odd"), RM.ASK, "a role with no word: no best line")
 end
 
 return tests
