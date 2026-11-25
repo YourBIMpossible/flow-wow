@@ -2,8 +2,8 @@
 
 Draft by Twin, DISPATCH §579 item 1. Sources: the READY posts and reviews in §570–§578, at the SHAs below.
 
-- **Candidate build (zflow SHA):** `<lead fills>`
-- **Rollback build (the installed ZFlow kept as a copy):** `<lead fills>`
+- **Candidate build (zflow SHA):** `2722c664`
+- **Rollback build (the installed ZFlow kept as a copy):** `aa3dd5a8`, kept as `Interface\ZFlow.prev-aa3dd5a8`
 - **Your saved settings:** not touched by the install.
 - **Seen in game:** none of the rows below yet. Each one says "not seen in game" until your test.
 
@@ -25,7 +25,7 @@ Draft by Twin, DISPATCH §579 item 1. Sources: the READY posts and reviews in §
 | R4 | Bag marks and gear badge letters now show in Bagnon or BagBrother bags as well as in the normal bags. Another character's bags, viewed in Bagnon, get no marks. (Lazy bdcb3ed5) | Open your bags. There is nothing to switch on. | Gear and Loot: "Marks on your bag slots". | not seen in game |
 | R5 | A profession step names where to go: a trainer, a vendor, or a zone with nodes you have gathered before. The arrow points there. With Questie installed, the arrow can take a few seconds to appear; if the step first shows in a fight, it appears after the fight. With no known place, the step says so plainly. Nothing is made up. (Plexy 37f08964) | Comes with the profession step, when one shows. | Travel and Questing, The arrow: "Profession trainer arrow". | not seen in game |
 | R6 | With quests in your log, the quest route plans itself and is drawn on the world map. It updates when you take a quest, finish a step, or a quest leaves the log. It is still there after a restart. (Zen a6d49a67) | Press M (the world map) with quests in your log. | Travel and Questing, The way there: "Show the route beside the quest log and on the map". Or right-click the minimap button, then Off in the route menu. | not seen in game |
-| R7 | The arrow, its purple echo and the map route agree on colour. A map pin or waypoint arrow is green at any distance. If you picked a one-colour arrow, your colour is kept. (Zen eba50815; the map-line part is Muse's, still in review: `<lead fills>`) | Set a map pin, or follow a quest. | Travel and Questing, The arrow: "Arrow colours", "Arrow colour by distance". | not seen in game |
+| R7 | The arrow, its purple echo and the map route agree on colour. A map pin or waypoint arrow is green at any distance. If you turned "Arrow colour by distance" off, the arrow and every leg of the map route wear your one colour, pins and waypoints too. (Zen eba50815; map lines Muse 2722c664) | Set a map pin, or follow a quest. | Travel and Questing, The arrow: "Arrow colours", "Arrow colour by distance". | not seen in game |
 | R8 | "Your buffs" and "Advice" each say in one line what they are, every time they show. "Your buffs" has a close button. Closing it turns the strip off, and a chat line tells you how to bring it back. (Zen f02a5f16) | Both panels show by themselves. | The close button, or Combat and Class: "Show your class buffs and their time left". | not seen in game |
 | R9 | The inventory list and the dungeon "Get ready" stops open from menus, with no typing. (Lazy 9e07b6c3) | Inventory: right-click the quest arrow (or the world map button), then Show, Flow windows, Inventory. Dungeons: right-click the arrow, Dungeon quests, pick a dungeon, Plan the run. | Close the window. | not seen in game |
 
@@ -41,4 +41,4 @@ Draft by Twin, DISPATCH §579 item 1. Sources: the READY posts and reviews in §
 
 ## Rollback
 
-If something is wrong: close the game, put back the kept copy of the ZFlow folder (`<lead fills>`), and start the game. Your saved settings are untouched by either step.
+If something is wrong: close the game, put back the kept copy of the ZFlow folder (`Interface\ZFlow.prev-aa3dd5a8`, into `Interface\AddOns\ZFlow`), and start the game. Your saved settings are untouched by either step.
