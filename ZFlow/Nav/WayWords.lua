@@ -7,7 +7,9 @@ local _, ns = ...
 --          numbers, read once). The player's own zone stays N.Waypoint's.
 --   A1-41  "repair", "vendor", "flight", "inn", "bank", "auction", "mail":
 --          a waypoint at the nearest one this character has seen
---          (N.Errand.Find, saved places only).
+--          (N.Errand.Find), or a nearer one the player's own Questie
+--          add-on lists (as Flow's Modules/Nav/Services.lua; the answer
+--          then says it is from Questie, never that it was seen).
 --   A1-42  a party member's name: a waypoint where they stand now. It
 --          stays where it was set; "follow" is the word that keeps pointing
 --          at them. The arrow menu's row "Waypoint at <name>" does the same.
@@ -62,13 +64,19 @@ function WW.Declare(k, diag)
         return W.Slot(store)
     end
 
-    local function set(map, x, y, label)
+    -- -> true, the line to say, and was the waypoint set?
+    local function setAt(map, x, y, label)
         local W = N.Waypoint
         if type(W) ~= "table" then return true, "waypoints are not loaded." end
         if label and #label > W.LABEL_MAX then label = label:sub(1, W.LABEL_MAX) end
         local wp, why = W.SetAt(slot(), map, x, y, label)
-        if not wp then return true, tostring(why) .. "; nothing changed." end
-        return true, "waypoint set: " .. tostring(W.Text(wp)) .. "."
+        if not wp then return true, tostring(why) .. "; nothing changed.", false end
+        return true, "waypoint set: " .. tostring(W.Text(wp)) .. ".", true
+    end
+
+    local function set(map, x, y, label)
+        local done, line = setAt(map, x, y, label)
+        return done, line
     end
 
     local function zoneByName(name)
@@ -110,13 +118,20 @@ function WW.Declare(k, diag)
         local E = ns.Errand
         local kind = E and E.KINDS and E.KINDS[WW.ERRANDS[word]]
         if not kind or type(E.Find) ~= "function" then return true, "nearest places are not loaded." end
-        local ok, place = pcall(E.Find, kind, client(), ctx and ctx.store or k.store)
+        local ok, place, why = pcall(E.Find, kind, client(), ctx and ctx.store or k.store, ctx and ctx.use or k.use)
         if not ok or type(place) ~= "table" or place.map == nil then
+            -- Questie's list is still being gone through: a later ask may have one.
+            if ok and why ~= nil and why == N.READING and type(E.READING) == "string" then return true, E.READING end
             return true, "no " .. word .. " seen on this map yet; nothing changed."
         end
         local step
         if type(E.Step) == "function" then step = E.Step(place) end
-        return set(place.map, place.x, place.y, step and step.label or E.LABELS[kind])
+        local done, line, isSet = setAt(place.map, place.x, place.y, step and step.label or E.LABELS[kind])
+        -- A place from the player's own Questie is said to be that.
+        if isSet and place.unvisited == true and type(E.FROM_QUESTIE) == "string" then
+            line = line .. " " .. E.FROM_QUESTIE
+        end
+        return done, line
     end
 
     function api.Take(text)
