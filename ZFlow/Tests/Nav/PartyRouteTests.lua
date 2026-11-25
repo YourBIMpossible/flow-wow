@@ -85,4 +85,93 @@ tests["party route: no more than MAX_STOPS stops are encoded"] = function(t)
     t.eq(run and #run.steps, P().MAX_STOPS)
 end
 
+-- FLOW-PARITY B-39: shared edits (move first, add a stop, mark done for all).
+local function steps3()
+    return P().Decode(P().Encode(route(3))).steps
+end
+
+tests["party route: an edit moves a stop first, marks one done, adds one in front"] = function(t)
+    local first = P().ApplyEdit(steps3(), "F", "3")
+    t.eq(first and first[1].label, "Stop 3")
+    t.eq(first and #first, 3)
+    local done = P().ApplyEdit(steps3(), "D", "1")
+    t.eq(done and #done, 2)
+    t.eq(done and done[1].label, "Stop 2")
+    local added = P().ApplyEdit(steps3(), "A", P().StopRecord({ label = "Meet here", place = { map = 1436, x = 0.4, y = 0.6 } }))
+    t.eq(added and #added, 4)
+    t.eq(added and added[1].label, "Meet here")
+    t.eq(added and added[1].place, { map = 1436, x = 0.4, y = 0.6 })
+end
+
+tests["party route: an edit on a stop that is not there changes nothing"] = function(t)
+    local s = steps3()
+    for _, bad in ipairs({ { "F", "9" }, { "D", "0" }, { "D", "x" }, { "Q", "1" }, { "A", "a,b" } }) do
+        local out, why = P().ApplyEdit(s, bad[1], bad[2])
+        t.eq(out, nil, bad[1] .. bad[2])
+        t.ok(type(why) == "string", "why for " .. bad[1] .. bad[2])
+    end
+    t.eq(#s, 3)
+end
+
+tests["party route: an edit message parses back with its clock"] = function(t)
+    local e = P().Parse(P().EditMsg("s1", 4, "F", "2", 1), 1)
+    t.eq(e and e.type, "E")
+    t.eq(e and e.sid, "s1")
+    t.eq(e and e.clock, 4)
+    t.eq(e and e.op, "F")
+    t.eq(e and e.arg, "2")
+    t.eq(P().Parse("1|E|s1|x|F|2", 1), nil)
+end
+
+-- FLOW-PARITY B-45: who plans the party route.
+tests["party route: the group leader plans when on it, else the first name"] = function(t)
+    t.eq(P().Leader("Bo", { "Al", "Cy" }, "Cy"), "Cy")
+    t.eq(P().Leader("Bo", { "Al", "Cy" }, "Zed"), "Al")
+    t.eq(P().Leader("Bo", {}, nil), "Bo")
+    t.eq(P().Leader("Bo-Realm", { "al-Realm" }, "AL"), "al-Realm")
+end
+
+tests["party route: a join message parses on and off"] = function(t)
+    t.eq(P().Parse(P().JoinMsg(true, 1), 1), { type = "J", on = true })
+    t.eq(P().Parse(P().JoinMsg(false, 1), 1), { type = "J", on = false })
+    t.eq(P().Parse("1|J|2", 1), nil)
+end
+
+-- FLOW-PARITY B-42 and B-44: whose quests the route covers, and whom to ask.
+local PROG = {
+    Al = { { title = "Boars", complete = false }, { title = "Herbs", complete = true } },
+    Cy = { { title = "Herbs", complete = true } },
+}
+
+tests["party route: to do counts only quests not complete"] = function(t)
+    t.eq(P().ToDo(PROG.Al), 1)
+    t.eq(P().ToDo(PROG.Cy), 0)
+    t.eq(P().ToDo(nil), 0)
+end
+
+tests["party route: the route covers mine, just one member's, or everyone joined"] = function(t)
+    t.eq(P().Covered("mine", nil, PROG, {}), nil)
+    t.eq(P().Covered("theirs", "Al", PROG, {}), { Al = PROG.Al })
+    t.eq(P().Covered("theirs", "Zed", PROG, {}), nil)
+    t.eq(P().Covered("combined", nil, PROG, { Cy = true }), { Cy = PROG.Cy })
+end
+
+tests["party route: just their quests keeps only steps of quests they still have to do"] = function(t)
+    local steps = { { label = "Boars" }, { label = "Herbs" }, { label = "Wolves" } }
+    local kept = P().KeepFor(steps, { Al = PROG.Al })
+    t.eq(#kept, 1)
+    t.eq(kept[1].label, "Boars")
+    t.eq(#P().KeepFor(steps, nil), 3)
+end
+
+tests["party route: asks once per member, only with quests to do, only on your own route"] = function(t)
+    local asked = {}
+    t.eq(P().AskWho("Al", PROG, asked, "mine", "Bo"), "Al")
+    asked.Al = true
+    t.eq(P().AskWho("Al", PROG, asked, "mine", "Bo"), nil)
+    t.eq(P().AskWho("Cy", PROG, {}, "mine", "Bo"), nil)
+    t.eq(P().AskWho("Al", PROG, {}, "combined", "Bo"), nil)
+    t.eq(P().AskWho("Bo", { Bo = PROG.Al }, {}, "mine", "Bo"), nil)
+end
+
 return tests
