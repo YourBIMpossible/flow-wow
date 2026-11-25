@@ -1,7 +1,7 @@
 local _, ns = ...
 
 -- Parity row A1-40 (lead sections 862 and 864.3): the waypoint box. As
--- legacy Flow's Modules/Nav/Waypoint.lua:217-231 (the "FLOW_WAYPOINT"
+-- legacy Flow's Modules/Nav/Waypoint.lua:217-231 (Flow's waypoint
 -- popup, its only caller the arrow menu's "Set a waypoint..." row,
 -- Modules/Menu.lua:575): one line typed or pasted, Accept or Enter sets the
 -- waypoint the way the way word does.

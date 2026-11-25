@@ -38,7 +38,7 @@ local _, ns = ...
 --     api.Prompt()   -> true | false, WW.NO_BOX (A1-40): opens the client's
 --                       input box (client.inputBox) with WW.PROMPT; what is
 --                       typed goes through SetFromText and its line is said
---                       in chat. As Flow's "FLOW_WAYPOINT" popup
+--                       in chat. As Flow's waypoint popup
 --                       (Modules/Nav/Waypoint.lua:217-231), opened from the
 --                       arrow menu's "Set a waypoint..." row (Menu.lua:575;
 --                       here that row is a lead patch on UI/ArrowMenu.lua).
@@ -223,11 +223,17 @@ function WW.Declare(k, diag)
     function api.Prompt()
         local c = client()
         if type(c) ~= "table" or type(c.inputBox) ~= "function" then return false, WW.NO_BOX end
-        local id = k.id or ns.id
         local ok, shown = pcall(c.inputBox, WW.PROMPT, function(text)
             local _, line = api.SetFromText(text)
             if type(line) == "string" and type(c.print) == "function" then
-                pcall(c.print, tostring(id.title) .. ": " .. line)
+                -- The add-on's title read inside the pcall too (Lazy's
+                -- CHANGES-1): a missing id or title never raises here.
+                pcall(function()
+                    local id = k.id or ns.id
+                    local title = "Z-Flow"
+                    if type(id) == "table" and type(id.title) == "string" then title = id.title end
+                    c.print(title .. ": " .. line)
+                end)
             end
         end)
         if not ok or shown ~= true then return false, WW.NO_BOX end
