@@ -170,7 +170,7 @@ end
 -- (quest.sourceItemId, a number) and the log line does not say "slain"
 -- (the game's own words, as "Tested Silithid: 1/5"); else "kill". An item
 -- objective is "loot". Read from Questie at runtime; nothing copied.
-PQ.KINDS = { "kill", "loot", "use" }
+PQ.KINDS = { "kill", "loot", "use", "starts" }
 function PQ.MonsterKind(quest, text)
     if type(quest) == "table" and type(quest.sourceItemId) == "number" and quest.sourceItemId > 0
         and type(text) == "string" and not text:lower():find("slain", 1, true) then
@@ -190,6 +190,56 @@ function PQ.Kinds(list)
     local out = {}
     for _, kind in ipairs(PQ.KINDS) do
         if has[kind] then out[#out + 1] = kind end
+    end
+    return out
+end
+
+-- Parity row C-19, the data half (lead sections 720/721), as Flow's
+-- Modules/QuestMarks.lua (:24-26): the mobs that drop an item that starts
+-- a quest you can take. From the player's own Questie at runtime: each
+-- quest of db.QuestPointers whose Starts.Item lists an item, kept when
+-- Nav/RoutePickups.lua P.Candidate(q, ctx) says you can take it (not in
+-- your log, not done, for you, in reach, earlier quests done); then each
+-- item's npcDrops. ctx is P.Candidate's: { level, log, me, done }.
+-- -> { [npc id] = { { quest, label = PQ.MARK, kind = "start", from =
+-- "questie", what = "starts" } } }. Anything missing or failing: {}.
+function PQ.Starts(db, ctx)
+    local out = {}
+    local P = ns.Nav and ns.Nav.RoutePickups
+    if type(db) ~= "table" or type(ctx) ~= "table" or type(db.QuestPointers) ~= "table"
+        or type(db.GetQuest) ~= "function" or type(P) ~= "table" or type(P.Candidate) ~= "function" then
+        return out
+    end
+    for id in pairs(db.QuestPointers) do
+        local q
+        if type(id) == "number" then q = dbCall(db, "GetQuest", id) end
+        local items
+        if type(q) == "table" and type(q.Starts) == "table" then items = q.Starts.Item end
+        if type(items) == "table" and #items > 0 then
+            local cand = { Id = id, level = q.level, requiredLevel = q.requiredLevel,
+                preQuestSingle = q.preQuestSingle, preQuestGroup = q.preQuestGroup,
+                exclusiveTo = q.exclusiveTo, requiredRaces = q.requiredRaces,
+                requiredClasses = q.requiredClasses, requiredMinRep = q.requiredMinRep,
+                requiredMaxRep = q.requiredMaxRep, requiredSkill = q.requiredSkill,
+                requiredSpell = q.requiredSpell }
+            local okC, can = pcall(P.Candidate, cand, ctx)
+            if okC and can == true then
+                for _, itemId in ipairs(ids(items)) do
+                    local item = dbCall(db, "GetItem", itemId)
+                    if type(item) == "table" then
+                        for _, npc in ipairs(ids(item.npcDrops)) do
+                            local list = out[npc]
+                            if list == nil then
+                                list = {}
+                                out[npc] = list
+                            end
+                            list[#list + 1] = { quest = id, label = PQ.MARK, kind = "start", from = "questie",
+                                                what = "starts" }
+                        end
+                    end
+                end
+            end
+        end
     end
     return out
 end
@@ -354,6 +404,35 @@ function PQ.Declare(k, diag)
             return
         end
         local ok, got = pcall(PQ.Index, rows, db, ctx.store:get("char", PQ.DROPS))
+        -- C-19: the mobs that drop an item starting a quest you can take.
+        if ok and type(got) == "table" then
+            local inLog = {}
+            for _, row in ipairs(rows) do
+                if type(row) == "table" and row.id ~= nil then inLog[row.id] = true end
+            end
+            local S = ns.DungeonStates
+            local class = ask(client, "class")
+            local classId
+            if class and type(S) == "table" and type(S.CLASS_ID) == "table" then classId = S.CLASS_ID[class] end
+            local level = tonumber(ask(client, "level"))
+            if level then
+                local okS, starts = pcall(PQ.Starts, db, {
+                    level = level, log = inLog,
+                    me = { raceId = ask(client, "raceId"), classId = classId, faction = ask(client, "faction") },
+                    done = function(id) return ask(client, "questDone", id) end,
+                })
+                if okS and type(starts) == "table" then
+                    for npc, list in pairs(starts) do
+                        local into = got[npc]
+                        if into == nil then
+                            into = {}
+                            got[npc] = into
+                        end
+                        for _, e in ipairs(list) do into[#into + 1] = e end
+                    end
+                end
+            end
+        end
         if ok and type(got) == "table" then
             index, source = got, "questie"
         else
