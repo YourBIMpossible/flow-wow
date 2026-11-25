@@ -70,7 +70,7 @@ tests["intro still: what the intro is handed with each value"] = function(t)
     t.ok(ok, "the player can tick it")
     spec = S.For(addon)
     t.eq(spec.animate, false, "ticked: still")
-    t.near(spec.seconds, 1.6, 1e-9, "ticked: short")
+    t.ok(math.abs(spec.seconds - 1.6) < 1e-9, "ticked: short")
     addon.settings:set(S.SETTING, false)
     t.eq(S.For(addon).animate, true, "unticked again: moving")
     -- No settings at all: the default.
