@@ -29,7 +29,8 @@ tests["click report: what each button does, and a dead plain click"] = function(
     t.eq(dead[3], CC().WARN .. CC().DeadLine("left button", "Target", true), "Target needs a modifier now")
     t.eq(dead[#dead], CC().FIX)
     t.eq(CC().Problems({ MENU, { type = 1, actionID = 5, button = "LeftButton", modifiers = 0 } }),
-        { CC().DeadLine("left button", "Target", false) }, "Target has no button at all")
+        { CC().LostLine("Target", "left button") }, "a spell took the plain left button: Target has none")
+    t.eq(CC().Problems({ MENU }), { CC().DeadLine("left button", "Target", false) }, "nothing on the left button at all")
 end
 
 tests["click report: what is under the mouse"] = function(t)
