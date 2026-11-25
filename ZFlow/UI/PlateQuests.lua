@@ -428,6 +428,7 @@ function PQ.Declare(k, diag)
 
     -- C-19: the log's own index, the starts pass and its answer.
     local logIndex, pass, passDb, passCtx, cancelPass, startsGot
+    local passKey   -- the log and level the pass is for (lead section 727)
 
     local function merged()
         local out = {}
@@ -472,14 +473,22 @@ function PQ.Declare(k, diag)
     end
 
     local function startPass(db, client, rows)
-        stopPass()
-        startsGot, pass = nil, nil
         local level = tonumber(ask(client, "level"))
-        if not level then return end
-        local inLog = {}
+        local inLog, keys = {}, {}
         for _, row in ipairs(rows) do
-            if type(row) == "table" and row.id ~= nil then inLog[row.id] = true end
+            if type(row) == "table" and row.id ~= nil then
+                inLog[row.id] = true
+                keys[#keys + 1] = tostring(row.id) .. ":" .. tostring(row.complete) .. ":" .. tostring(row.failed)
+            end
         end
+        table.sort(keys)
+        -- Section 727: walked again only when the log or your level changed;
+        -- the same log again (a loading screen) keeps the pass or its answer.
+        local key = tostring(level) .. "|" .. table.concat(keys, ",")
+        if key == passKey and db == passDb and (pass ~= nil or startsGot ~= nil) then return end
+        stopPass()
+        startsGot, pass, passKey = nil, nil, key
+        if not level then return end
         local S = ns.DungeonStates
         local class = ask(client, "class")
         local classId
@@ -517,8 +526,8 @@ function PQ.Declare(k, diag)
         -- not known, so not marked, until it is done.
         if ok and type(got) == "table" then
             logIndex = got
-            got = merged()
             startPass(db, client, rows)
+            got = merged()
         end
         if ok and type(got) == "table" then
             index, source = got, "questie"
@@ -604,7 +613,7 @@ function PQ.Declare(k, diag)
             if type(cancelLook) == "function" then pcall(cancelLook) end
             cancelLook = nil
             stopPass()
-            pass, startsGot, logIndex = nil, nil, nil
+            pass, startsGot, logIndex, passKey = nil, nil, nil, nil
             hideAll()
             inView, marks, shownOn, index, source = {}, {}, {}, nil, "none"
         end,
