@@ -208,16 +208,33 @@ end
 -- missing. now: in a fight, the spell the rotation suggests now (nil out of
 -- a fight); when the Flow button holds something else, the line says the
 -- button changes after the fight.
-function FB.Tip(which, why, hold, now)
+-- F-34 (lead section 794): the Flow button's size, said on it, with how to
+-- change it (Flow's handle line, Modules/MoveHandle.lua:96). scale: the
+-- saved factor, 0.5 to 2; not known reads as full size.
+FB.SIZE_LINE = "Size %d%%: hold Ctrl and turn the mouse wheel over it to resize, outside fights."
+
+function FB.SizeLine(scale)
+    if type(scale) ~= "number" or scale ~= scale or scale <= 0 or scale == math.huge then scale = 1 end
+    return FB.SIZE_LINE:format(math.floor(scale * 100 + 0.5))
+end
+
+-- scale: the Flow button's size (F-34); given, the Flow button's tip ends
+-- with FB.SizeLine. The self button does not resize, so says nothing of it.
+function FB.Tip(which, why, hold, now, scale)
     local name = FB.FLOW_NAME
     if which == "self" then name = FB.SELF_NAME end
-    if type(hold) ~= "table" then return name .. ". " .. tostring(why) end
-    local what = hold.spell or hold.item
-    if which == "self" then return name .. ". Casts " .. tostring(what) .. " on you when you click it." end
-    local line = name .. ". Casts " .. tostring(what) .. " when you click it."
-    if type(now) == "string" and now ~= what and not (ns.cast.ATTACK[now] and ns.cast.ATTACK[what]) then
-        line = line .. " The rotation now suggests " .. now .. "; this button changes after the fight."
+    local line
+    if type(hold) ~= "table" then
+        line = name .. ". " .. tostring(why)
+    else
+        local what = hold.spell or hold.item
+        if which == "self" then return name .. ". Casts " .. tostring(what) .. " on you when you click it." end
+        line = name .. ". Casts " .. tostring(what) .. " when you click it."
+        if type(now) == "string" and now ~= what and not (ns.cast.ATTACK[now] and ns.cast.ATTACK[what]) then
+            line = line .. " The rotation now suggests " .. now .. "; this button changes after the fight."
+        end
     end
+    if which ~= "self" and scale ~= nil then line = line .. " " .. FB.SizeLine(scale) end
     return line
 end
 
@@ -493,7 +510,7 @@ function FB.Declare(k)
             })
             if type(client.hoverTip) == "function" then
                 local function line()
-                    if which == "flow" then return FB.Tip(which, u.why, u.hold, suggestedNow()) end
+                    if which == "flow" then return FB.Tip(which, u.why, u.hold, suggestedNow(), scaleOf()) end
                     return FB.Tip(which, u.why, u.hold)
                 end
                 pcall(client.hoverTip, { frame = name .. "1", text = line })
