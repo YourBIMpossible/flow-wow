@@ -35,8 +35,6 @@ local BOARS = { id = 401, title = "Boars", objectives = { { text = "Boars slain:
 local HERBS = { id = 402, title = "Herbs", objectives = { { text = "Herbs: 0/5" } } }
 local BANDAGES = { id = 403, title = "Bandages", complete = true,
                    objectives = { { text = "Linen: 4/4", done = true } } }
-local LETTERS = { id = 404, title = "Letters", complete = true,
-                  objectives = { { text = "Letters: 2/2", done = true } } }
 
 local function boot(opts)
     opts = opts or {}
