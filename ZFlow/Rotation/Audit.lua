@@ -26,16 +26,20 @@ local _, ns = ...
 --   Au.New(opts) -> recorder         press / sent / mark over one data table
 -- The module:
 --   Au.Declare(k[, diag]) -> { press, mark, report, reset, data }
---     api.press() is the press of the key. NOTHING CALLS IT YET: see below.
+--     api.press() is the press of the key: called from the client's press
+--     read (client.onKeyPress), where the client has it (D-26).
 --     Words after the slash command: Au.WORD and Au.MARK.
 --
 -- CLIENT NEEDS, none is in Core/Client.lua yet:
 --   a press signal: the secure button of the rotation key calling
 --     ns.pressAudit.press() from its PreClick (Flow: Cast.lua called
 --     Au.Press from the button's PreClick). Without it nothing is counted.
---   client.screenshot() -> true | false   optional: Flow took a screenshot
---     at a disagreement (at most one every 20 s, 8 a session). Used when
---     the client has it; without it no screenshot is taken.
+--   client.onKeyPress(fn) -> cancel   fn() at each press of the rotation
+--     key, from the key's own secure button (HookScript "PreClick" on the
+--     add-on's button; it only calls fn: nothing is cast or changed).
+-- Screenshots are left out (lead section 738, row D-26): the add-on offers
+-- none. Flow took one at a disagreement; the recorder's shot part is kept
+-- pure and unused, so a row never says "screenshot".
 -- The game event UNIT_SPELLCAST_SENT (unit, target, castGUID, spellID) is
 -- listened to as Flow did. Not tested in game.
 local Au = {}
@@ -47,7 +51,7 @@ Au.NAME = "pressAudit"
 Au.PATH = "audit"       -- per character
 Au.WORD = "audit"
 Au.MARK = "mark"
-Au.HELP = "how often your key cast what the icon showed; audit reset clears it; audit shots on|off"
+Au.HELP = "how often your key cast what the icon showed; audit reset clears it"
 Au.MARK_HELP = "note the moment something looked wrong, with what the icon and the key held"
 Au.EVENT = "UNIT_SPELLCAST_SENT"
 Au.WINDOW = 0.7       -- as Flow: a cast sent this soon after a press belongs to it
@@ -253,7 +257,6 @@ function Au.Declare(k, diag)
                 data = data,
                 now = client.now,
                 stamp = function() return Au.Stamp(read(client.clock)) end,
-                shoot = type(client.screenshot) == "function" and client.screenshot or nil,
                 idOf = client.spellId,
             })
         end
@@ -316,12 +319,6 @@ function Au.Declare(k, diag)
             say("press audit cleared")
             return
         end
-        local shots = rest:match("^shots%s+(o[nf]f?)$")
-        if shots == "on" or shots == "off" then
-            rec.data.shots = (shots == "on")
-            say("press audit screenshots: " .. shots)
-            return
-        end
         say("press audit (does the key cast what the icon shows?):")
         local lines = api.report()
         for i = 1, #lines do say("  " .. lines[i]) end
@@ -332,7 +329,7 @@ function Au.Declare(k, diag)
     local function mark(rest)
         if not ready() then return end
         local r = api.mark(rest)
-        say("marked" .. (r and r.shot and ", with a screenshot." or "."))
+        if r then say("marked.") end
     end
 
     k:Module({
@@ -343,6 +340,13 @@ function Au.Declare(k, diag)
             ctx.bus:on(Au.NAME, D.EVENT, onView)
             client.listen("PLAYER_REGEN_DISABLED", function() fightAt = read(client.now) end)
             client.listen("PLAYER_REGEN_ENABLED", function() fightAt = nil end)
+            -- D-26: each press of the key, where the client tells of it.
+            if type(client.onKeyPress) == "function" then
+                pcall(client.onKeyPress, function()
+                    local ok = pcall(api.press)
+                    return ok
+                end)
+            end
             client.listen(Au.EVENT, function(unit, _, _, spellId)
                 if unit ~= "player" or not rec or not rec.waiting() then return end
                 rec.sent(spellId)

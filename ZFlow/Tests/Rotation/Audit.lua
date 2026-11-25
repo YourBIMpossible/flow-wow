@@ -376,7 +376,7 @@ tests["press audit module: the rotation off, a press has nothing to compare"] = 
     t.eq(w.api.data().disagreed, nil)
 end
 
-tests["press audit module: the word reports, resets and switches screenshots"] = function(t)
+tests["press audit module: the word reports and resets"] = function(t)
     local w = start()
     tick(w.c)
     local run = w.diag.commands[Au.WORD]
@@ -390,10 +390,6 @@ tests["press audit module: the word reports, resets and switches screenshots"] =
     local all = table.concat(w.c.printed, "\n", n + 1)
     t.ok(has(all, "1 key presses: 0 cast what the icon showed, 1 cast the key's spell"), all)
     t.ok(has(all, "icon Moonfire, key set to Wrath, cast Wrath"), all)
-    run("shots off")
-    t.eq(w.api.data().shots, false)
-    run("shots on")
-    t.eq(w.api.data().shots, true)
     run("reset")
     t.eq(w.api.data().counts, {})
     t.eq(w.api.data().list, {})
