@@ -73,7 +73,23 @@ tests["price e2e: the player's own auction search adds the auction line"] = func
     t.eq(say(c, "price " .. LINEN), {
         T("|cffffffffLinen Cloth|r: a vendor pays 13c each (the item's own sell price)"),
         T("Auction: 50s each, 0 min ago"),
+        T("Suggested post: 49s each (1s under the 50s last seen; advice only, nothing is posted)"),
     })
+end
+
+tests["price e2e E-35: the suggested post price follows the latest look, and posts nothing"] = function(t)
+    local c = boot()
+    c.auctionResult(LINEN, { unitPrice = 1234 })
+    local lines = say(c, "price " .. LINEN)
+    t.eq(lines[#lines], T("Suggested post: 11s each (1s 34c under the 12s 34c last seen; advice only, nothing is posted)"))
+    noneActs(t, c)
+end
+
+tests["price e2e E-35: under a silver seen, no suggestion"] = function(t)
+    local c = boot()
+    c.auctionResult(LINEN, { unitPrice = 90 })
+    local lines = say(c, "price " .. LINEN)
+    t.ok(lines[#lines]:find("Suggested post", 1, true) == nil, "no post line under a silver")
 end
 
 tests["price e2e: an item link is read, lower-cased by the slash command"] = function(t)
