@@ -60,7 +60,7 @@ tests["still: one spot keeps its start; a move ends the run with its seconds"] =
     t.eq(again.since, 100)
     local moved, gone = N.CrossingStill(again, { cont = 0, map = 1437, x = 0.12, y = 0.5 }, 281, "Menethil Harbor")
     t.eq(moved.since, 281)
-    t.eq(gone, { cont = 0, name = "Menethil Harbor", secs = 181 })
+    t.eq(gone, { cont = 0, map = 1437, x = 0.1, y = 0.5, name = "Menethil Harbor", secs = 181 })
 end
 
 tests["name trip: a new crossing gets both names and the wait on the boarding end"] = function(t)

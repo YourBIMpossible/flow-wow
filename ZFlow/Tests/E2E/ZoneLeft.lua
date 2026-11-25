@@ -157,4 +157,64 @@ tests["zone left: a name that is not a plain short string is not said"] = functi
     t.eq(Z.Notice({}, "Westfall"), nil)
 end
 
+-- FLOW-PARITY B-33: training left behind is said on leaving, as Flow's
+-- Leaving.lua lists training and profession work, not only quests.
+local NEW = { "Charge", "Rend", "Hamstring", "Thunder Clap" }
+local OLD = { "Attack", "Battle Stance", "Heroic Strike", "Battle Shout", "Sunder Armor" }
+
+local function trainerSeen(c, map)
+    c.setLevel(10)
+    local id = 100
+    for _, n in ipairs(NEW) do id = id + 1; c.setSpellId(n, id); c.setSpell(id, { known = false }) end
+    for _, n in ipairs(OLD) do id = id + 1; c.setSpellId(n, id); c.setSpell(id, { known = true }) end
+    c.setPosition(map, 0.66, 0.42)
+    c.setTrainer({ npc = "Ander Germaine", services = { { name = "Charge", state = "available" } } })
+    c.fire("TRAINER_SHOW")
+    c.setTrainer(nil); c.fire("TRAINER_CLOSED")
+    c.setPosition(MAP, 0.5, 0.5)
+    c.advance(ns.Nav.ZoneLeft.EVERY + 1, 10)
+end
+
+tests["zone left: class training left in the zone is said once on leaving it"] = function(t)
+    local c, addon = boot({ FAR })
+    trainerSeen(c, MAP)
+    local before, base = #c.printed, problems(addon)
+    cross(c)
+    t.ok(said(c, "Still to do in the zone behind you: Class trainer: Ander Germaine (4 new spells).", before) ~= nil,
+        "the training left behind is named")
+    local after = #c.printed
+    c.fire("ZONE_CHANGED_NEW_AREA"); c.advance(1, 5)
+    t.eq(said(c, "Still to do in", after), nil, "not said again in the same zone")
+    t.eq(problems(addon), base, "nothing new went wrong")
+end
+
+tests["zone left: a trainer on another map, or the setting off: no training line"] = function(t)
+    local c = boot({ FAR })
+    trainerSeen(c, NEXT)
+    local before = #c.printed
+    cross(c)
+    t.eq(said(c, "Still to do in", before), nil, "the trainer is not in the zone left")
+    local addon
+    c, addon = boot({ FAR })
+    trainerSeen(c, MAP)
+    addon.settings:set(ns.Nav.LEAVING_SETTING, false)
+    before = #c.printed
+    cross(c)
+    t.eq(said(c, "Still to do in", before), nil, "the setting is off")
+end
+
+tests["zone left: the work line keeps steps on the map left and names the zone"] = function(t)
+    local Z = ns.Nav.ZoneLeft
+    local steps = {
+        { label = "Class trainer: Ander", count = 1, place = { map = MAP } },
+        { label = "Mining node", place = { map = NEXT } },
+        { label = "Cooking trainer" .. (ns.Nav.PROF_OTHER_MAP or ""), elsewhere = { map = MAP } },
+        { label = "No place" },
+    }
+    t.eq(Z.Work(steps, MAP), { "Class trainer: Ander (1 new spell)", "Cooking trainer" })
+    t.eq(Z.Work(steps, nil), {})
+    t.eq(Z.WorkNotice({ "Cooking trainer" }, "Westfall"), "Still to do in Westfall before you go on: Cooking trainer.")
+    t.eq(Z.WorkNotice({}, "Westfall"), nil)
+end
+
 return tests
