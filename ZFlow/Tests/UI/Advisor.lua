@@ -21,6 +21,8 @@ local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
+    -- opts.char: the character's saved data (C-46 keeps what was hidden there).
+    if opts.char ~= nil then c.setSaved(ns.id.charDB, opts.char) end
     -- The plain panel cases: the kit window is refused, so the advisor
     -- draws on the plain panel (Tests/UI/AdvisorKit.lua has the kit's).
     if type(c.setKitFails) == "function" then c.setKitFails(math.huge) end
@@ -353,6 +355,125 @@ tests["advisor urgency: the window's line carries the level, for whoever draws i
     t.eq(view.children[3].urgency, "now")
     local plain = A.View({ "First." }, "Advice")
     t.eq(plain.children[1], { kind = "line", key = "prompt1", text = "First.", wrap = true }, "no levels given")
+end
+
+-- Parity row C-46, the data half (lead section 660): a row can be hidden,
+-- the hidden ones listed, and one brought back; kept for the character.
+-- As Flow's Modules/Advisor/Advisor.lua:83-112 (Adv.KeyOf, Hide, Unhide,
+-- Split): the key ignores numbers, so "Train 2 spells" stays hidden as
+-- "Train 3 spells". The buttons are another lane's.
+-- Fails before: there is no Hide, Unhide or Hidden.
+local function ids(list)
+    local out = {}
+    for i, row in ipairs(list) do out[i] = row.id end
+    return out
+end
+
+tests["advisor hide: the key of a prompt ignores its numbers"] = function(t)
+    t.eq(A.KeyOf("train.2"), A.KeyOf("train.31"))
+    t.eq(A.KeyOf("l6c.repair"), "l6c.repair")
+    t.ok(A.KeyOf("train.2") ~= A.KeyOf("bags.2"), "another prompt, another key")
+    t.eq(A.KeyOf(""), nil)
+    t.eq(A.KeyOf(7), nil)
+end
+
+tests["advisor hide: a hidden row leaves the list and the panel, and is listed as hidden"] = function(t)
+    local _, c, api = start({ char = {} })
+    api.Add("repair", "Repair your gear.", 5)
+    api.Add("bags", "Your bags are nearly full.", 1, "soon")
+    t.eq(api.Hide("repair"), true)
+    t.eq(ids(api.List()), { "bags" }, "not among the shown")
+    local hidden = api.Hidden()
+    t.eq(#hidden, 1)
+    t.eq(hidden[1].key, A.KeyOf("repair"))
+    t.eq(hidden[1].id, "repair")
+    t.eq(hidden[1].text, "Repair your gear.")
+    t.eq(hidden[1].applies, true, "the prompt is still there")
+    local p = panelOf(c)
+    t.eq(p.lines, { TITLE, "Your bags are nearly full." }, "the panel shows the other one only")
+    api.Hide("bags")
+    t.eq(panelOf(c).shown, false, "nothing left to show: the panel hides")
+end
+
+tests["advisor hide: bringing one back shows it again"] = function(t)
+    local _, c, api = start({ char = {} })
+    api.Add("repair", "Repair your gear.", 5)
+    api.Hide("repair")
+    t.eq(api.Unhide(A.KeyOf("repair")), true)
+    t.eq(ids(api.List()), { "repair" })
+    t.eq(api.Hidden(), {})
+    t.eq(panelOf(c).shown, true)
+    t.eq(api.Unhide(A.KeyOf("repair")), false, "nothing hidden under that key")
+    t.eq(api.Unhide(nil), false)
+end
+
+tests["advisor hide: what cannot be hidden is refused with a reason"] = function(t)
+    local _, _, api = start({ char = {} })
+    local ok, why = api.Hide("nothing")
+    t.eq(ok, false, "no such prompt")
+    t.ok(type(why) == "string" and why ~= "")
+    t.eq((api.Hide("")), false)
+    t.eq((api.Hide(nil)), false)
+    api.Add("repair", "Repair your gear.", 5)
+    api.Hide("repair")
+    t.eq((api.Hide("repair")), false, "hidden already")
+end
+
+tests["advisor hide: it is kept for the character and holds after a reload"] = function(t)
+    local _, c, api = start({ char = {} })
+    api.Add("train.2", "Train 2 spells.", 5)
+    api.Hide("train.2")
+    local kept = c.saved(ns.id.charDB)
+    local _, _, api2 = start({ char = kept })
+    api2.Add("train.3", "Train 3 spells.", 5)
+    t.eq(api2.List(), {}, "still hidden, though its number changed")
+    local hidden = api2.Hidden()
+    t.eq(hidden[1] and hidden[1].text, "Train 3 spells.", "listed with the words it has now")
+    local _, _, api3 = start({ char = kept })
+    local gone = api3.Hidden()
+    t.eq(#gone, 1, "listed though the prompt is not there now")
+    t.eq(gone[1].applies, false)
+    t.eq(gone[1].id, nil)
+    t.eq(gone[1].text, "Train 2 spells.", "with the words it had when hidden")
+    t.eq(api3.Unhide(gone[1].key), true, "and it can be brought back")
+    api3.Add("train.4", "Train 4 spells.", 5)
+    t.eq(ids(api3.List()), { "train.4" })
+end
+
+tests["advisor hide: a hidden prompt added again tells no watcher and opens no window"] = function(t)
+    local _, c, api = start({ char = {} })
+    api.Add("repair", "Repair your gear.", 5)
+    api.Hide("repair")
+    api.Remove("repair")
+    local told = 0
+    api.Watch(function() told = told + 1 end)
+    api.Add("repair", "Repair your gear.", 5)
+    t.eq(told, 0, "no watcher is told of a hidden prompt")
+    t.eq(panelOf(c).shown, false)
+    api.Add("bags", "Your bags are nearly full.", 1)
+    t.eq(told, 1, "one that is not hidden is told as before")
+end
+
+tests["advisor hide: saved data that is not a table hides nothing and is not written over"] = function(t)
+    local _, c, api = start({ char = { state = { advisor = { hidden = "broken" } } } })
+    api.Add("repair", "Repair your gear.", 5)
+    t.eq(ids(api.List()), { "repair" })
+    t.eq(api.Hidden(), {})
+    local ok, why = api.Hide("repair")
+    t.eq(ok, false, "refused: what is saved there is not understood")
+    t.ok(type(why) == "string" and why ~= "")
+    t.eq(c.saved(ns.id.charDB).state.advisor.hidden, "broken", "left as it was")
+end
+
+tests["advisor hide: no more than the cap is kept"] = function(t)
+    local hidden = {}
+    for i = 1, A.MAX_HIDDEN do hidden["k" .. string.rep("x", i)] = { text = "t", at = 0 } end
+    local _, _, api = start({ char = { state = { advisor = { hidden = hidden } } } })
+    api.Add("repair", "Repair your gear.", 5)
+    local ok, why = api.Hide("repair")
+    t.eq(ok, false, "past the cap")
+    t.ok(type(why) == "string" and why ~= "")
+    t.eq(ids(api.List()), { "repair" }, "still shown")
 end
 
 return tests
