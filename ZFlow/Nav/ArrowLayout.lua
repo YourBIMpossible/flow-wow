@@ -70,6 +70,18 @@ function N.ArrowPaletteOf(v, byDistance)
     return flat
 end
 
+-- R7 (lead section 564): the palette word of a palette row (the row itself
+-- or its one-colour row), for RC.Of, which takes the word. Anything else:
+-- "standard".
+function N.ArrowPaletteWord(row)
+    if type(row) == "table" then
+        for key, r in pairs(N.ARROW_PALETTE) do
+            if row == r or row == N.ArrowPaletteOf(key, false) then return key end
+        end
+    end
+    return "standard"
+end
+
 -- ---------------------------------------------------------------- helpers
 local SPOT = {
     TOPLEFT = { 0, 1 }, TOP = { 0.5, 1 }, TOPRIGHT = { 1, 1 },

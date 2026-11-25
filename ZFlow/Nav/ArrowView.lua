@@ -161,7 +161,18 @@ function N.ArrowView(state)
     local scale, alpha = 1, 1
     if travel then scale = N.TRAVEL_ARROW_SCALE end
     local qState = qMode == "corpse" and "corpse" or N.ArrowState(state.player, q.target, questHere)
-    local qr, qg, qb = N.ArrowColor(qState, q.distance, state.palette)
+    -- R7 (lead section 564): a waypoint or profession step takes RC.Of's
+    -- colour, as the map lines do; a route step keeps N.ArrowColor with the
+    -- palette row (RC.Of's distance colour is the same sum, and the row keeps
+    -- the one-colour choice).
+    local qr, qg, qb
+    local RC = ns.RouteColor
+    local qFamily = q.family
+    if RC and RC.FAMILIES[qFamily] and qState ~= "corpse" then
+        qr, qg, qb = RC.Of({ family = qFamily, state = qState }, q.distance, N.ArrowPaletteWord(state.palette))
+    else
+        qr, qg, qb = N.ArrowColor(qState, q.distance, state.palette)
+    end
     local quest = {
         shown = lq.shown, anchor = "screen", point = point4(lq.position),
         scale = scale, alpha = alpha, colour = { qr, qg, qb },

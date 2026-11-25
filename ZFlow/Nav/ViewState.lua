@@ -85,6 +85,12 @@ function N.ViewState(client, guide)
     if qs then
         if qs.overlay ~= nil then quest.overlay = qs.overlay and true or false end
         if qs.travel ~= nil then quest.travel = qs.travel and true or false end
+        -- R7: what the step is ("waypoint", "profession"), for RC.Of.
+        if type(qs.family) == "string" then
+            quest.family = qs.family
+        elseif type(qs.kind) == "string" then
+            quest.family = qs.kind
+        end
     end
 
     local ps = type(guide.prof) == "table" and guide.prof or nil
