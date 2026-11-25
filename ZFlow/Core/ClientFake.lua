@@ -4995,3 +4995,34 @@ do
         return c
     end
 end
+
+-- § F-32 (UI/ClickCheck.lua): the game's click bindings on unit frames and
+-- what is under the mouse, as the real client is asked for (CLIENT NEEDs:
+-- c.clickBindings() -> { { type, actionID, button, modifiers } } from
+-- C_ClickBindings.GetProfileInfo, nil when the client has none to read;
+-- c.mouseFoci() -> { frame name, ... } from GetMouseFoci, nil when not
+-- read). Both answer nil (not known) until set.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local bindings, foci = nil, nil
+        function c.setClickBindings(list) bindings = list end
+        function c.setMouseFoci(list) foci = list end
+        function c.clickBindings()
+            if type(bindings) ~= "table" then return nil end
+            local out = {}
+            for i, b in ipairs(bindings) do
+                out[i] = { type = b.type, actionID = b.actionID, button = b.button, modifiers = b.modifiers }
+            end
+            return out
+        end
+        function c.mouseFoci()
+            if type(foci) ~= "table" then return nil end
+            local out = {}
+            for i, n in ipairs(foci) do out[i] = n end
+            return out
+        end
+        return c
+    end
+end
