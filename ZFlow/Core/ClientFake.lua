@@ -3631,6 +3631,13 @@ function ns.make.fakeClient(opts)
         end
         function c.setPlateCreature(unit, id) creatures[unit] = id end
         function c.setPlateCreatureFails(on) s.plateCreatureFails = on and true or nil end
+        -- C-21 (lead section 603) STUB for a CLIENT NEED the real client
+        -- lacks: c.unitCreature(unit) -> npc id of any unit token
+        -- ("mouseover", "target", ...), as plateCreature reads a plate's
+        -- (UnitGUID, the GUID's id field). c.setUnitCreature(unit, id).
+        local anyUnit = {}
+        function c.setUnitCreature(unit, id) anyUnit[unit] = id end
+        function c.unitCreature(unit) return anyUnit[unit] end
         function c.plateCreature(unit)
             if s.plateCreatureFails then error("plate creature read failed (test)") end
             if not isPlate(unit) then return nil end
