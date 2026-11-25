@@ -178,7 +178,13 @@ tests["click: the step's card, pure"] = function(t)
     t.eq(type(MR().StepCard), "function", "MR.StepCard")
     if type(MR().StepCard) ~= "function" then return end
     local r = rows()
-    t.eq(MR().StepCard(r[1]), { title = MR().PIN:format(1, tostring(r[1].text)), lines = { r[1].sub } })
+    -- Lead section 841: the lines as StepCard builds them, the sub then the
+    -- distance when each is text (Trip.TrackRows gives both).
+    local want = {}
+    for _, v in ipairs({ r[1].sub, r[1].dist }) do
+        if type(v) == "string" and v ~= "" then want[#want + 1] = v end
+    end
+    t.eq(MR().StepCard(r[1]), { title = MR().PIN:format(1, tostring(r[1].text)), lines = want })
     t.eq(MR().StepCard({ n = 3, text = "X", sub = "Y", dist = "40 yd" }),
         { title = MR().PIN:format(3, "X"), lines = { "Y", "40 yd" } })
     t.eq(MR().StepCard(nil), nil)
