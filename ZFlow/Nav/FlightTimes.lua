@@ -63,7 +63,8 @@ end
 function T.Lines(times)
     local rows = {}
     for key, s in pairs(type(times) == "table" and times or {}) do
-        local from, to = type(key) == "string" and key:match("^(.+)>(.+)$")
+        local from, to
+        if type(key) == "string" then from, to = key:match("^(.+)>(.+)$") end
         if from and finite(s) and s > 0 then rows[#rows + 1] = { from = from, to = to, s = s } end
     end
     if #rows == 0 then return {} end
@@ -111,14 +112,15 @@ function T.Declare(k)
     end
 
     local function keep(from, to, seconds)
+        -- A copy written back through store:set, never the stored table
+        -- changed in place.
         local ok, times = pcall(ctx.store.get, ctx.store, "account", path())
-        local key = from .. ">" .. to
-        local whole = math.floor(seconds + 0.5)
+        local copy = {}
         if ok and type(times) == "table" then
-            times[key] = whole
-        else
-            ctx.store:set("account", path(), { [key] = whole })
+            for k2, v in pairs(times) do copy[k2] = v end
         end
+        copy[from .. ">" .. to] = math.floor(seconds + 0.5)
+        ctx.store:set("account", path(), copy)
     end
 
     local function tick()
