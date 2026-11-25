@@ -13476,7 +13476,7 @@ function ns.make.client(env)
         local GLOW = { 1, 0.5, 0 }
         local glows = setmetatable({}, { __mode = "k" })
 
-        local function spellName(id)
+        local function ctrlSpell(id)
             local group = env.C_Spell
             if type(group) == "table" and type(group.GetSpellInfo) == "function" then
                 local ok, info = call(group.GetSpellInfo, id)
@@ -13555,7 +13555,7 @@ function ns.make.client(env)
             if not okH or not has or hidden(has) then return false end
             local okI, kind, id = call(env.GetActionInfo, slot)
             if not okI or kind ~= "spell" or type(id) ~= "number" or hidden(id) then return false end
-            return spellName(id) == name
+            return ctrlSpell(id) == name
         end
 
         function c.barGlow(name)
