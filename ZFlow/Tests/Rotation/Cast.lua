@@ -319,8 +319,9 @@ return {
         t.eq(r.form, 3, "form")
         local a = attrs(r.button)
         t.eq({ a[1], a[2], a[3] }, { "type=spell", "spell=G", "unit=target" }, "key")
-        t.eq({ a[14], a[15], a[16] }, { "*type-more=spell", "*spell-more=J", "*unit-more=target" }, "more")
-        t.eq(a[5], "*type-ctrl=nil", "form 3 has no ctrl")
+        -- D-19's target-slot row sits fifth, after item.
+        t.eq({ a[15], a[16], a[17] }, { "*type-more=spell", "*spell-more=J", "*unit-more=target" }, "more")
+        t.eq(a[6], "*type-ctrl=nil", "form 3 has no ctrl")
     end,
 
     ["attributes: nothing to cast clears the key"] = function(t)
@@ -331,7 +332,7 @@ return {
         for i, a in ipairs(attrs(r.button)) do
             t.ok(string.sub(a, -4) == "=nil", "cleared " .. i)
         end
-        t.eq(#r.button, 19, "every attribute named")
+        t.eq(#r.button, 20, "every attribute named, D-19's target-slot with them")
     end,
 
     ["attributes: a form with no row, or not a form number, reads as described"] = function(t)
