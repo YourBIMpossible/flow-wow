@@ -267,11 +267,13 @@ function PQ.StartsStep(st, db, ctx, n)
     if st.at >= #st.ids then st.state = "ready" end
 end
 
--- The pass's answer once it is done ("ready", or "none": nothing to walk),
--- else nil: not known yet.
+-- The pass's answer once it is done: "ready" its list; "none" (nothing to
+-- walk) or "failed" (a step raised) an empty one, never a part-filled
+-- list; else nil: not known yet.
 function PQ.StartsResult(st)
     if type(st) ~= "table" then return nil end
-    if st.state == "ready" or st.state == "none" then return st.out end
+    if st.state == "ready" then return st.out end
+    if st.state == "none" or st.state == "failed" then return {} end
     return nil
 end
 
@@ -459,7 +461,7 @@ function PQ.Declare(k, diag)
         if not ctx or type(pass) ~= "table" then return stopPass() end
         if ask(ctx.client, "inCombat") ~= false then return end
         local ok = pcall(PQ.StartsStep, pass, passDb, passCtx)
-        if not ok then pass.state = "none" end
+        if not ok then pass.state = "failed" end
         local got = PQ.StartsResult(pass)
         if got ~= nil then
             stopPass()
