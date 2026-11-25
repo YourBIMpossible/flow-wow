@@ -10,8 +10,11 @@ local _, ns = ...
 --                  "learned.bankCounts", kept by Items/HaveTip.lua), with how
 --                  long ago: the game tells add-ons the bank only while it is
 --                  open
---   to sell        of those, what the sell rules (Disposition.Decide) would
---                  now sell, with the reason
+--   to sell        of those, what to take out: BankTakeOut's rule (E-19
+--                  join, Flow's B.TakeOutRows): what a route step, a quest
+--                  or a hold wants, then what the sell rules
+--                  (Disposition.Decide) would now sell, never a weapon,
+--                  armor or quest thing to sell; with the reason
 --
 -- One reservations evaluation (Items/Reservations.lua) per word: "to bank"
 -- counts what the goals hold in the bags, "to sell" what they hold in the
@@ -113,6 +116,16 @@ local function sellReason(d)
     return nil
 end
 
+-- The rule of the part of a decision that sells (your own choice marks the
+-- row mine, as Flow's r.mine).
+local function sellRule(d)
+    while type(d) == "table" do
+        if d.action == "sell" then return d.rule end
+        d = d.rest
+    end
+    return nil
+end
+
 function B.SellRows(items, context)
     if type(items) ~= "table" then return nil end
     local D, rows = ns.Disposition, {}
@@ -120,8 +133,10 @@ function B.SellRows(items, context)
         local d = D.Decide(e, context)
         local n = D.CountOf(d, "sell")
         if n == nil or n > 0 then
-            rows[#rows + 1] = { key = e.key, name = e.name, count = n, quality = e.quality,
-                                reason = sellReason(d) or "the sell rules would sell it" }
+            local row = { key = e.key, name = e.name, count = n, quality = e.quality,
+                          reason = sellReason(d) or "the sell rules would sell it" }
+            if sellRule(d) == "yourChoice" then row.mine = true end
+            rows[#rows + 1] = row
         end
     end
     return rows
@@ -169,9 +184,15 @@ function B.Declare(k, diag)
             local now = type(client.clock) == "function" and client.clock() or nil
             return B.InBankLines(items, type(saved) == "table" and saved.at or nil, now)
         end)
+        -- E-19 join: the bank's rows are BankTakeOut's rule (Flow's
+        -- B.TakeOutRows), with this word's one reservations evaluation.
         section(say, "To sell", function()
             if r.status == R.UNAVAILABLE then return { B.SELL_UNKNOWN } end
-            return B.SellLines(B.SellRows(items, ns.BankList.Context(store, R.HeldIn(grants, "bank"))))
+            local T = ns.BankTakeOut
+            local list, why = T.Make(client, store, ctx.use, r)
+            if list == nil and why == T.NOT_SEEN then return B.SellLines(nil) end
+            if list == nil then return nil end
+            return B.SellLines(list.rows)
         end)
     end
 
