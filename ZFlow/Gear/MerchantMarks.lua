@@ -6,7 +6,8 @@ local _, ns = ...
 -- only: nothing is bought, picked up or equipped, and nothing here touches
 -- the merchant window.
 --
---   marks, info = GearMerchantMarks.Marks(client, packs)
+--   marks, info = GearMerchantMarks.Marks(client, packs, role)
+--     role: spec.role; none chosen, GearRole.Active's "dps" (one role)
 --   text        = GearMerchantMarks.Text(marks, info[, opts])
 --   badges      = GearMerchantMarks.Specs(client, packs, role)
 --
@@ -53,7 +54,7 @@ local function plural(n, one, many)
     return n .. " " .. (n == 1 and one or many)
 end
 
-function M.Marks(client, packs)
+function M.Marks(client, packs, role)
     local rows = nil
     if type(client) == "table" and type(client.merchantItems) == "function" then
         rows = client.merchantItems()
@@ -68,7 +69,8 @@ function M.Marks(client, packs)
         if type(link) ~= "string" or link == "" then
             info.unread = info.unread + 1
         else
-            local lines = ns.GearTooltipModule.Lines(client, packs, link)
+            local lines = ns.GearTooltipModule.Lines(client, packs, link,
+                { role = (ns.GearRole.Active(role)) })
             if type(lines) == "table" and #lines > 0 then
                 info.gear = info.gear + 1
                 local good = {}

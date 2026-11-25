@@ -47,13 +47,13 @@ end
 
 local function row(link, price) return { item = link, price = price or 100, stack = 1 } end
 
-tests["merchant marks: an item that is an upgrade is marked, with a line for each role"] = function(t)
+tests["merchant marks: an item that is an upgrade is marked, for the active role only"] = function(t)
     local c = client({ row(BETTER) })
     local marks, info = M.Marks(c, packs())
     t.eq(#marks, 1)
     t.eq(marks[1].index, 1)
     t.eq(marks[1].link, BETTER)
-    t.eq(marks[1].lines, { "Upgrade for your head piece (+5, dps)", "Upgrade for your head piece (+15, tank)" })
+    t.eq(marks[1].lines, { "Upgrade for your head piece (+5, dps)" }, "no role chosen, no tank sign: dps (lead section 561)")
     t.eq(info.rows, 1)
     t.eq(info.gear, 1)
 end
@@ -124,7 +124,7 @@ tests["merchant marks: the text names how many, then each one"] = function(t)
     local marks, info = M.Marks(c, packs())
     local text = M.Text(marks, info)
     t.eq(text[1], "2 upgrades on sale here")
-    t.eq(text[2], BETTER .. ": Upgrade for your head piece (+5, dps); Upgrade for your head piece (+15, tank)")
+    t.eq(text[2], BETTER .. ": Upgrade for your head piece (+5, dps)")
     t.eq(#text, 3)
     marks, info = M.Marks(client({ row(BETTER) }), packs())
     t.eq(M.Text(marks, info)[1], "1 upgrade on sale here")
@@ -167,7 +167,7 @@ end
 tests["merchant marks: the price, and 'more than you have' only when money was read"] = function(t)
     local marks, info = M.Marks(client({ row(BETTER, 2540) }), packs())
     t.eq(marks[1].price, 2540)
-    local tail = "Upgrade for your head piece (+5, dps); Upgrade for your head piece (+15, tank)"
+    local tail = "Upgrade for your head piece (+5, dps)"
     t.eq(M.Text(marks, info, { money = 1000 })[2], BETTER .. ": " .. tail .. "; 25s 40c, more than you have")
     t.eq(M.Text(marks, info, { money = 2540 })[2], BETTER .. ": " .. tail .. "; 25s 40c")
     t.eq(M.Text(marks, info, {})[2], BETTER .. ": " .. tail .. "; 25s 40c", "money not read")
@@ -182,6 +182,46 @@ tests["merchant marks: it only reads; nothing is bought"] = function(t)
     end
     M.Marks(c, packs())
     t.eq(calls, 0)
+end
+
+-- Owner's report (lead section 561): an item that wins only for a role the
+-- player is not in is not marked. Red before the code: Marks marked an item
+-- for any role that gained.
+local DPSY, TANKY = "item:7", "item:8"
+local function split(c)
+    local p = packs()
+    p.DRUID.weights.dps.values = { ITEM_MOD_STRENGTH_SHORT = 1 }
+    c.setItem(HELM, { kind = "INVTYPE_HEAD", stats = { ITEM_MOD_STRENGTH_SHORT = 2, [STA] = 2 } })
+    c.setItem(DPSY, { kind = "INVTYPE_HEAD", stats = { ITEM_MOD_STRENGTH_SHORT = 5 } })
+    c.setItem(TANKY, { kind = "INVTYPE_HEAD", stats = { [STA] = 5 } })
+    c.unmet[DPSY], c.unmet[TANKY] = {}, {}
+    return p
+end
+
+local function marked(marks)
+    local out = {}
+    for _, m in ipairs(marks or {}) do out[#out + 1] = m.link end
+    return out
+end
+
+tests["merchant marks: two items that each win for a different role are never both marked"] = function(t)
+    local c = client({ row(DPSY), row(TANKY) })
+    local p = split(c)
+    t.eq(marked((M.Marks(c, p))), { DPSY }, "no role chosen, no sign: dps")
+    t.eq(marked((M.Marks(c, p, "tank"))), { TANKY }, "tank chosen")
+    t.eq(marked((M.Marks(c, p, "dps"))), { DPSY }, "dps chosen")
+    c.setFormName("Bear Form", true)
+    c.setUnitBuffs("player", { { name = "Righteous Fury" } })
+    t.eq(marked((M.Marks(c, p))), { DPSY }, "no buff or form picks the role (section 564)")
+    t.eq(marked((M.Marks(c, p, "tank"))), { TANKY }, "nothing overrides the choice")
+end
+
+tests["merchant marks: the role - the one chosen, else dps (Flow's class default)"] = function(t)
+    local GR = ns.GearRole
+    t.eq({ GR.Active("heal") }, { "heal", "chosen" })
+    t.eq({ GR.Active("") }, { "dps", "class" })
+    t.eq({ GR.Active(nil) }, { "dps", "class" })
+    t.eq({ GR.Active("bogus") }, { "dps", "class" })
 end
 
 return tests

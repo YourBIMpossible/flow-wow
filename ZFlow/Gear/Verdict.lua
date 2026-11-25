@@ -72,3 +72,23 @@ function V.Lines(gear, who)
     return lines, { result = result, use = use, unmapped = shapes.unmapped, ignored = shapes.ignored,
                     weights = evidence }
 end
+
+-- The role gear is judged for (lead sections 561, 564 R3): one role, never
+-- "any role that gains", so an item that wins only for a spec not played is
+-- not marked and equipping a suggestion never makes the replaced piece the
+-- next one. Legacy Flow Modules/Spec.lua 181-199 (ns.ResolveRole): the role
+-- the player chose (spec.role); nothing overrides it. None chosen: Flow's
+-- next source is the talents, which this client does not read
+-- (Rotation/Role.lua), then the class's levelling role, "dps" for every
+-- class; so "dps". No buff or form is read (section 564).
+--   role, from = GearRole.Active(chosen)   from "chosen" or "class"
+local GR = {}
+ns.GearRole = GR
+
+GR.ROLES = { dps = true, heal = true, tank = true }
+GR.DEFAULT = "dps"
+
+function GR.Active(chosen)
+    if type(chosen) == "string" and GR.ROLES[chosen] then return chosen, "chosen" end
+    return GR.DEFAULT, "class"
+end

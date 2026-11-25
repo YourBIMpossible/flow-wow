@@ -14,7 +14,10 @@ local _, ns = ...
 -- Lines: the lines for one item link, { { text, tone } ... }, or nil when
 -- nothing is to be said (not gear, or no gear read on this client).
 --   One line per role, in name order, when you can use the item; with
---   opts.role a role the pack scores (G31), that role's line alone. A line
+--   opts.role a role the pack scores (G31), that role's line alone; with
+--   opts.dim too, the other roles' lines follow in tone "info" (dimmed).
+--   opts.speedRole, when given, picks the speed line's role instead (false:
+--   every role's). A line
 --   that would read the same for every role (can't use; no verdict) is
 --   said once. Each of these is asked of the client and may be missing:
 --     client.gear(link)   the item, what you wear, dual wield
@@ -221,7 +224,14 @@ function M.Lines(client, packs, link, opts)
         if lines == nil then return nil end
         -- Whether you can use it does not depend on the role.
         local usable = type(detail.use) == "table" and detail.use.can == true
-        if not usable or only == nil or roles[i] == only then keep(lines) end
+        if not usable or only == nil or roles[i] == only then
+            keep(lines)
+        elseif opts.dim == true then
+            -- Section 564 R3: another role's verdict, dimmed ("info").
+            local dimmed = {}
+            for j = 1, #lines do dimmed[j] = { text = lines[j].text, tone = "info" } end
+            keep(dimmed)
+        end
         if not usable then break end
         if roles[i] ~= nil and type(detail.result) == "table" and finite(detail.result.score) then
             scored[#scored + 1] = { role = roles[i], result = detail.result }
@@ -249,7 +259,10 @@ function M.Lines(client, packs, link, opts)
         local prefs
         if type(pack) == "table" then prefs = pack.weaponSpeed end
         local chosen
-        if type(opts) == "table" then chosen = opts.role end
+        if type(opts) == "table" then
+            chosen = opts.role
+            if opts.speedRole ~= nil then chosen = opts.speedRole or nil end
+        end
         if type(prefs) == "table" and type(chosen) == "string" and type(prefs[chosen]) == "table" then
             prefs = { [chosen] = prefs[chosen] }
         end
@@ -377,7 +390,12 @@ function M.Declare(k, packs, diag)
                 if ctx.settings:get(M.SETTING) ~= true or type(add) ~= "function" then return end
                 -- The role always (the speed line names its preference);
                 -- the score lines only with their setting on.
-                local opts = { role = ctx.settings:get(M.ROLE) }
+                -- The verdict for the role gear is judged for (GearRole). A
+                -- role chosen: its line alone (G31). None chosen: dps, the
+                -- other roles' lines dimmed, as Flow's Score.lua greys them.
+                local chosen = ctx.settings:get(M.ROLE)
+                local role, from = ns.GearRole.Active(chosen)
+                local opts = { role = role, dim = from ~= "chosen", speedRole = chosen or false }
                 if ctx.settings:get(M.SCORE_SETTING) == true then opts.score = true end
                 -- Every line is worked out before the first is added, so an
                 -- error leaves the tooltip as the game made it.

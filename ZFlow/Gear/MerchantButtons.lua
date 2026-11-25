@@ -70,7 +70,7 @@ function B.Declare(k, packs)
             return
         end
         specs(badges())
-        local ok, marks, info = pcall(ns.GearMerchantMarks.Marks, client, packs or ns.Packs)
+        local ok, marks, info = pcall(ns.GearMerchantMarks.Marks, client, packs or ns.Packs, ctx.settings:get(B.ROLE))
         if not ok then
             k.problems:add(B.NAME, "marks", tostring(marks))
             return
