@@ -527,4 +527,26 @@ T["stacked text: quest text off, the echo's lines stay where they were"] = funct
     t.eq(v.prof.text.point, { "TOP", "BOTTOM", 0, -N.TEXT_GAP_BELOW })
 end
 
+-- R7 (lead section 564): the quest arrow takes its colour from RC.Of for the
+-- step it points at, as the map lines do, so the two never disagree.
+T["R7: the quest arrow's colour is RC.Of's for its step"] = function(t)
+    local RC = ns.RouteColor
+    local wr, wg, wb = RC.Of({ family = "waypoint" }, 300, "standard")
+    colour(t, N.ArrowView(state(nil, { family = "waypoint" })).quest.colour, wr, wg, wb, "waypoint: green")
+    local cr, cg, cb = RC.Of({ family = "waypoint" }, 300, "colourBlind")
+    colour(t, N.ArrowView(state({ palette = N.ARROW_PALETTE.colourBlind }, { family = "waypoint" })).quest.colour,
+        cr, cg, cb, "waypoint, colour-blind palette")
+    local pr, pg, pb = RC.Of({ family = "profession" }, 300, "standard")
+    colour(t, N.ArrowView(state(nil, { family = "profession" })).quest.colour, pr, pg, pb, "profession: purple")
+    local dr, dg, db = RC.Of(nil, 300, "standard")
+    colour(t, N.ArrowView(state()).quest.colour, dr, dg, db, "a route step: by distance")
+end
+
+T["R7: a palette row gives back its palette word"] = function(t)
+    t.eq(N.ArrowPaletteWord(N.ARROW_PALETTE.colourBlind), "colourBlind")
+    t.eq(N.ArrowPaletteWord(N.ArrowPaletteOf("colourBlind", false)), "colourBlind")
+    t.eq(N.ArrowPaletteWord(N.ARROW_PALETTE.standard), "standard")
+    t.eq(N.ArrowPaletteWord(nil), "standard")
+end
+
 return T
