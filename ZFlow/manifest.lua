@@ -269,6 +269,7 @@ return {
     "Nav/BossLootData.lua",
     -- Lead section 303: the Dungeon Quests reader (Questie at runtime).
     "Nav/DungeonRead.lua",
+    "Nav/DungeonMode.lua",
     -- Lead section 305: boss kills as the client reports them (after Diag).
     "Nav/BossKills.lua",
     -- Lead section 318: the Dungeon Quests window, on the kit (after Kit and the dungeon data).
