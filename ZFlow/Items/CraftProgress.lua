@@ -11,9 +11,13 @@ local _, ns = ...
 -- CB.Span (:54-61), CB.Text (:64-70), a batch only for two or more
 -- (:109-114), one cast finished or interrupted (:119-126), the cast's
 -- length from the game's own cast times (:146-155), only "interrupted"
--- ends it, not "failed" (:160), and a fight ends it (:169). Flow matched
--- its casts by the spell's name; here by the recipe's number, which is the
--- spell the game casts for it (as Items/CraftSpots.lua reads it).
+-- ends it, not "failed" (:160), a fight ends it (:169), and a run that goes
+-- quiet is over (CB.Stalled :73-78, its watch :170-180: running out of
+-- reagents, closing the window or walking away fires no interrupt). Flow
+-- matched its casts by the spell's name; here by the spell's number (the
+-- spell the game casts for the recipe, as Items/CraftSpots.lua reads it).
+-- An interrupt whose spell the game does not name is not taken as the
+-- run's (Flow stopped the batch on it); the stall rule ends the run then.
 --
 -- The run is Items/CraftQueue.lua's (its first caller): the rows, which
 -- one is due, and the counts.
@@ -21,20 +25,39 @@ local _, ns = ...
 -- Where the facts are from (lead section 611): the game's own cast events
 -- of the player (UNIT_SPELLCAST_START, _SUCCEEDED, _INTERRUPTED: unit,
 -- cast guid, spell id), the time (client.now()), and two reads the client
--- does not have yet (CLIENT NEED; stubs in Core/ClientFake.lua):
---   client.ownCastSeconds() -> how long the cast the player is making now
---     takes in all, in seconds, or nil (UnitCastingInfo("player"): end
---     less start, in milliseconds). Without it no time is said: the line
---     ends at the count. Nothing is guessed from earlier casts.
---   client.onCraftStarted(fn) -> cancel | nil. fn(id, count, name) when
---     the game's own craft call is made (the profession window's Create
---     and Create All). Without it a run starts only through Begin.
+-- does not have yet (CLIENT NEED):
+--   client.casting() -> startMs, endMs, channel | nil   the player's cast
+--     now. The same CLIENT NEED Rotation/CastEdge.lua names: the 4th and
+--     5th values of UnitCastingInfo("player"), else of UnitChannelInfo
+--     ("player") with channel = true, in milliseconds on the clock
+--     client.now() reads; nil when nothing is cast. Used for one cast's
+--     length (the time left) and for whether a cast is going (the stall
+--     rule). Without it no time is said, and a cast seen starting is
+--     waited for until it is seen done (its length is not guessed).
+--   client.onCraftStarted(fn) -> cancel | nil. fn(id, count, name) each
+--     time the game's own craft call is made; stubbed in Core/ClientFake.lua
+--     (the "§ E-57" block). Look only: both calls are watched with
+--     hooksecurefunc, never called or replaced.
+--       DoTradeSkill(index, count): the trade skill window's list index.
+--         id is GetTradeSkillRecipeLink(index)'s spell ("enchant:<spell>"
+--         in the link), name GetTradeSkillInfo(index)'s first value.
+--       C_TradeSkillUI.CraftRecipe(recipeID, count): id is recipeID, the
+--         spell the recipe casts; name C_TradeSkillUI.GetRecipeInfo's.
+--     id is the SPELL the game casts for the recipe: the cast events carry
+--     that number, and a run counts only casts of it. nil when the client
+--     cannot tell it from the index (then no run starts). count: how many
+--     were asked for; absent or not a whole number from 1 means one, which
+--     starts no run (one craft has its cast bar already). Without the read
+--     a run starts only through Begin.
 --
 -- Pure:
 --   P.Left(total, done, castSecs, into) -> seconds left, or nil when one
 --     cast's length is not known
 --   P.Span(seconds) -> "21 s", "1 min 30 s"
 --   P.Text(view, now) -> the line; view as Current() gives it
+--   P.Stalled(view, now, casting[, idle]) -> true when a run going has had
+--     nothing made or cast for more than idle seconds (P.IDLE): no time
+--     kept or no time now is no stall
 --
 -- Module "craftProgress" (P.Declare(k) -> api):
 --   Begin(picks) -> true | false, reason   picks as CraftQueue.New takes
@@ -45,7 +68,10 @@ local _, ns = ...
 --     { name, id, done, total (of the recipe being made), made, all (of
 --       the whole run), at, rows, castSecs, castStart, stopped = why or
 --       nil, finished = true or nil, text }
---     A finished or stopped run stays until the next Begin.
+--     lastAt: when a craft was last begun, cast or made.
+--     A finished or stopped run stays until the next Begin. A run that
+--     stalls stops with stopped = "stalled", looked at every P.EVERY
+--     seconds and whenever Current() is read.
 -- P.EVENT is sent on the bus each time that answer changes.
 -- Not tested in game.
 
@@ -55,6 +81,9 @@ ns.CraftProgress = P
 P.NAME = "craftProgress"
 P.EVENT = "craftProgress.changed"
 P.LEAST = 2
+P.IDLE = 2.5     -- seconds with nothing cast before a run is over (Flow's CB.IDLE)
+P.EVERY = 0.5    -- seconds between looks for a stall
+P.STALLED = "stalled"
 P.START = "UNIT_SPELLCAST_START"
 P.DONE = "UNIT_SPELLCAST_SUCCEEDED"
 P.BROKEN = "UNIT_SPELLCAST_INTERRUPTED"
@@ -101,10 +130,19 @@ function P.Text(view, now)
     return line
 end
 
+function P.Stalled(view, now, casting, idle)
+    if type(view) ~= "table" or view.stopped or view.finished then return false end
+    if casting then return false end
+    if not finite(now) or not finite(view.lastAt) then return false end
+    if not finite(idle) then idle = P.IDLE end
+    return now - view.lastAt > idle
+end
+
 function P.Declare(k)
     local api = {}
     local ctx, cancelStarted
-    -- run: { q = the CraftQueue run, stopped, finished, castSecs, castStart }
+    -- run: { q = the CraftQueue run, stopped, finished, castSecs, castStart,
+    --        lastAt }
     local run
 
     local function ask(name, ...)
@@ -134,14 +172,31 @@ function P.Declare(k)
         return Q.Current(q) or q.rows[#q.rows], q
     end
 
+    -- The player's cast now from client.casting: true, false, or nil when
+    -- the client has no such read; and its length in seconds when known.
+    local function castNow()
+        local c = ctx and ctx.client
+        if type(c) ~= "table" or type(c.casting) ~= "function" then return nil end
+        local ok, startMs, endMs = pcall(c.casting)
+        if not ok or not finite(startMs) then return false end
+        local secs
+        if finite(endMs) and endMs > startMs then secs = (endMs - startMs) / 1000 end
+        local t = now()
+        if secs and finite(t) and t * 1000 > endMs then return false end
+        return true, secs
+    end
+
+    local check
     function api.Current()
         if not run then return nil end
+        check()
         local Q = ns.CraftQueue
         local row, q = rowOf()
         local made, all = Q.Total(q)
         local view = { name = row.name or ("recipe " .. tostring(row.id)), id = row.id, done = row.made,
             total = row.count, made = made, all = all, at = math.min(q.at, #q.rows), rows = #q.rows,
-            castSecs = run.castSecs, castStart = run.castStart, stopped = run.stopped, finished = run.finished }
+            castSecs = run.castSecs, castStart = run.castStart, stopped = run.stopped, finished = run.finished,
+            lastAt = run.lastAt }
         view.text = P.Text(view, now())
         return view
     end
@@ -152,7 +207,7 @@ function P.Declare(k)
         local q = Q.New(picks)
         local _, all = Q.Total(q)
         if all < P.LEAST then return false, P.TOO_FEW end
-        run = { q = q }
+        run = { q = q, lastAt = now() }
         tell()
         return true
     end
@@ -169,6 +224,22 @@ function P.Declare(k)
         return run ~= nil and not run.stopped and not run.finished
     end
 
+    -- The stall rule (Zen-3's review): a run that has had nothing cast for
+    -- a while is over. Without the casting read, a cast seen starting is
+    -- going until it is seen done, or until its length is past.
+    check = function()
+        if not going() then return end
+        local t = now()
+        local casting = castNow()
+        if casting == nil then
+            casting = run.castStart ~= nil
+                and not (finite(run.castSecs) and finite(t) and t - run.castStart > run.castSecs)
+        end
+        if casting and finite(t) then run.lastAt = t end
+        local view = { lastAt = run.lastAt }
+        if P.Stalled(view, t, casting) then api.Stop(P.STALLED) end
+    end
+
     -- Is the spell the recipe being made? Only a plain match counts.
     local function mine(unit, id)
         if unit ~= "player" or not going() then return false end
@@ -179,7 +250,8 @@ function P.Declare(k)
     local function started(unit, _, id)
         if not mine(unit, id) then return end
         run.castStart = now()
-        local secs = ask("ownCastSeconds")
+        run.lastAt = run.castStart
+        local _, secs = castNow()
         if finite(secs) and secs > 0 then run.castSecs = secs end
         tell()
     end
@@ -189,6 +261,7 @@ function P.Declare(k)
         local Q = ns.CraftQueue
         local before = run.q.at
         run.castStart = nil
+        run.lastAt = now()
         if Q.Made(run.q) then run.finished = true end
         -- Another recipe is next: its cast's length is not known yet.
         if run.q.at ~= before then run.castSecs = nil end
@@ -203,6 +276,7 @@ function P.Declare(k)
         name = P.NAME,
         needs = { "client", "bus" },
         provides = { Begin = api.Begin, Stop = api.Stop, Current = api.Current },
+        ticks = { { every = P.EVERY, when = "always", run = function() check() end } },
         start = function(c)
             ctx = c
             c.bus:on(P.NAME, P.START, started)
@@ -213,6 +287,10 @@ function P.Declare(k)
             -- by itself, and nothing is claimed.
             if type(c.client.onCraftStarted) == "function" then
                 local ok, cancel = pcall(c.client.onCraftStarted, function(id, count, name)
+                    -- Zen-3's review: a run going for this recipe (one
+                    -- begun with several rows, say) is not replaced.
+                    if going() and rowOf().id == id then return end
+                    if type(count) ~= "number" then count = 1 end
                     api.Begin({ { id = id, name = name, count = count } })
                 end)
                 if ok and type(cancel) == "function" then cancelStarted = cancel end

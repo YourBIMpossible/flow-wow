@@ -4996,19 +4996,16 @@ do
     end
 end
 
--- § E-57 (Items/CraftProgress.lua; lead sections 660, 663 and 664): two
--- CLIENT NEEDs, stubbed here only. Core/Client.lua does not have them yet.
---   c.ownCastSeconds() -> the length of the cast the player is making now,
---     in seconds, or nil; c.setOwnCastSeconds(n or nil) sets it.
+-- § E-57 (Items/CraftProgress.lua; lead sections 660, 663 and 664): one
+-- CLIENT NEED, stubbed here only. Core/Client.lua does not have it yet.
+-- (client.casting, the other read E-57 uses, is Rotation/CastEdge.lua's
+-- CLIENT NEED; tests set it on the fake themselves, as CastEdge's do.)
 --   c.onCraftStarted(fn) -> cancel: fn(id, count, name) when the game's own
 --     craft call is made; c.craftStarted(id, count, name) plays one.
 do
     local make = ns.make.fakeClient
     ns.make.fakeClient = function(...)
         local c = make(...)
-        local castSeconds = nil
-        function c.setOwnCastSeconds(n) castSeconds = n end
-        function c.ownCastSeconds() return castSeconds end
         local started = {}
         function c.onCraftStarted(fn)
             if type(fn) ~= "function" then return nil end
