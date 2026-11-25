@@ -23,7 +23,7 @@ local _, ns = ...
 --
 --   BR.BankRows(items) -> { { key, name, count } } by name, or nil (not seen)
 --   BR.BankHeader(rows, at, now) -> the line above the bank's rows
---   BR.SellRows(bags, bank) -> rows; bags and bank: { { key, name, count,
+--   BR.SellRows(bags, bank[, rules]) -> rows; bags and bank: { { key, name, count,
 --     quality, decision } }. A row: { key, name, count, quality, reason,
 --     kept = true | nil, bank = true | nil, next = "keep" | "sell" }
 --   BR.SellNote(rows, atBank) -> the line above the to-sell rows
@@ -131,7 +131,11 @@ local function row(e, extra)
     return r
 end
 
-function BR.SellRows(bags, bank)
+-- rules: settings.banker.rules ({ [key] = "bank" | "carry" }, as Items/
+-- Bank.lua reads it, context.bankRules), passed in. A thing whose rule is
+-- "bank" is never taken out of the bank (Flow B.TakeOutRows :316; Twin,
+-- lead section 774). nil: no rules.
+function BR.SellRows(bags, bank, rules)
     local out, kept, inBank = {}, {}, {}
     for _, e in ipairs(listOf(bags)) do
         if type(e) == "table" and type(e.decision) == "table" then
@@ -148,6 +152,9 @@ function BR.SellRows(bags, bank)
         end
     end
     for _, e in ipairs(listOf(bank)) do
+        -- You keep it in the bank: not listed, whatever wants it.
+        local banked = type(rules) == "table" and type(e) == "table" and e.key ~= nil and rules[e.key] == "bank"
+        if banked then e = nil end
         if type(e) == "table" and words(e.step) then
             local r = row(e, { bank = true, take = "route", reason = e.step })
             r.next = nil
