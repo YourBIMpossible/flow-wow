@@ -90,8 +90,14 @@ end
 tests["key actions: a lure on the pole, no lure in the bags, or not known: the key casts Fishing"] = function(t)
     if not ready(t) then return end
     t.eq(field(KA().Pick(lured({ poleLured = true }), nil), "spell"), "Fishing", "a lure on it")
-    t.eq(field(KA().Pick(lured({ lure = nil }), nil), "spell"), "Fishing", "no lure in the bags")
-    t.eq(field(KA().Pick(lured({ poleLured = nil }), nil), "spell"), "Fishing", "not known: never a guess")
+    -- A nil in the overlay table is no key at all, so these two clear the
+    -- field on the made state itself.
+    local noLure = lured()
+    noLure.lure = nil
+    t.eq(field(KA().Pick(noLure, nil), "spell"), "Fishing", "no lure in the bags")
+    local unknown = lured()
+    unknown.poleLured = nil
+    t.eq(field(KA().Pick(unknown, nil), "spell"), "Fishing", "not known: never a guess")
 end
 
 tests["key actions: a lure is told by its own tooltip, the bigger Fishing bonus first"] = function(t)
