@@ -116,10 +116,12 @@ tests["flow row: one picture for the next spell, on the Flow button"] = function
 end
 
 tests["flow row: the buff button with nothing to cast shows no question mark"] = function(t)
-    -- Never held a buff: nothing is drawn.
+    -- Recovery R1 (lead section 564): never held a buff, it still shows:
+    -- its plain dark face and its word, no "?".
     local c0 = priest({ ["Power Word: Fortitude"] = 1800, ["Inner Fire"] = 600 })
     t.eq(held(c0, SELF), nil, "nothing to cast")
-    t.eq(face(c0, SELF).dimmed, "gone", "never held a buff: nothing drawn, no grey box")
+    t.eq(face(c0, SELF).dimmed, "word", "never held a buff: its plain face and its word, not gone")
+    t.eq(face(c0, SELF).label, FB.SELF_WORD, "it keeps its word")
     t.eq(rowOf(c0, SELF).slots[1].attrs.type, nil, "a click casts nothing, as before")
     -- Held Inner Fire, then it went up: dimmed with its picture.
     local c = priest()
@@ -220,10 +222,16 @@ tests["flow row: rotation never on, the Flow button shows its word, no question 
     noMacros(t, c)
 end
 
-tests["flow row: the empty buff button takes no mouse"] = function(t)
+-- Recovery R1 (lead section 564): the empty buff button takes the mouse
+-- and shows its tooltip, as legacy Flow's does (BuffButton.lua OnEnter).
+tests["flow row: the empty buff button takes the mouse and shows its tooltip"] = function(t)
     local c = priest({ ["Power Word: Fortitude"] = 1800, ["Inner Fire"] = 600 })
     t.eq(held(c, SELF), nil, "nothing to cast")
-    t.eq(face(c, SELF).mouse, false, "empty: takes no mouse")
+    t.eq(face(c, SELF).mouse, true, "empty: takes the mouse")
+    local line = c.hoverTipText(SELF .. "1") or ""
+    t.ok(line:find("^Buff button") ~= nil, "its tooltip names it: " .. line)
+    t.ok(line:find("Nothing to cast now", 1, true) ~= nil, "and says why it is empty: " .. line)
+    t.eq(rowOf(c, SELF).slots[1].attrs.type, nil, "a click on it casts nothing")
     c.setPlayerBuffs({}); c.advance(3, 5)
     t.eq(held(c, SELF), "Inner Fire", "holds a buff")
     t.eq(face(c, SELF).mouse, true, "holding one: takes the mouse")
@@ -234,7 +242,7 @@ tests["flow row: the empty buff button takes no mouse"] = function(t)
     t.eq(face(c, SELF).mouseInLock or 0, 0, "no mouse change made under the lock")
     c.setLockdown(false); c.setCombat(false); c.advance(3, 5)
     t.eq(held(c, SELF), nil, "after the fight: empty")
-    t.eq(face(c, SELF).mouse, false, "and takes no mouse")
+    t.eq(face(c, SELF).mouse, true, "and still takes the mouse")
     t.eq(face(c, FLOW).mouse ~= false, true, "the Flow button holding a spell takes the mouse")
     noMacros(t, c)
 end

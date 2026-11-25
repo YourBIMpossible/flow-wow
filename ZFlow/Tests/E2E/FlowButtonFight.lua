@@ -210,21 +210,64 @@ tests["flow fight: each of the three buttons says what it is"] = function(t)
     t.ok(shown:find("casts nothing", 1, true) ~= nil, "and says it only shows: " .. shown)
 end
 
-tests["flow fight: the buff button stands apart from the Flow button by default"] = function(t)
+-- Recovery R1 (lead section 564): one buffButton.dock default, docked, as
+-- legacy Flow has it (BuffButton.lua BB.DockWanted: docked unless taken
+-- off), the same in the three files that name it.
+tests["flow fight: one dock default, the same in the three files"] = function(t)
+    local _, addon = start()
+    t.eq(addon.settings:row(FB.DOCK).default, true, "the settings row (Rotation/FlowButton.lua)")
+    local model = nil
+    for _, row in ipairs(ns.Settings.Model.ROWS) do
+        if row.key == FB.DOCK then model = row.default end
+    end
+    t.eq(model, true, "the settings model (Settings/Model.lua)")
+    t.eq(ns.Import.Stored.BuffButtonSettings({}).dock, true, "the import's reading (Import/Stored.lua)")
+end
+
+tests["flow fight: the buff button is docked under the Flow button by default"] = function(t)
     local c, addon = start()
-    t.eq(addon.settings:get(FB.DOCK), false, "not docked by default")
-    t.eq(addon.settings:row(FB.DOCK).default, false, "the row's default")
+    t.eq(addon.settings:get(FB.DOCK), true, "docked by default")
+    local s = rowOf(c, SELF)
+    if not s then t.ok(false, "the buff button made"); return end
+    local p = FB.DEFAULT_POINT
+    local under = { p[1], p[2], p[3], p[4] - 26 - FB.DOCK_GAP - 26 }
+    t.eq(s.point, under, "under the Flow button")
+    local c2 = start({ account = { settings = { buffButton = { dock = true } } } })
+    s = rowOf(c2, SELF)
+    if not s then t.ok(false, "the buff button, docked"); return end
+    t.eq(s.point, under, "docked saved on: the same place")
+end
+
+-- A saved choice is never overwritten by the new default.
+tests["flow fight: a saved dock choice or a saved place keeps the buff button apart"] = function(t)
+    -- Saved off: apart, at its own default place.
+    local c, addon = start({ account = { settings = { buffButton = { dock = false } } } })
+    t.eq(addon.settings:get(FB.DOCK), false, "the saved choice is read")
     local f, s = rowOf(c, FLOW), rowOf(c, SELF)
     if not (f and s) then t.ok(false, "both buttons made"); return end
     t.eq(s.point, FB.SELF_DEFAULT_POINT, "its own default place")
     local dx = math.abs(s.point[3] - f.point[3])
     local dy = math.abs(s.point[4] - f.point[4])
     t.ok(dx >= FB.SIZE + FB.DOCK_GAP or dy >= FB.SIZE + FB.DOCK_GAP, "apart from the Flow button, not touching it")
-    local c2 = start({ account = { settings = { buffButton = { dock = true } } } })
+    -- A place saved while the default was "apart" (the player dragged it;
+    -- no dock value was written then): it stays at that place.
+    local place = { "CENTER", "CENTER", 200, 100 }
+    local account = { layout = { buffButton = { frame = { place[1], place[2], place[3], place[4] } } } }
+    local c2 = start({ account = account })
     s = rowOf(c2, SELF)
-    if not s then t.ok(false, "the buff button, docked"); return end
+    if not s then t.ok(false, "the buff button, with a saved place"); return end
+    t.eq(s.point, place, "where the player left it, not under the Flow button")
+    local saved = c2.saved(ns.id.accountDB)
+    t.eq(type(saved.settings) == "table" and type(saved.settings.buffButton) == "table"
+        and saved.settings.buffButton.dock or nil, nil, "and nothing was written for it")
+    -- Saved on wins over a saved place.
+    account = { layout = { buffButton = { frame = { place[1], place[2], place[3], place[4] } } },
+                settings = { buffButton = { dock = true } } }
+    local c3 = start({ account = account })
+    s = rowOf(c3, SELF)
+    if not s then t.ok(false, "the buff button, docked with a saved place"); return end
     local p = FB.DEFAULT_POINT
-    t.eq(s.point, { p[1], p[2], p[3], p[4] - 26 - FB.DOCK_GAP - 26 }, "docked on: under the Flow button")
+    t.eq(s.point, { p[1], p[2], p[3], p[4] - 26 - FB.DOCK_GAP - 26 }, "saved on: under the Flow button")
 end
 
 tests["flow fight: the rotation icon and the Flow button do not stand side by side"] = function(t)
