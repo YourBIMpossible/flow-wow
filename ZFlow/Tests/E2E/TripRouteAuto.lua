@@ -19,18 +19,20 @@ local function questie()
         [402] = { ObjectiveData = { { Type = "monster", Id = 9102 } } },
         [403] = { ObjectiveData = {}, Finisher = { NPC = { 9103 } } },
         [404] = { ObjectiveData = { { Type = "monster", Id = 9104 } } },
+        [405] = { ObjectiveData = { { Type = "monster", Id = 9105 } } },
     }
     local npcs = {
         [9101] = { name = "Boar", spawns = { [40] = { { 60, 50 } } } },
         [9102] = { name = "Herb Thing", spawns = { [40] = { { 20, 50 } } } },
         [9103] = { name = "Smith", spawns = { [40] = { { 55, 50 } } } },
         [9104] = { name = "Wolf", spawns = { [40] = { { 40, 40 } } } },
+        [9105] = { name = "Far Bear", spawns = { [41] = { { 50, 50 } } } },
     }
     local db = {}
     function db.GetQuest(id) return quests[id] end
     function db.GetNPC(id) return npcs[id] end
     local zones = {}
-    function zones.GetUiMapIdByAreaId(area) return ({ [40] = MAP })[area] end
+    function zones.GetUiMapIdByAreaId(area) return ({ [40] = MAP, [41] = MAP + 1 })[area] end
     return db, zones
 end
 
@@ -91,8 +93,10 @@ tests["route auto: with no word the quest route is planned and drawn on the worl
     local set = c.routeLineSets and c.routeLineSets[1]
     t.ok(set ~= nil and set.shown == true and #set.lines > 0, "the route is drawn on the map")
     t.eq(said(c, "1. Bandages"), nil, "nothing is said in chat")
-    t.eq(first(c), "Boars", "the arrow keeps its own pick")
-    t.eq(trip(addon).Current(), nil, "not a route the arrow walks")
+    -- A1-24 (lead section 697): the arrow walks the planned route by
+    -- default, as Flow's does; Current stays the walked-by-word route.
+    t.eq(first(c), "Bandages", "the arrow walks the route's first stop")
+    t.eq(trip(addon).Current(), nil, "not a route the others follow")
     t.eq(addon.problems:count(), base, "no new problem")
 end
 
@@ -242,6 +246,37 @@ tests["route auto: planned with the place on the map unknown, the next look does
     c.advance(ns.Nav.TripRoute.AUTO_SOON + 2, 12)
     t.eq(addon.problems:count(), base, "no problem recorded")
     t.ok(labels(addon) ~= nil, "the route is still there")
+end
+
+-- A1-24 (lead sections 693 and 697), as Flow's choose() (Nav.lua:3536-3575):
+-- the arrow walks the planned route unless the player turns it off.
+tests["route walk: by default the arrow walks the route planned by itself, its first stop"] = function(t)
+    local c, addon = boot()
+    local view = trip(addon).View()
+    t.ok(type(view) == "table" and type(view.stops) == "table" and view.stops[1] ~= nil, "a route is planned")
+    t.eq(first(c), view and view.stops[1] and view.stops[1].label, "the arrow's step is the route's first")
+    t.eq(addon.settings:get(ns.Nav.TripRoute.WALK_SETTING), true, "on by default")
+end
+
+tests["route walk: off, the arrow keeps its own pick and the route is only shown"] = function(t)
+    local c, addon = boot()
+    addon.settings:set(ns.Nav.TripRoute.WALK_SETTING, false)
+    c.advance(2, 4)
+    t.eq(first(c), "Boars", "the arrow's own pick")
+    t.ok(labels(addon) ~= nil, "the route is still planned and shown")
+end
+
+-- The ruling's risk test (lead section 697): the planner plans this map's
+-- places only, so with a quest in another zone the first stop is here.
+tests["route walk: a quest in another zone, the first stop is on this map"] = function(t)
+    local log = { LOG[1], LOG[2], LOG[3],
+        { id = 405, title = "Far Bears", objectives = { { text = "Far Bear slain: 0/3" } } } }
+    local c, addon = boot({ log = log })
+    local view = trip(addon).View()
+    local s1 = view and view.stops and view.stops[1]
+    t.ok(s1 ~= nil and s1.place and s1.place.map == MAP, "the route's first stop is on this map")
+    t.eq(first(c), s1 and s1.label, "and the arrow walks it, not the quest in the other zone")
+    t.ok(first(c) ~= "Far Bears", tostring(first(c)))
 end
 
 return tests
