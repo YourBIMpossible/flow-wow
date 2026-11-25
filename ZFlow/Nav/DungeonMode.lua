@@ -47,10 +47,13 @@ local function quests(n)
 end
 
 function M.CountLines(name, counts)
-    local c = type(counts) == "table" and counts or {}
+    local c = {}
+    if type(counts) == "table" then c = counts end
     local done, on = tonumber(c.done) or 0, tonumber(c.on) or 0
     local missing, inside = tonumber(c.missing) or 0, tonumber(c.inside) or 0
-    local out = { type(name) == "string" and name or M.RUN }
+    local title = M.RUN
+    if type(name) == "string" then title = name end
+    local out = { title }
     out[#out + 1] = string.format("- %s completed", quests(done))
     out[#out + 1] = string.format("- You're on %s", quests(on))
     local outside = ""

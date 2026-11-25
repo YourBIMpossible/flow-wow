@@ -77,4 +77,14 @@ tests["dungeon mode: no choices without a prepared run"] = function(t)
     t.eq(M().Items({}), {})
 end
 
+-- Lead section 794.5: CountLines' and-or forms are plain ifs; each nil or
+-- odd case keeps its answer.
+tests["dungeon mode: count lines with no counts or no name"] = function(t)
+    local none = M().CountLines(nil, nil)
+    t.eq(none[1], M().RUN, "no name: the run's own title")
+    t.eq(none[2], "- 0 quests completed", "no counts: zero")
+    t.eq(M().CountLines(42, "odd")[1], M().RUN, "a name that is no string, counts that are no table")
+    t.eq(M().CountLines("Test Mines", {})[1], "Test Mines")
+end
+
 return tests
