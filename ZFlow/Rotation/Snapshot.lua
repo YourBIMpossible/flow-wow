@@ -70,6 +70,10 @@ R.SNAPSHOT_FIELDS = {
     -- has, debuffTypes } (kind "party"); nil when not read. The names are
     -- for the live caption only: never saved. groupOn: the setting.
     { "party", "party" }, { "groupOn", "flag" },
+    -- D-24 (Rotation/Group.lua): "Cast group buffs and cures on the key"
+    -- (the setting) and the combat lock as the client says it; nil when not
+    -- read. Both must be a plain value for the group step to go on the key.
+    { "groupKey", "flag" }, { "lockdownRead", "flag" },
     -- Lead section 242 (Rotation/Choose.lua steps cc, plateCast, threat):
     -- the enemies on nameplates, rows of { unit, name, isTarget, creature,
     -- controlled, threat } (client.plateEnemies), and the casts on them,

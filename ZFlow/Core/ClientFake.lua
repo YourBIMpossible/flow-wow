@@ -235,7 +235,7 @@ function ns.make.fakeClient(opts)
     function c.spell(id)
         if type(id) ~= "number" then return nil end
         local r = s.spells and s.spells[id] or {}
-        return { known = r.known, usable = r.usable, noPower = r.noPower }
+        return { known = r.known, usable = r.usable, noPower = r.noPower, name = r.name }
     end
     function c.spellId(name) return s.spellIds and s.spellIds[name] or nil end
     function c.watchTrainer() end
@@ -684,6 +684,82 @@ function ns.make.fakeClient(opts)
         c.icons[#c.icons + 1] = h
         return h
     end
+    -- Lead section 624 Step 4: the cooldown face, as the real client's
+    -- c.cooldownFace(spec). Nothing is drawn: every face made is kept in
+    -- c.cooldownFaces, in order, as a record { name, size, shown, point,
+    -- anchor = { point, to, relPoint, x, y }, texture, sweep = { kind =
+    -- "spell" or "item", id } or nil, seconds }. A face has a place on the
+    -- screen (point) or is set against a frame (anchor), never both.
+    --   h.spell(id) answers from c.setSpellCooldown(id, on): true "sweep",
+    --     false "none", never set nil.
+    --   h.item(id) answers from c.setItemCooldown(id, seconds): above 0
+    --     "sweep", 0 "none", never set nil.
+    --   h.anchor answers false, "no frame" for a name with no rect set
+    --     (c.setFrameRect(name, rect)), as the client with no such frame.
+    --   c.setCooldownAnchorRefused(on): while on, h.anchor on a frame that
+    --     is there answers false, "refused" (the client turned the SetPoint
+    --     down), the record counts it in refused, and the face is left with
+    --     no place and no anchor, as on the real client, which clears the
+    --     old points before it asks.
+    c.cooldownFaces = {}
+    function c.setCooldownAnchorRefused(on) s.cooldownAnchorRefused = on and true or nil end
+    function c.cooldownFace(spec)
+        if s.noFrames then return nil end
+        spec = type(spec) == "table" and spec or {}
+        local rec = { name = spec.name, size = tonumber(spec.size) or 38, shown = false }
+        local h = {}
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            rec.point = { point[1], point[2], point[3], point[4] }
+            rec.anchor = nil
+        end
+        function h.anchor(point, to, relPoint, x, y)
+            if type(to) ~= "string" or c.frameRect(to) == nil then return false, "no frame" end
+            if s.cooldownAnchorRefused then
+                rec.refused = (rec.refused or 0) + 1
+                rec.point, rec.anchor = nil, nil
+                return false, "refused"
+            end
+            rec.anchor = { point = point, to = to, relPoint = relPoint, x = x, y = y }
+            rec.point = nil
+            return true
+        end
+        function h.show(on) rec.shown = on and true or false end
+        function h.shown() return rec.shown end
+        function h.icon(texture)
+            rec.texture = texture
+            return texture ~= nil
+        end
+        function h.spell(id)
+            local on = c.spellCooldown(id)
+            rec.sweep = nil
+            if on == true then
+                rec.sweep = { kind = "spell", id = id }
+                return "sweep"
+            end
+            if on == false then return "none" end
+            return nil
+        end
+        function h.item(id)
+            local left = c.itemCooldown(id)
+            rec.sweep = nil
+            if type(left) ~= "number" then return nil end
+            if left > 0 then
+                rec.sweep = { kind = "item", id = id }
+                return "sweep"
+            end
+            return "none"
+        end
+        function h.seconds(text)
+            if type(text) == "string" and text ~= "" then rec.seconds = text else rec.seconds = nil end
+        end
+        function h.clear()
+            rec.sweep = nil
+            rec.seconds = nil
+        end
+        c.cooldownFaces[#c.cooldownFaces + 1] = rec
+        return h
+    end
     function c.spellTexture(id) return s.spellTextures and s.spellTextures[id] or nil end
 
     -- Every arrow made is in c.arrows, in order. A handle keeps what it
@@ -902,7 +978,8 @@ function ns.make.fakeClient(opts)
     -- out reads as not known.
     function c.setSpell(id, row)
         s.spells = s.spells or {}
-        s.spells[id] = row and { known = row.known, usable = row.usable, noPower = row.noPower } or nil
+        s.spells[id] = row and { known = row.known, usable = row.usable, noPower = row.noPower,
+            name = row.name } or nil
     end
     function c.setSpellId(name, id)
         s.spellIds = s.spellIds or {}
@@ -2151,6 +2228,12 @@ function ns.make.fakeClient(opts)
         s.mapNames[map] = name
     end
     function c.mapName(map) return s.mapNames and s.mapNames[map] or nil end
+    -- Area names: c.setAreaName(area, name); areaName(area) is nil until told.
+    function c.setAreaName(area, name)
+        s.areaNames = s.areaNames or {}
+        s.areaNames[area] = name
+    end
+    function c.areaName(area) return s.areaNames and s.areaNames[area] or nil end
     -- The player's Alt + left click on the world map: mapClick(fn) keeps
     -- fn (nil and a reason with no frames); c.clickMap(map, x, y) is the
     -- player doing it.
@@ -3548,6 +3631,13 @@ function ns.make.fakeClient(opts)
         end
         function c.setPlateCreature(unit, id) creatures[unit] = id end
         function c.setPlateCreatureFails(on) s.plateCreatureFails = on and true or nil end
+        -- C-21 (lead section 603) STUB for a CLIENT NEED the real client
+        -- lacks: c.unitCreature(unit) -> npc id of any unit token
+        -- ("mouseover", "target", ...), as plateCreature reads a plate's
+        -- (UnitGUID, the GUID's id field). c.setUnitCreature(unit, id).
+        local anyUnit = {}
+        function c.setUnitCreature(unit, id) anyUnit[unit] = id end
+        function c.unitCreature(unit) return anyUnit[unit] end
         function c.plateCreature(unit)
             if s.plateCreatureFails then error("plate creature read failed (test)") end
             if not isPlate(unit) then return nil end
@@ -4991,6 +5081,515 @@ do
             local out = {}
             for name, rank in pairs(ranks) do out[name] = rank end
             return out
+        end
+        return c
+    end
+end
+
+-- § E-45 CLIENT NEED: client.onLootLeft(fn) calls fn(items) when the loot
+-- window closes, items = what was left in it, each { item, count, quality }.
+-- c.fireLootLeft(items) is that close.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local fns = {}
+        function c.onLootLeft(fn) if type(fn) ~= "function" then return nil end fns[#fns+1]=fn return true end
+        function c.fireLootLeft(items) for _, fn in ipairs({ unpack(fns) }) do fn(items) end end
+        return c
+    end
+end
+
+-- § E-42 (Items/PriceLookup.lua, CLIENT NEED, §663): an item's ID by its
+-- name, as the real client would answer GetItemInfo(name)'s link for an item
+-- it has seen. The fake answers from the setItemInfo rows, any case; nil
+-- when no row has that name. Client.lua does not have this read yet.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local rows = nil
+        local setItemInfo = c.setItemInfo
+        function c.setItemInfo(map)
+            rows = map
+            return setItemInfo(map)
+        end
+        function c.itemIdByName(name)
+            if type(name) ~= "string" or type(rows) ~= "table" then return nil end
+            local want = name:lower()
+            for id, row in pairs(rows) do
+                if type(row) == "table" and type(row.name) == "string" and row.name:lower() == want then return id end
+            end
+            return nil
+        end
+        return c
+    end
+end
+
+-- § E-13 (Items/Keep.lua, lead sections 660 and 666): STUB for a CLIENT NEED
+-- the real client lacks. c.onBoughtBack(fn) calls fn(item link) each time
+-- the player buys an item back on the merchant's Buyback tab (in game: a
+-- hooksecurefunc on BuybackItem, the link read with GetBuybackItemLink
+-- before the buy, as Flow's Modules/Items/Vendor.lua:718-720).
+-- c.fireBoughtBack(item) is that buy.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local fns = {}
+        function c.onBoughtBack(fn)
+            if type(fn) ~= "function" then return nil end
+            fns[#fns + 1] = fn
+            return true
+        end
+        function c.fireBoughtBack(item)
+            for _, fn in ipairs({ unpack(fns) }) do fn(item) end
+        end
+        return c
+    end
+end
+
+-- § E-57 (Items/CraftProgress.lua; lead sections 660, 663 and 664): one
+-- CLIENT NEED, stubbed here only. Core/Client.lua does not have it yet.
+-- (client.casting, the other read E-57 uses, is Rotation/CastEdge.lua's
+-- CLIENT NEED; tests set it on the fake themselves, as CastEdge's do.)
+--   c.onCraftStarted(fn) -> cancel: fn(id, count, name) when the game's own
+--     craft call is made; c.craftStarted(id, count, name) plays one.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local started = {}
+        function c.onCraftStarted(fn)
+            if type(fn) ~= "function" then return nil end
+            started[#started + 1] = fn
+            return function()
+                for i = #started, 1, -1 do
+                    if started[i] == fn then table.remove(started, i) end
+                end
+            end
+        end
+        function c.craftStarted(id, count, name)
+            local list = {}
+            for i = 1, #started do list[i] = started[i] end
+            for i = 1, #list do list[i](id, count, name) end
+        end
+        return c
+    end
+end
+
+-- § C-17 (UI/PlateQuests.lua; lead section 715): one CLIENT NEED,
+-- stubbed here only. Core/Client.lua does not have it yet.
+--   c.plateIsTarget(unit) -> true when that nameplate unit is your target,
+--     false when not, nil when not known: UnitIsUnit(unit, "target").
+--   c.setPlateIsTarget(unit, v) sets it; as made, every plate is false.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local isTarget = {}
+        function c.setPlateIsTarget(unit, v) isTarget[unit] = v end
+        function c.plateIsTarget(unit)
+            if isTarget[unit] == nil then return false end
+            return isTarget[unit]
+        end
+        return c
+    end
+end
+
+-- § D-12 (Rotation/BuffItemPick.lua; lead section 704): one CLIENT NEED,
+-- stubbed here only. Core/Client.lua does not have it yet.
+--   c.itemSpellName(item) -> the name of the item's use spell, or nil;
+--   c.setItemSpellName(id, name) sets it.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local names = {}
+        function c.setItemSpellName(id, name) names[id] = name end
+        function c.itemSpellName(item)
+            local id = item
+            if ns.Items and type(ns.Items.Id) == "function" then id = ns.Items.Id(item) or item end
+            return names[id]
+        end
+        return c
+    end
+end
+
+-- § D-03 (Rotation/Driver.lua; lead section 712): one CLIENT NEED,
+-- stubbed here only. Core/Client.lua does not have it yet.
+--   c.assistantSpell() -> the name of the spell the game's one-button
+--     assistant offers now, or nil: C_AssistedCombat.GetActionSpell() (a
+--     spell id, warcraft.wiki.gg API C_AssistedCombat.GetActionSpell, the
+--     forever flavour from 1.60.1), named by the client's spell read.
+--   c.setAssistantSpell(name or nil) sets it; nil (as made): none.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local spell = nil
+        function c.setAssistantSpell(v) spell = v end
+        function c.assistantSpell() return spell end
+        return c
+    end
+end
+
+-- § D-26 (Rotation/Audit.lua; lead section 746): one CLIENT NEED, stubbed
+-- here (Core/Client.lua has it since the batch-3 lead commit).
+--   c.onKeyPress(fn) -> cancel: fn() at each press of the rotation key.
+--   c.pressRotationKey() plays one press: calls every fn not cancelled
+--     (not c.pressKey(chord), the key-capture overlay's own fake).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local fns = {}
+        function c.onKeyPress(fn)
+            if type(fn) ~= "function" then return nil end
+            local entry = { fn = fn }
+            fns[#fns + 1] = entry
+            return function() entry.cancelled = true end
+        end
+        function c.pressRotationKey()
+            for _, e in ipairs(fns) do
+                if not e.cancelled then e.fn() end
+            end
+        end
+        return c
+    end
+end
+
+-- § D-04 (Rotation/KeyFrame.lua; lead sections 697 and 701): one LEAD
+-- NEED, stubbed here only. Core/Client.lua does not have it yet (a later
+-- lease). Off as made, so every other test is as it was:
+-- c.useStateHandler(true) turns it on.
+--   c.stateHandler({ name, button, state }) -> h | nil
+--     h.setAttribute(attr, value), h.driver(condition), h.snippet(text):
+--     each true, or false and "lockdown" while c.combatLockdown() is not
+--     a plain false. h.attrs, h.drivers, h.snippets keep what was given.
+--   c.stateHandlers: every handler made, in order.
+--   For the lead (Lazy, section 729): the real h.driver(condition) must
+--     UnregisterStateDriver(header, state) before RegisterStateDriver when
+--     one was registered (Flow Cast.lua :930), so an old condition never
+--     stays; KeyFrame calls it only when the condition changed.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local on = false
+        c.stateHandlers = {}
+        function c.useStateHandler(yes) on = yes == true end
+        function c.stateHandler(spec)
+            if not on then return nil end
+            local h = { spec = spec, attrs = {}, drivers = {}, snippets = {} }
+            local function free() return c.combatLockdown() == false end
+            function h.setAttribute(attr, value)
+                if not free() then return false, "lockdown" end
+                h.attrs[attr] = value
+                return true
+            end
+            function h.driver(condition)
+                if not free() then return false, "lockdown" end
+                h.drivers[#h.drivers + 1] = condition
+                return true
+            end
+            function h.snippet(text)
+                if not free() then return false, "lockdown" end
+                h.snippets[#h.snippets + 1] = text
+                return true
+            end
+            c.stateHandlers[#c.stateHandlers + 1] = h
+            return h
+        end
+        return c
+    end
+end
+
+-- § lease rows (lead sections 659, 662, 677, 679, 682, 692, 693): the fakes
+-- for the reads Core/Client.lua now has. One block, as section 663 says;
+-- other branches' end blocks for the same reads are kept at merge.
+--   c.setGossipOptions(list|nil)       gossipOptions()
+--   hideGameTracker(on), hideQuestieTracker(on) -> true, "done" |
+--     showQuestWatch(on), showQuestieTracker(on): the same, turned around;
+--     false, "lockdown" (combatLockdown() not false); c.trackerHidden(which)
+--   inputBox(prompt, fn) -> true; c.typeInputBox(text) accepts it
+--   onBoughtBack(fn); c.fireBoughtBack(link)
+--   onLootLeft(fn); c.fireLootLeft(items)
+--   itemIdByName(name) from the setItemInfo rows, any case
+--   onCraftStarted(fn) -> cancel; c.craftStarted(id, count, name)
+--   c.setQuestRewardXp(map|nil)        questRewardXp(questId)
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local gossip, trackers, inputFn, xp = nil, {}, nil, nil
+        local bought, looted, crafted = {}, {}, {}
+        local function copy(list) local out = {} for i = 1, #list do out[i] = list[i] end return out end
+        function c.setGossipOptions(list) gossip = list end
+        function c.gossipOptions()
+            if type(gossip) ~= "table" then return nil end
+            local out = {}
+            for i, o in ipairs(gossip) do out[i] = { id = o.id, name = o.name } end
+            return out
+        end
+        local function hide(which, on)
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            trackers[which] = on == true
+            return true, "done"
+        end
+        function c.hideGameTracker(on) return hide("game", on) end
+        function c.hideQuestieTracker(on) return hide("questie", on) end
+        function c.showQuestWatch(on) return c.hideGameTracker(on ~= true) end
+        function c.showQuestieTracker(on) return c.hideQuestieTracker(on ~= true) end
+        function c.trackerHidden(which) return trackers[which] == true end
+        function c.inputBox(_, fn)
+            if type(fn) ~= "function" then return nil end
+            inputFn = fn
+            return true
+        end
+        function c.typeInputBox(text)
+            local fn = inputFn
+            inputFn = nil
+            if fn then fn(text) end
+        end
+        function c.onBoughtBack(fn)
+            if type(fn) ~= "function" then return nil end
+            bought[#bought + 1] = fn
+            return true
+        end
+        function c.fireBoughtBack(link) for _, fn in ipairs(copy(bought)) do fn(link) end end
+        function c.onLootLeft(fn)
+            if type(fn) ~= "function" then return nil end
+            looted[#looted + 1] = fn
+            return true
+        end
+        function c.fireLootLeft(items) for _, fn in ipairs(copy(looted)) do fn(items) end end
+        local rows = nil
+        local setItemInfo = c.setItemInfo
+        function c.setItemInfo(map)
+            rows = map
+            return setItemInfo(map)
+        end
+        function c.itemIdByName(name)
+            if type(name) ~= "string" or type(rows) ~= "table" then return nil end
+            local want = name:lower()
+            for id, row in pairs(rows) do
+                if type(row) == "table" and type(row.name) == "string" and row.name:lower() == want then return id end
+            end
+            return nil
+        end
+        function c.onCraftStarted(fn)
+            if type(fn) ~= "function" then return nil end
+            crafted[#crafted + 1] = fn
+            return function()
+                for i = #crafted, 1, -1 do
+                    if crafted[i] == fn then table.remove(crafted, i) end
+                end
+            end
+        end
+        function c.craftStarted(id, count, name)
+            for _, fn in ipairs(copy(crafted)) do fn(id, count, name) end
+        end
+        function c.setQuestRewardXp(map) xp = map end
+        function c.questRewardXp(questId)
+            if type(xp) ~= "table" then return nil end
+            local n = xp[questId]
+            if type(n) ~= "number" or n <= 0 then return nil end
+            return n
+        end
+        return c
+    end
+end
+
+-- § F-28 (Nav/InviteAccept.lua; lead sections 738 and 740): two CLIENT
+-- NEEDs, stubbed here (Core/Client.lua has them since the batch-3 lead
+-- commit).
+--   c.queued() -> true while in a dungeon finder or battleground queue,
+--     false when not, nil when not known (GetLFGMode, GetBattlefieldStatus).
+--   c.acceptGroup() accepts the invite (AcceptGroup()); counted in
+--     c.groupAccepts.
+--   c.setQueued(v) (false as made).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local queued = false
+        c.groupAccepts = 0
+        function c.setQueued(v) queued = v end
+        function c.queued() return queued end
+        function c.acceptGroup() c.groupAccepts = c.groupAccepts + 1 end
+        return c
+    end
+end
+
+-- § B-10 (Nav/MapFlights.lua): a click on a flight master's pin of the
+-- world map. h.onClick(fn) keeps fn(name, button), as the real mapPins
+-- handle does (Core/Client.lua: the pin's OnClick calls it with the
+-- pin's name); h.click(name, button) clicks it ("LeftButton" when not given).
+-- (B-11 needs no hook: the pins carry their own title and tip lines.)
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local mapPins = c.mapPins
+        function c.mapPins(...)
+            local h = mapPins(...)
+            if type(h) ~= "table" then return h end
+            local clicks = {}
+            function h.onClick(fn)
+                if type(fn) == "function" then clicks[#clicks + 1] = fn end
+                return true
+            end
+            function h.click(name, button)
+                for _, fn in ipairs(clicks) do fn(name, button or "LeftButton") end
+            end
+            return h
+        end
+        return c
+    end
+end
+
+-- § B-19 (UI/MapRoute.lua): a click on a route mark of the world map.
+-- h.onClick(fn) keeps fn(n, button) as the real routePins handle does
+-- (Core/Client.lua: the mark's OnClick calls it with the mark's number);
+-- h.click(n, button) clicks mark n ("LeftButton" when not given).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local routePins = c.routePins
+        function c.routePins(...)
+            local h = routePins(...)
+            if type(h) ~= "table" then return h end
+            local clicks = {}
+            function h.onClick(fn)
+                if type(fn) == "function" then clicks[#clicks + 1] = fn end
+                return true
+            end
+            function h.click(n, button)
+                for _, fn in ipairs(clicks) do fn(n, button or "LeftButton") end
+            end
+            return h
+        end
+        return c
+    end
+end
+
+-- § C-42 (Gear/Sets.lua; lead section 789): one CLIENT NEED, stubbed here
+-- (Core/Client.lua has it too).
+--   c.equipmentSets() -> { { id, name, icon, worn, items = { [slot] =
+--     itemID } } } or nil (not read): C_EquipmentSet.GetEquipmentSetIDs,
+--     GetEquipmentSetInfo (name, icon, setID, isEquipped) and GetItemIDs.
+--     Read only: the fake has no call that makes, saves or equips a set.
+--   c.setEquipmentSets(list) sets it (nil as made: not read).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local sets = nil
+        function c.setEquipmentSets(list) sets = list end
+        function c.equipmentSets()
+            if type(sets) ~= "table" then return nil end
+            local out = {}
+            for i, e in ipairs(sets) do
+                local items = {}
+                for slot, id in pairs(e.items or {}) do items[slot] = id end
+                out[i] = { id = e.id, name = e.name, icon = e.icon, worn = e.worn, items = items }
+            end
+            return out
+        end
+        return c
+    end
+end
+
+-- § F-32 (UI/ClickCheck.lua): the game's click bindings on unit frames and
+-- what is under the mouse, as the real client has them (Core/Client.lua:
+-- c.clickBindings() -> { { type, actionID, button, modifiers } } from
+-- C_ClickBindings.GetProfileInfo, nil when the client has none to read;
+-- c.mouseFoci() -> { frame name, ... } from GetMouseFoci, nil when not
+-- read). Both answer nil (not known) until set.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local bindings, foci = nil, nil
+        function c.setClickBindings(list) bindings = list end
+        function c.setMouseFoci(list) foci = list end
+        function c.clickBindings()
+            if type(bindings) ~= "table" then return nil end
+            local out = {}
+            for i, b in ipairs(bindings) do
+                out[i] = { type = b.type, actionID = b.actionID, button = b.button, modifiers = b.modifiers }
+            end
+            return out
+        end
+        function c.mouseFoci()
+            if type(foci) ~= "table" then return nil end
+            local out = {}
+            for i, n in ipairs(foci) do out[i] = n end
+            return out
+        end
+        return c
+    end
+end
+
+-- § F-20 (UI/TipSpot.lua): where a tooltip goes. c.setTipSpot(fn) keeps
+-- fn(anchor) -> "GAME" | anchor, as the real client does (Core/Client.lua:
+-- each SetOwner asks it through placeTip, and on "GAME" calls
+-- GameTooltip_SetDefaultAnchor(tip, owner) instead); c.tipSpot(anchor)
+-- asks it (the anchor itself when nothing was handed in).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local where = nil
+        function c.setTipSpot(fn)
+            if type(fn) == "function" then where = fn end
+            return true
+        end
+        function c.tipSpot(anchor)
+            if where == nil then return anchor end
+            return where(anchor)
+        end
+        return c
+    end
+end
+
+-- C-62 (UI/TalentsWindow.lua): the talents the player has, as the real
+-- client's talentRanks() is asked for: { [talent name] = rank }.
+-- c.setTalentRanks(map or nil); nil (as made): not known.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local ranks = nil
+        function c.setTalentRanks(map) ranks = map end
+        function c.talentRanks()
+            if type(ranks) ~= "table" then return nil end
+            local out = {}
+            for name, rank in pairs(ranks) do out[name] = rank end
+            return out
+        end
+        return c
+    end
+end
+
+-- § A1-13 (Nav/StepCard.lua): c.selectQuest(id), as the real client's
+-- (C_QuestLog.SetSelectedQuest, else SelectQuestLogEntry): true, or false
+-- and why. c.selectedQuest() says which quest was picked last;
+-- c.setSelectQuestCall(false) makes the call absent ("noCall").
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local picked, present = nil, true
+        function c.setSelectQuestCall(on) present = on ~= false end
+        function c.selectedQuest() return picked end
+        function c.selectQuest(id)
+            if type(id) ~= "number" then return false, "bad" end
+            if not present then return false, "noCall" end
+            picked = id
+            return true
         end
         return c
     end

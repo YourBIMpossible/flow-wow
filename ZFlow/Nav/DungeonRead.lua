@@ -25,8 +25,20 @@
 --     Questie. book is this account's own seen loot, account
 --     "learned.bossLoot" as UI/BossLoot.lua keeps it: it marks the drops
 --     seen, it does not make the list.
---   R.Ready(train, repair, bank) -> the "Get ready" steps to put before
+--   R.Ready(train, repair, bank, repairLow) -> steps, left: the "Get ready" steps to put before
 --     a run (FLOW-PARITY B-52): each a place the player already saw.
+--   Wings (FLOW-PARITY B-57): a dungeon with wings is a run for each wing.
+--   R.Wings(st, key) -> { { name, title, bosses, quests } } in order, or nil
+--     for a dungeon with no wings
+--   R.WingOf(st, id) -> the wing quest id belongs to, or nil (not known:
+--     such a quest is listed in every wing)
+--   R.WingOfBoss(st, client, key, bossName) -> the wing that boss is in
+--   R.WingTitle(st, key, wing) -> "Scarlet Monastery (Library)"
+--   R.Pane, R.Run and R.Entrance take a wing as their last argument.
+--   R.Find(st, text) -> dungeon, wing, close (FLOW-PARITY B-49): the
+--     dungeon a typed name means, any case: its whole name, a wing's run
+--     name, or the one dungeon whose name has the text in it. No such one:
+--     nil, nil and the names that come close, in the list's order.
 --   R.JournalLine(client) -> one line for the diag word: whether the
 --     client's dungeon journal answers
 --
@@ -50,10 +62,49 @@ R.ALIAS = { [10022] = 2557, [10023] = 2557, [10024] = 2557, [10025] = 2557, [100
             [10001] = 2017 }
 R.SKIP = { [2597] = true, [3277] = true, [3358] = true }
 
+-- FLOW-PARITY B-57: wings. Both tables are legacy Flow's own
+-- (Modules/Nav/Dungeons.lua D.WING, D.WINGS), ids only, not seen in game
+-- through this add-on on 16001.
+-- R.WING: the areas Questie keeps as a wing of their own; a quest filed
+-- under one is that wing's.
+R.WING = {
+    [10008] = "Library", [10009] = "Armory", [10010] = "Cathedral",
+    [10022] = "North", [10023] = "West", [10024] = "West", [10025] = "West",
+    [10026] = "East", [10027] = "East",
+}
+-- R.WINGS: wings told apart by their bosses (Questie files every creature
+-- of these under the one dungeon). { name, title (the run's name), bosses =
+-- { creature ids } }, by dungeon key.
+R.WINGS = {
+    [796] = {
+        { name = "Graveyard", bosses = { 3983, 4543, 6488, 6489, 6490 } },
+        { name = "Library", bosses = { 3974, 6487 } },
+        { name = "Armory", bosses = { 3975 } },
+        { name = "Cathedral", bosses = { 4542, 3976, 3977 } },
+    },
+    [1583] = {
+        { name = "Lower", title = "Lower Blackrock Spire", bosses = { 9196, 9236, 9237, 10596, 10584, 9736,
+            10220, 10268, 9568, 9596, 9718, 10376, 10509, 9219 } },
+        { name = "Upper", title = "Upper Blackrock Spire", bosses = { 9816, 10264, 10899, 10429, 10339,
+            10430, 10363, 16042 } },
+    },
+    [2017] = {
+        { name = "Live", title = "Stratholme (Live)", bosses = { 10558, 10516, 10808, 11032, 10997, 10811,
+            10813, 10393, 11143 } },
+        { name = "Undead", title = "Stratholme (Undead)", bosses = { 10435, 10437, 10438, 10439, 10436,
+            10440, 10809 } },
+    },
+}
+R.WING_TITLE = "%s (%s)"
+R.WING_FIT = 2   -- levels a creature may lie outside a wing's bosses and still count for it
+
 R.WHY_BUILDING = { "Reading Questie's dungeon quests.",
     "This takes a moment the first time; the list fills in by itself." }
 R.WHY_NO_LEVEL = { "Your level is not known yet.",
     "It is read when you log in; open this again in a moment." }
+-- R-02 (lead section 777): a quest log not read is not an empty one.
+R.WHY_NO_LOG = { "Your quest log is not read yet.",
+    "Which of these quests you have is not known; open this again in a moment." }
 R.WHY_NO_IDS = { "Questie gave no quest list.",
     "Update or re-enable the Questie add-on; type the slash command with diag to see what it offers." }
 R.WHY_LOOT_UNPLACED = { "Boss loot was seen, but not where.",
@@ -120,7 +171,7 @@ function R.Start(client)
             end
             if not name and type(entry[1]) == "string" then name = entry[1] end
             d = { key = key, name = name or ("Dungeon " .. tostring(key)), ids = {}, areas = { [key] = true },
-                  entrances = type(entry[4]) == "table" and entry[4] or {} }
+                  entrances = type(entry[4]) == "table" and entry[4] or {}, wingEntrance = {}, zoneWings = {} }
             byKey[key] = d
             areaTop[key] = key
         end
@@ -131,6 +182,11 @@ function R.Start(client)
             local d = top(area)
             areaTop[area] = d.key
             d.areas[area] = true
+            -- B-57: a wing Questie keeps as an area of its own, and its door.
+            if R.WING[area] then
+                d.zoneWings[R.WING[area]] = true
+                if type(entry[4]) == "table" then d.wingEntrance[R.WING[area]] = entry[4] end
+            end
             for _, alt in ipairs(type(entry[2]) == "table" and entry[2] or {}) do
                 areaTop[alt] = d.key
                 d.areas[alt] = true
@@ -148,7 +204,7 @@ function R.Start(client)
     -- Twin review 17:11, F3: no quest list is said, never an empty list.
     if #ids == 0 then return { state = "failed", why = R.WHY_NO_IDS } end
     return { state = "building", byKey = byKey, areaTop = areaTop, ids = ids, at = 0, dungeonOf = {}, quests = {},
-             place = { npc = {}, object = {}, item = {} } }
+             place = { npc = {}, object = {}, item = {} }, wingOf = {}, wingBands = {}, bossWing = {} }
 end
 
 -- One field of quest id: the quick query when Questie has it, else the
@@ -231,6 +287,208 @@ local function placeByObjectives(st, db, obj)
     return S.ObjectivesTop(tops)
 end
 
+-- B-57. The wing a quest belongs to (legacy Flow D.WingFor). objectives:
+-- { { creatures = { { id, level } } } } (the creature to kill, or the ones
+-- that drop the item); wings: { { name, bosses = { [id] = true }, lo, hi } }
+-- (lo, hi: its bosses' levels). A boss is 2 votes for its wing; any other
+-- creature 1 vote for the one wing whose levels it fits (within
+-- R.WING_FIT). Most votes wins, a tie the later wing; no votes: the
+-- quest's level. Answers the wing or nil.
+function R.WingFor(objectives, wings, questLevel)
+    if type(wings) ~= "table" or #wings == 0 then return nil end
+    local function byLevel(lv)
+        if type(lv) ~= "number" then return nil end
+        local best, bd, tie = nil, math.huge, false
+        for i, w in ipairs(wings) do
+            local d = 0
+            if lv < w.lo then d = w.lo - lv elseif lv > w.hi then d = lv - w.hi end
+            if d < bd then
+                best, bd, tie = i, d, false
+            elseif d == bd then
+                tie = true
+            end
+        end
+        if best and not tie and bd <= R.WING_FIT then return best end
+        return nil
+    end
+    local votes = {}
+    for _, o in ipairs(type(objectives) == "table" and objectives or {}) do
+        local hit, boss = {}, false
+        local creatures = type(o) == "table" and type(o.creatures) == "table" and o.creatures or {}
+        for _, c in ipairs(creatures) do
+            for i, w in ipairs(wings) do
+                if type(c) == "table" and w.bosses[c.id] then hit[i], boss = 2, true end
+            end
+        end
+        if not boss then
+            for _, c in ipairs(creatures) do
+                local i
+                if type(c) == "table" then i = byLevel(c.level) end
+                if i then hit[i] = 1 end
+            end
+        end
+        for i, v in pairs(hit) do votes[i] = (votes[i] or 0) + v end
+    end
+    local best, bv = nil, 0
+    for i = 1, #wings do
+        local v = votes[i] or 0
+        if v > 0 and v >= bv then best, bv = i, v end
+    end
+    if not best then best = byLevel(questLevel) end
+    if not best then return nil end
+    return wings[best]
+end
+
+local function npcLevel(db, id)
+    local lo = query(db, "QueryNPCSingle", id, "minLevel")
+    if type(lo) ~= "number" or lo <= 0 then return nil end
+    local hi = query(db, "QueryNPCSingle", id, "maxLevel")
+    if type(hi) ~= "number" or hi < lo then hi = lo end
+    return lo, hi
+end
+
+-- A dungeon's boss-told wings with the levels of their bosses, read once;
+-- nil unless at least two have a boss whose level Questie gives.
+local function wingBands(st, db, d)
+    local kept = st.wingBands[d.key]
+    if kept ~= nil then return kept or nil end
+    local out = {}
+    for _, def in ipairs(R.WINGS[d.key] or {}) do
+        local w = { name = def.name, title = def.title, bosses = {} }
+        for _, id in ipairs(def.bosses) do
+            w.bosses[id] = true
+            local lo, hi = npcLevel(db, id)
+            if lo then
+                w.lo = math.min(w.lo or lo, lo)
+                w.hi = math.max(w.hi or hi, hi)
+            end
+        end
+        if w.lo then out[#out + 1] = w end
+    end
+    if #out < 2 then
+        st.wingBands[d.key] = false
+        return nil
+    end
+    st.wingBands[d.key] = out
+    return out
+end
+
+-- Questie's raw objectives as R.WingFor takes them.
+local function wingObjectives(db, obj)
+    local out = {}
+    if type(obj) ~= "table" then return out end
+    local function each(v) return type(v) == "table" and v or {} end
+    local function creature(id)
+        if type(id) ~= "number" then return nil end
+        local lo = npcLevel(db, id)
+        return { id = id, level = lo }
+    end
+    for _, c in ipairs(each(obj[1])) do
+        out[#out + 1] = { creatures = { creature(each(c)[1]) } }
+    end
+    for _, it in ipairs(each(obj[3])) do
+        local list = {}
+        local npcs = query(db, "QueryItemSingle", each(it)[1], "npcDrops")
+        for _, n in ipairs(each(npcs)) do list[#list + 1] = creature(n) end
+        out[#out + 1] = { creatures = list }
+    end
+    for _, kc in ipairs(each(obj[5])) do
+        local list = {}
+        for _, n in ipairs(each(each(kc)[1])) do list[#list + 1] = creature(n) end
+        out[#out + 1] = { creatures = list }
+    end
+    return out
+end
+
+-- The wing of quest id in dungeon d: the wing area Questie files it under,
+-- else by its objectives. nil: not known.
+local function wingOfQuest(st, db, d, id, zone, level)
+    if type(zone) == "number" and R.WING[zone] then return R.WING[zone] end
+    if not R.WINGS[d.key] then return nil end
+    local wings = wingBands(st, db, d)
+    if not wings then return nil end
+    local w = R.WingFor(wingObjectives(db, query(db, "QueryQuestSingle", id, "objectives")), wings, level)
+    if not w then return nil end
+    return w.name
+end
+
+-- Dungeon key of an index that has its dungeons, or nil.
+local function dungeonOf(st, key)
+    if type(st) ~= "table" or type(st.byKey) ~= "table" or key == nil then return nil end
+    return st.byKey[key]
+end
+
+function R.WingOf(st, id)
+    if type(st) ~= "table" or type(st.wingOf) ~= "table" then return nil end
+    return st.wingOf[id]
+end
+
+-- The wings of dungeon key in order (the boss-told ones as listed, then the
+-- ones Questie keeps as areas, by name), each with how many quests are
+-- known to be its own. nil: the dungeon has no wings.
+function R.Wings(st, key)
+    local d = dungeonOf(st, key)
+    if not d then return nil end
+    local out, seen = {}, {}
+    local function add(name, title, bosses)
+        if seen[name] then return end
+        seen[name] = true
+        out[#out + 1] = { name = name, title = title, bosses = bosses or 0, quests = 0 }
+    end
+    for _, def in ipairs(R.WINGS[key] or {}) do add(def.name, def.title, #def.bosses) end
+    local names = {}
+    for name in pairs(type(d.zoneWings) == "table" and d.zoneWings or {}) do names[#names + 1] = name end
+    table.sort(names)
+    for _, name in ipairs(names) do add(name) end
+    if #out == 0 then return nil end
+    for _, id in ipairs(d.ids) do
+        local wing = R.WingOf(st, id)
+        for _, w in ipairs(out) do
+            if w.name == wing then w.quests = w.quests + 1 end
+        end
+    end
+    return out
+end
+
+-- The name of a wing's run: its own title, else "<dungeon> (<wing>)".
+function R.WingTitle(st, key, wing)
+    local d = dungeonOf(st, key)
+    if not d then return nil end
+    if type(wing) ~= "string" or wing == "" then return d.name end
+    for _, def in ipairs(R.WINGS[key] or {}) do
+        if def.name == wing and type(def.title) == "string" then return def.title end
+    end
+    return R.WING_TITLE:format(tostring(d.name), wing)
+end
+
+-- The wing a boss of that name is in, by Questie's name for each boss of
+-- the dungeon's wings, any case (read once for a dungeon; a name that could
+-- not be read is asked again next time). nil: not known.
+function R.WingOfBoss(st, client, key, bossName)
+    if type(st) ~= "table" or type(st.bossWing) ~= "table" or type(bossName) ~= "string" then return nil end
+    local defs = R.WINGS[key]
+    if not defs then return nil end
+    local names = st.bossWing[key]
+    if not names then
+        local db = questieModule(client, "QuestieDB")
+        if not db then return nil end
+        names = {}
+        local all = true
+        for _, def in ipairs(defs) do
+            for _, id in ipairs(def.bosses) do
+                local name = query(db, "QueryNPCSingle", id, "name")
+                if type(name) == "string" and name ~= "" then
+                    names[name:lower()] = def.name
+                else
+                    all = false
+                end
+            end
+        end
+        if all then st.bossWing[key] = names end
+    end
+    return names[bossName:lower()]
+end
+
 function R.Step(st, client, n)
     if type(st) ~= "table" or st.state ~= "building" then return end
     local db = questieModule(client, "QuestieDB")
@@ -255,6 +513,9 @@ function R.Step(st, client, n)
                 d.minQ = math.min(d.minQ or lv, lv)
                 d.maxQ = math.max(d.maxQ or lv, lv)
             end
+            -- B-57: the wing it is a quest of, where the dungeon has wings.
+            local okW, wing = pcall(wingOfQuest, st, db, d, id, zone, lv)
+            if okW and wing then st.wingOf[id] = wing end
         end
     end
     st.at = stop
@@ -349,7 +610,8 @@ local function waiting(why, title)
     return { title = title, why = why, groups = {}, count = 0, unplaced = 0 }
 end
 
-function R.Pane(st, client, key)
+-- wing (B-57): only that wing's quests, and the ones whose wing is not known.
+function R.Pane(st, client, key, wing)
     if type(st) ~= "table" or st.state == "noquestie" then return S.Pane({ available = false }) end
     if st.state == "failed" then return waiting(st.why or R.WHY_LIST) end
     if st.state ~= "ready" then return waiting(R.WHY_BUILDING) end
@@ -361,7 +623,9 @@ function R.Pane(st, client, key)
     local level = tonumber(ask(client, "level"))
     if not level then return waiting(R.WHY_NO_LEVEL, d.name) end
     local log, rows = {}, ask(client, "questLog")
-    for _, row in ipairs(type(rows) == "table" and rows or {}) do
+    -- R-02: not read is not empty: wait and say so (as the level above).
+    if type(rows) ~= "table" then return waiting(R.WHY_NO_LOG, d.name) end
+    for _, row in ipairs(rows) do
         if type(row) == "table" and type(row.id) == "number" then log[row.id] = true end
     end
     local unknown = {}
@@ -384,8 +648,11 @@ function R.Pane(st, client, key)
     }
     local quests = {}
     for _, id in ipairs(d.ids) do
-        local q = quest(st, db, id)
-        if q then quests[#quests + 1] = q end
+        local own = R.WingOf(st, id)
+        if wing == nil or own == nil or own == wing then
+            local q = quest(st, db, id)
+            if q then quests[#quests + 1] = q end
+        end
     end
     local pane = S.Pane({ available = true, dungeon = d, quests = quests, ctx = ctx })
     pane.doneUnknown = 0
@@ -716,9 +983,13 @@ end
 
 -- The first entrance Questie lists for dungeon key, as the waypoint takes
 -- it: { map, x, y (percents), label, text = "x y label" }; or nil, why.
-function R.Entrance(st, client, key)
+-- wing (B-57): that wing's own door where Questie has one, else the dungeon's.
+function R.Entrance(st, client, key, wing)
     local d = type(st) == "table" and type(st.byKey) == "table" and key ~= nil and st.byKey[key] or nil
     local e = d and type(d.entrances) == "table" and d.entrances[1] or nil
+    local own
+    if d and wing ~= nil and type(d.wingEntrance) == "table" then own = d.wingEntrance[wing] end
+    if type(own) == "table" and type(own[1]) == "table" then e = own[1] end
     if type(e) ~= "table" or type(e[2]) ~= "number" or type(e[3]) ~= "number" then return nil, R.WHY_NO_ENTRANCE end
     local map = mapOf(questieModule(client, "ZoneDB"), e[1])
     if not map then return nil, R.WHY_NO_ENTRANCE end
@@ -756,7 +1027,8 @@ end
 --   -> { title, steps = { { kind = "giver" | "entrance", quest, label,
 --        detail, place = { map, x, y } } }, left = { quest names whose
 --        giver has no known place } }, or nil and why lines.
-function R.Run(st, client, key)
+-- wing (B-57): the run of that wing only: its quests, its door, its name.
+function R.Run(st, client, key, wing)
     if type(st) ~= "table" or st.state ~= "ready" then
         local pane = R.Pane(st, client, key)
         return nil, pane.why or R.WHY_NO_RUN
@@ -764,7 +1036,7 @@ function R.Run(st, client, key)
     local d = key ~= nil and st.byKey[key] or nil
     if not d then return nil, R.WHY_NO_RUN end
     local zones = questieModule(client, "ZoneDB")
-    local pane = R.Pane(st, client, key)
+    local pane = R.Pane(st, client, key, wing)
     local givers, left = {}, {}
     for _, g in ipairs(type(pane.groups) == "table" and pane.groups or {}) do
         if g.id == "pickup" then
@@ -805,27 +1077,38 @@ function R.Run(st, client, key)
         steps[#steps + 1] = s
         last = s.place
     end
-    local e = R.Entrance(st, client, key)
+    local title = R.WingTitle(st, key, wing) or d.name
+    local e = R.Entrance(st, client, key, wing)
     if e then
-        steps[#steps + 1] = { kind = "entrance", label = d.name, detail = R.RUN_ENTRANCE,
+        steps[#steps + 1] = { kind = "entrance", label = title, detail = R.RUN_ENTRANCE,
             place = { map = e.map, x = e.x / 100, y = e.y / 100 } }
     end
     if #steps == 0 then return nil, R.WHY_NO_RUN end
-    return { title = d.name, steps = steps, left = left }
+    return { title = title, steps = steps, left = left, wing = wing }
 end
 
 -- FLOW-PARITY B-52 (lead section 471): "Get ready on the way" before the
--- run, as advice steps put in front of it (Flow's Dungeons.lua Prepare
--- lists them): training due, a repair (sell there too) while the gear is
--- low, the bank. Each is a stop the player already saw; the player does
--- each, nothing trains, sells, repairs or banks for them.
---   R.Ready(train, repair, bank) -> steps
+-- run, as advice steps put in front of it: training due, a repair (sell
+-- there too) while the gear is low, the bank. In Flow this is a tick on the
+-- run's menu ("Get ready on the way: training, selling and repairs, your
+-- bank", Modules/Nav/Dungeons.lua D:PrepOn); its planner then adds the
+-- stops, D:Prepare does not list them. Each is a stop the player already
+-- saw; the player does each, nothing trains, sells, repairs or banks for
+-- them.
+--   R.Ready(train, repair, bank, repairLow) -> steps, left
 --     train, repair: steps as classTrainerStep / repairStep give them, or nil
 --     bank: an Errand place { kind = "banker", name, map, x, y } or nil
+--     repairLow: true when the gear is low (repairStep has lines to say)
+--     left (lead section 493): words-only rows { label, why } for the
+--     route's left list: training is due but no class trainer's place is
+--     known, or the gear is low but no repair place is known. They have no
+--     place, so the arrow never points at them.
 R.READY = "Get ready: %s"
 R.READY_TRAIN = "Train"
 R.READY_REPAIR = "Sell and repair"
 R.READY_BANK = "Bank"
+R.READY_NO_TRAINER = "no class trainer's place is known on this map"
+R.READY_NO_REPAIR = "no repair vendor seen on this map yet"
 
 local function readyStep(what, src, place)
     if type(place) ~= "table" or place.map == nil or type(place.x) ~= "number" or type(place.y) ~= "number" then
@@ -837,17 +1120,66 @@ local function readyStep(what, src, place)
              place = { map = place.map, x = place.x, y = place.y } }
 end
 
-function R.Ready(train, repair, bank)
-    local out = {}
+function R.Ready(train, repair, bank, repairLow)
+    local out, left = {}, {}
     local function add(s) if s then out[#out + 1] = s end end
-    if type(train) == "table" then add(readyStep(R.READY_TRAIN, train, train.place)) end
-    if type(repair) == "table" then add(readyStep(R.READY_REPAIR, repair, repair.place)) end
+    if type(train) == "table" then
+        local s = readyStep(R.READY_TRAIN, train, train.place)
+        add(s)
+        if not s then left[#left + 1] = { label = R.READY:format(R.READY_TRAIN), why = R.READY_NO_TRAINER } end
+    end
+    local fix
+    if type(repair) == "table" then fix = readyStep(R.READY_REPAIR, repair, repair.place) end
+    add(fix)
+    if not fix and (repairLow == true or type(repair) == "table") then
+        left[#left + 1] = { label = R.READY:format(R.READY_REPAIR), why = R.READY_NO_REPAIR }
+    end
     if type(bank) == "table" then
         local name
         if type(bank.name) == "string" and bank.name ~= "" then name = bank.name end
         add(readyStep(R.READY_BANK, { label = name }, bank))
     end
-    return out
+    return out, left
+end
+
+-- FLOW-PARITY B-49 (legacy Flow's D.Find): the dungeon a typed name means.
+R.FIND_WORD = 3   -- a word of the text counts for a close match from this length
+function R.Find(st, text)
+    local close = {}
+    if type(st) ~= "table" or type(st.byKey) ~= "table" or type(text) ~= "string" then return nil, nil, close end
+    local want = text:lower():match("^%s*(.-)%s*$")
+    if want == "" then return nil, nil, close end
+    local list = R.List(st)
+    for _, d in ipairs(list) do
+        if type(d.name) == "string" and d.name:lower() == want then return d end
+    end
+    -- A wing's run: its own name, or the dungeon's name and then the wing's.
+    for _, d in ipairs(list) do
+        for _, w in ipairs(R.Wings(st, d.key) or {}) do
+            local title = R.WingTitle(st, d.key, w.name)
+            if (type(title) == "string" and title:lower() == want)
+                or (tostring(d.name) .. " " .. w.name):lower() == want then
+                return d, w.name
+            end
+        end
+    end
+    local found = {}
+    for _, d in ipairs(list) do
+        if type(d.name) == "string" and d.name:lower():find(want, 1, true) then found[#found + 1] = d end
+    end
+    if #found == 1 then return found[1] end
+    for _, d in ipairs(found) do close[#close + 1] = d.name end
+    if #close > 0 then return nil, nil, close end
+    -- None has the whole text: the ones that have one of its words.
+    for _, d in ipairs(list) do
+        local name = type(d.name) == "string" and d.name:lower() or ""
+        local hit = false
+        for word in want:gmatch("%S+") do
+            if #word >= R.FIND_WORD and name:find(word, 1, true) then hit = true end
+        end
+        if hit then close[#close + 1] = d.name end
+    end
+    return nil, nil, close
 end
 
 -- The dungeon the client's instance name names (lead section 303 (d)), by

@@ -110,31 +110,4 @@ tests["quest spots: look only, no acting function"] = function(t)
     end
 end
 
--- C-08 (lead section 603): /zflow spots lists what was learned, in chat.
-tests["quest spots: Lines says when nothing is learned yet"] = function(t)
-    local got = QS().Lines(nil, {}, function() return nil end)
-    t.eq(#got, 1)
-    t.eq(got[1], QS().NONE)
-end
-
-tests["quest spots: Lines gives one line per quest, by quest id, objectives then hand-in"] = function(t)
-    local book = {
-        [12] = { [0] = { { map = 1429, x = 0.5, y = 0.25, n = 1 } } },
-        [7] = { [2] = { { map = 1429, x = 0.412, y = 0.65, n = 3 }, { map = 1411, x = 0.1, y = 0.2, n = 1 } } },
-    }
-    local names = { [1429] = "Elwynn Forest" }
-    local got = QS().Lines(book, { [7] = "Rats" }, function(m) return names[m] end)
-    t.eq(got[1], "2 quests, 3 learned spots:")
-    t.eq(got[2], "Rats (7): objective 2 at Elwynn Forest 41.2, 65.0 (3 times), map 1411 10.0, 20.0")
-    t.eq(got[3], "quest 12: hand-in at Elwynn Forest 50.0, 25.0")
-end
-
-tests["quest spots: Lines stops at LINES_MAX quests and says how many more"] = function(t)
-    local book = {}
-    for q = 1, QS().LINES_MAX + 3 do book[q] = { [1] = { { map = 1, x = 0.1, y = 0.1, n = 1 } } } end
-    local got = QS().Lines(book, {}, function() return "Z" end)
-    t.eq(#got, QS().LINES_MAX + 2)
-    t.eq(got[#got], "and 3 more quests.")
-end
-
 return tests

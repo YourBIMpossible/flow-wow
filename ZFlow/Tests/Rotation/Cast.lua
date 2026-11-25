@@ -147,7 +147,7 @@ return {
         t.eq(r.spell, "Moonfire", "spell")
         t.eq(r.form, 0, "form")
         t.eq(attrs(r.button), {
-            "type=spell", "spell=Moonfire", "unit=nil", "item=nil",
+            "type=spell", "spell=Moonfire", "unit=nil", "item=nil", "target-slot=nil",
             "*type-ctrl=spell", "*spell-ctrl=B", "*unit-ctrl=target",
             "*type-shift=nil", "*spell-shift=nil", "*unit-shift=nil",
             "*type-alt=nil", "*spell-alt=nil", "*unit-alt=nil",
@@ -167,6 +167,10 @@ return {
             r = ns.cast.Attributes({ spell = "Rejuvenation", kind = "heal", unit = unit }, plan(), nil, false)
             t.eq(attrs(r.button)[3], "unit=player", "never another player: " .. tostring(unit))
         end
+        -- D-24, Twin CHANGES-1 item 3: an emergency naming a party unit
+        -- also falls through to you, with its spell kept.
+        r = ns.cast.Attributes({ spell = "Rejuvenation", kind = "emergency", unit = "party2" }, plan(), nil, false)
+        t.eq({ attrs(r.button)[2], attrs(r.button)[3] }, { "spell=Rejuvenation", "unit=player" }, "emergency")
     end,
 
     -- Section 246 (N63-E): a macro-type secure button does not act on this
@@ -218,6 +222,68 @@ return {
         t.ok(named, "the item row is named, so the old item is cleared")
     end,
 
+    -- Parity row D-19 (lead section 697): an item used on a slot (a lure on
+    -- the fishing pole, slot 16) is the item type with target-slot.
+    -- Fails before: no target-slot row.
+    ["attributes: an item on a slot carries target-slot"] = function(t)
+        local r = ns.cast.Attributes({ itemId = 6533, targetSlot = 16, step = "fishing" }, plan(), nil, false)
+        local got = {}
+        for _, a in ipairs(r.button) do got[a.attr] = a.value end
+        t.eq(got.type, "item")
+        t.eq(got.item, "item:6533")
+        t.eq(got["target-slot"], 16)
+        local back = ns.cast.Attributes({ itemId = 4544, kind = "food" }, plan(), nil, false)
+        local had, named = {}, false
+        for _, a in ipairs(back.button) do
+            had[a.attr] = a.value
+            if a.attr == "target-slot" then named = true end
+        end
+        t.eq(had["target-slot"], nil, "no slot for food")
+        t.ok(named, "the row is named, so the old slot is cleared")
+        local odd = ns.cast.Attributes({ itemId = 6533, targetSlot = 99 }, plan(), nil, false)
+        local o = {}
+        for _, a in ipairs(odd.button) do o[a.attr] = a.value end
+        t.eq(o["target-slot"], nil, "only the two weapon hands")
+    end,
+
+    -- Parity row D-24 (lead section 711): a group buff or cure goes on its
+    -- party member; any other kind naming a party unit is refused, and the
+    -- key holds its plan. Fails before: the party unit was never taken.
+    ["attributes: a group buff or cure on a party member; nothing else on one"] = function(t)
+        local function unitOf(sug)
+            local r = ns.cast.Attributes(sug, plan(), nil, false)
+            local got = {}
+            for _, a in ipairs(r.button) do got[a.attr] = a.value end
+            return got.unit, got.spell
+        end
+        t.eq({ unitOf({ spell = "Mark of the Wild", kind = "groupBuff", unit = "party2" }) },
+            { "party2", "Mark of the Wild" })
+        t.eq({ unitOf({ spell = "Remove Curse", kind = "dispel", unit = "party1" }) }, { "party1", "Remove Curse" })
+        local u, sp = unitOf({ spell = "Moonfire", kind = "damage", unit = "party1" })
+        t.eq(sp ~= "Moonfire", true, "another kind on a party unit is refused")
+        t.eq(u ~= "party1", true)
+        local u2 = unitOf({ spell = "Mark of the Wild", kind = "groupBuff", unit = "raid7" })
+        t.eq(u2 ~= "raid7", true, "no raid units")
+        local u3 = unitOf({ spell = "Mark of the Wild", kind = "groupBuff", unit = "party1", look = true })
+        t.eq(u3 ~= "party1", true, "look-only stays off the key")
+    end,
+
+    -- D-24, Twin CHANGES-2 item 1: the key frame holds the plan, so the
+    -- group pick reaches the key as the plan's action on its party member;
+    -- no raid unit, no other unit.
+    ["attributes: the plan's action may name a party member, never a raid unit"] = function(t)
+        local p = plan()
+        p.action = { spell = "Mark of the Wild", unit = "party1" }
+        local got = {}
+        for _, a in ipairs(ns.cast.Attributes(nil, p, nil, false).button) do got[a.attr] = a.value end
+        t.eq({ got.spell, got.unit }, { "Mark of the Wild", "party1" })
+        p = plan()
+        p.action = { spell = "Mark of the Wild", unit = "raid3" }
+        got = {}
+        for _, a in ipairs(ns.cast.Attributes(nil, p, nil, false).button) do got[a.attr] = a.value end
+        t.ok(got.unit ~= "raid3", "a raid unit is refused")
+    end,
+
     -- Section 246 (N63-E): no suggestion, plan or Alt item ever gives a
     -- button row the type "macro", or a macro text.
     ["attributes: no row is ever a macro"] = function(t)
@@ -253,8 +319,9 @@ return {
         t.eq(r.form, 3, "form")
         local a = attrs(r.button)
         t.eq({ a[1], a[2], a[3] }, { "type=spell", "spell=G", "unit=target" }, "key")
-        t.eq({ a[14], a[15], a[16] }, { "*type-more=spell", "*spell-more=J", "*unit-more=target" }, "more")
-        t.eq(a[5], "*type-ctrl=nil", "form 3 has no ctrl")
+        -- D-19's target-slot row sits fifth, after item.
+        t.eq({ a[15], a[16], a[17] }, { "*type-more=spell", "*spell-more=J", "*unit-more=target" }, "more")
+        t.eq(a[6], "*type-ctrl=nil", "form 3 has no ctrl")
     end,
 
     ["attributes: nothing to cast clears the key"] = function(t)
@@ -265,7 +332,7 @@ return {
         for i, a in ipairs(attrs(r.button)) do
             t.ok(string.sub(a, -4) == "=nil", "cleared " .. i)
         end
-        t.eq(#r.button, 19, "every attribute named")
+        t.eq(#r.button, 20, "every attribute named, D-19's target-slot with them")
     end,
 
     ["attributes: a form with no row, or not a form number, reads as described"] = function(t)

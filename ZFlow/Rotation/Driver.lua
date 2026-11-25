@@ -449,7 +449,7 @@ local function buffFoodOf(client, pack, role, pole)
                         local gain = BF.Gain(lines)
                         local score
                         if values then score = BF.Score(gain, values) else score = BF.ScoreByRole(gain, as, mana) end
-                        foods[#foods + 1] = { id = id, name = info.name, score = score }
+                        foods[#foods + 1] = { id = id, name = info.name, score = score, gain = gain }
                     end
                 end
             end
@@ -457,11 +457,13 @@ local function buffFoodOf(client, pack, role, pole)
     end
     -- The second answer: true when some item could not be read, so the
     -- answer may change when it arrives (section 236).
+    -- The third answer (D-13): every fight food read, with what it gives.
     local best = BF.Best(pole == true and fishing or foods)
-    if best then return { name = best.name, item = best.id, score = best.score }, unread end
-    if unread then return nil, true end
-    return {}, false
+    if best then return { name = best.name, item = best.id, score = best.score }, unread, foods end
+    if unread then return nil, true, foods end
+    return {}, false, foods
 end
+
 
 -- Section 229 (F-1): the food read, kept between bag changes and skipped in
 -- a fight. food: the module's table { kept, value, pack, role }; nil reads
@@ -478,6 +480,18 @@ local function poleOf(client)
     local ok, v = pcall(client.fishingPole)
     if ok and type(v) == "boolean" then return v end
     return nil
+end
+
+-- Parity row D-13 (lead section 668): every Well Fed fight food in your
+-- bags, { { id, name, score, gain } } in bag order, scored as the
+-- suggestion is; nil when the bags could not be read. The role used is the
+-- second answer. For Rotation/FoodWord.lua; the suggestion is unchanged.
+-- The third answer (Zen-3's note): the fishing pole read, as the food
+-- step has it; with it on, a Fishing food is suggested, not these.
+function D.Foods(client, pack, role)
+    if type(client) ~= "table" then return nil end
+    local _, _, foods = buffFoodOf(client, pack, role, false)
+    return foods, roleIn(pack, role) or "dps", poleOf(client)
 end
 
 -- pole: the step's one pole read (section 237 FB3-1), asked when needed.
@@ -758,7 +772,7 @@ function D.Read(client, pack, ids, role, extra)
             return nil
         end
         -- P-PARTY: your group and its setting (Rotation/Group.lua).
-        if field == "party" or field == "groupOn" then
+        if field == "party" or field == "groupOn" or field == "groupKey" then
             if type(ns.PartyGroup) ~= "table" then return nil end
             return ns.PartyGroup.Read(client, field, { pack = pack, ids = ids })
         end
@@ -864,8 +878,28 @@ function D.PullPick(snapshot, pack, prefs, bias)
     return pick
 end
 
-function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
-    local pick = D.PullPick(snapshot, pack, prefs, bias)
+-- Parity row D-03 (lead section 712), as Flow's Modules/Rotation/Cast.lua
+-- (:232-236, :1048-1050): the spell of the game's one-button assistant, a
+-- non-empty name from client.assistantSpell() (a CLIENT NEED: Core/
+-- Client.lua does not have it yet; C_AssistedCombat.GetActionSpell on
+-- warcraft.wiki.gg, the forever flavour from 1.60.1), or nil. Where there
+-- is one, the key and the Flow button hold it for the fight in place of
+-- the pack's fight spell, as Flow did. Anything else, or a read that
+-- raises: nil, and the pack's fight spell as before.
+function D.Assistant(client)
+    if type(client) ~= "table" or type(client.assistantSpell) ~= "function" then return nil end
+    local ok, name = pcall(client.assistantSpell)
+    if ok and type(name) == "string" and name ~= "" then return name end
+    return nil
+end
+
+function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown, helper)
+    local pick
+    if type(helper) == "string" then
+        pick = { spell = helper }
+    else
+        pick = D.PullPick(snapshot, pack, prefs, bias)
+    end
     if pick == nil then return nil end
     local fightPlan = plan
     if type(plan) == "table" and plan.action ~= nil then
@@ -876,12 +910,35 @@ function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
     return ns.cast.Attributes(pick, fightPlan, applied, lockdown, nil)
 end
 
+-- D-24 (Twin's low note, lead section 742): the plan's action for a group
+-- buff or cure on a party member, or nil. Only when the snapshot says
+-- plainly out of a fight (inCombat == false) with the key setting on
+-- (groupKey == true), the lock a plain false, the plan holding no action,
+-- and the suggestion not look-only. Pure.
+function D.GroupAction(suggestion, snapshot, plan, lockdown)
+    if type(suggestion) ~= "table" or type(snapshot) ~= "table" or type(plan) ~= "table" then return nil end
+    if snapshot.inCombat ~= false or snapshot.groupKey ~= true or lockdown ~= false then return nil end
+    if plan.action ~= nil or suggestion.look == true or type(suggestion.spell) ~= "string" then return nil end
+    if not ns.cast.GROUP_KINDS[suggestion.kind] or not ns.cast.PARTY[suggestion.unit] then return nil end
+    return { spell = suggestion.spell, unit = suggestion.unit }
+end
+
 function D.Step(client, pack, prefs, bias, applied, role, extra)
     if type(pack) ~= "table" then
         return { pack = false, trace = {}, why = { pack = false } }
     end
     local ids, missing = RR.SpellIds(pack, client.spellId)
-    local snapshot = ns.Snapshot(D.Read(client, pack, ids, role, extra))
+    -- D-24: the lock is read once a step (RD11), here, and the snapshot's
+    -- lockdownRead is that answer: a plain true or false, else nil.
+    local lockdown = client.combatLockdown()
+    local read = D.Read(client, pack, ids, role, extra)
+    local snapshot = ns.Snapshot(function(field)
+        if field == "lockdownRead" then
+            if type(lockdown) == "boolean" then return lockdown end
+            return nil
+        end
+        return read(field)
+    end)
     -- N39 and N27 (P-KEYS slice E): with no prefs passed, the spells list
     -- and the auto attack row (Rotation/SpellKeys.lua), extra.spellKeys,
     -- give them: the chooser's, and the key plan's (Skip and Bar off it).
@@ -895,7 +952,6 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     local passed = passedIn(trace)
     if suggestion and #passed > 0 then suggestion.passed = passed end
 
-    local lockdown = client.combatLockdown()
     local plan = ns.KeyPlan(pack, planPrefs)
     -- N8: the healing item on Alt + the key (KeyPlan gives a fresh table).
     local hi = snapshot.healItem
@@ -937,6 +993,11 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
             end
         end
     end
+    -- D-24: the key frame holds the plan, so a group buff or cure for a
+    -- party member (Rotation/Group.lua, on the key only out of a fight with
+    -- the lock off and the setting on) goes on it as its action.
+    local groupAction = D.GroupAction(suggestion, snapshot, plan, lockdown)
+    if groupAction then plan.action = groupAction end
     -- N39 (P-KEYS slice E): the engage step's Attack goes on the plan, a
     -- spell (never a macro), out of combat lockdown only. SE-1: the key
     -- frame takes it off again as the fight starts (Rotation/KeyFrame.lua).
@@ -966,8 +1027,15 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     -- coming on early changes nothing; with no pick, nothing is added (as
     -- Flow's setAction(nil)). The suggestion, and so the icon, still says
     -- to start the attack.
+    -- D-03: the game's one-button assistant, where the client has one.
+    local helper = D.Assistant(client)
     if type(onKey) == "table" and ns.cast.ATTACK[onKey.spell] then
-        local pull = D.PullPick(snapshot, pack, prefs, bias)
+        local pull
+        if helper then
+            pull = { spell = helper }
+        else
+            pull = D.PullPick(snapshot, pack, prefs, bias)
+        end
         if type(pull) == "table" and pull.look == true then pull = nil end
         onKey = pull
         if type(plan) == "table" and type(plan.action) == "table" and ns.cast.ATTACK[plan.action.spell] then
@@ -987,7 +1055,7 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     -- fight starts (D.FightAttrs).
     local fight = nil
     if type(onKey) == "table" and ns.cast.ATTACK[onKey.spell] then
-        fight = D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
+        fight = D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown, helper)
     end
 
     -- Not read: no id, or no row came back for it.
@@ -1021,11 +1089,39 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     }
 end
 
+-- Parity row D-29 (lead section 732): the learned bias for the fight you
+-- are about to have (Rotation/Profiler.lua). Its kind is read now: in a
+-- group "group"; alone with an elite, rare elite or boss targeted "elite";
+-- else "solo"; not known whether you are grouped: no bias. One bias for
+-- both choices of a step (D.Step hands it to ns.Choose and D.PullPick), so
+-- the icon and the spell held for the fight agree.
+local ELITE = { elite = true, rareelite = true, worldboss = true }
+function D.BiasFor(profiler, client, role)
+    if type(profiler) ~= "table" or type(profiler.Bias) ~= "function" or type(client) ~= "table" then return nil end
+    if role ~= "dps" and role ~= "heal" and role ~= "tank" then return nil end
+    if type(client.grouped) ~= "function" then return nil end
+    local okG, grouped = pcall(client.grouped)
+    if not okG or type(grouped) ~= "boolean" then return nil end
+    local kind = "solo"
+    if grouped then
+        kind = "group"
+    elseif type(client.targetRank) == "function" then
+        local okR, rank = pcall(client.targetRank)
+        if okR and type(rank) == "string" and ELITE[rank] then kind = "elite" end
+    end
+    local ok, b = pcall(profiler.Bias, kind, role)
+    if ok and type(b) == "table" then return b end
+    return nil
+end
+
 -- One tick's work: the class's pack, then a step.
 local function work(client, packs, role, extra)
     local class = type(client.class) == "function" and client.class() or nil
     local pack = type(class) == "string" and type(packs) == "table" and packs[class] or nil
-    return D.Step(client, pack, nil, nil, nil, role, extra)
+    -- D-29: the learned bias, given by the tick (extra.bias).
+    local bias = nil
+    if type(extra) == "table" and type(extra.bias) == "table" then bias = extra.bias end
+    return D.Step(client, pack, nil, bias, nil, role, extra)
 end
 
 -- CF-32: what the ownCasts module keeps (Rotation/OwnCasts.lua), asked
@@ -1141,7 +1237,8 @@ function D.Declare(k, packs)
         local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE),
             { food = food, heal = heal, chosen = chosenOf(k), combo = comboOf(k), controls = controls,
               keyActions = keyActions, spellKeys = spellKeys, counts = counts,
-              hurt = math.floor(hurt) })
+              hurt = math.floor(hurt),
+              bias = D.BiasFor(k.use("profiler"), ctx.client, ctx.settings:get(D.ROLE)) })
         local Dg = ns.Diag
         if type(Dg) == "table" and type(Dg.MARK_EVENT) == "string" then
             for key, name in pairs(D.MARKS) do

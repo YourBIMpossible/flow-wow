@@ -27,19 +27,19 @@ tests["money text: copper only"] = function(t)
     t.eq(P.Coin(98.6), "99c", "rounded to the copper")
 end
 
-tests["money text: silver and gold, zero parts left out"] = function(t)
+tests["money text: silver and gold, short in the biggest coin"] = function(t)
     t.eq(P.Coin(100), "1s")
-    t.eq(P.Coin(1240), "12s 40c")
+    t.eq(P.Coin(1240), "12.4s")
     t.eq(P.Coin(10000), "1g")
-    t.eq(P.Coin(10203), "1g 2s 3c")
-    t.eq(P.Coin(10003), "1g 3c")
+    t.eq(P.Coin(10203), "1.02g")
+    t.eq(P.Coin(10003), "1g")
     t.eq(P.Coin(99.6), "1s", "rounding carries into silver")
     t.eq(P.Coin(9999.5), "1g", "and into gold")
 end
 
-tests["money text: large sums keep every digit of the gold"] = function(t)
-    t.eq(P.Coin(2147483647), "214748g 36s 47c", "the old 32-bit money cap")
-    t.eq(P.Coin(99999999999), "9999999g 99s 99c")
+tests["money text: large sums are whole gold in plain digits"] = function(t)
+    t.eq(P.Coin(2147483647), "214748g", "the old 32-bit money cap")
+    t.eq(P.Coin(99999999999), "10000000g")
     t.eq(P.Coin(123456789 * 10000), "123456789g")
     -- Gold of 2e14 and more: plain digits, never "2e+14g".
     t.eq(P.Coin(2e18), "200000000000000g")

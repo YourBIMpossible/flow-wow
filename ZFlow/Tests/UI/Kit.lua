@@ -90,7 +90,7 @@ return {
         t.eq(kids[8].height, K.SCROLL_HEIGHT)
         local line = kids[8].children[1]
         t.eq(line.color.hex, "1eff00", "uncommon green")
-        t.eq(line.coins.text, "12g 5c", "the coin text is Prices.Coin's: a zero part is left out")
+        t.eq(line.coins.text, "12g", "the coin text is Prices.Coin's short form")
         t.eq({ kids[1].path, kids[5].control.path, kids[8].children[1].path, kids[9].path }, { "1", "5.1", "8.1", "9" },
             "each part has its place in the tree")
     end,
@@ -159,10 +159,10 @@ return {
         if not has(t) then return end
         t.eq(K.Money(0), { text = "0c", coins = { { coin = "copper", amount = 0, icon = COPPER } } })
         t.eq(K.Money(5), { text = "5c", coins = { { coin = "copper", amount = 5, icon = COPPER } } })
-        t.eq(K.Money(102), { text = "1s 2c", coins = {
+        t.eq(K.Money(102), { text = "1.02s", coins = {
             { coin = "silver", amount = 1, icon = SILVER }, { coin = "copper", amount = 2, icon = COPPER } } })
         -- A zero part is left out, in the icons as in the text (Prices.Coin).
-        t.eq(K.Money(120005), { text = "12g 5c", coins = {
+        t.eq(K.Money(120005), { text = "12g", coins = {
             { coin = "gold", amount = 12, icon = GOLD }, { coin = "copper", amount = 5, icon = COPPER } } })
         t.eq(K.Money(10000), { text = "1g", coins = { { coin = "gold", amount = 1, icon = GOLD } } })
         t.eq({ K.Money(-1), K.Money(1.5), K.Money("5") }, {}, "not whole copper: nil")

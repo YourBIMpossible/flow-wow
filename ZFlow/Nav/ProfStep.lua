@@ -13,7 +13,8 @@ local _, ns = ...
 --   tierSeen  char "learned.facts.tierSeen":
 --             { [profession] = { cap, category } }
 --   here      { position = { map, x, y }, zone = { cont }, faction,
---               mapSize = function(map) -> { w, h } in yards, or nil }
+--               mapSize = function(map) -> { w, h } in yards, or nil,
+--               level = the player's level (client.level) }
 --             every field may be absent: what is not known is not guessed.
 --
 --   step = { label = "<profession> trainer", place = { cont, map, x, y },
@@ -34,10 +35,12 @@ local _, ns = ...
 -- A profession gets a step when all of these hold; the reason names the
 -- first that does not:
 --   "no reading"   skill and max are both finite numbers, max above 0
---   "not capped"   skill has reached max
+--   "not capped"   skill has reached max, or N.ProfNextRankReady (A2-09)
 --   "visited"      visitedAtCap is not this max (the player was already
 --                  taken to a trainer at this cap)
 --   "unavailable"  tierSeen does not say "unavailable" at this very cap
+--   "level"        (capped) tierSeen at this cap names a level, here.level
+--                  is known and below it (A2-09)
 --   "no trainer"   a saved npc trains it and has a map and x, y in 0..1
 --   "faction"      such an npc was seen by a character of here.faction; an
 --                  npc with no factions, or a faction not known, is no target
@@ -67,7 +70,8 @@ local N = ns.Nav
 -- Yards from the trainer inside which the player is "here". A first guess.
 N.PROF_NEAR = 10
 
-local RANK = { ["no reading"] = 0, ["not capped"] = 1, visited = 2, unavailable = 3, ["no trainer"] = 4, faction = 5 }
+local RANK = { ["no reading"] = 0, ["not capped"] = 1, visited = 2, unavailable = 3, level = 4,
+               ["no trainer"] = 5, faction = 6 }
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -125,14 +129,36 @@ local function choose(list, here)
     return best, true
 end
 
+-- A2-09 (lead section 667). N.ProfNextRankReady(r, said, level) -> bool.
+-- The next rank can be trained before the cap: what the trainer window
+-- showed for this cap (said = tierSeen[profession]: cap, skill, level, read
+-- from the trainer's services, GetTrainerServiceLevelReq / skill line) says
+-- so, and this player has that skill and level. Nothing said, said for
+-- another cap, a level not known, or red at the trainer: false. The cap
+-- itself is not this rule (forProfession handles it). No rank, level or
+-- skill number is authored here.
+function N.ProfNextRankReady(r, said, level)
+    if type(r) ~= "table" or not (finite(r.skill) and finite(r.max)) then return false end
+    if r.skill >= r.max then return false end
+    if type(said) ~= "table" or said.cap ~= r.max or said.category == "unavailable" then return false end
+    if not (finite(said.skill) and said.skill > 0 and finite(said.level) and said.level > 0) then return false end
+    if not finite(level) then return false end
+    return r.skill >= said.skill and level >= said.level
+end
+
 -- One profession: its trainer and whether that is on the player's map, or
 -- nil and the reason.
 local function forProfession(prof, r, npcs, tierSeen, here)
-    if r.skill < r.max then return nil, "not capped" end
+    local said
+    if type(tierSeen) == "table" then said = tierSeen[prof] end
+    if r.skill < r.max and not N.ProfNextRankReady(r, said, here.level) then return nil, "not capped" end
     if r.visitedAtCap == r.max then return nil, "visited" end
-    local said = type(tierSeen) == "table" and tierSeen[prof] or nil
     if type(said) == "table" and said.category == "unavailable" and said.cap == r.max then
         return nil, "unavailable"
+    end
+    if type(said) == "table" and said.cap == r.max and finite(said.level) and finite(here.level)
+        and here.level < said.level then
+        return nil, "level"
     end
     local placed, usable = false, {}
     if type(npcs) == "table" then
@@ -236,6 +262,7 @@ function N.ProfStepFrom(client, store)
             zone = ask(client, "zone"),
             faction = ask(client, "faction"),
             mapSize = function(map) return ask(client, "mapSize", map) end,
+            level = ask(client, "level"),
         })
 end
 
@@ -738,7 +765,8 @@ end
 --       one, else PP.FLAG (256 and 4096, the first game's, as the
 --       predecessor's Services.lua).
 --   gather_skill               a node of that profession on the map the
---       player is on: the nearest the player gathered there (Nav/Nodes.lua);
+--       player is on: the nearest the player gathered there (Nav/Nodes.lua)
+--       that is not resting (Nav/NodeRest.lua: just looted or found empty);
 --       else the nearest place Questie gives for an object the player has
 --       gathered before, on any map (its saved object id): a node this
 --       player can gather, never one picked by its name.
@@ -748,11 +776,27 @@ end
 --       Blacksmithing trainer, who works by both (the predecessor's rule,
 --       and what the plan's own "look for" line says). A fire is never
 --       looked for: the player can light one.
+--   visit_weapon_master        a weapon master (asked for by
+--       Nav/WeaponMasterStep.lua, no step of the plan). Saved: the account
+--       npcs whose roles say weaponMaster (Nav/WeaponMasterSeen.lua).
+--       Questie: an NPC whose sub-name is exactly PP.WEAPON_MASTER. Which
+--       weapons one teaches is not read: not known until the player visits.
+--       step.only = { [name] = true }: only weapon masters of those names;
+--       step.skip = { [name] = true }: none of those names (saved ones and
+--       Questie's alike). The names are the asker's (Nav/WeaponMasterStep.lua
+--       with Nav/WeaponMasterNames.lua, lead section 602).
+--   visit_named                the NPC whose name is step.name, from Questie
+--       only: on this map, else on this continent. Found only for a name
+--       given to PP.Want before the pass (Nav/RidingNames.lua's riding
+--       trainers, lead section 602; asked for by Nav/RidingStep.lua).
 -- Any other kind: nil. The plan gives a vendor or node step its own place.
 -- An npc the player's faction cannot use is left out: a saved one by its
 -- factions (none saved, or the faction not known: it stays in), Questie's
 -- by friendlyToFaction ("A", "H", "AH").
 --
+--   PP.Pick(step, prof, known) -> { name, map, x, y }, from or nil   pure
+--     The same answer as PP.Of with the name when it has one (an npc's),
+--     and for an npc where it is from: PP.SAVED or PP.QUESTIE.
 --   PP.Of(step, prof, known) -> { map, x, y } or nil            pure
 --     known = { here = { map, x, y, faction, size }, npcs, services,
 --               stations = { { kind, map, x, y } },
@@ -765,7 +809,33 @@ end
 --     One pass over every NPC Questie knows (db.NPCPointers), two reads
 --     each (subName, npcFlags). found = { trainer = { [profession] =
 --     { { name, map, x, y, side } } }, banker = { ... }, auction = { ... } },
---     at most PP.SPOTS places an NPC; n = how many places in all.
+--     and weaponMaster = { ... } once one is met (the sub-name read, no
+--     read more), at most PP.SPOTS places an NPC; n = how many places in
+--     all. And named = { [name] = { ... } } once an NPC with a name given
+--     to PP.Want is met: for that, the name of an NPC that has any npcFlags
+--     is read in the same pass (one read more for such an NPC not kept
+--     for another reason; none for an NPC with no flags, which is no
+--     trainer or vendor; none at all while no name is wanted).
+--     And vendor, repair, flight, innkeeper = { ... } once an NPC with
+--     that npcFlags bit is met (PP.SERVICE; parity rows A2-10 and A1-41):
+--     Questie's own list first (db.npcFlags.VENDOR, .REPAIR,
+--     .FLIGHT_MASTER, .INNKEEPER), else PP.FLAG (4, 16384, 8, 128, the
+--     first game's, as the predecessor's S.CLASSIC_FLAGS). The same
+--     npcFlags read; an NPC in two lists has one place table in both.
+--   PP.Service(kind, known) -> { name, map, x, y } or nil          pure
+--     Questie's nearest NPC of a service kind (PP.SERVICES: those four,
+--     banker and auction) the player's faction can use: on here.map, else
+--     on another map of the player's continent. known as for PP.Of
+--     (here, questie, contOf, far). For N.Nearest
+--     (Nav/ServiceNearest.lua), asked through the feed's Service.
+--   PP.List(kind, found, faction) -> { { name, map, x, y } } or nil   pure
+--     Every NPC of a service kind in the pass's kept answer (found) the
+--     faction can use, on any map, in the order of the pass; copies. nil
+--     with no answer yet (found is nil) or a kind that is no service; an
+--     empty list when the pass met none. For Nav/FlightUnknown.lua, asked
+--     through the feed's List: the same one pass, nothing read again.
+--   PP.Want(name): asks the pass to keep the places of the NPC of that
+--     name (PP.NAMES). Called when a names file loads, before any pass.
 --   PP.ScanStart(db) -> pass or nil; PP.ScanStep(pass, zones, count) ->
 --     done: the same pass a part at a time, count NPCs a call. pass.found
 --     and pass.n are the answer once done.
@@ -783,6 +853,8 @@ end
 --       seconds later and PP.TRIES times in all, then kept as it is. A
 --       client with no time (now() 0) has nothing to wait by: its tries
 --       come in a row and still end.
+--     reader.waiting(client) -> true while an answer asked for is still on
+--       its way (a pass runs, or one is due and Questie has its NPCs).
 --     reader.ids(client, prof, read) -> read()'s list, kept PP.RETRY
 --       seconds, so the saved nodes are not gone through on every update.
 --     reader.spots(client, ids, map) -> { { map, x, y } }: the places of
@@ -804,19 +876,37 @@ PP.KIND = {
     take_bank = "banker", buy_auction = "auction",
     gather_skill = "node",
     craft = "station", make_part = "station", go_station = "station",
+    visit_weapon_master = "weaponMaster",
+    visit_named = "named",
 }
--- The npc role of an imported entry, by service kind.
-PP.ROLE = { banker = "bank", auction = "auction" }
+-- The NPC names the pass over Questie keeps places for (PP.Want).
+PP.NAMES = {}
+-- The npc role of a saved entry, by place kind.
+PP.ROLE = { banker = "bank", auction = "auction", weaponMaster = "weaponMaster" }
+-- Questie's sub-name of a weapon master, the whole of it.
+PP.WEAPON_MASTER = "Weapon Master"
+-- Where an npc's place is from (PP.Pick).
+PP.SAVED, PP.QUESTIE = "saved", "questie"
 PP.STATION_FAR = { anvil = true, forge = true }
 PP.STATION_PROF = "Blacksmithing"
 PP.NPCS = "learned.places.npcs"
 PP.NODES_PATH = "learned.nodes"
 PP.NODE_MODULE = "nodes"
+PP.REST_MODULE = "nodeRest"
 -- How many of the nearest gathered nodes are asked for.
 PP.NODES = 50
 PP.TRAINER_TITLE = "^(.-) Trainer$"
-PP.FLAG = { banker = 256, auction = 4096 }
-PP.FLAG_NAME = { banker = "BANKER", auction = "AUCTIONEER" }
+-- The first game's npcFlags bits, as the predecessor's Services.lua
+-- (S.CLASSIC_FLAGS), and their names in Questie's own list.
+-- Source of the numbers: QuestieDB constants.byExpansion.Classic.npcFlags; cmangos-classic Unit.h.
+PP.FLAG = { banker = 256, auction = 4096, vendor = 4, repair = 16384, flight = 8, innkeeper = 128 }
+PP.FLAG_NAME = { banker = "BANKER", auction = "AUCTIONEER", vendor = "VENDOR", repair = "REPAIR",
+                 flight = "FLIGHT_MASTER", innkeeper = "INNKEEPER" }
+-- The kinds kept by flag whose list is made once one is met (banker and
+-- auction have theirs from the start), and every kind PP.Service answers:
+-- the kinds of N.SERVICE_KINDS that are an NPC.
+PP.SERVICE = { "vendor", "repair", "flight", "innkeeper" }
+PP.SERVICES = { vendor = true, repair = true, flight = true, innkeeper = true, banker = true, auction = true }
 PP.TRIES, PP.RETRY = 6, 10
 -- NPCs gone through in one call of reader.work (one frame).
 PP.STEP = 300
@@ -830,6 +920,10 @@ end
 
 local function placed(p)
     return type(p) == "table" and p.map ~= nil and share(p.x) and share(p.y)
+end
+
+function PP.Want(name)
+    if text(name) then PP.NAMES[name] = true end
 end
 
 local function call(fn, ...)
@@ -945,7 +1039,10 @@ local function questieList(known, kind, prof)
     local found = call(known.questie)
     local list
     if type(found) == "table" then
-        if kind ~= "trainer" then
+        if kind == "named" then
+            -- prof: the NPC's name.
+            if type(found.named) == "table" and prof ~= nil then list = found.named[prof] end
+        elseif kind ~= "trainer" then
             list = found[kind]
         elseif type(found.trainer) == "table" then
             list = found.trainer[prof]
@@ -959,13 +1056,36 @@ local function questieList(known, kind, prof)
     return out
 end
 
-local function npcPlace(known, kind, prof, same)
-    local seen = seenList(known, kind, prof)
+-- list without the names a step leaves out: with step.only, only the
+-- names in it; with step.skip, none of the names in it.
+local function namesKept(list, step)
+    local only, skip
+    if type(step) == "table" then
+        if type(step.only) == "table" then only = step.only end
+        if type(step.skip) == "table" then skip = step.skip end
+    end
+    if not only and not skip then return list end
+    local out = {}
+    for _, c in ipairs(list) do
+        if (not only or only[c.name] == true) and not (skip and skip[c.name] == true) then out[#out + 1] = c end
+    end
+    return out
+end
+
+-- step: the asking step, for its only and skip names (nil: every name).
+local function npcPlace(known, kind, prof, same, step)
+    local seen = namesKept(seenList(known, kind, prof), step)
     local to = onMap(seen, known)
-    if to then return to end
+    if to then return to, PP.SAVED end
     -- Questie is asked only now: nothing saved is on this map.
-    local q = questieList(known, kind, prof)
-    return onMap(q, known) or onContinent(seen, known, same) or onContinent(q, known, same)
+    local q = namesKept(questieList(known, kind, prof), step)
+    to = onMap(q, known)
+    if to then return to, PP.QUESTIE end
+    to = onContinent(seen, known, same)
+    if to then return to, PP.SAVED end
+    to = onContinent(q, known, same)
+    if to then return to, PP.QUESTIE end
+    return nil
 end
 
 local function nodeOf(known, prof)
@@ -1003,17 +1123,25 @@ local function stationOf(known, kind, same)
     return onContinent(list, known, same) or npcPlace(known, "trainer", PP.STATION_PROF, same)
 end
 
-function PP.Of(step, prof, known)
+function PP.Pick(step, prof, known)
     if type(step) ~= "table" or type(known) ~= "table" then return nil end
     local here = known.here
     if type(here) ~= "table" or here.map == nil or not (share(here.x) and share(here.y)) then return nil end
     local kind = PP.KIND[step.kind]
-    local to
+    local to, from
     if kind == "trainer" then
         if step.npc ~= nil or type(prof) ~= "string" then return nil end
-        to = npcPlace(known, kind, prof, sameOf(known))
+        to, from = npcPlace(known, kind, prof, sameOf(known))
     elseif kind == "banker" or kind == "auction" then
-        to = npcPlace(known, kind, nil, sameOf(known))
+        to, from = npcPlace(known, kind, nil, sameOf(known))
+    elseif kind == "weaponMaster" then
+        to, from = npcPlace(known, kind, nil, sameOf(known), step)
+    elseif kind == "named" then
+        -- Questie's alone: this map, else this continent.
+        if not text(step.name) then return nil end
+        local q = questieList(known, kind, step.name)
+        to = onMap(q, known) or onContinent(q, known, sameOf(known))
+        if to then from = PP.QUESTIE end
     elseif kind == "node" then
         local what = step.gather
         if type(what) ~= "string" then what = prof end
@@ -1022,7 +1150,44 @@ function PP.Of(step, prof, known)
         to = stationOf(known, step.station, sameOf(known))
     end
     if not placed(to) then return nil end
+    return { name = to.name, map = to.map, x = to.x, y = to.y }, from
+end
+
+function PP.Of(step, prof, known)
+    local to = PP.Pick(step, prof, known)
+    if not to then return nil end
     return { map = to.map, x = to.x, y = to.y }
+end
+
+-- Questie's nearest NPC of a service kind (PP.SERVICES) the player's
+-- faction can use: on the map the player is on, else on another map of
+-- the player's continent (by known.far). Saved places are not looked at
+-- here: N.Nearest (Nav/ServiceNearest.lua) sets this beside them.
+function PP.Service(kind, known)
+    if PP.SERVICES[kind] ~= true or type(known) ~= "table" then return nil end
+    local here = known.here
+    if type(here) ~= "table" or here.map == nil or not (share(here.x) and share(here.y)) then return nil end
+    local q = questieList(known, kind)
+    local to = onMap(q, known) or onContinent(q, known, sameOf(known))
+    if not placed(to) then return nil end
+    return { name = to.name, map = to.map, x = to.x, y = to.y }
+end
+
+-- Every NPC of a service kind (PP.SERVICES) in the pass's kept answer the
+-- faction can use, on any map: copies, in the order of the pass. nil with
+-- no answer (found is nil) or a kind that is no service.
+function PP.List(kind, found, faction)
+    if PP.SERVICES[kind] ~= true or type(found) ~= "table" then return nil end
+    local out = {}
+    local list = found[kind]
+    if type(list) ~= "table" then return out end
+    local side = text(faction)
+    for _, c in ipairs(list) do
+        if placed(c) and friendly(c.side, side) then
+            out[#out + 1] = { name = c.name, map = c.map, x = c.x, y = c.y }
+        end
+    end
+    return out
 end
 
 -- The map of one of Questie's areas, or nil. Both ways of calling it.
@@ -1063,6 +1228,9 @@ local function spotsOf(zones, spawns, max, only)
     return out
 end
 
+-- Shared with Nav/MobHop.lua (A2-25).
+N.ProfSpotsOf = spotsOf
+
 -- Is the bit of flag (a power of two) set in mask?
 local function flagged(mask, flag)
     return math.floor(mask / flag) % 2 == 1
@@ -1080,7 +1248,9 @@ function PP.ScanStart(db)
         if type(id) == "number" then ids[#ids + 1] = id end
     end
     table.sort(ids)
-    return { db = db, ids = ids, at = 0, bits = bits, n = 0,
+    local names
+    if next(PP.NAMES) ~= nil then names = PP.NAMES end
+    return { db = db, ids = ids, at = 0, bits = bits, n = 0, names = names,
              found = { trainer = {}, banker = {}, auction = {} } }
 end
 
@@ -1099,22 +1269,49 @@ function PP.ScanStep(pass, zones, count)
                 found.trainer[prof] = found.trainer[prof] or {}
                 lists[#lists + 1] = found.trainer[prof]
             end
+            if sub == PP.WEAPON_MASTER then
+                found.weaponMaster = found.weaponMaster or {}
+                lists[#lists + 1] = found.weaponMaster
+            end
         end
         local mask = call(db.QueryNPCSingle, id, "npcFlags")
+        local name
+        local named = false
         if finite(mask) and mask > 0 then
             if flagged(mask, bits.banker) then lists[#lists + 1] = found.banker end
             if flagged(mask, bits.auction) then lists[#lists + 1] = found.auction end
+            -- The other services (PP.Service): the same read, no read more.
+            for i = 1, #PP.SERVICE do
+                local kind = PP.SERVICE[i]
+                if flagged(mask, bits[kind]) then
+                    found[kind] = found[kind] or {}
+                    lists[#lists + 1] = found[kind]
+                end
+            end
+            -- An NPC asked for by its name (PP.Want): the name is read of
+            -- an NPC with any flag only (a trainer or a vendor has one).
+            if pass.names then
+                name, named = call(db.QueryNPCSingle, id, "name"), true
+                if type(name) == "string" and pass.names[name] == true then
+                    found.named = found.named or {}
+                    found.named[name] = found.named[name] or {}
+                    lists[#lists + 1] = found.named[name]
+                end
+            end
         end
         if #lists > 0 then
-            local name = call(db.QueryNPCSingle, id, "name")
+            if not named then name = call(db.QueryNPCSingle, id, "name") end
             local spots = {}
             if type(name) == "string" and name ~= "" then
                 spots = spotsOf(zones, call(db.QueryNPCSingle, id, "spawns"), PP.SPOTS, nil)
             end
             local side = call(db.QueryNPCSingle, id, "friendlyToFaction")
+            -- One table a place, in every list the NPC is in (a repair
+            -- vendor is a vendor too): vendors are many.
             for _, spot in ipairs(spots) do
+                local place = { name = name, map = spot.map, x = spot.x, y = spot.y, side = side }
                 for _, list in ipairs(lists) do
-                    list[#list + 1] = { name = name, map = spot.map, x = spot.x, y = spot.y, side = side }
+                    list[#list + 1] = place
                     pass.n = pass.n + 1
                 end
             end
@@ -1174,6 +1371,16 @@ function PP.Questie()
         if pass.n > 0 or state.tries >= PP.TRIES then found = pass.found end
         pass = nil
         return false
+    end
+
+    -- Is an answer asked for still on its way? True while a pass runs, or
+    -- one is due and Questie has its list of NPCs. It reads nothing more.
+    function reader.waiting(client)
+        if found or not wanted then return false end
+        if pass then return true end
+        if state.tries >= PP.TRIES then return false end
+        local db = ask(client, "questieModule", "QuestieDB")
+        return type(db) == "table" and type(db.NPCPointers) == "table"
     end
 
     -- read() -> the object ids of a profession, asked again no sooner than
@@ -1253,9 +1460,13 @@ function PP.From(client, store, use, kind, reads)
         end
     end
     local q = type(reads.questie) == "table" and reads.questie or nil
-    if kind == "trainer" or kind == "banker" or kind == "auction" or kind == "station" then
+    if kind == "trainer" or kind == "banker" or kind == "auction" or kind == "station"
+        or kind == "weaponMaster" then
         known.npcs = saved(store, "account", PP.NPCS)
         if q then known.questie = function() return call(q.places, client) end end
+    end
+    if (kind == "named" or kind == "service") and q then
+        known.questie = function() return call(q.places, client) end
     end
     if kind == "banker" or kind == "auction" then
         known.services = saved(store, "char", N.SERVICES or "learned.places.services")
@@ -1265,10 +1476,16 @@ function PP.From(client, store, use, kind, reads)
         local mod = call(use, PP.NODE_MODULE)
         local list
         if type(mod) == "table" then list = call(mod.Nearest, PP.NODES) end
+        -- Parity row A1-21: a node that is resting (just looted, or found
+        -- empty; Nav/NodeRest.lua) is passed over for the next one.
+        local rest = call(use, PP.REST_MODULE)
+        local resting = type(rest) == "table" and rest.Resting or nil
         if type(list) == "table" then
             known.nodes = {}
             for _, r in ipairs(list) do
-                if type(r) == "table" and type(r.node) == "table" then known.nodes[#known.nodes + 1] = r.node end
+                if type(r) == "table" and type(r.node) == "table" and call(resting, r.node) ~= true then
+                    known.nodes[#known.nodes + 1] = r.node
+                end
             end
         end
         if q and known.here then
@@ -1391,8 +1608,9 @@ function N.ProfStepDeclare(k)
     end
 
     k:Setting({ key = N.PROF_SETTING, scope = "account", type = "bool", default = true,
-        label = "Profession trainer arrow", group = "travel.arrow",
-        synonyms = { "profession", "trainer", "arrow", "needle", "skill cap" } })
+        label = "Profession arrow", group = "travel.arrow",
+        help = "Shows a second, purple arrow for your profession steps: gathering in an area, smelting or crafting at a station, learning at a trainer, or buying from a vendor.",
+        synonyms = { "profession", "trainer", "arrow", "gather", "craft", "buy", "smelt", "skill cap" } })
 
     k:Module({
         name = N.PROF_STEP,

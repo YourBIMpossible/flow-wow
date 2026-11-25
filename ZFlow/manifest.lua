@@ -11,6 +11,9 @@
 return {
     interface = 16001,
     version = "0.1.0",
+    -- Bag add-ons whose item buttons get the bag marks and badges when they
+    -- are loaded (Core/Client.lua, bag replacements); never required.
+    optionalDeps = { "Bagnon", "BagBrother" },
     files = {
         -- Kernel
         "Core/Identity.lua",
@@ -28,10 +31,13 @@ return {
         "Core/Kernel.lua",
         "Core/Diag.lua",
         "Items/Drops.lua",
+        "Items/LootLeft.lua",
         "UI/Perf.lua",
         "Core/Sound.lua",
         "UI/MoveGuides.lua",
         "Core/Facts.lua",
+        -- FLOW-PARITY F-04: the self-test word, which asks each guarded read once; it only reads (after Diag).
+        "Core/SelfTest.lua",
         "Core/InviteAdvice.lua",
         "UI/Export.lua",
         "Items/PriceChart.lua",
@@ -55,6 +61,7 @@ return {
         "Settings/Model.lua",
         "Settings/Topics.lua",
         "Settings/Rows.lua",
+        "Settings/GameSuggest.lua",
 
         -- Items
         "Items/Key.lua",
@@ -76,11 +83,14 @@ return {
         "Items/SkillUps.lua",
         "Items/SkillBoosters.lua",
         "Items/CraftQueue.lua",
+        -- FLOW-PARITY E-57: how far a run of crafts is and about how long is left, data only (after CraftQueue).
+        "Items/CraftProgress.lua",
         "Items/Sell.lua",
         "Items/Repair.lua",
         "Items/SellView.lua",
         "Items/SellThese.lua",
         "Items/PriceLookup.lua",
+        "Items/PriceList.lua",
 
         -- Gear
         "Gear/Score.lua",
@@ -113,11 +123,16 @@ return {
         "Rotation/Reader.lua",
         "UI/SpellCard.lua",
         "Rotation/Driver.lua",
+        -- FLOW-PARITY D-13: the Well Fed foods you carry and the pick, as a word (after BuffFood, Driver).
+        "Rotation/FoodWord.lua",
         "Rotation/KeyFrame.lua",
         "Rotation/Role.lua",
         "Rotation/Spec.lua",
         "Rotation/Fights.lua",
         "UI/FightLog.lua",
+        -- FLOW-PARITY C-51: advice from the fight log, the same enemy killing you again (after Advisor, FightLog).
+        "UI/FightInsight.lua",
+        "Rotation/Profiler.lua",
         "Classes/Druid.lua",
         "Classes/Hunter.lua",
         "Classes/Mage.lua",
@@ -133,6 +148,8 @@ return {
         "Nav/ArrowLayout.lua",
         -- Pathing UI slice 1 (lead section 519): the one colour of a step at a distance (after ArrowLayout).
         "Nav/RouteColor.lua",
+        -- F-23 (section 828.2): the route and map colour of a role in a palette (after RouteColor).
+        "Nav/RoutePalette.lua",
         "Nav/Bearing.lua",
         "Nav/ArrowView.lua",
         "Nav/ArrowMotion.lua",
@@ -159,11 +176,13 @@ return {
         "Nav/ServiceSeen.lua",
         "Nav/Errand.lua",
         "Nav/RepairStep.lua",
+        "Nav/WeaponMasterNames.lua",
         "Nav/WeaponMasterStep.lua",
         "Nav/WeaponMasterSeen.lua",
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
         "Nav/AddonSources.lua",
+        "Nav/NearbyNodes.lua",
         "Nav/Rides.lua",
         "Nav/TravelSpells.lua",
         "Nav/TravelIcon.lua",
@@ -173,6 +192,8 @@ return {
         "Nav/FlightStep.lua",
         "Nav/MapFlights.lua",
         "Nav/TaxiMark.lua",
+        -- A1-32: the flight times learned by flying (before FlightWord, which lists them).
+        "Nav/FlightTimes.lua",
         -- S30: the flight paths still to learn, said in words (after FlightPaths).
         "Nav/FlightWord.lua",
         "Nav/Flights.lua",
@@ -195,7 +216,9 @@ return {
         "UI/SettingsOptions.lua",
         "UI/Rows.lua",
         "UI/Intro.lua",
+        "UI/LoginIntro.lua",
         "UI/WindowButtons.lua",
+        "Nav/ArrowMenuRows.lua",
         "UI/ArrowMenu.lua",
         "UI/Feedback.lua",
         "UI/MacroIcons.lua",
@@ -230,8 +253,11 @@ return {
     "Rotation/Queue.lua",
     "UI/RotationQueue.lua",
     "Items/Banker.lua",
+    "Items/BankerRows.lua",
+    "Items/TakeOutWhy.lua",
     "Items/Posting.lua",
     "Items/Trader.lua",
+    "Items/TraderRows.lua",
     "Nav/Try.lua",
     { "Core/Capture.lua", dev = true },
     { "Core/CaptureEvidence.lua", dev = true },
@@ -244,10 +270,13 @@ return {
     -- N41 key controls and S23 click-casting check (P-KEYS slice B).
     "Rotation/KeyControls.lua",
     "UI/ClickCheck.lua",
+    "UI/TipSpot.lua",
     -- S15 click slots and S29 move handle (P-KEYS slice C).
     "UI/MoveHandle.lua",
     "Rotation/ClickSlots.lua",
     -- Section 285 item 2b: the Flow button and the self button on screen.
+    -- FLOW-PARITY D-12: the buff item the self button holds (before FlowButton).
+    "Rotation/BuffItemPick.lua",
     "Rotation/FlowButton.lua",
     -- N1, N2, N20, N5 key actions (P-KEYS slice D).
     "Rotation/KeyActions.lua",
@@ -269,20 +298,33 @@ return {
     "Nav/BossLootData.lua",
     -- Lead section 303: the Dungeon Quests reader (Questie at runtime).
     "Nav/DungeonRead.lua",
+    "Nav/DungeonMode.lua",
+    "Nav/DungeonRun.lua",
+    "Nav/DungeonMenu.lua",
+    "Nav/DungeonBadge.lua",
+    "Nav/DungeonFirst.lua",
     -- Lead section 305: boss kills as the client reports them (after Diag).
     "Nav/BossKills.lua",
     -- Lead section 318: the Dungeon Quests window, on the kit (after Kit and the dungeon data).
     "UI/DungeonWindow.lua",
+    -- DISPATCH §652 slice 1: the Dungeon Quests menu, the card grid and the
+    -- detail view with the B-55 badge (after DungeonWindow, the dungeon data).
+    "UI/DungeonMenu.lua",
     -- G34: hover over an action button and press a key (after Kit and Diag).
     "UI/HoverBind.lua",
     "UI/HelpPages.lua",
     "UI/SetupList.lua",
     -- P-TRIP (S43): quest spots learned from the player's own play (after QuestRead and Diag).
     "Nav/QuestSpots.lua",
+    -- F-new-4: forget one wrongly learned place or quest spot (after ServiceSeen, QuestSpots and Diag).
+    "Nav/LearnedForget.lua",
     -- P-TRIP (S39/S43/S40): quest routes and dungeon runs for the arrow (after RoutePlan, QuestSpots).
     "Nav/TripRoute.lua",
+    "Nav/TrackerList.lua",
     -- S37: what is still worth doing on this map before leaving (after TripRoute, Leaving).
     "Nav/ZoneLeft.lua",
+    -- A2-20 (lead section 674): the tracker here mode, data half (after TripRoute).
+    "Nav/RouteHere.lua",
     -- Lead DISPATCH section 340: the minimap button's rim math (pure), then the button.
     "UI/MinimapPlace.lua",
     "UI/MinimapButton.lua",
@@ -294,10 +336,13 @@ return {
     "Nav/WayWords.lua",
     "Nav/WayTips.lua",
     "Nav/Nodes.lua",
+    "Nav/NodeRest.lua",
     -- N60a: copy chat text and clickable web addresses in chat (after the settings page).
     "UI/Chat.lua",
     -- G48 (P-TRIP): the party route over add-on messages (after TripRoute).
     "Nav/PartyRoute.lua",
+    -- B-41: party members exchange quest progress as add-on data (after PartyRoute).
+    "Nav/PartyProgress.lua",
     -- P-EVIDENCE+ (sections 252, 262): look-only capture fields saved under diag (after Diag).
     "Core/AutoEvidence.lua",
     -- P-TRIP slice 1: the trip list of stops for the route (after TripRoute, Errand, DungeonRead).
@@ -309,6 +354,8 @@ return {
     "UI/MapRoute.lua",
     -- Old-Flow parity R6: your class buffs with the time left, under the player frame (after the class packs and the kit).
     "UI/BuffStrip.lua",
+    -- Old-Flow parity A2-21: the game's quest tracker and Questie's tracker, each on or off by its own row (needs two client calls: CLIENT NEED).
+    "UI/QuestTrackers.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
     -- G50 (ACTING): the share word, one quest for each word typed (after QuestAdvice).
@@ -316,14 +363,28 @@ return {
     -- S33 (lead section 395 item 4): travel spell and mount advice text (after TripRoute, Arrow, the advisor).
     "Nav/TravelAdvice.lua",
     "Nav/InvitePrompt.lua",
+    "Nav/RouteHover.lua",
+    "Nav/StepDetail.lua",
+    -- A1-13 (lead section 825.2): the step card data (after StepDetail, whose rows it reuses).
+    "Nav/StepCard.lua",
+    "Nav/InviteAccept.lua",
+    "Nav/DropLines.lua",
+    "Nav/HiddenSteps.lua",
     -- S41 (lead section 395 item 1): quest items in the bags, leftover and to buy (after QuestRead and the advisor).
     "Items/QuestBags.lua",
     -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
     "Spells/TrainAdvice.lua",
     -- C-61, C-49: talent points, the unlocked line and the spend prompt (after the advisor).
     "Spells/Talents.lua",
+    -- KNOW lane (C-62): the talents page, the pack levelling build talent by talent (after Kit, the packs, Spells/Talents).
+    "UI/TalentsWindow.lua",
     -- Lead section 375 item 7 (TN-1): the quest route's pick-ups (after RoutePlan, DungeonStates).
+    "Nav/StepNeeds.lua",
+    "Nav/BattlegroundQuests.lua",
     "Nav/RoutePickups.lua",
+    "Nav/RidingNames.lua",
+    "Nav/QuestHold.lua",
+    "Nav/LowQuests.lua",
     -- G45: the riding step and its advisor line (after the advisor, the arrow and Prices).
     "Nav/RidingStep.lua",
     -- FLOW-PARITY B-25 (lead section 460): save up, learn riding, then the mount (after RidingStep).
@@ -338,12 +399,19 @@ return {
     "UI/ProfDock.lua",
     -- Lead section 382 (C2 P-COACH): one profession step for the needle (after ProfStep, Legs, ProfPlan, ProfSources).
     "Nav/ProfFeed.lua",
+    -- FLOW-PARITY B-08 (lead section 611): flight masters not learned yet, data only (after Flights, FlightPaths, Rides, ProfStep, ProfFeed).
+    "Nav/FlightUnknown.lua",
     -- G46 (lead section 391 item 2): when hearthing saves the walk, and where to set home (after Trip, TripRoute).
     "Nav/HearthAdvice.lua",
     -- Lead section 303 (d): the in-dungeon tracker, on the kit (after BossKills and the dungeon data).
     "UI/DungeonTracker.lua",
+    -- FLOW-PARITY B-48 (lead section 490): the dungeon you are in, in chat words (after BossKills, DungeonRead).
+    "Nav/DungeonVisit.lua",
     -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
     "Nav/GateWords.lua",
+    -- A2-25 (lead section 667): hop from mob group to mob group in a kill area (after ProfStep).
+    "Nav/MobHop.lua",
+    "Nav/MobHopStep.lua",
     -- Lead section 406 item 3: recipe facts for the profession plan, seen in game then shipped (read by ProfPlan at call time).
     "Items/RecipeFacts.lua",
     -- Lead section 422 item 1: recipes seen for sale at vendors, for the profession plan (read by ProfPlan at call time).
@@ -374,5 +442,9 @@ return {
     "Gear/BagUpgrades.lua",
     -- E-27: the inventory word, every bag item with its verdict (after SellList, Reservations, Diag).
     "UI/InventoryList.lua",
+    -- FLOW-PARITY A2-14: zones with quests to take at your level, data only (after QuestRead, DungeonStates).
+    "Nav/WhereNext.lua",
+    -- FLOW-PARITY A2-24: the notice for a zone with no quests in your level range, data only (after WhereNext, ZoneLeft).
+    "Nav/ZoneNotice.lua",
     },
 }

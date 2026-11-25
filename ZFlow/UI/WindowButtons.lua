@@ -37,7 +37,7 @@
 --   WindowButtons.Declare(k, diag) also adds the word WB.WORD, which
 --   prints those lines.
 --
--- Settings: "buttons.worldMap", "buttons.merchant", "buttons.profession" and "buttons.bank" (bool, account,
+-- Settings: "buttons.worldMap", "buttons.merchant", "buttons.profession", "buttons.bank" and "buttons.talents" (bool, account,
 -- default on). The rows are UI/Rows.lua's;
 -- a missing row is off.
 --
@@ -169,7 +169,48 @@ WB.WINDOWS = {
         tipText = "Bank list: what to store and take out",
         point = { "TOPRIGHT", "TOPRIGHT", -40, -40 },
     },
+    -- F-29 (lead section 817): the talent window, as Flow's "Flow Talents"
+    -- tab (Modules/GameButtons.lua:222-238 at b657e6e5); a click opens this
+    -- add-on's talents window (UI/TalentsWindow.lua). Which frame is the
+    -- talent window depends on the client: the first of `frames` the client
+    -- says is there is used (WB.FrameOf), inside its talents part when it has
+    -- one. The talent window loads on first open, so the button is asked
+    -- again when an add-on loads. Points are first guesses: not seen in game.
+    {
+        key = "talents", frame = "PlayerSpellsFrame", setting = "buttons.talents",
+        label = "Button on the talent window", says = "talent window",
+        retry = "ADDON_LOADED",
+        opens = "talentsWindow", call = "Open",
+        text = "Talents", tip = "your talents and the build to take",
+        tipText = "Talents: your talent trees and the build to take",
+        places = {
+            { inside = { "TalentsFrame" }, says = "on its talents tab", point = { "TOPRIGHT", "TOPRIGHT", -60, -30 } },
+            { inside = { "TalentsTab" }, says = "on its talents tab", point = { "TOPRIGHT", "TOPRIGHT", -60, -30 } },
+            { says = "on the window", point = { "TOPRIGHT", "TOPRIGHT", -60, -30 } },
+        },
+    },
 }
+
+-- The talent window's frame names, newest client first (as Flow's list,
+-- GameButtons.lua:225-229): the one the client has is used.
+WB.TALENT_FRAMES = { "PlayerSpellsFrame", "ClassTalentFrame", "PlayerTalentFrame", "TalentFrame" }
+for _, win in ipairs(WB.WINDOWS) do
+    if win.key == "talents" then win.frames = WB.TALENT_FRAMES end
+end
+
+-- The frame a window's button goes on: with a `frames` list, the first one
+-- the client says is there (client.windowState answers a table), else the
+-- list's first; without one, `frame`.
+function WB.FrameOf(win, client)
+    if type(win.frames) ~= "table" then return win.frame end
+    if type(client) == "table" and type(client.windowState) == "function" then
+        for _, name in ipairs(win.frames) do
+            local ok, w = pcall(client.windowState, name)
+            if ok and type(w) == "table" then return name end
+        end
+    end
+    return win.frame
+end
 
 function WB.Declare(k, diag)
     local api = {}
@@ -194,7 +235,7 @@ function WB.Declare(k, diag)
     local function windowSays(win)
         local client = ctx and ctx.client or k.client
         if type(client) ~= "table" or type(client.windowState) ~= "function" then return "window not read" end
-        local ok, w = pcall(client.windowState, win.frame)
+        local ok, w = pcall(client.windowState, WB.FrameOf(win, client))
         if not ok then return "window not read" end
         if type(w) ~= "table" then return "window not there" end
         local s = "window there"
@@ -288,10 +329,11 @@ function WB.Declare(k, diag)
         local id = k.id or ns.id
         local why = WB.NO_READ
         h = nil
+        local frame = WB.FrameOf(win, ctx.client)
         if type(make) == "function" then
             for _, place in ipairs(WB.Places(win)) do
                 local p = place.point
-                h, why = make(win.frame, {
+                h, why = make(frame, {
                     name = id.framePrefix .. "Button" .. win.frame,
                     text = win.text or id.title, tip = win.tipText or (id.title .. ": " .. win.tip),
                     point = { p[1], p[2], p[3], p[4] },

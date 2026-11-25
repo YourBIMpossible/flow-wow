@@ -281,7 +281,7 @@ tests["roll advice: Greed says what it sells for, when the price is read (S21 fa
     local c = adviceClient()
     c.setItemInfo({ [3] = { sellPrice = 2540 }, [4] = { sellPrice = 0 } })
     local a = R.Advice(c, packs(), WORSE, "dps")
-    t.eq(a and a.text, "Greed: sells for 25s 40c")
+    t.eq(a and a.text, "Greed: sells for 25.4s")
     t.eq(a and a.sells, 2540)
     t.eq(a and a.value, "Greed", "the roll frame word is unchanged")
     a = R.Advice(c, packs(), PLATE, "dps")

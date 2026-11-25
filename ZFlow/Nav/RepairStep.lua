@@ -2,8 +2,11 @@ local _, ns = ...
 
 -- RepairStep (S6): while the repair warning (Items/Repair.lua) is on, a
 -- guide step to the nearest repair vendor this character has seen
--- (Nav/ServiceSeen.lua saves them, N.Nearest reads them). With none seen
--- on this map, the vendor the warning already knows from imported places;
+-- (Nav/ServiceSeen.lua saves them, N.Nearest reads them), or a nearer one
+-- the player's own Questie add-on lists (parity row A2-10, as Flow's
+-- Modules/Nav/Services.lua: N.Nearest sets the two side by side; that one
+-- is said to be from Questie, never seen). With none on this map or from
+-- Questie, the vendor the warning already knows from imported places;
 -- with none at all, no step and the words of the warning alone.
 --
 -- LOOK ONLY. Nothing here repairs, buys, clicks or opens anything, and
@@ -15,7 +18,7 @@ local _, ns = ...
 -- distance (:66-68, without the name of the old addon), and the "repair"
 -- stop that can be turned off (:96-118, there sell.repairStop). No vendor
 -- data is carried here: places are only what this player has seen or
--- imported.
+-- imported, or what the player's own Questie gives while the game runs.
 --
 -- Pure parts (plain tables in):
 --   step  = RepairStep.Of(warning, near)     a step, or nil
@@ -24,10 +27,17 @@ local _, ns = ...
 --
 --   warning  what ns.use("repairWarn").Current() gives while gear is low:
 --            { worst = { pct, slot, low }, lines, step } ; else nil
---   near     what N.Nearest("repair", client, store) gives:
---            { kind, name, map, x, y, cont, yards } ; else nil
+--   near     what N.Nearest("repair", client, store, use) gives:
+--            { kind, name, map, x, y, cont, yards, unvisited } ; else nil
 --   step     { kind = "repair", label, place = { cont, map, x, y }, radius,
---              yards (left out when not known), from = "seen" | "imported" }
+--              yards (left out when not known),
+--              from = "seen" | "imported" | "questie" }
+--            from "questie" (parity row A2-10, lead section 611): near is a
+--            place the player's own Questie add-on lists (near.unvisited),
+--            nearer than any the character has seen on this map, or the only
+--            one known. It also has unvisited = true and detail =
+--            RS.FROM_QUESTIE (the arrow's line under the label), and its
+--            line is RS.LISTED, never RS.SEEN: it is not said to be seen.
 --            the shape Nav/Errand and Nav/ProfStep give, with a kind
 --
 -- Module: RepairStep.Declare(k) -> api; api.step(), api.lines().
@@ -46,6 +56,14 @@ RS.KIND = "repair"
 RS.RADIUS = 10
 RS.KEEP = 10
 RS.LABEL = "Repair"
+-- The line that names the vendor (%s: its name and how far): one this
+-- character has seen, and one the player's own Questie add-on lists.
+RS.SEEN = "Nearest repair vendor you have seen: %s."
+RS.LISTED = "Nearest repair vendor your own Questie add-on lists: %s."
+-- The arrow's line under the label of a step from Questie.
+RS.FROM_QUESTIE = "From your own Questie add-on."
+RS.MARK = " (Questie)"
+RS.QUESTIE = "questie"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -73,10 +91,13 @@ function RS.Of(warning, near)
     if not low(warning) then return nil end
     if type(near) == "table" then
         if near.kind ~= RS.KIND or near.map == nil or not (share(near.x) and share(near.y)) then return nil end
-        local label = RS.LABEL
+        -- A place from Questie carries that in its label too, for whoever
+        -- shows the label alone (the dungeon window's steps before a run).
+        local mark = near.unvisited == true and RS.MARK or ""
+        local label = RS.LABEL .. mark
         local name = text(near.name)
         if name then
-            local long = RS.LABEL .. ": " .. name
+            local long = RS.LABEL .. ": " .. name .. mark
             if #long <= labelMax() then label = long end
         end
         return {
@@ -84,7 +105,9 @@ function RS.Of(warning, near)
             place = { cont = near.cont, map = near.map, x = near.x, y = near.y },
             radius = RS.RADIUS,
             yards = finite(near.yards) and near.yards >= 0 and near.yards or nil,
-            from = "seen",
+            from = near.unvisited == true and RS.QUESTIE or "seen",
+            unvisited = near.unvisited == true and true or nil,
+            detail = near.unvisited == true and RS.FROM_QUESTIE or nil,
         }
     end
     local known = warning.step
@@ -103,7 +126,7 @@ end
 
 function RS.Lines(warning, step)
     if type(warning) ~= "table" or type(warning.lines) ~= "table" then return {} end
-    if type(step) ~= "table" or step.from ~= "seen" then
+    if type(step) ~= "table" or (step.from ~= "seen" and step.from ~= RS.QUESTIE) then
         local out = {}
         for i = 1, #warning.lines do out[i] = warning.lines[i] end
         return out
@@ -116,7 +139,11 @@ function RS.Lines(warning, step)
         where = step.name or yards
     end
     local out = { warning.lines[1] }
-    if where then out[#out + 1] = "Nearest repair vendor you have seen: " .. where .. "." end
+    if where then
+        local line = RS.SEEN
+        if step.from == RS.QUESTIE then line = RS.LISTED end
+        out[#out + 1] = line:format(where)
+    end
     return out
 end
 
@@ -148,7 +175,7 @@ function RS.Declare(k)
             if ok and finite(t) then now = t end
         end
         if now and nearAt and nearFor == w and now >= nearAt and now - nearAt < RS.KEEP then return near end
-        near = ns.Nav and ns.Nav.Nearest and ns.Nav.Nearest(RS.KIND, ctx.client, ctx.store) or nil
+        near = ns.Nav and ns.Nav.Nearest and ns.Nav.Nearest(RS.KIND, ctx.client, ctx.store, ctx.use) or nil
         nearAt, nearFor = now, w
         return near
     end

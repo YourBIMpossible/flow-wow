@@ -30,6 +30,7 @@ local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, {})
     c.setMapCorners(1414, { cont = 1, ox = 0, oy = 0, ex = 10000, ey = 0, sx = 0, sy = 1000 })
     c.setMapCorners(1411, { cont = 1, ox = 0, oy = 0, ex = 1000, ey = 0, sx = 0, sy = 500 })
     c.setMapCorners(1430, { cont = 0, ox = 0, oy = 0, ex = 1000, ey = 0, sx = 0, sy = 1000 })
@@ -146,6 +147,122 @@ tests["mapFlights module: no saved points draws no pins"] = function(t)
     c.advance(2, 8)
     local h = c.mapPinSets[1]
     t.eq(h and #h.pins or 0, 0)
+end
+
+-- B-10 + B-11 (lead sections 780, 783): as Flow's flight-master pins
+-- (Modules/Nav/MapFlights.lua): a left click picks one and draws a line to
+-- every other on the shown map (MF.Pick -> MF.Click, MF.DrawLinks :470-500,
+-- green where you can fly, red where you can't yet), and the next click
+-- clears (:241-251, MF.Click); hovering one gives its name and words
+-- (MF.TipLines), with one picked the flight from it to here (MF.FlightText,
+-- :339-343), and what a click does (:344). Fails before: a pin carries no
+-- words and a click does nothing.
+local function third()
+    local n = nodes()
+    n["Cold Post"] = { cont = 1, wx = 3000, wy = 750 }
+    return n
+end
+
+local function pinNamed(h, name)
+    for _, p in ipairs(h.pins) do if p.name == name then return p end end
+    return nil
+end
+
+tests["mapFlights module: each pin carries its words for the tooltip"] = function(t)
+    local _, c = start({ on = true })
+    c.setWorldMap(1414)
+    c.advance(2, 8)
+    local p = pinNamed(c.mapPinSets[1], "Home Post")
+    t.eq(p and p.title, "Home Post")
+    local tip = p and p.tip or {}
+    t.eq(tip[1], "You have this flight path: you can fly here.")
+    t.eq(tip[#tip - 1], MF.TIP_PICK, "what a click does")
+    t.eq(tip[#tip], MF.TIP_POINT, "what a right click does (B-12)")
+end
+
+tests["mapFlights module: a click picks a master and lines go to the others; the next click clears"] = function(t)
+    local _, c = start({ on = true, heading = BOARD, last = flightLast(), nodes = third() })
+    c.setWorldMap(1414)
+    c.advance(2, 8)
+    local h = c.mapPinSets[1]
+    t.eq(type(h.click), "function", "the fake can click")
+    if type(h.click) ~= "function" then return end
+    t.eq(#h.lines, 1, "the next step's flight")
+    h.click("Home Post")
+    t.eq(#h.lines, 2, "a line to each other master; the step's flight is not drawn while picking")
+    local to = {}
+    for _, l in ipairs(h.lines) do
+        t.eq(l.from, "Home Post")
+        t.eq(l.can, true, "you have both")
+        to[#to + 1] = l.to
+    end
+    table.sort(to)
+    t.eq(to, { "Cold Post", "Far Post" })
+    local far = pinNamed(h, "Far Post")
+    t.eq(far and far.picked, nil)
+    t.eq(pinNamed(h, "Home Post").picked, true)
+    local tip = far and far.tip or {}
+    t.eq(tip[#tip - 2], "Home Post to Far Post: flight time not known yet", "the flight from the one picked")
+    t.eq(tip[#tip - 1], MF.TIP_CLEAR)
+    c.advance(2, 8)
+    t.eq(#h.lines, 2, "it stays picked")
+    h.click("Far Post")
+    t.eq(#h.lines, 1, "the next click clears: the step's flight again")
+    h.click("Home Post", "RightButton")
+    t.eq(#h.lines, 1, "a right click picks nothing")
+    h.click("Nowhere")
+    t.eq(#h.lines, 1, "a name with no pin picks nothing")
+end
+
+tests["mapFlights module: a pick that leaves the map is dropped"] = function(t)
+    local _, c = start({ on = true, nodes = third() })
+    c.setWorldMap(1414)
+    c.advance(2, 8)
+    local h = c.mapPinSets[1]
+    if type(h.click) ~= "function" then return t.ok(false, "no click") end
+    h.click("Far Post")
+    t.eq(#h.lines, 2)
+    c.setWorldMap(1411)
+    c.advance(2, 8)
+    t.eq(#h.lines, 0, "Far Post is not on this map: nothing picked")
+    c.setWorldMap(1414)
+    c.advance(2, 8)
+    t.eq(#h.lines, 0, "and it stays dropped")
+end
+
+-- B-12 (lead section 783): a right click on a flight master sets your own
+-- waypoint on it through the existing waypoint path (Nav/Waypoint.lua
+-- W.SetAt, as Alt + click on the map); a right click on the same one again
+-- takes it off. As Flow's MF.RightClick / MF.PointAt / MF.WaypointOn
+-- (Modules/Nav/MapFlights.lua:194-238). Fails before: a right click does
+-- nothing.
+tests["mapFlights module: a right click sets your waypoint on a master; again takes it off"] = function(t)
+    local k, c = start({ on = true })
+    c.setWorldMap(1414)
+    c.advance(2, 8)
+    local h = c.mapPinSets[1]
+    if type(h.click) ~= "function" then return t.ok(false, "no click") end
+    local W = ns.Nav.Waypoint
+    local slot = W.Slot(k.store)
+    t.eq(W.Get(slot), nil, "no waypoint first")
+    h.click("Home Post", "RightButton")
+    local wp = W.Get(slot)
+    t.ok(wp ~= nil, "a waypoint is set")
+    t.eq(wp and wp.map, 1414, "on the shown map")
+    t.ok(wp and math.abs(wp.x - 0.052) < 1e-9 and math.abs(wp.y - 0.25) < 1e-9, "where the pin is")
+    t.eq(wp and wp.label, MF.PointLabel({ name = "Home Post" }))
+    c.advance(2, 8)
+    local p = pinNamed(h, "Home Post")
+    t.eq(p and p.tip[#p.tip], MF.TIP_UNPOINT, "its tip says a right click takes it off")
+    t.eq(c.mapPinSets[1].lines[1], nil, "nothing picked by a right click")
+    h.click("Home Post", "RightButton")
+    t.eq(W.Get(slot), nil, "the same again: taken off")
+    h.click("Far Post", "RightButton")
+    t.eq(W.Get(slot) and W.Get(slot).label, MF.PointLabel({ name = "Far Post" }))
+    h.click("Home Post", "RightButton")
+    t.eq(W.Get(slot) and W.Get(slot).label, MF.PointLabel({ name = "Home Post" }), "another master: moved there")
+    h.click("Nowhere", "RightButton")
+    t.eq(W.Get(slot) and W.Get(slot).label, MF.PointLabel({ name = "Home Post" }), "no pin: nothing changes")
 end
 
 return tests

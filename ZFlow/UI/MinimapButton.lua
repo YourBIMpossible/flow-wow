@@ -41,6 +41,11 @@ MB.MENU_AGAIN = "Plan the route again"
 MB.MENU_SKIP = "Skip the current stop"
 MB.MENU_CLEAR = "Clear the route"
 MB.MENU_NONE = "No route yet"
+-- Lead section 651 (Muse): the Route level, right after Plan: the mode and
+-- the sort as tick rows. The step count is in Settings only.
+MB.MENU_ROUTE = "Route"
+MB.MORE = "  >"
+MB.MENU_BACK = "Back"
 MB.MENU_WINDOW = "Show the route window"
 MB.MENU_SETTINGS = "Settings"
 MB.MENU_ADVICE = "Show advice"
@@ -61,6 +66,18 @@ function MB.Menu(state)
         { title = true, text = MB.MENU_TITLE:format(tostring(state.title or "")) },
         { key = "plan", text = has and MB.MENU_AGAIN or MB.MENU_PLAN },
     }
+    local T = ns.Nav and ns.Nav.TripRoute
+    if T and type(state.mode) == "string" and type(state.sort) == "string" then
+        local children = {}
+        for _, mode in ipairs(T.MODES) do
+            children[#children + 1] = { key = "mode:" .. mode, text = T.MODE_LABELS[mode], checked = state.mode == mode }
+        end
+        children[#children + 1] = { sep = true }
+        for _, sort in ipairs(T.SORTS) do
+            children[#children + 1] = { key = "sort:" .. sort, text = T.SORT_LABELS[sort], checked = state.sort == sort }
+        end
+        items[#items + 1] = { key = "route", text = MB.MENU_ROUTE, children = children }
+    end
     if has then
         items[#items + 1] = { key = "skip", text = MB.MENU_SKIP }
         items[#items + 1] = { key = "clear", text = MB.MENU_CLEAR }
@@ -80,6 +97,29 @@ function MB.Menu(state)
     items[#items + 1] = { sep = true }
     items[#items + 1] = { key = "settings", text = MB.MENU_SETTINGS }
     return items
+end
+
+-- The rows of one level: the top (a row with children is marked with
+-- MB.MORE), or the children of the row `under` beneath its heading, with
+-- the way back last.
+function MB.Level(items, under)
+    local out = {}
+    for _, row in ipairs(type(items) == "table" and items or {}) do
+        if under ~= nil and type(row) == "table" and row.key == under and type(row.children) == "table" then
+            out = { { title = true, text = row.text } }
+            for _, child in ipairs(row.children) do out[#out + 1] = child end
+            out[#out + 1] = { key = "back", text = MB.MENU_BACK }
+            return out
+        end
+    end
+    for _, row in ipairs(type(items) == "table" and items or {}) do
+        if type(row) == "table" and type(row.children) == "table" then
+            out[#out + 1] = { key = row.key, text = tostring(row.text) .. MB.MORE, more = true }
+        else
+            out[#out + 1] = row
+        end
+    end
+    return out
 end
 
 function MB.Declare(k)
@@ -152,7 +192,15 @@ function MB.Declare(k)
             local list = a.List()
             advice = type(list) == "table" and #list or 0
         end
-        return { title = id().title, route = lines ~= nil, window = window, advice = advice }
+        -- Section 651: the mode and the sort, read from their Settings rows.
+        local T = ns.Nav and ns.Nav.TripRoute
+        local mode, sort
+        if T and ctx.settings:row(T.MODE_KEY) and ctx.settings:row(T.SORT_KEY) then
+            mode = T.ModeOf(ctx.settings:get(T.MODE_KEY))
+            sort = T.SortOf(ctx.settings:get(T.SORT_KEY))
+        end
+        return { title = id().title, route = lines ~= nil, window = window, advice = advice,
+                 mode = mode, sort = sort }
     end
 
     local function say(lines)
@@ -177,9 +225,37 @@ function MB.Declare(k)
         say({ T.CLEARED })
     end
 
+    local openMenu
+
+    -- Section 651: a pick in the Route level writes the Settings row (the
+    -- one saved value); the route plans itself again and its list is said.
+    local function pickRoute(kind, word)
+        local T = ns.Nav and ns.Nav.TripRoute
+        if not T then return end
+        local key, label = T.MODE_KEY, T.MODE_LABELS[word]
+        if kind == "sort" then key, label = T.SORT_KEY, T.SORT_LABELS[word] end
+        if type(label) ~= "string" then return end
+        local ok, why = ctx.settings:set(key, label)
+        if not ok and why ~= nil then
+            problem("menu", why)
+            return
+        end
+        local r = route()
+        local lines
+        if r and type(r.Lines) == "function" then lines = r.Lines() end
+        if lines then say(lines) end
+    end
+
     local function choose(key)
         if not ctx then return end
-        if key == "settings" then
+        local kind, word = tostring(key):match("^(%a+):(%a+)$")
+        if key == "route" then
+            openMenu("route")
+        elseif key == "back" then
+            openMenu()
+        elseif kind == "mode" or kind == "sort" then
+            pickRoute(kind, word)
+        elseif key == "settings" then
             openSettings()
         elseif key == "window" then
             local row = windowKey()
@@ -206,9 +282,9 @@ function MB.Declare(k)
         end
     end
 
-    local function openMenu()
+    openMenu = function(under)
         if not button or not ctx or type(button.menu) ~= "function" then return end
-        button.menu(MB.Menu(menuState()), function(key)
+        button.menu(MB.Level(MB.Menu(menuState()), under), function(key)
             local ok, err = pcall(choose, key)
             if not ok then problem("menu", err) end
         end)

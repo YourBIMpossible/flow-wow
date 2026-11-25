@@ -298,4 +298,51 @@ return {
         t.eq(ns.Fights.Lines(rec:list(), 5, 7), { "there is no fight 7; 1 is kept." })
         t.eq(ns.Fights.Lines({}, 5, 1), { ns.Fights.NONE })
     end,
+
+    -- Parity row C-64, the data half (lead section 712), as Flow's
+    -- Modules/Deaths.lua (:39-46 D.Shape's rows, :156-168 who died): the
+    -- deaths of the session, newest first, your own with the play-by-play
+    -- of the hits on you before it (time before, ability, source, amount;
+    -- health after it is not read: this add-on reads no health), and a
+    -- party or raid member's with who it was. Fails before: one death only.
+    ["deaths: your deaths are kept, newest first, each with its play-by-play"] = function(t)
+        local rec = recorder()
+        feed(rec, 100, spell("SPELL_DAMAGE", MOB, "Hollow Wolf", ME, "Zarkon", 17253, "Bite", 30))
+        feed(rec, 103, swing(MOB, "Hollow Wolf", ME, "Zarkon", 40))
+        rec:died(104)
+        feed(rec, 200, spell("SPELL_DAMAGE", MOB, "Gnoll Brute", ME, "Zarkon", 5, "Smash", 90))
+        rec:died(201)
+        local list = rec:deaths()
+        t.eq(#list, 2)
+        t.eq(list[1].at, 201, "newest first")
+        t.eq(list[1].you, true)
+        t.eq(list[1].rows, { { before = 1, ability = "Smash", source = "Gnoll Brute", amount = 90 } })
+        t.eq(list[2].rows[1], { before = 4, ability = "Bite", source = "Hollow Wolf", amount = 30 })
+        t.eq(list[2].rows[2], { before = 1, ability = ns.Fights.MELEE, source = "Hollow Wolf", amount = 40 })
+        t.eq(list[2].rows[1].hp, nil, "health after is not read")
+    end,
+
+    ["deaths: a party member's death is kept with who it was; another player's outside the group is not"] = function(t)
+        local rec = recorder()
+        local function died(dst, name, flags)
+            return { 1000, "UNIT_DIED", false, nil, nil, 0, 0, dst, name, flags, 0 }
+        end
+        feed(rec, 50, died(OTHER, "Quillaby", 2))
+        feed(rec, 60, died("Player-1-0000EEEE", "Stranger", 0))
+        feed(rec, 70, died(MOB, "Hollow Wolf", 0))
+        local list = rec:deaths()
+        t.eq(#list, 1, "only the group member")
+        t.eq({ list[1].at, list[1].you, list[1].who, list[1].party }, { 50, false, "Quillaby", true })
+        t.eq(list[1].rows, {}, "their hits are not read")
+    end,
+
+    ["deaths: no more than the kept number, and copies"] = function(t)
+        local rec = recorder()
+        for i = 1, ns.Fights.KEEP_DEATHS + 3 do rec:died(i) end
+        local list = rec:deaths()
+        t.eq(#list, ns.Fights.KEEP_DEATHS)
+        t.eq(list[1].at, ns.Fights.KEEP_DEATHS + 3, "the newest kept")
+        list[1].at = -1
+        t.eq(rec:deaths()[1].at, ns.Fights.KEEP_DEATHS + 3, "a copy")
+    end,
 }

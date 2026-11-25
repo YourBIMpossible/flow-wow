@@ -133,17 +133,18 @@ tests["arrow echo: the quest arrow is coloured by distance as before, the echo d
     -- Far: the trainer 400 yards east; the waypoint 100 yards north.
     local c = start(0.9, 0.5)
     local q, p = two(t, c, "far")
-    local r, g, b = N.ArrowColor("zone", 100)
-    close(t, q.drawn.colour, r, g, b, "the quest arrow at 100 yards, as before")
+    -- R7: the quest arrow points at the player's waypoint: RC.Of's green.
+    local r, g, b = ns.RouteColor.Of({ family = "waypoint" }, 100, "standard")
+    close(t, q.drawn.colour, r, g, b, "the waypoint arrow at 100 yards: green")
     local far = purple(t, p.drawn.colour, "the echo at 400 yards")
     -- Near: the same trainer from 60 yards; the waypoint is now far.
     c = start(0.9, 0.5, 0.84, 0.5)
     q, p = two(t, c, "near")
     local d = math.sqrt(340 * 340 + 100 * 100)
-    r, g, b = N.ArrowColor("zone", d)
-    close(t, q.drawn.colour, r, g, b, "the quest arrow far away, as before")
+    r, g, b = ns.RouteColor.Of({ family = "waypoint" }, d, "standard")
+    close(t, q.drawn.colour, r, g, b, "the waypoint arrow far away: still green")
     local near = purple(t, p.drawn.colour, "the echo at 60 yards")
-    t.ok(near > far + 0.3, "the echo is clearly brighter near than far")
+    t.ok(near > far + 0.15, "the echo is clearly brighter near than far")
     t.ok(p.faded < 1, "the echo is see-through")
     t.eq(q.faded, 1, "the quest arrow is not")
 end

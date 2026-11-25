@@ -297,22 +297,31 @@ function ns.make.client(env)
     --   { { bag = id, free = n, total = n, family = n or nil }, ... }
     -- family is the second value of GetContainerNumFreeSlots (0: takes
     -- anything); nil when the client does not give one (first guess that it
-    -- does on 16001). nil when any bag could not be read.
+    -- does on 16001). A bag whose reading fails is left out and the others
+    -- still count; nil when either call is missing or no bag could be read.
     -- Docs (warcraft.wiki.gg, API C_Container.GetContainerNumFreeSlots):
     -- numFreeSlots, bagFamily = ...(bagIndex); the second value matches.
     function c.bags()
         local slotsOf, freeOf = container("GetContainerNumSlots"), container("GetContainerNumFreeSlots")
-        local out = {}
+        if not slotsOf or not freeOf then return nil end
+        local out, readAny = {}, false
         for _, bag in ipairs(bagIds()) do
             local ok, total = call(slotsOf, bag)
-            if not ok or not wholeCount(total) then return nil end
-            if total > 0 then
-                local okFree, free, family = call(freeOf, bag)
-                if not okFree or not wholeCount(free) then return nil end
-                out[#out + 1] = { bag = bag, free = free, total = total,
-                    family = type(family) == "number" and family or nil }
+            if ok and wholeCount(total) then
+                if total == 0 then
+                    readAny = true
+                else
+                    local okFree, free, family = call(freeOf, bag)
+                    if okFree and wholeCount(free) then
+                        readAny = true
+                        local row = { bag = bag, free = free, total = total }
+                        if type(family) == "number" then row.family = family end
+                        out[#out + 1] = row
+                    end
+                end
             end
         end
+        if not readAny then return nil end
         return out
     end
 
@@ -1749,6 +1758,8 @@ function ns.make.client(env)
 
     -- What the client says about one of your spells, by spell id:
     --   { known =, usable =, noPower = }   each true, false or nil
+    --   name = the spell's name as the client says it, in the player's
+    --          language, or left out (lead section 625, B-32)
     -- nil for a field means the client did not say; it is never guessed.
     -- noPower is the client's own "not enough power" answer, not an amount.
     -- Seen in game on 16001, out of a fight: C_Spell.IsSpellUsable gives two
@@ -1756,6 +1767,10 @@ function ns.make.client(env)
     -- known asks C_SpellBook.IsSpellKnown (the name on warcraft.wiki.gg,
     -- Patch 1.60.1/API changes), then the bare IsPlayerSpell, which is not
     -- listed for this client. Neither has been seen in game.
+    -- name asks C_Spell.GetSpellInfo(id).name where the client has it, else
+    -- GetSpellInfo's first answer (the same read as the learned-spell
+    -- line's, spellName above); a call that is absent, raises or answers a
+    -- hidden or empty name leaves it out. A first guess: not seen in game.
     function c.spell(id)
         if type(id) ~= "number" then return nil end
         local group = type(env.C_Spell) == "table" and env.C_Spell or {}
@@ -1766,6 +1781,7 @@ function ns.make.client(env)
         local ok, usable, noPower = call(group.IsSpellUsable, id)
         row.usable = flag(ok, usable)
         row.noPower = flag(ok, noPower)
+        row.name = (spellName(id))
         return row
     end
 
@@ -2086,6 +2102,42 @@ function ns.make.client(env)
         local ok, fn = pcall(function() return obj[name] end)
         if not ok or type(fn) ~= "function" then return false end
         return pcall(fn, obj, ...)
+    end
+
+    -- F-20 (UI/TipSpot.lua): where a tooltip goes. c.setTipSpot(fn) keeps
+    -- fn(anchor) -> "GAME" | anchor; every tooltip the client shows is
+    -- placed by placeTip(tip, owner, anchor), which asks it (under pcall;
+    -- no fn, an error or no text answer -> the anchor as given). "GAME"
+    -- puts the tip where the game puts its own, by
+    -- GameTooltip_SetDefaultAnchor(tip, owner), when the client has it;
+    -- else SetOwner(owner, answer). An "ANCHOR_NONE" tip is placed by its
+    -- caller's own SetPoint, so it is not asked about and stays as it is.
+    -- Returns as method(tip, "SetOwner", ...) does: true when placed.
+    -- First guess, not seen on 16001: GameTooltip_SetDefaultAnchor(tip,
+    -- owner) exists and owns the tip to owner as SetOwner does.
+    -- One local only (placeTip): this function is near Lua 5.1's limit of
+    -- 200 locals.
+    local placeTip
+    do
+        local spot = nil
+        function c.setTipSpot(fn)
+            if type(fn) == "function" then spot = fn end
+            return true
+        end
+        placeTip = function(tip, owner, anchor)
+            local where = anchor
+            if spot ~= nil and anchor ~= "ANCHOR_NONE" then
+                local ok, said = pcall(spot, anchor)
+                if ok and type(said) == "string" then where = said end
+            end
+            if where == "GAME" then
+                if type(env.GameTooltip_SetDefaultAnchor) == "function" then
+                    return (pcall(env.GameTooltip_SetDefaultAnchor, tip, owner))
+                end
+                where = anchor
+            end
+            return method(tip, "SetOwner", owner, where)
+        end
     end
 
     -- The version text the client read from this addon's TOC, or nil.
@@ -2623,14 +2675,19 @@ function ns.make.client(env)
     end
 
     -- G59 ACTS: the two writes behind the game options, called only by
-    -- UI/GameOptions.lua on the player own choice (the settings page or the
+    -- UI/GameOptions.lua and Settings/GameSuggest.lua on the player own choice (the settings page or the
     -- setting word). Nothing else may call them. Only the two settings the
     -- options use can be written; any other name is refused before the game
     -- is asked. Docs (warcraft.wiki.gg): C_CVar.SetCVar(name, value) answers
     -- whether it took; the older SetCVar(name, value) answers nothing.
     -- LoggingCombat(on) turns the combat log file on or off. Needs game test
     -- on 16001: each write, and a write in a fight.
-    local GAME_SETTINGS = { cameraDistanceMaxZoomFactor = true, showTimestamps = true }
+    -- F-14 (lead section 828.4): also the suggested game settings that
+    -- Settings/GameSuggest.lua sets on the player click. No key binding,
+    -- no graphics or video setting.
+    local GAME_SETTINGS = { cameraDistanceMaxZoomFactor = true, showTimestamps = true,
+        autoLootDefault = true, nameplateShowEnemies = true, instantQuestText = true,
+        autoSelfCast = true, statusText = true }
     function c.setGameSetting(name, v)
         if type(name) ~= "string" or not GAME_SETTINGS[name] then return nil, "notAllowed" end
         if type(v) ~= "string" then return nil, "bad" end
@@ -3804,7 +3861,7 @@ function ns.make.client(env)
                 method(tip, "Hide")
                 return
             end
-            method(tip, "SetOwner", f, "ANCHOR_RIGHT")
+            placeTip(tip, f, "ANCHOR_RIGHT")
             method(tip, "ClearLines")
             method(tip, "AddLine", out[1], 1, 1, 1)
             for i = 2, #out do method(tip, "AddLine", out[i], 0.8, 0.8, 0.8, true) end
@@ -3954,7 +4011,7 @@ function ns.make.client(env)
             method(b, "SetScript", "OnEnter", function()
                 local tip = env.GameTooltip
                 if tip == nil then return end
-                if not method(tip, "SetOwner", b, "ANCHOR_RIGHT") then return end
+                if not placeTip(tip, b, "ANCHOR_RIGHT") then return end
                 method(tip, "SetText", spec.tip)
                 method(tip, "Show")
             end)
@@ -6784,6 +6841,18 @@ function ns.make.client(env)
         return name
     end
 
+    -- The name of an area as the client says it, in the player's language
+    -- (C_Map.GetAreaInfo(areaId), the area numbers of the zone tables), or
+    -- nil: the call is absent, raises, or answers nothing, an empty or a
+    -- hidden name. Lead section 625 (B-32): Nav/TravelSpells.lua compares
+    -- it with a map's name. Checked on warcraft.wiki.gg (API
+    -- C_Map.GetAreaInfo: areaID -> name). A first guess on 16001: needs
+    -- game test.
+    function c.areaName(area)
+        if type(area) ~= "number" then return nil end
+        return text(mapCall("GetAreaInfo", area))
+    end
+
     -- c.mapClick(fn) -> true when the world map will tell of the player's
     -- own Alt + left clicks on it, else nil and a reason. fn(map, x, y):
     -- the uiMapID the map showed when the button went down and where the
@@ -6839,6 +6908,14 @@ function ns.make.client(env)
     --       hides any made before past their count; a pin or line not placed
     --       by plain numbers is skipped.
     --   h.clear()   hides them all
+    --   h.onClick(fn) -> true: a click on a dot calls fn(pin.name, button)
+    --       (B-10). Each dot is a small Button (it was a bare texture,
+    --       which takes no mouse) holding its colour texture; its OnEnter
+    --       shows pin.title, then each line of pin.tip, in GameTooltip
+    --       owned by the dot, and OnLeave hides it (B-11).
+    -- First guesses, not seen on 16001: Button RegisterForClicks
+    -- ("LeftButtonUp", "RightButtonUp"), OnClick's button argument, a
+    -- Button made on a frame that itself takes no mouse still taking clicks.
     -- All first guesses, not seen on 1.60.1: WorldMapFrame, its
     -- ScrollContainer.Child canvas (named in RESEARCH-worldmap-button.md),
     -- IsShown, GetMapID, CreateLine, SetStartPoint, SetEndPoint,
@@ -6856,6 +6933,39 @@ function ns.make.client(env)
         method(host, "SetAllPoints", canvas)
         local dots, lines = {}, {}
         local nDots, nLines = 0, 0
+        local clickFns = {}
+        -- One dot: a Button with its colour texture, clickable, with a
+        -- tooltip. false when the client will not make one.
+        local function makeDot()
+            local okB, b = call(env.CreateFrame, "Button", nil, host)
+            if not okB or b == nil then return false end
+            local d = { button = b, tip = {} }
+            local okT, tex = method(b, "CreateTexture", nil, "OVERLAY")
+            if okT and tex ~= nil then
+                method(tex, "SetAllPoints", b)
+                d.tex = tex
+            end
+            method(b, "RegisterForClicks", "LeftButtonUp", "RightButtonUp")
+            method(b, "SetScript", "OnClick", function(_, button)
+                if d.name == nil then return end
+                for _, fn in ipairs(clickFns) do pcall(fn, d.name, button) end
+            end)
+            method(b, "SetScript", "OnEnter", function()
+                local tip = env.GameTooltip
+                if tip == nil or d.title == nil then return end
+                placeTip(tip, b, "ANCHOR_RIGHT")
+                method(tip, "SetText", d.title)
+                for _, line in ipairs(d.tip) do
+                    method(tip, "AddLine", line, 1, 1, 1, true)
+                end
+                method(tip, "Show")
+            end)
+            method(b, "SetScript", "OnLeave", function()
+                local tip = env.GameTooltip
+                if tip ~= nil then method(tip, "Hide") end
+            end)
+            return d
+        end
         local COLOUR = {
             from = { 0.3, 1, 0.4 }, to = { 0.3, 1, 0.4 },
             have = { 1, 0.82, 0 }, new = { 0.6, 0.6, 0.6 },
@@ -6863,6 +6973,10 @@ function ns.make.client(env)
         local function plain(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
 
         local h = {}
+        function h.onClick(fn)
+            if type(fn) == "function" then clickFns[#clickFns + 1] = fn end
+            return true
+        end
         function h.map()
             local okS, shown = method(wm, "IsShown")
             if not okS or shown ~= true then return nil end
@@ -6871,7 +6985,7 @@ function ns.make.client(env)
             return map
         end
         function h.clear()
-            for i = 1, nDots do if dots[i] then method(dots[i], "Hide") end end
+            for i = 1, nDots do if dots[i] then method(dots[i].button, "Hide") end end
             for i = 1, nLines do if lines[i] then method(lines[i], "Hide") end end
             nDots, nLines = 0, 0
         end
@@ -6889,21 +7003,27 @@ function ns.make.client(env)
                     n = n + 1
                     local d = dots[n]
                     if d == nil then
-                        local okT, made = method(host, "CreateTexture", nil, "OVERLAY")
-                        d = okT and made or false
+                        d = makeDot()
                         dots[n] = d
                     end
                     if d then
                         local col = COLOUR[p.role or ""] or COLOUR[p.kind or ""] or COLOUR.new
-                        method(d, "SetSize", 10, 10)
-                        method(d, "SetColorTexture", col[1], col[2], col[3], 1)
-                        method(d, "ClearAllPoints")
-                        method(d, "SetPoint", "CENTER", canvas, "TOPLEFT", p.x * w, -p.y * ht)
-                        method(d, "Show")
+                        d.name, d.title, d.tip = p.name, nil, {}
+                        if type(p.title) == "string" then d.title = p.title end
+                        if type(p.tip) == "table" then
+                            for _, line in ipairs(p.tip) do
+                                if type(line) == "string" then d.tip[#d.tip + 1] = line end
+                            end
+                        end
+                        method(d.button, "SetSize", 10, 10)
+                        if d.tex then method(d.tex, "SetColorTexture", col[1], col[2], col[3], 1) end
+                        method(d.button, "ClearAllPoints")
+                        method(d.button, "SetPoint", "CENTER", canvas, "TOPLEFT", p.x * w, -p.y * ht)
+                        method(d.button, "Show")
                     end
                 end
             end
-            for i = n + 1, nDots do if dots[i] then method(dots[i], "Hide") end end
+            for i = n + 1, nDots do if dots[i] then method(dots[i].button, "Hide") end end
             nDots = n
             local m = 0
             for _, l in ipairs(type(segs) == "table" and segs or {}) do
@@ -7111,6 +7231,84 @@ function ns.make.client(env)
         local list = env.C_FriendList
         if type(list) ~= "table" then return nil end
         return yesNo(call(list.IsFriend, guid))
+    end
+
+    -- Is the player in a dungeon finder or battleground queue? (F-28, the
+    -- lead's lease, section 740.) True when GetBattlefieldStatus(i) says
+    -- "queued" or "confirm" for a battleground slot, or GetLFGMode(category)
+    -- says a queue, role check or proposal is going on; false when one of
+    -- them answered and no queue is on; nil when neither answered. Needs a
+    -- game test: the categories are read from the LE_LFG_CATEGORY_* names.
+    local LFG_QUEUED = { queued = true, proposal = true, rolecheck = true, suspended = true }
+    function c.queued()
+        local known = false
+        if type(env.GetBattlefieldStatus) == "function" then
+            local okMax, max = call(env.GetMaxBattlefieldID)
+            if not okMax or type(max) ~= "number" or hidden(max) or max ~= max or max < 1 or max > 20 then
+                max = 3
+            end
+            for i = 1, max do
+                local ok, status = call(env.GetBattlefieldStatus, i)
+                if ok and type(status) == "string" and not hidden(status) then
+                    known = true
+                    if status == "queued" or status == "confirm" then return true end
+                end
+            end
+        end
+        if type(env.GetLFGMode) == "function" then
+            for _, name in ipairs({ "LE_LFG_CATEGORY_LFD", "LE_LFG_CATEGORY_RF", "LE_LFG_CATEGORY_SCENARIO" }) do
+                local cat = env[name]
+                if type(cat) == "number" then
+                    local ok, mode = call(env.GetLFGMode, cat)
+                    if ok then
+                        if mode == nil then
+                            known = true
+                        elseif type(mode) == "string" and not hidden(mode) then
+                            known = true
+                            if LFG_QUEUED[mode] then return true end
+                        end
+                    end
+                end
+            end
+        end
+        if known then return false end
+        return nil
+    end
+
+    -- Accepts the open group invite: AcceptGroup(). True when the call went
+    -- through, false when the game has no AcceptGroup or it errored (F-28).
+    -- Nothing else is done: the invite window is the game's own.
+    function c.acceptGroup()
+        local ok = call(env.AcceptGroup)
+        return ok == true
+    end
+
+    -- Each press of the add-on's own rotation key (D-26, the lead's lease,
+    -- sections 746 and 753): HookScript("PreClick") on the secure button
+    -- named framePrefix .. "RotationKey", and on nothing else. The hook
+    -- calls fn under pcall and does nothing more: no SetAttribute, no Click,
+    -- no cast. A hooked script cannot be taken off, so the cancel function
+    -- returned sets a flag the hook checks. nil when there is no fn, no
+    -- button yet, or the hook could not be set. Needs a game test.
+    local keyPressFns = {}
+    local keyPressHooked = nil
+    function c.onKeyPress(fn)
+        if type(fn) ~= "function" then return nil end
+        if type(ns.id) ~= "table" or type(ns.id.framePrefix) ~= "string" then return nil end
+        local button = env[ns.id.framePrefix .. "RotationKey"]
+        if type(button) ~= "table" then return nil end
+        if keyPressHooked ~= button then
+            local hooked = method(button, "HookScript", "PreClick", function()
+                for _, e in ipairs(keyPressFns) do
+                    if not e.cancelled then pcall(e.fn) end
+                end
+            end)
+            if not hooked then return nil end
+            keyPressHooked = button
+        end
+        local entry = { fn = fn }
+        keyPressFns[#keyPressFns + 1] = entry
+        return function() entry.cancelled = true end
     end
 
     -- How fast the player is moving, in yards a second: GetUnitSpeed(
@@ -7715,7 +7913,7 @@ function ns.make.client(env)
                 tipped = false
                 return
             end
-            method(tip, "SetOwner", f, "ANCHOR_BOTTOM")
+            placeTip(tip, f, "ANCHOR_BOTTOM")
             method(tip, "ClearLines")
             for i, line in ipairs(lines) do
                 if i == 1 then method(tip, "AddLine", tostring(line), 1, 1, 1)
@@ -9005,6 +9203,158 @@ function ns.make.client(env)
         return h
     end
 
+    -- Lead section 624 Step 4, the cooldown face (Rotation/Cooldowns.lua).
+    -- c.cooldownFace(spec) -> h, or nil when the client cannot make the
+    -- frame. spec = { name = global frame name or nil, size = pixels (38
+    -- when not given) }. One plain face of its own: a frame on UIParent, a
+    -- picture, the dark sweep over it (a Cooldown frame) and the seconds in
+    -- the middle. As the predecessor drew it (its Modules/Rotation/
+    -- Display.lua:80-93): the game's own countdown numbers are switched off,
+    -- the seconds stand one layer above the sweep, 18pt THICKOUTLINE, colour
+    -- (1, 0.95, 0.7). It takes no mouse, holds no action and is never
+    -- secure. A new face is hidden and has no place.
+    --   h.place(point)   point = { point, relPoint, x, y } on the screen.
+    --   h.anchor(point, to, relPoint, x, y) -> true, or false and "no
+    --     frame" / "refused". to is a frame's global name. THIS face is set
+    --     against it; the named frame is only handed to SetPoint, never
+    --     placed, shown or hidden (it may be a secure button).
+    --   h.show(on), h.shown()   this face only.
+    --   h.icon(texture) -> true when the client took it; nil clears the
+    --     picture and answers false.
+    --   h.spell(id) -> "sweep", "none" or nil. The sweep is set from the
+    --     spell's own (start, length), read here: only the client has them.
+    --     "sweep": on cooldown and drawn. "none": read, not on cooldown;
+    --     the sweep is cleared. nil: not read (hidden in a fight, no such
+    --     call, a read that fails); the sweep is cleared and nothing is
+    --     guessed. The global cooldown is not told apart: the caller asks
+    --     c.spellCooldown(id) first.
+    --   h.item(id) -> the same three answers, from the item's own times.
+    --   h.seconds(text)   the number in the middle, as the caller wants it
+    --     said; nil or "" clears it.
+    --   h.clear()   sweep and seconds off; the picture and the place stay.
+    -- First guesses, not seen in game on 16001: CreateFrame("Cooldown", nil,
+    -- parent, "CooldownFrameTemplate"), SetCooldown(start, length),
+    -- SetHideCountdownNumbers(true), STANDARD_TEXT_FONT.
+    function c.cooldownFace(spec)
+        spec = type(spec) == "table" and spec or {}
+        local parent = env.UIParent
+        local okF, f = call(env.CreateFrame, "Frame", spec.name, parent)
+        if not okF or type(f) ~= "table" then return nil end
+        local size = tonumber(spec.size) or 38
+        method(f, "Hide")
+        if not method(f, "SetSize", size, size) then
+            method(f, "SetWidth", size)
+            method(f, "SetHeight", size)
+        end
+        method(f, "SetFrameStrata", "MEDIUM")
+        method(f, "EnableMouse", false)
+
+        local okTex, tex = method(f, "CreateTexture", nil, "ARTWORK")
+        if not okTex or type(tex) ~= "table" then tex = nil end
+        if tex ~= nil then method(tex, "SetAllPoints", f) end
+
+        local okCd, cd = call(env.CreateFrame, "Cooldown", nil, f, "CooldownFrameTemplate")
+        if not okCd or type(cd) ~= "table" then cd = nil end
+        if cd ~= nil then
+            method(cd, "SetAllPoints", f)
+            -- The seconds are drawn here, so the game's own stay off.
+            method(cd, "SetHideCountdownNumbers", true)
+        end
+
+        local words
+        local okLayer, layer = call(env.CreateFrame, "Frame", nil, f)
+        if okLayer and type(layer) == "table" then
+            method(layer, "SetAllPoints", f)
+            local okLevel, level = method(cd or f, "GetFrameLevel")
+            if okLevel and type(level) == "number" then method(layer, "SetFrameLevel", level + 2) end
+            local okWords, made = method(layer, "CreateFontString", nil, "OVERLAY")
+            if okWords and type(made) == "table" then
+                words = made
+                local okFont, font = pcall(function() return env.STANDARD_TEXT_FONT end)
+                if not (okFont and type(font) == "string"
+                    and method(words, "SetFont", font, 18, "THICKOUTLINE")) then
+                    method(words, "SetFontObject", env.GameFontNormalLarge)
+                end
+                method(words, "SetPoint", "CENTER", layer, "CENTER", 0, 0)
+                method(words, "SetTextColor", 1, 0.95, 0.7)
+                method(words, "Hide")
+            end
+        end
+
+        local function plain(v)
+            return v ~= nil and not hidden(v) and type(v) == "number" and v == v and v >= 0 and v ~= math.huge
+        end
+        -- Sets the sweep from what was read; nothing is drawn for a time
+        -- that was not.
+        local function sweep(read, start, length)
+            if cd == nil then return nil end
+            if read and plain(start) and plain(length) then
+                if start > 0 and length > 0 then
+                    if method(cd, "SetCooldown", start, length) then return "sweep" end
+                    return nil
+                end
+                method(cd, "SetCooldown", 0, 0)
+                return "none"
+            end
+            method(cd, "SetCooldown", 0, 0)
+            return nil
+        end
+
+        local h = {}
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
+        end
+        function h.anchor(point, to, relPoint, x, y)
+            local other = guideFrame(to)
+            if other == nil then return false, "no frame" end
+            method(f, "ClearAllPoints")
+            if not method(f, "SetPoint", point, other, relPoint, x, y) then return false, "refused" end
+            return true
+        end
+        function h.show(on)
+            if on then method(f, "Show") else method(f, "Hide") end
+        end
+        function h.shown()
+            local okS, shown = method(f, "IsShown")
+            return okS and shown == true
+        end
+        function h.icon(texture)
+            if tex == nil then return false end
+            local okSet = method(tex, "SetTexture", texture)
+            return okSet and texture ~= nil
+        end
+        function h.spell(id)
+            if type(id) ~= "number" then return sweep(false) end
+            local read, start, length = cooldownTimes(id)
+            return sweep(read, start, length)
+        end
+        function h.item(id)
+            if type(id) ~= "number" or id <= 0 or id % 1 ~= 0 then return sweep(false) end
+            local bags = env.C_Container
+            local read, start, length = false, nil, nil
+            if type(bags) == "table" then read, start, length = call(bags.GetItemCooldown, id) end
+            if not read then read, start, length = call(env.GetItemCooldown, id) end
+            return sweep(read, start, length)
+        end
+        function h.seconds(text)
+            if words == nil then return end
+            if type(text) == "string" and text ~= "" then
+                method(words, "SetText", text)
+                method(words, "Show")
+            else
+                method(words, "SetText", "")
+                method(words, "Hide")
+            end
+        end
+        function h.clear()
+            sweep(false)
+            h.seconds(nil)
+        end
+        return h
+    end
+
     -- Lead section 305 item 1: no add-on file calls this now. The Flow and
     -- self buttons move by moveHandle; a drag on a secure button that acts
     -- on the press down would also cast. Kept in place (shared file).
@@ -9082,7 +9432,7 @@ function ns.make.client(env)
         local hooked = method(f, "HookScript", "OnEnter", function()
             local okT, text = pcall(spec.text)
             if not okT or type(text) ~= "string" or text == "" then return end
-            method(tip, "SetOwner", f, "ANCHOR_RIGHT")
+            placeTip(tip, f, "ANCHOR_RIGHT")
             method(tip, "SetText", text)
             method(tip, "Show")
         end)
@@ -9605,6 +9955,74 @@ function ns.make.client(env)
         end
     end
 
+    -- Workflow R4: bag replacement add-ons (optional, never required). The
+    -- bag marks (c.markBagKinds) and the badge letters (c.markBagSlots)
+    -- drew on Blizzard's bag frames only; with Bagnon or BagBrother the
+    -- player's bags are that add-on's own buttons, so neither reached them.
+    -- First guess, not seen in game: the add-on's global table (Bagnon,
+    -- else BagBrother) holds its item button class as Item (older releases:
+    -- ItemSlot, or ContainerItem); each button answers GetBag() (else a bag field) with its
+    -- bag and GetID() with its slot, and the class's Update runs whenever a
+    -- button is drawn. Update is followed with hooksecurefunc on the class
+    -- (a post-hook: the add-on's own code runs unchanged); each button it
+    -- draws is remembered (weakly) and painted from the marks last asked. A
+    -- button showing another character's cached bags (info.cached) is
+    -- passed over. Nothing of the add-on is called or written beyond that.
+    -- One local (make.client is near Lua 5.1's 200 locals).
+    local bagExt = { buttons = setmetatable({}, { __mode = "k" }), hooked = {}, painters = {} }
+    bagExt.NAMES = { "Bagnon", "BagBrother" }
+    -- bag, slot of a replacement button, or nil.
+    function bagExt.where(b)
+        local okC, cached
+        if type(b.IsCached) == "function" then
+            okC, cached = method(b, "IsCached")
+        else
+            okC, cached = pcall(function() return type(b.info) == "table" and b.info.cached end)
+        end
+        if okC and cached then return nil end
+        local okB, bag = method(b, "GetBag")
+        if not okB or type(bag) ~= "number" then
+            local okF, field = pcall(function() return b.bag end)
+            bag = okF and field or nil
+        end
+        local okS, slot = method(b, "GetID")
+        if type(bag) ~= "number" or not okS or type(slot) ~= "number" then return nil end
+        return bag, slot
+    end
+    function bagExt.drawn(b)
+        if type(b) ~= "table" then return end
+        bagExt.buttons[b] = true
+        for _, paint in ipairs(bagExt.painters) do pcall(paint, b) end
+    end
+    -- Follows every bag add-on loaded now; true when one is followed.
+    function bagExt.hook()
+        if type(env.hooksecurefunc) ~= "function" then return bagExt.any end
+        for _, name in ipairs(bagExt.NAMES) do
+            local okA, addon = pcall(function() return env[name] end)
+            if okA and type(addon) == "table" then
+                for _, field in ipairs({ "Item", "ItemSlot", "ContainerItem" }) do
+                    local okK, class = pcall(function() return addon[field] end)
+                    local okU, upd = pcall(function() return type(class) == "table" and class.Update end)
+                    if okK and type(class) == "table" and not bagExt.hooked[class]
+                        and okU and type(upd) == "function"
+                        and pcall(env.hooksecurefunc, class, "Update", bagExt.drawn) then
+                        bagExt.hooked[class] = true
+                        bagExt.any = true
+                    end
+                end
+            end
+        end
+        return bagExt.any
+    end
+    -- A bag add-on loaded after Z-Flow (its ADDON_LOADED): follow it. True
+    -- when one is followed, nil for any other name.
+    function c.bagAddonLoaded(name)
+        for _, n in ipairs(bagExt.NAMES) do
+            if name == n then return bagExt.hook() and true or nil end
+        end
+        return nil
+    end
+
     -- G14 bag badge (section 393): a few letters on bag slots (the role an
     -- upgrade is for). First guess, not seen in game on 16001: the bag
     -- windows are ContainerFrame1..NUM_CONTAINER_FRAMES (13 when not given),
@@ -9632,7 +10050,27 @@ function ns.make.client(env)
             bagLetters[button] = fs
             return fs
         end
+        -- One button's letter: text shown, or ours hidden; 1 when shown.
+        local function bagLetterPaint(button, text)
+            local fs = (text or bagLetters[button]) and bagLetter(button) or nil
+            if not fs then return 0 end
+            if text then
+                method(fs, "SetText", text)
+                method(fs, "Show")
+                return 1
+            end
+            method(fs, "Hide")
+            return 0
+        end
+        -- A bag replacement's button (bagExt above): its bag and slot from
+        -- the button itself.
+        local function bagLetterExt(button)
+            local bag, slot = bagExt.where(button)
+            return bagLetterPaint(button, bag and bagWanted[bag] and bagWanted[bag][slot] or nil)
+        end
+        bagExt.painters[#bagExt.painters + 1] = bagLetterExt
         local function bagDraw()
+            bagExt.hook()
             local okN, frames = pcall(function() return env.NUM_CONTAINER_FRAMES end)
             if not okN or type(frames) ~= "number" then frames = 13 end
             local shown = 0
@@ -9650,20 +10088,13 @@ function ns.make.client(env)
                         local okI, button = pcall(function() return env[name .. "Item" .. i] end)
                         if okI and type(button) == "table" then
                             local okS, slot = method(button, "GetID")
-                            local text = row and okS and row[slot] or nil
-                            local fs = (text or bagLetters[button]) and bagLetter(button) or nil
-                            if fs then
-                                if text then
-                                    method(fs, "SetText", text)
-                                    method(fs, "Show")
-                                    shown = shown + 1
-                                else
-                                    method(fs, "Hide")
-                                end
-                            end
+                            shown = shown + bagLetterPaint(button, row and okS and row[slot] or nil)
                         end
                     end
                 end
+            end
+            for button in pairs(bagExt.buttons) do
+                shown = shown + bagLetterExt(button)
             end
             return shown
         end
@@ -9821,7 +10252,7 @@ function ns.make.client(env)
                     method(b, "SetScript", "OnEnter", function()
                         local gt = env.GameTooltip
                         if gt == nil or #tip == 0 then return end
-                        method(gt, "SetOwner", b, "ANCHOR_TOPLEFT")
+                        placeTip(gt, b, "ANCHOR_TOPLEFT")
                         for i, line in ipairs(tip) do
                             if i == 1 then
                                 method(gt, "AddLine", line, 1, 0.82, 0)
@@ -10846,7 +11277,7 @@ function ns.make.client(env)
             local function tipShow(owner, text)
                 local tip = env.GameTooltip
                 if tip == nil then return end
-                method(tip, "SetOwner", owner, "ANCHOR_RIGHT")
+                placeTip(tip, owner, "ANCHOR_RIGHT")
                 method(tip, "SetText", text)
                 method(tip, "Show")
             end
@@ -10880,7 +11311,7 @@ function ns.make.client(env)
                         if tip ~= nil then
                             local link = item
                             if type(item) == "number" then link = "item:" .. item end
-                            method(tip, "SetOwner", f, "ANCHOR_NONE")
+                            placeTip(tip, f, "ANCHOR_NONE")
                             method(tip, "ClearAllPoints")
                             method(tip, "SetPoint", "TOPLEFT", f, "TOPRIGHT", size.gapSmall, 0)
                             method(tip, "SetHyperlink", link)
@@ -12582,7 +13013,7 @@ function ns.make.client(env)
         method(b, "SetScript", "OnEnter", function(self)
             local tip = env.GameTooltip
             if tip == nil or type(lines) ~= "table" then return end
-            method(tip, "SetOwner", self, "ANCHOR_LEFT")
+            placeTip(tip, self, "ANCHOR_LEFT")
             for _, line in ipairs(lines) do method(tip, "AddLine", tostring(line), 1, 1, 1) end
             method(tip, "Show")
         end)
@@ -12995,6 +13426,10 @@ function ns.make.client(env)
     --       the mark; text, sub the tooltip's lines; now marks the stop
     --       the arrow points at. Marks past the count are hidden.
     --   h.clear()   hides them all
+    --   h.onClick(fn) -> true: a click on a mark calls fn(n, button), n
+    --       the number drawn on it (B-19). First guesses, not seen on
+    --       16001: RegisterForClicks("LeftButtonUp", "RightButtonUp") and
+    --       OnClick's button argument.
     -- The canvas's own scale is not read (as c.mapPins): the marks may
     -- draw small or large when the map is zoomed.
     function c.routePins()
@@ -13008,6 +13443,7 @@ function ns.make.client(env)
         method(host, "SetFrameStrata", "HIGH")
         local marks, count = {}, 0
         local SIZE = 22
+        local clickFns = {}
 
         local function make()
             local okB, b = call(env.CreateFrame, "Button", nil, host)
@@ -13025,10 +13461,15 @@ function ns.make.client(env)
                 method(fs, "SetPoint", "CENTER", b, "CENTER", 0, 0)
                 m.label = fs
             end
+            method(b, "RegisterForClicks", "LeftButtonUp", "RightButtonUp")
+            method(b, "SetScript", "OnClick", function(_, button)
+                if m.n == nil then return end
+                for _, fn in ipairs(clickFns) do pcall(fn, m.n, button) end
+            end)
             method(b, "SetScript", "OnEnter", function()
                 local tip = env.GameTooltip
                 if tip == nil or m.text == nil then return end
-                method(tip, "SetOwner", b, "ANCHOR_RIGHT")
+                placeTip(tip, b, "ANCHOR_RIGHT")
                 method(tip, "SetText", m.text)
                 if m.sub ~= nil then method(tip, "AddLine", m.sub, 1, 1, 1, true) end
                 method(tip, "Show")
@@ -13041,6 +13482,10 @@ function ns.make.client(env)
         end
 
         local h = {}
+        function h.onClick(fn)
+            if type(fn) == "function" then clickFns[#clickFns + 1] = fn end
+            return true
+        end
         function h.map()
             local okS, shown = method(wm, "IsShown")
             if not okS or shown ~= true then return nil end
@@ -13069,6 +13514,7 @@ function ns.make.client(env)
                         marks[n] = m
                     end
                     if m then
+                        m.n = p.n
                         m.text = type(p.text) == "string" and p.text or nil
                         m.sub = type(p.sub) == "string" and p.sub ~= "" and p.sub or nil
                         if m.disc then
@@ -13298,8 +13744,28 @@ function ns.make.client(env)
         end
         return out
     end
+    local bagKindsWanted = {}
+    -- A bag replacement's button (bagExt): shows the mark asked for its
+    -- bag and slot, hides ours otherwise; 1 when a mark shows.
+    local function bagKindExt(b)
+        local bag, slot = bagExt.where(b)
+        local path = bag and type(bagKindsWanted[bag]) == "table" and bagKindsWanted[bag][slot] or nil
+        if type(path) ~= "string" then
+            local t = bagMarkTex[b]
+            if t then method(t, "Hide") end
+            return 0
+        end
+        local t = bagMarkOn(b)
+        if not t then return 0 end
+        method(t, "SetTexture", path)
+        method(t, "Show")
+        return 1
+    end
+    bagExt.painters[#bagExt.painters + 1] = bagKindExt
     function c.markBagKinds(marks)
         marks = type(marks) == "table" and marks or {}
+        bagKindsWanted = marks
+        bagExt.hook()
         for _, t in pairs(bagMarkTex) do
             if t then method(t, "Hide") end
         end
@@ -13340,6 +13806,12 @@ function ns.make.client(env)
                 end
             end
         end
+        for b in pairs(bagExt.buttons) do
+            if not done[b] then
+                done[b] = true
+                n = n + bagKindExt(b)
+            end
+        end
         return n
     end
     local bagRedraw, bagFollowed = {}, false
@@ -13349,8 +13821,17 @@ function ns.make.client(env)
     function c.onBagRedraw(fn)
         if type(fn) ~= "function" then return nil end
         bagRedraw[#bagRedraw + 1] = fn
+        if not bagExt.listening then
+            -- A bag add-on loaded after Z-Flow (load on demand, or a load
+            -- order the TOC's OptionalDeps did not settle).
+            bagExt.listening = true
+            pcall(c.listen, "ADDON_LOADED", function(name) pcall(c.bagAddonLoaded, name) end)
+        end
+        -- The bag add-on hook goes beside the Blizzard ones, never instead:
+        -- Blizzard's bank and bags can still show with Bagnon on.
+        local ext = bagExt.hook()
         if bagFollowed then return true end
-        if type(env.hooksecurefunc) ~= "function" then return nil end
+        if type(env.hooksecurefunc) ~= "function" then return ext and true or nil end
         if type(env.ContainerFrame_Update) == "function"
             and pcall(env.hooksecurefunc, "ContainerFrame_Update", bagRedrawAll) then
             bagFollowed = true
@@ -13361,7 +13842,7 @@ function ns.make.client(env)
             and pcall(env.hooksecurefunc, combined, "UpdateItems", bagRedrawAll) then
             bagFollowed = true
         end
-        return bagFollowed or nil
+        return (bagFollowed or ext) and true or nil
     end
 
     -- Lead section 303 (d), the in-dungeon tracker: the name of the instance
@@ -13468,6 +13949,29 @@ function ns.make.client(env)
         return true
     end
 
+    -- A1-13 (Nav/StepCard.lua, lead section 826): the step card's "Quest
+    -- log" action picks the quest in the game's own quest log, as Flow's
+    -- N:OpenInGame (Modules/Nav/Nav.lua:4282-4288 at b657e6e5). First
+    -- guesses, not seen in game on 16001: C_QuestLog.SetSelectedQuest(id),
+    -- else SelectQuestLogEntry(index) with the quest's place in the log.
+    -- The log window is not opened here (the player opens it; opening it
+    -- from add-on code would taint it).
+    --   c.selectQuest(id) -> true, or false and why: "bad" (not a number),
+    --     "noCall" (neither call), "notInLog", "raised"
+    function c.selectQuest(id)
+        if type(id) ~= "number" then return false, "bad" end
+        local group = env.C_QuestLog
+        if type(group) == "table" and type(group.SetSelectedQuest) == "function" then
+            if pcall(group.SetSelectedQuest, id) then return true end
+            return false, "raised"
+        end
+        if type(env.SelectQuestLogEntry) ~= "function" then return false, "noCall" end
+        local index = questLogIndex(id)
+        if index == nil then return false, "notInLog" end
+        if pcall(env.SelectQuestLogEntry, index) then return true end
+        return false, "raised"
+    end
+
     -- KNOW lane reads (lead section 487, Zen's lease). Only reads: nothing
     -- is cast, clicked, placed or sent. First guesses from classic's call
     -- names; none was seen in game on 16001.
@@ -13543,6 +14047,394 @@ function ns.make.client(env)
             end
         end
         if not any then return nil end
+        return out
+    end
+    ---------------------------------------------------------------------
+    -- Lease rows (lead sections 659, 662, 677, 679, 682, 692, 693). Data and
+    -- API only; every game call through call() (pcall). Drawing is a MUSE
+    -- NEED. Not tested in game.
+    ---------------------------------------------------------------------
+
+    -- A2-27: the open NPC chat's options, { { id, name } } in the game's
+    -- order; a field the game leaves out (or hides) is left out. nil when
+    -- the read is missing or fails. C_GossipInfo.GetOptions(), each a
+    -- GossipOptionUIInfo (gossipOptionID, name); Flow reads o.name the same
+    -- way (flow-wow Modules/Nav/Places.lua:422-427).
+    function c.gossipOptions()
+        local g = env.C_GossipInfo
+        if type(g) ~= "table" then return nil end
+        local ok, list = call(g.GetOptions)
+        if not ok or type(list) ~= "table" then return nil end
+        local out = {}
+        for _, o in ipairs(list) do
+            if type(o) == "table" then
+                local row = {}
+                if type(o.gossipOptionID) == "number" and not hidden(o.gossipOptionID) then row.id = o.gossipOptionID end
+                if type(o.name) == "string" and not hidden(o.name) then row.name = o.name end
+                out[#out + 1] = row
+            end
+        end
+        return out
+    end
+
+    -- A2-21: the game's quest tracker and Questie's tracker, hidden or let
+    -- be (lead section 662). hide(true|false) -> true, "done" | false,
+    -- "lockdown" (in a fight, or the lock is not known; nothing kept).
+    -- A hide is accepted before the frame exists and applied when it is
+    -- found (each PLAYER_ENTERING_WORLD, ADDON_LOADED, PLAYER_REGEN_ENABLED),
+    -- and again each time the game or Questie shows it (a HookScript on its
+    -- OnShow; never replaced). Questie's saved settings are never written.
+    -- Frames: ObjectiveTrackerFrame, QuestWatchFrame or WatchFrame
+    -- (flow-wow Modules/Nav/RouteTracker.lua:62-64); Questie_BaseFrame
+    -- (the same file :293, :423).
+    local trackerWant, trackerHooked, trackerListening = {}, {}, false
+    local function trackerFrame(which)
+        local f
+        if which == "game" then
+            f = env.ObjectiveTrackerFrame or env.QuestWatchFrame or env.WatchFrame
+        else
+            f = env.Questie_BaseFrame
+        end
+        if type(f) ~= "table" then return nil end
+        return f
+    end
+    local function trackerApply(which)
+        if trackerWant[which] ~= true then return end
+        local f = trackerFrame(which)
+        if not f then return end
+        if trackerHooked[which] ~= f and type(f.HookScript) == "function" then
+            if pcall(f.HookScript, f, "OnShow", function() trackerApply(which) end) then trackerHooked[which] = f end
+        end
+        if c.combatLockdown() ~= false then return end
+        local okShown, shown = call(f.IsShown, f)
+        if okShown and shown then call(f.Hide, f) end
+    end
+    local function trackerHide(which, hide)
+        if c.combatLockdown() ~= false then return false, "lockdown" end
+        if not trackerListening then
+            trackerListening = true
+            for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "ADDON_LOADED", "PLAYER_REGEN_ENABLED" }) do
+                c.listen(event, function()
+                    trackerApply("game")
+                    trackerApply("questie")
+                end)
+            end
+        end
+        if hide == true then
+            trackerWant[which] = true
+            trackerApply(which)
+        else
+            trackerWant[which] = nil
+            local f = trackerFrame(which)
+            if f then call(f.Show, f) end
+        end
+        return true, "done"
+    end
+    function c.hideGameTracker(hide) return trackerHide("game", hide) end
+    function c.hideQuestieTracker(hide) return trackerHide("questie", hide) end
+    -- Lead section 702: UI/QuestTrackers.lua asks by the show form (true
+    -- shows the tracker); each name is the hide call turned around.
+    function c.showQuestWatch(on) return c.hideGameTracker(on ~= true) end
+    function c.showQuestieTracker(on) return c.hideQuestieTracker(on ~= true) end
+
+    -- A1-40: a popup with one line to type in; fn(text) on Accept or Enter.
+    -- true when shown, nil when the popup calls are missing or refuse.
+    -- Only our own key in StaticPopupDialogs (replacing the table taints
+    -- every popup); the box is self.editBox or self.EditBox. As Flow's
+    -- waypoint box (flow-wow Modules/Nav/Waypoint.lua:217-232).
+    local INPUT_KEY = "ZF_INPUT"
+    if type(ns.id) == "table" and type(ns.id.framePrefix) == "string" then
+        INPUT_KEY = ns.id.framePrefix:upper() .. "_INPUT"
+    end
+    function c.inputBox(prompt, fn)
+        if type(fn) ~= "function" or type(env.StaticPopupDialogs) ~= "table" then return nil end
+        local function boxText(box)
+            if type(box) ~= "table" then return nil end
+            local ok, text = call(box.GetText, box)
+            if ok and type(text) == "string" then return text end
+            return nil
+        end
+        local function closeParent(self)
+            local okP, parent = call(self.GetParent, self)
+            if okP and type(parent) == "table" then call(parent.Hide, parent) end
+        end
+        local accept = env.ACCEPT
+        if type(accept) ~= "string" then accept = "Accept" end
+        local cancel = env.CANCEL
+        if type(cancel) ~= "string" then cancel = "Cancel" end
+        local okSet = pcall(function()
+            env.StaticPopupDialogs[INPUT_KEY] = {
+                text = tostring(prompt or ""),
+                button1 = accept, button2 = cancel,
+                hasEditBox = true, editBoxWidth = 260,
+                OnAccept = function(self)
+                    local box = self.editBox
+                    if box == nil then box = self.EditBox end
+                    local text = boxText(box)
+                    if text then pcall(fn, text) end
+                end,
+                EditBoxOnEnterPressed = function(self)
+                    local text = boxText(self)
+                    if text then pcall(fn, text) end
+                    closeParent(self)
+                end,
+                EditBoxOnEscapePressed = function(self) closeParent(self) end,
+                timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+            }
+        end)
+        if not okSet then return nil end
+        if not call(env.StaticPopup_Show, INPUT_KEY) then return nil end
+        return true
+    end
+
+    -- E-13 (lead section 677): fn(link) each time the player buys an item
+    -- back. A snapshot of the tab's links on MERCHANT_SHOW and
+    -- MERCHANT_UPDATE; the hook (hooksecurefunc BuybackItem, after the buy)
+    -- reads the snapshot first and falls back to a live
+    -- GetBuybackItemLink(slot). As Flow (flow-wow Modules/Items/Vendor.lua:
+    -- 700-705, 715-720). true when hooked, nil when the game lacks the calls.
+    local boughtFns, boughtSeen, boughtHooked = {}, {}, false
+    local function boughtSnapshot()
+        boughtSeen = {}
+        local ok, n = call(env.GetNumBuybackItems)
+        if not ok or type(n) ~= "number" or hidden(n) then return end
+        for i = 1, n do
+            local okL, link = call(env.GetBuybackItemLink, i)
+            if okL and type(link) == "string" and not hidden(link) then boughtSeen[i] = link end
+        end
+    end
+    function c.onBoughtBack(fn)
+        if type(fn) ~= "function" then return nil end
+        if not boughtHooked then
+            if type(env.hooksecurefunc) ~= "function" or type(env.BuybackItem) ~= "function" then return nil end
+            local okH = pcall(env.hooksecurefunc, "BuybackItem", function(slot)
+                local link = boughtSeen[slot]
+                if link == nil then
+                    local okL, live = call(env.GetBuybackItemLink, slot)
+                    if okL and type(live) == "string" and not hidden(live) then link = live end
+                end
+                if link == nil then return end
+                for _, f in ipairs({ unpack(boughtFns) }) do pcall(f, link) end
+            end)
+            if not okH then return nil end
+            boughtHooked = true
+            c.listen("MERCHANT_SHOW", boughtSnapshot)
+            c.listen("MERCHANT_UPDATE", boughtSnapshot)
+        end
+        boughtFns[#boughtFns + 1] = fn
+        return true
+    end
+
+    -- E-45 (lead section 679): fn(items) when the loot window closes, items
+    -- = what was left, each { item = link, count, quality }. The slots are
+    -- read while the window is open (LOOT_OPENED, LOOT_SLOT_CLEARED) and
+    -- reported at LOOT_CLOSED. GetNumLootItems, GetLootSlotInfo(i) ->
+    -- icon, name, quantity, currencyID, quality; GetLootSlotLink(i) (flow-wow
+    -- Modules/Items/LootFilter.lua:146-147, :183-184). A slot with no item
+    -- link (money) is left out; a read that fails leaves nothing known, and
+    -- nothing is reported.
+    local lootFns, lootLeft, lootListening = {}, nil, false
+    local function lootRead()
+        lootLeft = nil
+        local ok, n = call(env.GetNumLootItems)
+        if not ok or type(n) ~= "number" or hidden(n) then return end
+        local out = {}
+        for i = 1, n do
+            local okI, _, _, count, _, quality = call(env.GetLootSlotInfo, i)
+            local okL, link = call(env.GetLootSlotLink, i)
+            if not okI or not okL then return end
+            if type(link) == "string" and not hidden(link) then
+                local row = { item = link }
+                if type(count) == "number" and not hidden(count) then row.count = count end
+                if type(quality) == "number" and not hidden(quality) then row.quality = quality end
+                out[#out + 1] = row
+            end
+        end
+        lootLeft = out
+    end
+    function c.onLootLeft(fn)
+        if type(fn) ~= "function" then return nil end
+        if not lootListening then
+            lootListening = true
+            c.listen("LOOT_OPENED", lootRead)
+            c.listen("LOOT_SLOT_CLEARED", lootRead)
+            c.listen("LOOT_CLOSED", function()
+                local items = lootLeft
+                lootLeft = nil
+                if items == nil then return end
+                for _, f in ipairs({ unpack(lootFns) }) do pcall(f, items) end
+            end)
+        end
+        lootFns[#lootFns + 1] = fn
+        return true
+    end
+
+    -- E-42 (lead section 682): an item's id by its name, from the link
+    -- GetItemInfo(name) answers (C_Item.GetItemInfo where the game has it);
+    -- nil when the game has not seen the item or the read fails. Flow does
+    -- the same (flow-wow Modules/Items/Auction.lua:120).
+    function c.itemIdByName(name)
+        if type(name) ~= "string" or name == "" then return nil end
+        local fn = env.GetItemInfo
+        if type(env.C_Item) == "table" and type(env.C_Item.GetItemInfo) == "function" then fn = env.C_Item.GetItemInfo end
+        local ok, _, link = call(fn, name)
+        if not ok or type(link) ~= "string" or hidden(link) then return nil end
+        return tonumber(link:match("item:(%d+)"))
+    end
+
+    -- E-57 (lead section 692): fn(id, count, name) each time the game's own
+    -- craft call is made. Look only: hooksecurefunc on DoTradeSkill(index,
+    -- count) and on C_TradeSkillUI.CraftRecipe(recipeID, count); nothing is
+    -- called, nothing protected, no global replaced. id is the spell cast:
+    -- the "enchant:<spell>" of GetTradeSkillRecipeLink(index), or recipeID;
+    -- nil when it cannot be told. name: GetTradeSkillInfo(index)'s first
+    -- value, or C_TradeSkillUI.GetRecipeInfo(recipeID).name. As Flow
+    -- (flow-wow Modules/Crafting/CraftBar.lua:129-143). Returns a cancel,
+    -- or nil when neither call can be watched.
+    local craftFns, craftHooked = {}, false
+    local function craftTell(id, count, name)
+        for _, f in ipairs({ unpack(craftFns) }) do pcall(f, id, count, name) end
+    end
+    function c.onCraftStarted(fn)
+        if type(fn) ~= "function" then return nil end
+        if not craftHooked then
+            if type(env.hooksecurefunc) ~= "function" then return nil end
+            local any = false
+            if type(env.DoTradeSkill) == "function" and pcall(env.hooksecurefunc, "DoTradeSkill", function(index, count)
+                local id, name
+                local okL, link = call(env.GetTradeSkillRecipeLink, index)
+                if okL and type(link) == "string" and not hidden(link) then id = tonumber(link:match("enchant:(%d+)")) end
+                local okN, n = call(env.GetTradeSkillInfo, index)
+                if okN and type(n) == "string" and not hidden(n) then name = n end
+                craftTell(id, count, name)
+            end) then any = true end
+            local ui = env.C_TradeSkillUI
+            if type(ui) == "table" and type(ui.CraftRecipe) == "function"
+                and pcall(env.hooksecurefunc, ui, "CraftRecipe", function(recipeID, count)
+                    local id, name
+                    if type(recipeID) == "number" and not hidden(recipeID) then id = recipeID end
+                    local okI, info = call(ui.GetRecipeInfo, recipeID)
+                    if okI and type(info) == "table" and type(info.name) == "string" and not hidden(info.name) then name = info.name end
+                    craftTell(id, count, name)
+                end) then any = true end
+            if not any then return nil end
+            craftHooked = true
+        end
+        craftFns[#craftFns + 1] = fn
+        return function()
+            for i = #craftFns, 1, -1 do
+                if craftFns[i] == fn then table.remove(craftFns, i) end
+            end
+        end
+    end
+
+    -- A2-16 (lead section 693): the XP a logged quest rewards,
+    -- GetQuestLogRewardXP(questId), when above 0; else nil. As Flow
+    -- (flow-wow Modules/Nav/XpValue.lua:34-37).
+    function c.questRewardXp(questId)
+        local ok, xp = call(env.GetQuestLogRewardXP, questId)
+        if not ok or type(xp) ~= "number" or hidden(xp) or xp ~= xp or xp <= 0 then return nil end
+        return xp
+    end
+
+    -- C-42 (Gear/Sets.lua, lead section 789): the player's saved equipment
+    -- sets, read only (nothing here makes, saves or equips a set).
+    --   c.equipmentSets() -> { { id, name, icon, worn, items = { [slot] =
+    --     itemID } } }, or nil when the client has no C_EquipmentSet or
+    --     will not list the sets.
+    -- First guesses, not seen on 16001: C_EquipmentSet.GetEquipmentSetIDs()
+    -- -> { setID, ... }; GetEquipmentSetInfo(setID) -> name, iconFileID,
+    -- setID, isEquipped, ...; GetItemIDs(setID) -> { [slot] = itemID }
+    -- (slot 1 to 19; an empty slot is 0 or nil, skipped). A set whose
+    -- name will not read is skipped; a secret icon or worn is left out.
+    function c.equipmentSets()
+        local es = env.C_EquipmentSet
+        if type(es) ~= "table" then return nil end
+        local okI, ids = call(es.GetEquipmentSetIDs)
+        if not okI or type(ids) ~= "table" then return nil end
+        local out = {}
+        for _, id in ipairs(ids) do
+            if type(id) == "number" and not hidden(id) then
+                local okS, name, icon, _, worn = call(es.GetEquipmentSetInfo, id)
+                if okS and type(name) == "string" and not hidden(name) then
+                    local e = { id = id, name = name, items = {} }
+                    if icon ~= nil and not hidden(icon) then e.icon = icon end
+                    if worn ~= nil and not hidden(worn) then e.worn = worn == true end
+                    local okG, items = call(es.GetItemIDs, id)
+                    if okG and type(items) == "table" then
+                        for slot, item in pairs(items) do
+                            if type(slot) == "number" and type(item) == "number"
+                                and not hidden(item) and item > 0 then
+                                e.items[slot] = item
+                            end
+                        end
+                    end
+                    out[#out + 1] = e
+                end
+            end
+        end
+        return out
+    end
+
+    -- F-32 (UI/ClickCheck.lua): the game's click bindings on unit frames,
+    -- and what is under the mouse. Read only.
+    --   c.clickBindings() -> { { type, actionID, button, modifiers } }, or
+    --     nil when the client has no C_ClickBindings or will not say.
+    --     First guess, not seen on 16001: C_ClickBindings.GetProfileInfo()
+    --     -> { ClickBindingInfo }, each { type, actionID, button,
+    --     modifiers }. A row that is not a table is skipped; a secret
+    --     field is left out.
+    --   c.mouseFoci() -> { frame name, ... } under the mouse, or nil when
+    --     the client has neither GetMouseFoci nor GetMouseFocus. First
+    --     guesses, not seen on 16001: GetMouseFoci() -> { frame, ... } (the
+    --     newer clients'), else GetMouseFocus() -> frame (the older); each
+    --     frame's GetDebugName(), else GetName(), under pcall. A frame with
+    --     no name that reads is skipped.
+    function c.clickBindings()
+        local cb = env.C_ClickBindings
+        if type(cb) ~= "table" then return nil end
+        local ok, list = call(cb.GetProfileInfo)
+        if not ok or type(list) ~= "table" then return nil end
+        local out = {}
+        for _, b in ipairs(list) do
+            if type(b) == "table" then
+                local row = {}
+                for _, key in ipairs({ "type", "actionID", "button", "modifiers" }) do
+                    local okV, v = pcall(function() return b[key] end)
+                    if okV and v ~= nil and not hidden(v) then row[key] = v end
+                end
+                out[#out + 1] = row
+            end
+        end
+        return out
+    end
+
+    function c.mouseFoci()
+        local function focusName(f)
+            if f == nil then return nil end
+            local okD, name = method(f, "GetDebugName")
+            if okD and type(name) == "string" and not hidden(name) and name ~= "" then return name end
+            local okN, plain = method(f, "GetName")
+            if okN and type(plain) == "string" and not hidden(plain) and plain ~= "" then return plain end
+            return nil
+        end
+        local frames
+        if type(env.GetMouseFoci) == "function" then
+            local ok, list = call(env.GetMouseFoci)
+            if not ok or type(list) ~= "table" then return nil end
+            frames = list
+        elseif type(env.GetMouseFocus) == "function" then
+            local ok, f = call(env.GetMouseFocus)
+            if not ok then return nil end
+            frames = { f }
+        else
+            return nil
+        end
+        local out = {}
+        for _, f in ipairs(frames) do
+            local name = focusName(f)
+            if name ~= nil then out[#out + 1] = name end
+        end
         return out
     end
     return c

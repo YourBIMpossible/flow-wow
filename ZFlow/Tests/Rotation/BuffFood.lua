@@ -543,4 +543,71 @@ tests["buff food: a pick made with a food not read yet is not kept (section 236)
     t.eq(food.kept, true, "all read: kept")
 end
 
+-- Parity row D-13 (lead section 668), as Flow's /flow rot why food list
+-- (Modules/Rotation/BuffItems.lua FoodWhyText, :236-268): every Well Fed
+-- food carried, best first, what each gives, its score, which is picked and
+-- when. Fails before: there is no BuffFood.WhyText and no D.Foods.
+tests["well fed food why: best first, the pick marked, what each gives, and when"] = function(t)
+    local BF = ns.BuffFood
+    local lines = BF.WhyText({
+        { id = 2, name = "Smoked Sagefish", score = 3, gain = { mp5 = 3 } },
+        { id = 1, name = "Spiced Wolf Ribs", score = 10.5, gain = { Stamina = 6, Spirit = 6 } },
+        { id = 3, name = "Mystery Meat", gain = {} },
+    }, "dps", false)
+    t.eq(lines[1], BF.WHY_HEAD:format("dps"))
+    t.eq(lines[2], "  * Spiced Wolf Ribs: 6 Spirit, 6 Stamina; score 10.5")
+    t.eq(lines[3], "  Smoked Sagefish: 3 mp5; score 3.0")
+    t.eq(lines[4], "  Mystery Meat: no stat the score weighs; never suggested")
+    t.eq(#lines, 4)
+end
+
+tests["well fed food why: none carried, Well Fed on you, and a food worth nothing"] = function(t)
+    local BF = ns.BuffFood
+    t.eq(BF.WhyText({}, "tank", false), { BF.WHY_NONE })
+    t.eq(BF.WhyText(nil, "tank", false), { BF.WHY_NONE })
+    local fed = BF.WhyText({ { id = 1, name = "Ribs", score = 4, gain = { Stamina = 6 } } }, "tank", true)
+    t.eq(fed[#fed], BF.WHY_FED)
+    local zero = BF.WhyText({ { id = 1, name = "Stew", score = 0, gain = { Strength = 10 } } }, "heal", false)
+    t.eq(zero[2], "  Stew: 10 Strength; score 0.0; does nothing for you: never suggested")
+end
+
+tests["well fed food why: the driver lists every fight food in the bags with what it gives"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setItemInfo(INFO)
+    c.setBagItems({ { item = RIBS, count = 2 }, { item = FISH, count = 1 }, { item = BREAD, count = 3 },
+                    { item = ROCK, count = 1 } })
+    for id, l in pairs(LINES) do c.setItemLines(id, l) end
+    local foods = D.Foods(c, nil, "dps")
+    t.eq(#foods, 2, "the two Well Fed foods; bread and rock are not")
+    local byName = {}
+    for _, f in ipairs(foods) do byName[f.name] = f end
+    t.eq(byName["Spiced Wolf Ribs"].gain, { Stamina = 6, Spirit = 6 })
+    t.ok(type(byName["Spiced Wolf Ribs"].score) == "number")
+    c.bagItems = function() return nil end
+    t.eq(D.Foods(c, nil, "dps"), nil, "bags not read: nil, never none")
+end
+
+-- Zen-3's notes on D-13 (lead section 698): with a fishing pole on, a
+-- Fishing food is the one suggested, so no fight food carries the star.
+tests["well fed food why: with a fishing pole on no fight food is the pick"] = function(t)
+    local BF = ns.BuffFood
+    local lines = BF.WhyText({ { id = 1, name = "Spiced Wolf Ribs", score = 10.5, gain = { Stamina = 6 } } },
+        "dps", false, true)
+    t.eq(lines[2], "  Spiced Wolf Ribs: 6 Stamina; score 10.5", "no star")
+    t.eq(lines[#lines], BF.WHY_POLE)
+end
+
+tests["well fed food why: the driver says whether a pole is on"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setItemInfo(INFO)
+    c.setBagItems({ { item = RIBS, count = 2 } })
+    for id, l in pairs(LINES) do c.setItemLines(id, l) end
+    c.fishingPole = function() return true end
+    local _, _, pole = D.Foods(c, nil, "dps")
+    t.eq(pole, true)
+    c.fishingPole = function() return false end
+    local _, _, none = D.Foods(c, nil, "dps")
+    t.eq(none, false)
+end
+
 return tests

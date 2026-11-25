@@ -313,4 +313,47 @@ tests["no frames: nothing is drawn and nothing breaks"] = function(t)
     t.eq(h.map.Shown(), false)
 end
 
+-- Parity row C-14 (lead section 603): what is worth knowing about a quest
+-- before you walk to it, from Questie's quest data (Flow
+-- Modules/Quests/QuestNeeds.lua Q.ApplyNeed). Fails before:
+-- there is no RL.Needs and RL.Rows takes no needs.
+tests["route list needs: an escort objective tags escort, with no note"] = function(t)
+    local tags, note = RL().Needs({ triggerEnd = { "Escort Perith Stormhoof out of Palemane Rock" } })
+    t.eq(tags, { "escort" })
+    t.eq(note, nil, "Flow's hand-written escort note is not carried (section 620)")
+    t.eq(RL().ESCORT_NOTE, nil)
+end
+
+tests["route list needs: a suggested group of 2 or more tags it"] = function(t)
+    local tags, note = RL().Needs({ suggestedGroup = 3 })
+    t.eq(tags, { "group of 3" })
+    t.eq(note, nil)
+    t.eq(RL().Needs({ suggestedGroup = 1 }), nil, "one is solo")
+    t.eq(RL().Needs({ suggestedGroup = 0 }), nil)
+end
+
+tests["route list needs: nothing known says nothing"] = function(t)
+    t.eq(RL().Needs(nil), nil)
+    t.eq(RL().Needs({}), nil)
+    t.eq(RL().Needs({ triggerEnd = { "Explore the cave" } }), nil)
+end
+
+tests["route list needs: a stop's tags follow its name; the note leads its line"] = function(t)
+    local function needOf(quest)
+        if quest == 11 then return { "escort", "group of 3" }, "Escort note." end
+        if quest == 14 then return { "group of 2" }, nil end
+        return nil
+    end
+    local rows = RL().Rows(view(), HERE, needOf)
+    t.eq(rows[1].text, "Boars slain: 2/8 (escort, group of 3)", "the tags follow the stop's own words")
+    t.eq(rows[1].sub:sub(1, #"Escort note."), "Escort note.")
+    local pickup
+    for _, r in ipairs(rows) do
+        if r.text:find("Wolves at the Gate", 1, true) then pickup = r end
+    end
+    t.eq(pickup and pickup.text, "Wolves at the Gate (group of 2)")
+    local plain = RL().Rows(view(), HERE)
+    t.eq(plain[1].text, "Boars slain: 2/8", "no needs given: as before")
+end
+
 return tests

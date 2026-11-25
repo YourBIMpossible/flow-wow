@@ -257,7 +257,8 @@ end
 
 tests["rotation driver RD10: no flag, value or number is invented in the snapshot"] = function(t)
     local v = D.Step(stub(false, false, false), pack())
-    local own = { dead = true, inCombat = true, hostile = true }
+    -- D-24: lockdownRead is the driver's own read of the lock (D.Step).
+    local own = { dead = true, inCombat = true, hostile = true, lockdownRead = true }
     for _, f in ipairs(R.SNAPSHOT_FIELDS) do
         local name, kind = f[1], f[2]
         if (kind == "flag" or kind == "value" or kind == "number") and not own[name] then
@@ -449,7 +450,7 @@ end
 
 -- RD11 ----------------------------------------------------------------
 
-tests["rotation driver RD11: a step presses nothing and asks only its sixteen reads"] = function(t)
+tests["rotation driver RD11: a step presses nothing and asks only its seventeen reads"] = function(t)
     for _, fight in ipairs({ false, true }) do
         local client, calls, other = stub(false, fight, fight)
         local v = D.Step(client, pack())
@@ -473,9 +474,13 @@ tests["rotation driver RD11: a step presses nothing and asks only its sixteen re
         -- (targetClose, hitOnYouAge); this client has none, so the look is all.
         -- G25 (section 208 pin update): and what holds you (heldBy, at the loc
         -- field); this client has none, so the look is all.
+        -- D-03 (lead section 729): and the game's one-button assistant
+        -- (assistantSpell, Driver.lua D.Assistant), looked for after the
+        -- choice; this client has none, so the look is all.
         t.eq(other, { "targetClose", "hitOnYouAge", "heldBy", "lowHealth", "unitDebuffTypes", "playerDebuffs", "weaponEnchant", "fishingPole", "bagItems", "mounted", "onTaxi", "bagItems", "tracking", "tracking",
-            "professions", "anyTracking", "ownBuffs", "grouped", "party", "plateEnemies", "plateCasts" },
-            "nothing else asked of the client but the warning, debuff, weapon enchant, pole, bag, tracking, profession, gather-guard, grouped and group reads it lacks")
+            "professions", "anyTracking", "ownBuffs", "grouped", "party", "plateEnemies", "plateCasts",
+            "assistantSpell" },
+            "nothing else asked of the client but the warning, debuff, weapon enchant, pole, bag, tracking, profession, gather-guard, grouped, group and one-button assistant reads it lacks")
         local names = {}
         for name in pairs(calls) do names[#names + 1] = name end
         table.sort(names)

@@ -40,7 +40,7 @@ tests["prof seen: the profession window saves the skill reading"] = function(t)
     c.setRecipes({ profession = MINING, name = "Mining", skill = 50, max = 75, recipes = {} })
     c.fire("TRADE_SKILL_LIST_UPDATE"); c.advance(2, 4)
     local saved = addon.store:get("char", READINGS)
-    t.eq(saved and saved.Mining, { line = MINING, skill = 50, max = 75, at = 1000 })
+    t.eq(saved and saved.Mining, { line = MINING, skill = 50, max = 75, at = 1000, maxAt = 1000 })
     t.eq(last(addon).ok, true, "the reading is reported saved")
     nothingActs(t, c)
 end

@@ -85,4 +85,118 @@ tests["quest bags: a ware's name comes from item facts, else the link"] = functi
     t.eq(Q.WareName({}, function() return { name = WOOD } end), nil, "no item")
 end
 
+-- Parity row C-10 (lead section 664): for each quest item in the bags, why
+-- you hold it and what to do with it. As Flow's Modules/Quests/QuestBags.lua
+-- (QG.QuestOf :55-63: the quest an item is for, a finished one first; its
+-- answers turnin, finish and sell). Fails before: there is no Q.Answers.
+tests["quest bag answers: hand in, keep or drop, each with its quest"] = function(t)
+    local owners = { [GNOLL] = { [1] = "Gnoll Trouble" }, ["Murloc Eye"] = { [2] = "Eyes" },
+                     ["Old Key"] = { [3] = "The Key" } }
+    local rows = { row(1, "Gnoll Trouble", { { text = "Gnoll Paw: 8/8", done = true } }, true),
+                   row(2, "Eyes", { { text = "Murloc Eye: 2/8", done = false } }) }
+    local bags = { { name = GNOLL, classID = 12 }, { name = "Murloc Eye", classID = 12 },
+                   { name = "Old Key", classID = 12 }, { name = "Linen Cloth", classID = 7 } }
+    local done = function(id) return id == 3 end
+    t.eq(Q.Answers(owners, rows, bags, done), {
+        { item = GNOLL, answer = "handIn", quest = "Gnoll Trouble", questId = 1 },
+        { item = "Murloc Eye", answer = "keep", quest = "Eyes", questId = 2 },
+        { item = "Old Key", answer = "drop", quest = "The Key", questId = 3 },
+    }, "no row for what is no quest item")
+end
+
+tests["quest bag answers: a finished quest comes before one in progress, and an item is said once"] = function(t)
+    local owners = { [GNOLL] = { [1] = "A", [2] = "B" } }
+    local rows = { row(1, "A", { { text = "Gnoll Paw: 3/8", done = false } }),
+                   row(2, "B", { { text = "Gnoll Paw: 2/2", done = true } }, true) }
+    local bags = { { name = GNOLL, classID = 12 }, { name = GNOLL, classID = 12 } }
+    t.eq(Q.Answers(owners, rows, bags, function() return nil end),
+        { { item = GNOLL, answer = "handIn", quest = "B", questId = 2 } })
+end
+
+tests["quest bag answers: what is not known is said to be not known, never guessed"] = function(t)
+    local bags = { { name = GNOLL, classID = 12 } }
+    t.eq(Q.Answers({}, {}, bags, function() return true end), { { item = GNOLL, answer = "unknown" } },
+        "no quest ever seen asking for it")
+    local owners = { [GNOLL] = { [1] = "A" } }
+    t.eq(Q.Answers(owners, {}, bags, function() return nil end),
+        { { item = GNOLL, answer = "unknown", quest = "A", questId = 1 } }, "left the log, hand-in not known")
+    t.eq(Q.Answers(owners, {}, bags, function() return false end)[1].answer, "unknown", "left the log, not handed in")
+    t.eq(Q.Answers(owners, nil, bags, function() return true end), {}, "log not read: nothing")
+    t.eq(Q.Answers(owners, {}, nil, function() return true end), {}, "bags not read: nothing")
+    t.eq(Q.Answers(owners, {}, { { name = GNOLL } }, function() return true end), {}, "item kind not read")
+    t.eq(Q.Answers(owners, {}, bags, nil), {}, "no hand-in read")
+end
+
+tests["quest bag answers: a quest that failed is no hand-in"] = function(t)
+    local owners = { [GNOLL] = { [1] = "A" } }
+    local failed = row(1, "A", { { text = "Gnoll Paw: 8/8", done = true } }, true)
+    failed.failed = true
+    t.eq(Q.Answers(owners, { failed }, { { name = GNOLL, classID = 12 } }, function() return nil end)[1].answer,
+        "keep")
+end
+
+tests["quest bag answers: the line for each answer, and the hand-in prompt"] = function(t)
+    t.eq(Q.AnswerLine({ item = GNOLL, answer = "handIn", quest = "Gnoll Trouble" }),
+        "Gnoll Paw: for Gnoll Trouble, which is ready to hand in. Hand it in.")
+    t.eq(Q.AnswerLine({ item = GNOLL, answer = "keep", quest = "Gnoll Trouble" }),
+        "Gnoll Paw: for Gnoll Trouble, still in progress. Keep it.")
+    t.eq(Q.AnswerLine({ item = GNOLL, answer = "drop", quest = "Gnoll Trouble" }),
+        "Gnoll Paw: left over from Gnoll Trouble, which you handed in. You can sell or destroy it.")
+    t.eq(Q.AnswerLine({ item = GNOLL, answer = "unknown" }),
+        "Gnoll Paw: a quest item, but which quest it is for is not known.")
+    t.eq(Q.AnswerLine({ item = GNOLL, answer = "unknown", quest = "A" }),
+        "Gnoll Paw: for A, which is not in your log; whether you handed it in is not known.")
+    t.eq(Q.AnswerLine(nil), nil)
+    -- C-10 CHANGES-2 (lead section 734): said with the bags nearly full
+    -- (3 free or fewer), not with 4.
+    t.eq(Q.HandInText({ { item = GNOLL, answer = "handIn", quest = "Gnoll Trouble" },
+                        { item = "Murloc Eye", answer = "keep", quest = "Eyes" } }, 3),
+        "Gnoll Paw is for Gnoll Trouble, which is ready to hand in.")
+    t.eq(Q.HandInText({ { item = GNOLL, answer = "handIn", quest = "A" },
+                        { item = "Eye", answer = "handIn", quest = "B" } }, 0),
+        "Quest items ready to hand in: Gnoll Paw (A), Eye (B).")
+    t.eq(Q.HandInText({ { item = GNOLL, answer = "handIn", quest = "A" } }, 4), nil, "4 free: not said")
+    t.eq(Q.HandInText({ { item = GNOLL, answer = "keep", quest = "A" } }), nil)
+    t.eq(Q.HandInText(nil), nil)
+end
+
+-- Parity row C-11 (lead section 603): an item an open objective still needs,
+-- seen at the auction house and not known sold by a vendor, gets a buy line
+-- (Flow Modules/Quests/QuestBuy.lua QB.Steps / QB.Line). Words only.
+-- Fails before: there is no Q.AuctionBuys or Q.AuctionText.
+local function itemOf(quest, i)
+    if quest == 1 and i == 1 then return PAW_ID end
+    if quest == 2 and i == 1 then return WOOD_ID end
+    return nil
+end
+
+tests["quest bags auction: a needed item seen at the auction house, no vendor known"] = function(t)
+    local rows = { row(1, "Paws", { { text = "Gnoll Paw: 3/8", done = false } }) }
+    local list = Q.AuctionBuys(rows, itemOf, function(id) return id == PAW_ID and 140 or nil end,
+        function() return false end)
+    t.eq(list, { { item = GNOLL, quest = "Paws", left = 5, price = 140 } })
+end
+
+tests["quest bags auction: no price, a vendor sells it, done or unknown item - nothing"] = function(t)
+    local rows = { row(1, "Paws", { { text = "Gnoll Paw: 3/8", done = false } }),
+                   row(2, "Wood", { { text = "Bundle of Wood: 0/1", done = false } }),
+                   row(3, "Odd", { { text = "Odd Thing: 0/1", done = false } }),
+                   row(4, "Done", { { text = "Gnoll Paw: 8/8", done = true } }) }
+    local function price(id) return id == WOOD_ID and 50 or nil end
+    local function vendor(id) return id == WOOD_ID end
+    t.eq(Q.AuctionBuys(rows, itemOf, price, vendor), {}, "paw: no price; wood: vendor; odd: no id")
+    t.eq(Q.AuctionBuys(nil, itemOf, price, vendor), {})
+    t.eq(Q.AuctionBuys(rows, nil, price, vendor), {})
+end
+
+tests["quest bags auction: the line names the first, counts the rest"] = function(t)
+    local coin = function(c) return c .. "c" end
+    t.eq(Q.AuctionText({ { item = GNOLL, quest = "Paws", left = 5, price = 140 } }, coin),
+        "Buy 5 Gnoll Paw at the auction house for the quest Paws: about 140c each when you last looked (700c).")
+    t.eq(Q.AuctionText({ { item = GNOLL, quest = "Paws", left = 5, price = 140 },
+                         { item = WOOD, quest = "Wood", left = 1, price = 50 } }, coin),
+        "Buy 5 Gnoll Paw at the auction house for the quest Paws: about 140c each when you last looked (700c). 1 more item too.")
+    t.eq(Q.AuctionText({}, coin), nil)
+end
+
 return tests

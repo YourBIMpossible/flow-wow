@@ -49,7 +49,13 @@ local function start(opts)
     opts = opts or {}
     local cont2 = opts.cont or 0
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, opts.saved or {})
+    -- About the quest arrow's own zone-first pick: the route walk off unless
+    -- a test says otherwise (A1-24, lead section 739).
+    local saved = opts.saved or {}
+    saved.settings = saved.settings or {}
+    saved.settings.nav = saved.settings.nav or {}
+    if saved.settings.nav.routeWalk == nil then saved.settings.nav.routeWalk = false end
+    c.setSaved(ns.id.accountDB, saved)
     c.setZone(1, 1411); c.setPosition(1411, 0.5, 0.5); c.setFacing(0)
     c.setMapSize(1411, 1000, 500); c.setMapCont(1411, 1)
     c.setMapSize(1420, 1000, 1000); c.setMapCont(1420, cont2)

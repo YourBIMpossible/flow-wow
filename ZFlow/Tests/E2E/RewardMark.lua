@@ -221,4 +221,150 @@ tests["reward mark: look only - no acting call from any path"] = function(t)
     t.eq(looked, {}, "no acting name looked up on the client")
 end
 
+-- Parity row C-37, the data half (lead section 668): for each reward
+-- choice, what it is for each of your class's specs, and its sell price,
+-- with the best seller marked. As Flow's Modules/Gear/QuestRewards.lua
+-- (:147-149) and SpecBadge.lua (:35, :100): a badge for each spec on each
+-- choice, and a coin on the best to sell. The marks are the drawing
+-- lane's. Fails before: there is no Board.
+local function board(addon) return addon.use(ns.GearRewardMark.NAME).Board() end
+
+tests["reward board: each choice's verdict for each spec, and its sell price"] = function(t)
+    local c, addon = boot({ role = "dps" })
+    c.setItemInfo({ [22] = { sellPrice = 40 }, [23] = { sellPrice = 90 }, [24] = { sellPrice = 15 } })
+    c.setQuestChoices(choices(WEAK, STRONG, TOUGH))
+    c.fire("QUEST_COMPLETE")
+    local b = board(addon)
+    t.ok(type(b) == "table", "a board while the window is open")
+    if type(b) ~= "table" then return end
+    t.eq(b.roles, { "dps", "tank" }, "the class's specs, sorted")
+    t.eq(b.chosen, "dps")
+    t.eq(#b.choices, 3)
+    t.eq(b.choices[1].index, 1)
+    t.eq(b.choices[1].roles, { dps = "worse", tank = "worse" }, "the weak helm is worse for both")
+    t.eq(b.choices[2].roles.dps, "upgrade", "strength for dps")
+    t.eq(b.choices[3].roles.tank, "upgrade", "stamina for a tank")
+    t.eq(b.choices[2].sell, 90)
+    t.eq(b.bestSell, 2, "the strength helm sells for the most")
+    t.eq(newProblems(addon), 0)
+end
+
+-- Zen-3's review of C-37 (lead section 701): a choice's verdict follows the
+-- tooltip's rule (Gear/Tooltip.lua T.Lines): an upgrade or a worse that
+-- would print as 0.0 is "same"; with no finite delta there is no verdict,
+-- and the spec is left out. Fails before: a tiny worse stayed "worse".
+tests["reward board: the verdict follows the tooltip's rule"] = function(t)
+    local V = ns.GearRewardMark.Verdict
+    local same = ns.GearTooltip.SAME
+    t.eq(V({ verdict = "worse", delta = -0.01 }), "same", "a tiny worse")
+    t.eq(V({ verdict = "upgrade", delta = 0.01 }), "same", "a tiny upgrade")
+    t.eq(V({ verdict = "upgrade", delta = same }), "upgrade")
+    t.eq(V({ verdict = "worse", delta = -same }), "worse")
+    t.eq(V({ verdict = "same", delta = 0 }), "same")
+    t.eq(V({ verdict = "upgrade" }), nil, "no delta: no verdict")
+    t.eq(V({ verdict = "worse", delta = 0 / 0 }), nil, "not a number: no verdict")
+    t.eq(V({ verdict = "none", delta = 1 }), nil)
+    t.eq(V(nil), nil)
+end
+
+tests["reward board: a price not read, or two the same, marks no best seller"] = function(t)
+    local c, addon = boot({ role = "dps" })
+    c.setItemInfo({ [23] = { sellPrice = 90 } })
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.fire("QUEST_COMPLETE")
+    t.eq(board(addon).bestSell, nil, "one price not read")
+    t.eq(board(addon).choices[1].sell, nil)
+    c.setItemInfo({ [23] = { sellPrice = 90 }, [24] = { sellPrice = 90 } })
+    t.eq(board(addon).bestSell, nil, "a tie")
+end
+
+tests["reward board: a choice not read yet has no verdict, and no window has no board"] = function(t)
+    local c, addon = boot({ role = "dps" })
+    t.eq(board(addon), nil, "no reward window open")
+    c.setQuestChoices({ { index = 1, link = WEAK }, { index = 2 } })
+    c.fire("QUEST_COMPLETE")
+    local b = board(addon)
+    t.eq(b.choices[2].roles, {}, "not read: no verdict, never a guess")
+    t.eq(b.choices[1].roles.dps, "worse")
+    c.setQuestChoices(nil)
+    t.eq(board(addon), nil, "the choices not read")
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.fire("QUEST_FINISHED")
+    t.eq(board(addon), nil, "the window closed")
+end
+
+-- Parity row C-03 (lead section 704), as Flow's Modules/Quests/
+-- AutoTurnIn.lua (:190-201): at a reward choice the add-on stops and asks;
+-- nothing is picked. One chat line, once a window, with the board's words.
+-- Fails before: nothing is said.
+local function asked(c)
+    local out = {}
+    for _, l in ipairs(c.printed) do
+        if tostring(l):find("Pick your reward", 1, true) then out[#out + 1] = l end
+    end
+    return out
+end
+
+tests["reward ask: a choice at the turn-in is said once, with the best for your spec and the best to sell"] = function(t)
+    local c = boot({ role = "dps" })
+    c.setItemInfo({ [23] = { name = "Strong Helm", sellPrice = 90 }, [24] = { name = "Weak Helm", sellPrice = 15 } })
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.printed = {}
+    c.fire("QUEST_COMPLETE")
+    later(c)
+    later(c)
+    local lines = asked(c)
+    t.eq(#lines, 1, "once")
+    t.ok(lines[1] ~= nil and lines[1]:find(ns.GearRewardMark.ASK_BEST:format("Strong Helm", "damage"), 1, true) ~= nil,
+        tostring(lines[1]))
+    t.ok(lines[1] ~= nil and lines[1]:find(ns.GearRewardMark.ASK_SELL:format("Strong Helm"), 1, true) ~= nil,
+        "and to sell")
+end
+
+tests["reward ask: the offer, one reward, or the mark switched off says nothing"] = function(t)
+    local c, addon = boot({ role = "dps" })
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.printed = {}
+    c.fire("QUEST_DETAIL")
+    later(c)
+    t.eq(asked(c), {}, "the offer is no turn-in")
+    c.fire("QUEST_FINISHED")
+    c.setQuestChoices(choices(WEAK))
+    c.fire("QUEST_COMPLETE")
+    later(c)
+    t.eq(asked(c), {}, "one reward: nothing to choose")
+    c.fire("QUEST_FINISHED")
+    addon.settings:set(ns.GearRewardMark.SETTING, false)
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.fire("QUEST_COMPLETE")
+    later(c)
+    t.eq(asked(c), {}, "switched off")
+end
+
+tests["reward ask: the line names no choice it cannot read, and never picks"] = function(t)
+    local RM = ns.GearRewardMark
+    t.eq(RM.AskLine(nil, function() return nil end, "dps"), RM.ASK)
+    local board = { chosen = "dps", choices = { { index = 1, roles = { dps = "worse" } },
+        { index = 2, roles = { dps = "upgrade" } } }, bestSell = 1 }
+    t.eq(RM.AskLine(board, function() return nil end, "dps"), RM.ASK, "names not read: the plain ask")
+    t.eq(RM.AskLine(board, function(i) return ({ "A", "B" })[i] end, "dps"),
+        RM.ASK .. " " .. RM.ASK_BEST:format("B", "damage") .. " " .. RM.ASK_SELL:format("A"))
+end
+
+-- C-03 follow-up (lead sections 720/721): the line says the role's word
+-- from Rotation/Role.lua's Ro.WORDS ("damage", "healing", "tanking"),
+-- never its key ("dps"). Fails before: "for dps".
+tests["reward ask: the role is named by its word, not its key"] = function(t)
+    local RM = ns.GearRewardMark
+    local function line(role)
+        local board = { chosen = role, choices = { { index = 1, roles = { [role] = "upgrade" } } } }
+        return RM.AskLine(board, function() return "Helm" end, role)
+    end
+    t.eq(line("dps"), RM.ASK .. " " .. RM.ASK_BEST:format("Helm", ns.RotationRole.WORDS.dps))
+    t.eq(line("heal"), RM.ASK .. " " .. RM.ASK_BEST:format("Helm", ns.RotationRole.WORDS.heal))
+    t.eq(line("tank"), RM.ASK .. " " .. RM.ASK_BEST:format("Helm", ns.RotationRole.WORDS.tank))
+    t.eq(line("dps"):find("for dps", 1, true), nil, "never the key")
+    t.eq(line("odd"), RM.ASK, "a role with no word: no best line")
+end
+
 return tests

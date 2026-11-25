@@ -483,6 +483,44 @@ function Arrow.HasQuestie(k)
     return ok and m ~= nil
 end
 
+-- Parity row A1-28 (lead section 794): Hide this step on a route step also
+-- keeps that quest step off the next route, saved per character by
+-- Nav/HiddenSteps.lua. Without that file it does nothing, and Hide this step
+-- only skips, as before. Answers whether the step was kept hidden.
+function Arrow.KeepHidden(step, store)
+    local HS = ns.Nav and ns.Nav.HiddenSteps
+    if type(HS) ~= "table" or type(HS.Hide) ~= "function" or type(HS.KeyOf) ~= "function" then return false end
+    if type(step) ~= "table" then return false end
+    local okKey, key = pcall(HS.KeyOf, step)
+    if not okKey or key == nil then return false end
+    local ok, done = pcall(HS.Hide, store, key, step.label)
+    return ok and done == true
+end
+
+-- Parity row A2-12 (lead section 794): a quest step with no place (words
+-- only, Nav/QuestSource.lua rule 3) also says which creatures dropped the
+-- thing it needs, from the player's own loot record, through
+-- Nav/DropLines.lua. Without that file, or with nothing recorded, the step is
+-- as before. book: the character's learned.drops; nameOf(item key) -> the
+-- item's plain name. Answers the step, or a copy with the lines added.
+function Arrow.DropWords(step, book, nameOf)
+    local DL = ns.Nav and ns.Nav.DropLines
+    if type(DL) ~= "table" or type(DL.Rows) ~= "function" or type(DL.Lines) ~= "function" then return step end
+    if type(step) ~= "table" or step.quest == nil or step.still ~= true or step.place ~= nil then return step end
+    if type(step.lines) ~= "table" or type(step.detail) ~= "string" then return step end
+    -- The objective names the thing: "Stringy Wolf Meat: 0/6".
+    local item = step.detail:match("^%s*(.-)%s*:%s*%d+%s*/%s*%d+%s*$")
+    if item == nil or item == "" then return step end
+    local ok, lines = pcall(function() return DL.Lines(DL.Rows(book, item, nameOf)) end)
+    if not ok or type(lines) ~= "table" or #lines == 0 then return step end
+    local copy = {}
+    for key, v in pairs(step) do copy[key] = v end
+    copy.lines = {}
+    for i = 1, #step.lines do copy.lines[i] = step.lines[i] end
+    for i = 1, #lines do copy.lines[#copy.lines + 1] = tostring(lines[i]) end
+    return copy
+end
+
 -- The why step for the quest arrow, or nil when the player chose not to see
 -- it. quests: the N.QuestWatch the step was asked of (nil: not loaded).
 function Arrow.WhyStep(k, quests, prof)
@@ -580,6 +618,12 @@ function Arrow.Start(k, diag, own)
     -- there is no waypoint. Read-only; nil when that file is not loaded.
     local quests = N.QuestWatch and N.QuestSource
         and N.QuestWatch(client, { zoneFirst = function() return Arrow.ZoneFirstOn(k) end,
+            -- A1-24: the route planned by itself, from this kernel's own
+            -- trip route module (lead item 28), not a file-wide one.
+            trip = function()
+                if not k.use then return nil end
+                return k.use("tripRoute")
+            end,
             -- S43: the spots this player learned, where Questie gives none.
             learned = function()
                 local QS = N.QuestSpots
@@ -629,6 +673,12 @@ function Arrow.Start(k, diag, own)
     -- place). Heading() gives a copy (lead section 169 B: Nav/Legs.lua
     -- reads it to know which step the player is going to).
     local heading = nil
+    -- family: the family of the quest arrow's step in the last source
+    -- ("waypoint" or "profession", else nil), by the ViewState rule
+    -- (Nav/ViewState.lua:89-92): qs.family, else qs.kind. Family() gives
+    -- it (R7, lead section 570: the map lines read it to colour the
+    -- first leg the same as the arrow).
+    local family = nil
     -- saying: the quest step of the last source is the why line (lead
     -- section 294 item 5): words only, no needle drawn.
     local saying = false
@@ -643,6 +693,7 @@ function Arrow.Start(k, diag, own)
         saying = false
         from = "demo"
         heading = nil
+        family = nil
         if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near, Arrow.Palette(k)) end
         local playing = intro()
         local guide
@@ -789,6 +840,12 @@ function Arrow.Start(k, diag, own)
                 local ok, with = pcall(questItems.With, step)
                 if ok and type(with) == "table" then step = with end
             end
+            -- A2-25 (Nav/MobHopStep.lua): a kill step points at the mob group being worked, then the next.
+            local mobHop = k.use and k.use("mobHopStep")
+            if step ~= nil and from == "your quests" and mobHop and type(mobHop.Refine) == "function" then
+                local okHop, hopped = pcall(mobHop.Refine, step)
+                if okHop and type(hopped) == "table" then step = hopped end
+            end
             -- A target past a path the player walked into a cave (G38,
             -- Nav/Trails.lua) is pointed at along that path, one point at a
             -- time. Reaching a trail point clears no waypoint.
@@ -844,7 +901,35 @@ function Arrow.Start(k, diag, own)
             if not playing then return nil end
             guide = {}
         end
+        -- A2-12: a words-only quest step gets the drop lines; never the why line.
+        if not saying and type(guide.quest) == "table" and guide.quest.still == true then
+            local path = "learned.drops"
+            if ns.Drops and ns.Drops.PATH then path = ns.Drops.PATH end
+            local okBook, book = pcall(k.store.get, k.store, "char", path)
+            local names
+            if ns.ItemPresent and type(client) == "table" then names = ns.ItemPresent.Names(client.itemInfo) end
+            local function plainName(key)
+                if not names then return nil end
+                return ns.ItemPresent.Plain(names(key))
+            end
+            if okBook and type(book) == "table" then
+                local worded = Arrow.DropWords(guide.quest, book, plainName)
+                if worded ~= guide.quest then
+                    -- A copy: the guide handed in (a preview, a test's) is not changed.
+                    local copy = {}
+                    for key, v in pairs(guide) do copy[key] = v end
+                    copy.quest = worded
+                    guide = copy
+                end
+            end
+        end
         heading = placeOf(guide.quest)
+        -- R7: the step's family, by the ViewState rule (qs.family, else
+        -- qs.kind), kept with the heading and cleared with it.
+        local qs = guide.quest
+        if type(qs) == "table" and type(qs.family) == "string" then family = qs.family
+        elseif type(qs) == "table" and type(qs.kind) == "string" then family = qs.kind
+        else family = nil end
         stepName = nil
         if not saying and type(guide.quest) == "table" and type(guide.quest.label) == "string" then
             stepName = guide.quest.label
@@ -1124,13 +1209,15 @@ function Arrow.Start(k, diag, own)
         local professions
         local okProf, profOn = pcall(k.settings.get, k.settings, N.ProfFeed and N.ProfFeed.SETTING or "nav.professions")
         if okProf then professions = profOn end
-        -- Lead section 387, R3: the step, the kinds with a place already
-        -- seen (Nav/Errand.lua E.Find: saved data only), and the waypoint.
+        -- Lead section 387, R3: the step, the kinds with a place known
+        -- (Nav/Errand.lua E.Find), and the waypoint. Lead section 628: asked
+        -- with the module lookup, as the errand click asks, so a live row is
+        -- one the click can follow and a greyed row one it could not.
         local nearest = {}
         local E = ns.Errand
         if type(E) == "table" and type(E.Find) == "function" and type(M.NEAREST_KINDS) == "table" then
             for _, n in ipairs(M.NEAREST_KINDS) do
-                local okFind, place = pcall(E.Find, n.kind, client, k.store)
+                local okFind, place = pcall(E.Find, n.kind, client, k.store, k.use)
                 if okFind and type(place) == "table" then nearest[n.kind] = true end
             end
         end
@@ -1259,6 +1346,17 @@ function Arrow.Start(k, diag, own)
     end
     function routeChoose(action)
         if action.hide == "route" then
+            -- The step being skipped is read first, so it can be kept hidden.
+            -- (A route planned by itself answers through AutoStep, A1-24.)
+            local step = nil
+            for _, ask in ipairs({ "Step", "AutoStep" }) do
+                local current = using("tripRoute", ask)
+                if step == nil and current then
+                    local okStep, got = pcall(current)
+                    if okStep and type(got) == "table" then step = got end
+                end
+            end
+            if step then Arrow.KeepHidden(step, k.store) end
             run("the route", using("tripRoute", "Skip"))
         elseif action.hide == "errand" then
             run("the errand stop", using("errand", "Clear"))
@@ -1687,7 +1785,8 @@ function Arrow.Start(k, diag, own)
              heading = function()
                  if not heading then return nil end
                  return { cont = heading.cont, map = heading.map, x = heading.x, y = heading.y }
-             end }
+             end,
+             family = function() return family end }
 end
 
 -- Declares the arrows on kernel k as the module Arrow.NAME. Nothing is made
@@ -1769,11 +1868,17 @@ function Arrow.Declare(k, diag)
         if inner and inner.heading then return inner.heading() end
         return nil
     end
+    -- The family of the step the quest arrow points at now, or nil (R7).
+    function api.family()
+        if inner and inner.family then return inner.family() end
+        return nil
+    end
     k:Module({
         name = Arrow.NAME,
         needs = { "client", "store", "bus", "sched" },
         provides = { OpenMenu = function() return api.openMenu() end,
                      Heading = function() return api.heading() end,
+                     Family = function() return api.family() end,
                      -- Lead section 466: a chat-link click (Nav/PartyRoute.lua)
                      -- redraws at once, as a slash word's pass does.
                      Redraw = function() return api.relayout() end },

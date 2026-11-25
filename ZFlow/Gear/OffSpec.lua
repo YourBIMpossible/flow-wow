@@ -34,6 +34,15 @@ O.SETTING = "gear.keepOffspec"
 O.PATH = "settings.gear.keepOffspec"   -- account
 O.ROLE_PATH = "settings.spec.role"     -- char (Rotation/Role.lua's spec.role)
 O.DEFAULT = true
+-- Parity row C-32, the data half (lead section 789): a tick per role to keep
+-- gear for, as Flow's keep-set ticks under the bags (Modules/Gear/
+-- KeepSets.lua :277-285). Saved per character at KEEP_FOR_PATH as
+-- { [role] = true | false } (a new saved key: lead section 557; it changes
+-- nothing until a tick is saved, so the default behaviour is as before).
+-- With no tick for any of your roles, gear.keepOffspec decides as before:
+-- every role, or none. The ticks are the drawing lane's (a MUSE NEED).
+--   kept = GearOffSpec.KeepFor(choices, roles, switch) -> { [role] = true } or nil
+O.KEEP_FOR_PATH = "state.gear.keepFor"   -- char
 O.GEAR_CLASSES = { [2] = true, [4] = true }   -- the game's weapon and armour item classes
 
 local function ask(client, read, ...)
@@ -46,6 +55,24 @@ local function saved(store, scope, path)
     local ok, v = pcall(store.get, store, scope, path)
     if not ok then return nil end
     return v
+end
+
+function O.KeepFor(choices, roles, switch)
+    if type(roles) ~= "table" then return nil end
+    local ticked, kept = false, {}
+    if type(choices) == "table" then
+        for _, role in ipairs(roles) do
+            if choices[role] == true or choices[role] == false then ticked = true end
+            if choices[role] == true then kept[role] = true end
+        end
+    end
+    if not ticked then
+        if switch == false then return nil end
+        kept = {}
+        for _, role in ipairs(roles) do kept[role] = true end
+    end
+    if next(kept) == nil then return nil end
+    return kept
 end
 
 local function rolesOf(pack)
@@ -106,10 +133,8 @@ function O.Facts(client, store, packs, stacks)
     for i = 1, #roles do out.roleNames[roles[i]] = nameOf(pack, roles[i]) end
     local role = saved(store, "char", O.ROLE_PATH)
     if type(role) == "string" and type(pack.weights[role]) == "table" then out.role = role end
-    if saved(store, "account", O.PATH) ~= false then
-        out.keptRoles = {}
-        for i = 1, #roles do out.keptRoles[roles[i]] = true end
-    end
+    -- C-32: your ticks, else the one switch as before.
+    out.keptRoles = O.KeepFor(saved(store, "char", O.KEEP_FOR_PATH), roles, saved(store, "account", O.PATH))
 
     local who = { pack = pack, level = ask(client, "level") }
     out.level = who.level

@@ -5,7 +5,10 @@
 -- its reason. With no route it says so and how to plan one. It opens and
 -- closes with the game's quest log and stands at its right edge
 -- (client.questLogFrame); the setting RL.SETTING (on at first) turns it and
--- the world map pieces (UI/MapRoute.lua) off.
+-- the world map pieces (UI/MapRoute.lua: the numbers and the zone card)
+-- off, and the lines on the world map with them (UI/MapRouteLines.lua reads
+-- this setting too). A row that hides only the map trail comes with the
+-- slice that draws the trail (lead section 543).
 --
 -- It shows only what the route holds: the stops, their words and their
 -- places are the route's (the quest log's own titles and objective lines,
@@ -19,8 +22,20 @@
 -- LOOK ONLY: nothing is moved, targeted, cast or sent. A click on a row
 -- opens the world map on that stop's map (client.showMap), nothing else.
 --
---   RL.Rows(view, here) -> rows, left   (pure) the numbered rows and what
---                          was left off
+--   RL.Rows(view, here, needOf) -> rows, left   (pure) the numbered rows
+--                          and what was left off; needOf(quest) -> tags,
+--                          note (RL.Needs), or nil: no needs shown
+--   RL.Needs(raw) -> tags, note | nil   (pure) from Questie's quest fields
+--
+-- QUEST NEEDS (parity row C-14, lead section 603): a stop of a quest whose
+-- Questie data says so gets "(escort)" or "(group of N)" after its words,
+-- read through Questie's own QueryQuestSingle(id, "triggerEnd" |
+-- "suggestedGroup"). As Flow Modules/Quests/QuestNeeds.lua Q.ApplyNeed (tag
+-- after the name). Flow's hand-written escort note (Q.EscortNote) is not
+-- carried: no cited Forever source backs it (lead section 620, 611/619). Flow's per-quest table
+-- (where / note / tool / item, questNeed 98430) is not carried: a table of
+-- quest IDs waits for a ruling. "group of N" is Questie's suggested group,
+-- which Flow did not show.
 --   RL.Children(rows, left, how, onRow) -> the window's parts (pure)
 --   RL.Declare(k, diag) -> api   api.Refresh(), api.Shown(), api.Show(row)
 -- Not tested in game.
@@ -56,6 +71,10 @@ RL.WIDTH = 300
 RL.HEIGHT = 420
 RL.TONE_NOW = "good"
 RL.TONE_BLOCKED = "bad"
+-- Tags from Questie's quest fields (Flow Q.ApplyNeed).
+RL.ESCORT = "escort"
+RL.GROUP = "group of %d"
+RL.TAGS = "%s (%s)"
 
 -- The reasons the route gives in a few words, said as a whole sentence. A
 -- reason not listed here is shown as the route gave it.
@@ -103,19 +122,44 @@ local function words(s)
     return label, isText(s.detail) and s.detail or nil, s.kind == "pickup" and "questAvailable" or nil
 end
 
+function RL.Needs(raw)
+    if type(raw) ~= "table" then return nil end
+    local tags = {}
+    local te = raw.triggerEnd
+    local text = type(te) == "table" and te[1]
+    if type(text) == "string" and text:lower():find("escort", 1, true) then
+        tags[#tags + 1] = RL.ESCORT
+    end
+    local g = raw.suggestedGroup
+    if type(g) == "number" and g == g and g >= 2 and g < 100 then
+        tags[#tags + 1] = RL.GROUP:format(math.floor(g))
+    end
+    if #tags == 0 then return nil end
+    return tags, nil
+end
+
+local function withNeeds(row, quest, needOf)
+    if type(needOf) ~= "function" or quest == nil then return row end
+    local ok, tags, note = pcall(needOf, quest)
+    if not ok or type(tags) ~= "table" or #tags == 0 then return row end
+    row.text = RL.TAGS:format(row.text, table.concat(tags, ", "))
+    if isText(note) then row.sub = row.sub and (note .. " " .. row.sub) or note end
+    return row
+end
+
 -- rows: the stops to walk, numbered in route order, turn-ins at one place
 -- as one row; then the stops that wait (no number). left: what the route
 -- left off. Each row { n, count, text, sub, dist, icon, now, blocked, why,
 -- place }. here: { map, x, y, size = { w, h } } or nil.
-function RL.Rows(view, here)
+function RL.Rows(view, here, needOf)
     if type(view) ~= "table" or type(view.stops) ~= "table" then return nil, nil end
     local walk, waiting = {}, {}
     for _, s in ipairs(view.stops) do
         if type(s) == "table" and type(s.place) == "table" then
             if s.held then
                 local text, _, _ = words(s)
-                waiting[#waiting + 1] = { text = text, sub = RL.WAITING:format(RL.Why(s.held)), blocked = true,
-                    why = s.held, icon = "questNotForYou", place = s.place }
+                waiting[#waiting + 1] = withNeeds({ text = text, sub = RL.WAITING:format(RL.Why(s.held)),
+                    blocked = true, why = s.held, icon = "questNotForYou", place = s.place }, s.quest, needOf)
             else
                 local last = walk[#walk]
                 if last and last.turnIn and s.kind == nil and s.turnIn == true and samePlace(last.place, s.place) then
@@ -126,7 +170,7 @@ function RL.Rows(view, here)
                     local text, sub, icon = words(s)
                     walk[#walk + 1] = { count = 1, text = text, sub = sub, icon = icon, place = s.place,
                         turnIn = s.kind == nil and s.turnIn == true, to = receiver(s.detail),
-                        names = { isText(s.label) and s.label or "?" } }
+                        names = { isText(s.label) and s.label or "?" }, quest = s.quest }
                 end
             end
         end
@@ -141,6 +185,8 @@ function RL.Rows(view, here)
             row.text = RL.TURN_IN_MANY:format(r.count)
             row.sub = table.concat(r.names, ", ")
             if r.to then row.sub = row.sub .. ". " .. RL.GIVE_THEM_TO:format(r.to) end
+        else
+            withNeeds(row, r.quest, needOf)
         end
         rows[#rows + 1] = row
     end
@@ -273,11 +319,23 @@ function RL.Declare(k, diag)
         return ask(client(), "showMap", row.place.map) == true
     end
 
+    -- Questie's own fields for a quest, through its loader; nil without it.
+    local function needOf(quest)
+        local db = ask(client(), "questieModule", "QuestieDB")
+        if type(db) ~= "table" or type(db.QueryQuestSingle) ~= "function" then return nil end
+        local raw = {}
+        for _, field in ipairs({ "triggerEnd", "suggestedGroup" }) do
+            local ok, v = pcall(db.QueryQuestSingle, quest, field)
+            if ok then raw[field] = v end
+        end
+        return RL.Needs(raw)
+    end
+
     local function parts()
         local id = k.id or ns.id
         local T = ns.Nav and ns.Nav.TripRoute
         local how = RL.EMPTY_HOW:format(tostring(id.slash), tostring(T and T.WORD or "route"))
-        local rows, left = RL.Rows(view(), hereNow())
+        local rows, left = RL.Rows(view(), hereNow(), needOf)
         return RL.Children(rows, left, how, api.Show)
     end
 
@@ -343,7 +401,7 @@ function RL.Declare(k, diag)
 
     k:Setting({ key = RL.SETTING, scope = "account", type = "bool", default = true,
         label = "Show the route beside the quest log and on the map", group = "travel.route",
-        help = "Shows the stops of your route in order beside the quest log while it is open, and numbers them on the world map with a card for the zone.",
+        help = 'Shows the stops of your route in order beside the quest log while it is open, and numbers them on the world map with a card for the zone. Turning it off hides the list, the map pins, the zone card and the map trail together. To hide only the trail, turn off "Show route lines on the map" instead.',
         synonyms = { "route", "list", "quest", "log", "map", "pins", "stops", "zone" } })
 
     k:Module({

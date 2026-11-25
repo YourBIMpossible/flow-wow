@@ -10,7 +10,9 @@ local _, ns = ...
 -- `route share` or `route ask` (or, once per ANSWER_EVERY seconds, to
 -- answer a party member's ask for the route this player shared), and only
 -- while the setting party.routeShare is on (off by default). It never
--- shares by itself on plan. Nothing else here acts: it prints locally and
+-- shares by itself on plan. Party route edits (B-39) and joining or
+-- leaving the party route (B-45) send one message each, only on the
+-- player's own word or link click, under the same setting. Nothing else here acts: it prints locally and
 -- hands a taken route to the trip route's own Run.
 --
 -- Words (added to the route word): route share, route ask, route take,
@@ -40,7 +42,8 @@ local _, ns = ...
 -- party route being followed. Local only: the line sends nothing; route
 -- keep while following drops the party route.
 --   P.Line(offerFrom, followFrom, slash) -> line or nil
--- Module "partyRoute" provides Share, Ask, Take, Keep, Line.
+-- Module "partyRoute" provides Share, Ask, Take, Keep, Line, Edit, First, Done, Add,
+-- SetScope, Scope, Filter, Progress, RouteLeader.
 -- Not tested in game: the two-client game test is an owner item.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -49,7 +52,9 @@ N.PartyRoute = P
 
 P.NAME = "partyRoute"
 P.WORD = "route"
-P.HELP = "route share: send your route to your party; route ask: ask the party for theirs; route take: follow it; route keep: keep your own"
+P.HELP = "route share: send your route to your party; route ask: ask the party for theirs; route take: follow it; route keep: keep your own;"
+    .. " route first <n>, route done <n>, route add: change the party route for everyone on it;"
+    .. " route join: one route for the party; route just <name>: just their quests; route mine: your own"
 P.SETTING = "party.routeShare"
 P.CHANNEL = "PARTY"
 P.MAX_BYTES = 255
@@ -229,6 +234,16 @@ function P.Parse(msg, ver)
         if not rest:match("^%w+$") then return nil, "an ask without a nonce" end
         return { type = "Q", nonce = rest }
     end
+    if kind == "J" then
+        if rest == "1" then return { type = "J", on = true } end
+        if rest == "0" then return { type = "J", on = false } end
+        return nil, "a join out of form"
+    end
+    if kind == "E" then
+        local esid, clockText, op, arg = rest:match("^(%w+)|(%d+)|(%u)|(.*)$")
+        if not esid then return nil, "an edit out of form" end
+        return { type = "E", sid = esid, clock = tonumber(clockText), op = op, arg = arg }
+    end
     if kind ~= "R" then return nil, "unknown kind " .. kind end
     local sid, seqText, countText, data = rest:match("^(%w+)|(%d+)|(%d+)|(.+)$")
     if not sid then return nil, "a route chunk out of form" end
@@ -237,6 +252,157 @@ function P.Parse(msg, ver)
         return nil, "a route chunk out of form"
     end
     return { type = "R", sid = sid, seq = seq, count = count, data = data }
+end
+
+-- FLOW-PARITY B-39 (Flow Modules/Nav/Party.lua:226-252): shared edits. Anyone
+-- on a shared route moves a stop first, adds a stop in front or marks one
+-- done for all; the edit goes to the party as one message with a clock, and
+-- every client on that route applies it to its own copy. Stops are counted
+-- from 1 in the route as it stands; a later clock wins.
+--   "<ver>|E|<sid>|<clock>|<op>|<arg>"  op F (first, arg n), D (done, arg n),
+--                                        A (add in front, arg a stop record)
+P.EDITED = "%s changed the party route: %s"
+P.EDIT_SAID = { F = "stop %s moved first", D = "stop %s done for everyone", A = "a stop added in front" }
+P.NO_PARTY_ROUTE = "No party route to change: share one or take one first."
+P.NOT_EDITED = "Not changed: %s."
+
+function P.StopRecord(s)
+    local p = type(s) == "table" and s.place
+    if type(p) ~= "table" or not (finite(p.map) and finite(p.x) and finite(p.y)) then return nil end
+    return esc(s.label) .. "," .. esc(s.detail) .. "," .. tostring(math.floor(p.map)) .. "," .. num(p.x) .. "," .. num(p.y)
+end
+
+local function copySteps(steps)
+    local out = {}
+    for i, st in ipairs(steps) do
+        local c = {}
+        for key, v in pairs(st) do c[key] = v end
+        out[i] = c
+    end
+    return out
+end
+
+function P.ApplyEdit(steps, op, arg)
+    if type(steps) ~= "table" then return nil, "no route" end
+    local out = copySteps(steps)
+    if op == "A" then
+        local run = P.Decode(HEAD .. ",;" .. tostring(arg or ""))
+        if not run then return nil, "a stop out of form" end
+        table.insert(out, 1, run.steps[1])
+        while #out > P.MAX_STOPS do table.remove(out) end
+        return out
+    end
+    local n = tonumber(arg)
+    if n == nil or n ~= math.floor(n) or n < 1 or n > #out then return nil, "no stop " .. tostring(arg) end
+    if op == "F" then table.insert(out, 1, table.remove(out, n)); return out end
+    if op == "D" then table.remove(out, n); return out end
+    return nil, "unknown edit " .. tostring(op)
+end
+
+function P.EditMsg(sid, clock, op, arg, ver)
+    return tostring(ver) .. "|E|" .. tostring(sid) .. "|" .. tostring(clock) .. "|" .. tostring(op) .. "|" .. tostring(arg or "")
+end
+
+-- FLOW-PARITY B-45 (Flow PartyHelp.lua:431-523): one shared order. On the
+-- party route (scope "combined") one member plans: the group leader if on
+-- it, else the first name in A to Z order (realm and case ignored). The
+-- planner's route goes to the others when they join and at each edit, and
+-- each follows it at once; a route from anyone else stays an offer.
+--   "<ver>|J|1" joined the party route, "<ver>|J|0" left it.
+local function plain(n)
+    if type(n) ~= "string" then return "" end
+    return (n:match("^([^%-]+)") or n):lower()
+end
+P.Plain = plain
+function P.Unesc(s) return unesc(tostring(s or "")) end
+
+function P.Leader(me, others, groupLeader)
+    local all = { me }
+    for _, n in ipairs(type(others) == "table" and others or {}) do all[#all + 1] = n end
+    if groupLeader then
+        for _, n in ipairs(all) do
+            if plain(n) == plain(groupLeader) then return n end
+        end
+    end
+    table.sort(all, function(a, b) return plain(a) < plain(b) end)
+    return all[1]
+end
+
+function P.JoinMsg(on, ver)
+    if on then return tostring(ver) .. "|J|1" end
+    return tostring(ver) .. "|J|0"
+end
+
+-- FLOW-PARITY B-42 and B-44 (Flow PartyHelp.lua:206-236, :311): whose quests
+-- the route covers. "mine" (default), "theirs" (one member's: "Just <name>'s
+-- quests") or "combined" (everyone on the party route). Progress per member
+-- is a list of { title, complete } rows; it arrives with B-41 (quest
+-- progress exchange), fed in through Progress(name, rows).
+function P.ToDo(rows)
+    local n = 0
+    for _, q in ipairs(type(rows) == "table" and rows or {}) do
+        if type(q) == "table" and q.complete ~= true then n = n + 1 end
+    end
+    return n
+end
+
+function P.Covered(scope, who, progress, joined)
+    if type(progress) ~= "table" then return nil end
+    if scope == "theirs" then
+        if who == nil or progress[who] == nil then return nil end
+        return { [who] = progress[who] }
+    end
+    if scope ~= "combined" then return nil end
+    local out
+    for name, rows in pairs(progress) do
+        if type(joined) == "table" and joined[name] then
+            out = out or {}
+            out[name] = rows
+        end
+    end
+    return out
+end
+
+-- The steps whose quest someone covered still has to do; every step when
+-- nobody else is covered.
+function P.KeepFor(steps, covered)
+    if type(covered) ~= "table" then return steps end
+    local want = {}
+    for _, rows in pairs(covered) do
+        for _, q in ipairs(type(rows) == "table" and rows or {}) do
+            if type(q) == "table" and q.complete ~= true and type(q.title) == "string" then want[q.title] = true end
+        end
+    end
+    local out = {}
+    for _, st in ipairs(type(steps) == "table" and steps or {}) do
+        if type(st) == "table" and want[st.label] then out[#out + 1] = st end
+    end
+    return out
+end
+
+-- B-44: ask once per member per group, only with quests to do, only while
+-- the route is your own.
+function P.AskWho(name, progress, asked, scope, me)
+    if scope ~= "mine" or type(name) ~= "string" then return nil end
+    if plain(name) == plain(me) then return nil end
+    if type(asked) == "table" and asked[name] then return nil end
+    if type(progress) ~= "table" or P.ToDo(progress[name]) == 0 then return nil end
+    return name
+end
+P.HELP_ASK = "%s is in your group with quests to do (%d). Join the party route, or help with just theirs?"
+P.JOIN = "Join the party route"
+P.JUST = "Just %s's"
+P.NOT_NOW = "Not now"
+P.SCOPE_SAID = {
+    mine = "Route: your own quests.",
+    theirs = "Route: just %s's quests (%d to do).",
+    combined = "Joined the party route: one route for everyone on it.",
+}
+P.NO_PROGRESS = "No quest progress from %s yet."
+function P.HelpChoices(addon, name)
+    local kind = P.Kind(addon)
+    return "|H" .. kind .. ":join|h[" .. P.JOIN .. "]|h |H" .. kind .. ":just:" .. esc(name) .. "|h["
+        .. P.JUST:format(name) .. "]|h |H" .. kind .. ":notnow|h[" .. P.NOT_NOW .. "]|h"
 end
 
 function P.Declare(k, diag)
@@ -253,6 +419,12 @@ function P.Declare(k, diag)
     local offered, warned = {}, {}
     local made = 0
     local cancelClick
+    -- B-39: the party route this client is on (shared or taken), its sid,
+    -- its stops as sent (before names are added) and the last edit's clock.
+    local party                 -- { sid, from, title, steps, clock }
+    -- B-42, B-44, B-45: whose quests, who joined, whom we asked.
+    local scope, focus = "mine", nil
+    local progress, joined, asked = {}, {}, {}
 
     local function client() return ctx and ctx.client or k.client end
     local function id() return k.id or ns.id end
@@ -314,6 +486,10 @@ function P.Declare(k, diag)
         local ok, sendWhy = send(msgs)
         if not ok then return say(P.NOT_SHARED:format(sendWhy)) end
         shared = msgs
+        local run = P.Decode(P.Encode(cur))
+        if run then
+            party = { sid = msgs[1]:match("|R|(%w+)|"), title = run.title, steps = run.steps, clock = 0 }
+        end
         say(P.SHARED:format(math.min(#cur.stops, P.MAX_STOPS)))
     end
 
@@ -336,6 +512,7 @@ function P.Declare(k, diag)
         if okLog then own = log end
         for i, st in ipairs(offer.run.steps or {}) do run.steps[i] = P.Label(offer.from, st, own) end
         following = offer.from
+        party = { sid = offer.sid, from = offer.from, title = offer.run.title, steps = offer.run.steps, clock = 0 }
         say(P.TAKEN:format(following, tostring(tr.Run(run))))
     end
 
@@ -376,7 +553,14 @@ function P.Declare(k, diag)
         bufs[sender] = nil
         local run, why = P.Decode(table.concat(buf.parts))
         if not run then return problem(why) end
-        offer = { from = sender, run = run }
+        offer = { from = sender, run = run, sid = p.sid }
+        -- B-45: on the party route, the planner's route is followed at once.
+        if scope == "combined" and api.IsLeader(sender) then
+            api.Take()
+            local arrowNow = k.use and k.use("arrow")
+            if type(arrowNow) == "table" and type(arrowNow.Redraw) == "function" then pcall(arrowNow.Redraw) end
+            return
+        end
         -- The offer line is under the arrow at once (B-40): redraw it.
         local arrow = k.use and k.use("arrow")
         if type(arrow) == "table" and type(arrow.Redraw) == "function" then pcall(arrow.Redraw) end
@@ -385,6 +569,137 @@ function P.Declare(k, diag)
             offered[key] = true
             say(P.OFFER:format(sender, #run.steps, id().slash) .. " " .. P.Choices(id().addon))
         end
+    end
+
+    -- B-39: the party route again on this client's own trip route, names on.
+    local function rerun()
+        local tr = k.use and k.use("tripRoute")
+        if not tr or not party then return end
+        local c = client()
+        local log
+        if type(c) == "table" and type(c.questLog) == "function" then
+            local okLog, rows = pcall(c.questLog)
+            if okLog then log = rows end
+        end
+        local steps = {}
+        for i, st in ipairs(party.steps) do steps[i] = P.Label(party.from, st, log) end
+        pcall(tr.Run, { title = party.title, steps = steps })
+        if party.from == nil then
+            local msgs = P.Chunks(party.sid, P.Encode({ label = party.title, stops = party.steps }), id().commVersion)
+            if msgs then shared = msgs end
+        end
+    end
+
+    function api.Edit(op, arg)
+        if not party then return say(P.NO_PARTY_ROUTE) end
+        local steps, why = P.ApplyEdit(party.steps, op, arg)
+        if not steps then return say(P.NOT_EDITED:format(why)) end
+        local clock = party.clock + 1
+        local ok, sendWhy = send({ P.EditMsg(party.sid, clock, op, arg, id().commVersion) })
+        if not ok then return say(P.NOT_EDITED:format(sendWhy)) end
+        party.steps, party.clock = steps, clock
+        rerun()
+        say(P.EDIT_SAID[op]:format(tostring(arg)))
+    end
+
+    function api.First(n) return api.Edit("F", tostring(n)) end
+    function api.Done(n) return api.Edit("D", tostring(n)) end
+    function api.Add(label)
+        local c = client()
+        local okPos, pos = false, nil
+        if type(c) == "table" and type(c.position) == "function" then okPos, pos = pcall(c.position) end
+        local rec
+        if okPos then rec = P.StopRecord({ label = label or "Meet here", place = pos }) end
+        if not rec then return say(P.NOT_EDITED:format("your place is not known")) end
+        return api.Edit("A", rec)
+    end
+
+    local function edited(p, sender)
+        if not party or p.sid ~= party.sid or p.clock <= party.clock then return end
+        local steps, why = P.ApplyEdit(party.steps, p.op, p.arg)
+        if not steps then return problem(why) end
+        party.steps, party.clock = steps, p.clock
+        rerun()
+        local said = P.EDIT_SAID[p.op] or "?"
+        say(P.EDITED:format(sender, said:format(p.arg)))
+    end
+
+    -- B-45: names of the others on the party route; the group leader's name.
+    local function onRoute()
+        local out = {}
+        for name, isOn in pairs(joined) do
+            if isOn then out[#out + 1] = name end
+        end
+        table.sort(out)
+        return out
+    end
+
+    local function me()
+        local c = client()
+        if type(c) ~= "table" or type(c.playerName) ~= "function" then return nil end
+        local ok, name = pcall(c.playerName)
+        if ok then return name end
+        return nil
+    end
+
+    local function leaderName()
+        local c = client()
+        if type(c) ~= "table" or type(c.groupLeader) ~= "function" then return nil end
+        local ok, unit = pcall(c.groupLeader)
+        if not ok or type(unit) ~= "string" then return nil end
+        if unit == "player" then return me() end
+        if type(c.party) ~= "function" then return nil end
+        local okRows, rows = pcall(c.party)
+        if not okRows or type(rows) ~= "table" then return nil end
+        for _, r in ipairs(rows) do
+            if type(r) == "table" and r.unit == unit then return r.name end
+        end
+        return nil
+    end
+
+    function api.RouteLeader()
+        if scope ~= "combined" then return nil end
+        return P.Leader(me(), onRoute(), leaderName())
+    end
+
+    function api.IsLeader(name)
+        local l = api.RouteLeader()
+        return l ~= nil and P.Plain(l) == P.Plain(name)
+    end
+
+    -- B-42: whose quests the route covers. "theirs" needs that member's
+    -- progress (B-41). Joining or leaving the party route tells the party.
+    function api.SetScope(sc, name)
+        if sc == "theirs" and progress[name] == nil then return say(P.NO_PROGRESS:format(tostring(name))) end
+        local was = scope
+        scope = sc
+        focus = nil
+        if sc == "theirs" then focus = name end
+        if (sc == "combined") ~= (was == "combined") then send({ P.JoinMsg(sc == "combined", id().commVersion) }) end
+        if sc == "theirs" then
+            say(P.SCOPE_SAID.theirs:format(name, P.ToDo(progress[name])))
+        else
+            say(P.SCOPE_SAID[sc])
+        end
+        if sc == "combined" and api.IsLeader(me()) then api.Share() end
+    end
+
+    function api.Scope() return scope, focus end
+
+    -- B-42: the trip route's steps cut to the covered members' quests.
+    function api.Filter(steps)
+        return P.KeepFor(steps, P.Covered(scope, focus, progress, joined))
+    end
+
+    -- B-44: a member's quest progress (B-41 feeds it); asks once whether to
+    -- help, with chat links for the choices.
+    function api.Progress(name, rows)
+        if type(name) ~= "string" then return end
+        progress[name] = rows
+        local who = P.AskWho(name, progress, asked, scope, me())
+        if not who then return end
+        asked[who] = true
+        say(P.HELP_ASK:format(who, P.ToDo(rows)) .. " " .. P.HelpChoices(id().addon, who))
     end
 
     function api.Keep()
@@ -411,6 +726,12 @@ function P.Declare(k, diag)
     local function clicked(rest)
         if rest == "take" then api.Take(); return redraw() end
         if rest == "keep" then api.Keep(); return redraw() end
+        if rest == "join" then api.SetScope("combined"); return redraw() end
+        local name = type(rest) == "string" and rest:match("^just:(.+)$")
+        if name then
+            api.SetScope("theirs", P.Unesc(name))
+            return redraw()
+        end
     end
 
     local function receive(prefix, text, channel, sender)
@@ -426,6 +747,11 @@ function P.Declare(k, diag)
             if not ok then problem("answer not sent: " .. tostring(sendWhy)) end
             return
         end
+        if p.type == "J" then
+            joined[tostring(sender)] = p.on
+            return
+        end
+        if p.type == "E" then return edited(p, tostring(sender)) end
         if mine[p.sid] then return end
         chunk(p, tostring(sender))
     end
@@ -438,6 +764,13 @@ function P.Declare(k, diag)
             if word == "ask" then return api.Ask() end
             if word == "take" then return api.Take() end
             if word == "keep" then return api.Keep() end
+            local arg = tostring(rest or ""):match("^%s*%S+%s+(.-)%s*$")
+            if word == "first" then return api.First(arg) end
+            if word == "done" then return api.Done(arg) end
+            if word == "add" then return api.Add() end
+            if word == "join" then return api.SetScope("combined") end
+            if word == "mine" then return api.SetScope("mine") end
+            if word == "just" then return api.SetScope("theirs", arg) end
             if type(prior) == "function" then return prior(rest) end
         end
         if type(diag.help) == "table" then
@@ -448,7 +781,8 @@ function P.Declare(k, diag)
 
     k:Setting({ key = P.SETTING, scope = "account", type = "bool", default = false,
         label = "Share your route with your party", group = "travel.route",
-        help = "Acts only when you type route share or route ask, or when a party member asks for the route you shared:"
+        help = "Acts only when you type a route word (share, ask, first, done, add, join), click a party route link,"
+            .. " or a party member asks for the route you shared:"
             .. " sends the route to your party as add-on data, never to chat or anyone else.",
         synonyms = { "party", "share", "route", "group" } })
 
@@ -456,6 +790,9 @@ function P.Declare(k, diag)
         name = P.NAME,
         needs = { "client", "settings" },
         provides = { Share = api.Share, Ask = api.Ask, Take = api.Take, Keep = api.Keep,
+                     Edit = api.Edit, First = api.First, Done = api.Done, Add = api.Add,
+                     SetScope = api.SetScope, Scope = api.Scope, Filter = api.Filter, Progress = api.Progress,
+                     RouteLeader = api.RouteLeader,
                      Line = function() return api.Line() end },
         start = function(c)
             ctx = c
@@ -478,6 +815,8 @@ function P.Declare(k, diag)
             if type(cancelClick) == "function" then pcall(cancelClick) end
             cancel, cancelClick = nil, nil
             bufs, offer = {}, nil
+            party, scope, focus = nil, "mine", nil
+            progress, joined, asked = {}, {}, {}
         end,
     })
     return api

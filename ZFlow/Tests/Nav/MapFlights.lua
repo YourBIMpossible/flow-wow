@@ -135,4 +135,42 @@ tests["map flights: look only - nothing in here flies, clicks or changes the map
     end
 end
 
+-- Lead section 785 (B-12-andor): the and-or forms of MF.Pins and
+-- MF.TipLines are plain ifs now; each nil case keeps its answer.
+tests["map flights: nil and odd inputs give the same answers as before"] = function(t)
+    local home = { ["Home"] = { cont = 1, wx = 0, wy = 0 } }
+    t.eq(#MF.Pins(nil, nil), 0, "no paths, no masters")
+    local far = { { name = "Far", cont = 1, wx = MF.SAME + 1, wy = 0 } }
+    t.eq(#MF.Pins(home, far, nil, nil, nil, nil), 2, "same nil: MF.SAME, so Far is its own master")
+    t.eq(#MF.Pins(home, far, nil, nil, nil, MF.SAME + 5), 1, "a wider same: Far is Home's master")
+    t.eq(#MF.Pins(home, "not a list"), 1, "masters not a list: none")
+    local odd = { "not a master", { cont = 1, wx = 9000, wy = 0 } }
+    t.eq(#MF.Pins(nil, odd), 0, "a master that is no table or has no name: left out")
+    local new = { { name = "New", cont = 1, wx = 9000, wy = 0 } }
+    t.eq(MF.Pins(nil, new, function() error("no") end)[1].kind, "new", "learned raising: not learned")
+    t.eq(#MF.Pins(nil, new, function() return true end), 0, "learned: not shown as new")
+    t.eq(MF.Pins(nil, new, function() return nil end)[1].kind, "new", "learned nil: not learned")
+    t.eq(MF.Pins(nil, new)[1].onRoute, nil, "no route list: onRoute nil")
+    t.eq(MF.Pins(nil, new, nil, { New = "yes" })[1].onRoute, true, "on the route: true")
+    t.eq(MF.Pins(nil, new, nil, { Other = true })[1].onRoute, nil)
+    local _, from = MF.TipLines({ name = "A", kind = "have", role = "from" }, nil, nil)
+    t.eq(from[#from], "Fly from here: your next step is quicker by air.", "no air time: none claimed")
+    _, from = MF.TipLines({ name = "A", kind = "have", role = "from" }, nil, "4 min")
+    t.eq(from[#from], "Fly from here: your next step is quicker by air, 4 min in all.")
+    local _, to = MF.TipLines({ name = "A", kind = "have", role = "to" }, nil, nil)
+    t.eq(to[#to], "Land here for your next step.", "no step text")
+    _, to = MF.TipLines({ name = "A", kind = "have", role = "to" }, "Kill boars", nil)
+    t.eq(to[#to], "Land here for your next step: Kill boars.")
+    t.eq(MF.Click(nil, "A"), { from = "A" }, "no selection yet: a pick")
+    t.eq(MF.Click("odd", nil), {}, "a selection that is no table: none")
+    t.eq(MF.SegDist(3, 4, 0, 0, 0, 0), 5, "a line of no length: the distance to its point")
+    t.eq(MF.LineAt(nil, 0, 0, 10), nil, "no lines: none")
+    t.eq(MF.CanFly(nil, { kind = "have" }), false, "no pin: false, not nil")
+    t.eq(MF.CanFly({ kind = "have", cont = 1 }, { kind = "have", cont = 1 }), true)
+    t.eq(MF.CanFly({ kind = "have", cont = 1 }, { kind = "new", cont = 1 }), false)
+    local have = { name = "A", kind = "have", cont = 1 }
+    t.eq((MF.FlightText(have, { name = "B", kind = "have", cont = 1 }, 61, nil, nil)), "A to B: 61 s (your last flight)",
+        "no fmt: seconds")
+end
+
 return tests

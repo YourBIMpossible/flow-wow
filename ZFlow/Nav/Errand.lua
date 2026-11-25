@@ -4,12 +4,16 @@ local _, ns = ...
 -- player has seen: a vendor, a repair vendor, a banker, an innkeeper, a
 -- flight master, a mailbox (Nav/ServiceNearest.lua, from what
 -- Nav/ServiceSeen.lua saved) or a trainer (the npcs Nav/ProfSeen.lua
--- saved). The hearthstone is said in words (Nav/HearthStep.lua has no
+-- saved), or, for the kinds that are an NPC, a nearer one the player's own
+-- Questie add-on lists (N.Nearest, parity row A1-41; such a place has
+-- unvisited = true and is said to be from Questie, never seen: lead
+-- section 611). The hearthstone is said in words (Nav/HearthStep.lua has no
 -- place to point at), and "route" says a short order to visit the nearest
 -- of each kind (Nav/RoutePlan.lua).
 --
--- Nothing is authored here: every place is one this client showed this
--- player. It only points and says: nothing is bought, repaired, banked,
+-- Nothing is authored here: every place is one this client showed this player,
+-- or one the player's own Questie gives while the game runs.
+-- It only points and says: nothing is bought, repaired, banked,
 -- flown or used for the player. The chosen stop is kept in memory only; a
 -- reload or a login starts with none. Not tested in game.
 --
@@ -32,9 +36,12 @@ local _, ns = ...
 --   step = { label, place = { cont, map, x, y }, radius = E.RADIUS }
 --   the shape Arrow.GuideSource takes as the quest step. label is
 --   "<Kind>: <name>", or the kind alone when the name is not known or the
---   label would be over N.Waypoint.LABEL_MAX bytes (never cut).
+--   label would be over N.Waypoint.LABEL_MAX bytes (never cut). A place
+--   from Questie (place.unvisited) also has detail = E.FROM_QUESTIE, the
+--   arrow's line under the label.
 --
--- E.Find(kind, client, store) -> place, or nil
+-- E.Find(kind, client, store, use) -> place, or nil[, N.READING while
+--   Questie's list is still being gone through]
 -- E.Route(client, store) -> route, reason   (N.RoutePlan over the nearest
 --   place of each kind on the map of the player)
 -- E.Hearth(client) -> text   the bind place and whether the stone is ready
@@ -65,7 +72,12 @@ E.LABELS = {
     vendor = "Vendor", repair = "Repair", banker = "Bank", innkeeper = "Inn",
     flight = "Flight master", mailbox = "Mailbox", auction = "Auction house", trainer = "Trainer",
 }
-E.HELP = "point the arrow at the nearest stop you have seen: vendor, repair, bank, inn, flight,"
+-- A place from the player's own Questie: the arrow's line under the label,
+-- and what is said after the stop in chat. Never said to be seen or used.
+E.FROM_QUESTIE = "From your own Questie add-on."
+E.MARK = " (Questie)"
+E.READING = "still going through your Questie add-on's list of places; ask again in a few seconds. Nothing changed."
+E.HELP = "point the arrow at the nearest stop you have seen or your Questie add-on lists: vendor, repair, bank, inn, flight,"
     .. " mail, auction or trainer; hearth, route, off"
 
 local function finite(v)
@@ -147,27 +159,31 @@ function E.Step(place)
     if type(place) ~= "table" or place.map == nil or not (share(place.x) and share(place.y)) then return nil end
     local kind = E.LABELS[place.kind]
     if not kind then return nil end
-    local label = kind
+    -- A place from Questie carries that in its label too, for whoever
+    -- shows the label alone (a route stop, a waypoint).
+    local mark = place.unvisited == true and E.MARK or ""
+    local label = kind .. mark
     local name = text(place.name)
     if name then
-        local long = kind .. ": " .. name
+        local long = kind .. ": " .. name .. mark
         if #long <= (N.Waypoint and N.Waypoint.LABEL_MAX or 40) then label = long end
     end
     return {
         label = label,
         place = { cont = place.cont, map = place.map, x = place.x, y = place.y },
         radius = E.RADIUS,
+        detail = place.unvisited == true and E.FROM_QUESTIE or nil,
     }
 end
 
-function E.Find(kind, client, store)
+function E.Find(kind, client, store, use)
     if kind == "trainer" then
         local here = hereOf(client)
         if not here then return nil end
         return E.TrainerOf(saved(store, "account", E.NPCS), here)
     end
     if type(N.Nearest) ~= "function" then return nil end
-    return N.Nearest(kind, client, store)
+    return N.Nearest(kind, client, store, use)
 end
 
 -- The nearest place of each kind on the map of the player, one entry for a
@@ -177,6 +193,8 @@ function E.Route(client, store)
     if not here then return nil, "position unknown" end
     local places, seen = {}, {}
     for _, word in ipairs(E.ORDER) do
+        -- The route of stops is made of places this character used only
+        -- (lead section 626): Questie is not asked here.
         local place = E.Find(E.KINDS[word], client, store)
         if place then
             local key = tostring(place.kind == "trainer" and "npc:" or "svc:") .. tostring(place.key)
@@ -211,9 +229,15 @@ local function named(place)
     return name and (kind .. " " .. name) or kind
 end
 
+-- What is said after a place from the player's own Questie, else nothing.
+local function origin(place)
+    if place.unvisited == true then return " " .. E.FROM_QUESTIE end
+    return ""
+end
+
 function E.Declare(k, diag, arrow)
     local api = {}
-    local client, store
+    local client, store, use
     local chosen
 
     local function redraw()
@@ -229,8 +253,8 @@ function E.Declare(k, diag, arrow)
     end
     function api.choose(kind)
         if not client then return nil end
-        local place = E.Find(kind, client, store)
-        if not place then return nil end
+        local place, why = E.Find(kind, client, store, use)
+        if not place then return nil, why end
         chosen = place
         redraw()
         return place
@@ -254,7 +278,8 @@ function E.Declare(k, diag, arrow)
         end
         for i = 1, #plan.stops do
             local stop = plan.stops[i]
-            say(tostring(i) .. ". " .. named(stop.place) .. (stop.leg and (", " .. yards(stop.leg)) or ""))
+            say(tostring(i) .. ". " .. named(stop.place) .. (stop.leg and (", " .. yards(stop.leg)) or "")
+                .. (stop.place.unvisited == true and "." .. origin(stop.place) or ""))
         end
         say("about " .. yards(plan.total) .. " in all (" .. tostring(plan.label) .. ").")
     end
@@ -264,7 +289,8 @@ function E.Declare(k, diag, arrow)
         local word = tostring(rest or ""):lower():match("^%s*(%S*)")
         if word == "" then
             if chosen then
-                say("the arrow points at " .. named(chosen) .. ". " .. ns.id.slash .. " " .. E.WORD .. " off ends it.")
+                say("the arrow points at " .. named(chosen) .. "." .. origin(chosen) .. " " .. ns.id.slash .. " " .. E.WORD
+                    .. " off ends it.")
             else
                 say("no stop chosen. " .. E.HELP .. ".")
             end
@@ -276,9 +302,11 @@ function E.Declare(k, diag, arrow)
         elseif word == "route" then
             route()
         elseif E.KINDS[word] then
-            local place = api.choose(E.KINDS[word])
+            local place, why = api.choose(E.KINDS[word])
             if place then
-                say("the arrow points at " .. named(place) .. " (" .. yards(place.yards) .. ").")
+                say("the arrow points at " .. named(place) .. " (" .. yards(place.yards) .. ")." .. origin(place))
+            elseif why ~= nil and why == N.READING then
+                say(E.READING)
             else
                 say("no " .. word .. " you have seen is on this map. Nothing changed.")
             end
@@ -292,7 +320,7 @@ function E.Declare(k, diag, arrow)
         needs = { "client", "store" },
         provides = { Step = api.step, Stop = api.stop, Choose = api.choose, Clear = api.clear },
         start = function(ctx)
-            client, store = ctx.client, ctx.store
+            client, store, use = ctx.client, ctx.store, ctx.use
         end,
     })
 

@@ -21,8 +21,19 @@ local _, ns = ...
 --   money      client.money(); short of the cost seen: "You need <n> more."
 -- No price, place or coordinate is carried here: a price not seen is "price
 -- not seen yet"; no trainer seen is "Ask a city guard for the riding
--- trainer." Mount vendors: Z-Flow keeps no merchant lists by kind, so the
--- mount is words only.
+-- trainer." The one exception to carrying no data, by the owner's ruling,
+-- lead section 602: Nav/RidingNames.lua, the NAME of the riding trainer
+-- for each race (approximate, from Flow). With no riding trainer seen on
+-- the player's map, the module asks the profession feed (Nav/ProfFeed.lua's
+-- Place, the one owner of the Questie read) where the player's own Questie
+-- puts the trainer named for the player's race (client.raceId()): on this
+-- map, else on another map of this continent, of the player's faction.
+-- The step then has that place and name, and says the name is from Flow's
+-- list and may be out of date. The race not read, no Questie, the name
+-- not found there: the step as it was. The price is still only the one a
+-- trainer window showed; Flow's level and price figures are not used.
+-- Mount vendors: Z-Flow keeps no merchant lists by kind, so the mount is
+-- words only (the vendor names of the table are not read yet).
 --
 -- Pure parts:
 --   due   = RidingStep.Due(level, ranks)             { tier, level, rank, words } or nil
@@ -31,6 +42,14 @@ local _, ns = ...
 --   RidingStep.IsRiding(name) -> true | false
 --   step { kind = "riding", label, tier, level, words, name, cost, money,
 --          place = { map, x, y } (only on the player's map), radius }
+--   name = RidingStep.Named(raceId)   the table's trainer for that race
+--          number, or nil
+--   step = RidingStep.Elsewhere(step, name, place)   a step with no place
+--          given Questie's place of that name when one is known:
+--          place(ask) -> { map, x, y } is the feed's Place. Then also
+--          listed = true, detail = RidingStep.LISTED (the arrow's line
+--          under the label), and the place may be on another map of the
+--          continent.
 --
 -- Module: RidingStep.Declare(k) -> api; api.step(), api.lines().
 --   ns.use(RidingStep.NAME) -> { Step, Lines }. The advisor line (id
@@ -51,6 +70,11 @@ R.PROMPT = "nav.riding"
 R.PRIORITY = 1
 R.RADIUS = 10
 R.LABEL = "Riding trainer"
+-- The step kind the profession feed is asked for a place with
+-- (N.ProfPlace.KIND): an NPC by its name.
+R.ASK = "visit_named"
+-- A trainer named by Nav/RidingNames.lua, not one the player has seen.
+R.LISTED = "That name is from Flow's list for your race, which is approximate and may be out of date."
 R.TIERS = {
     { level = 40, rank = 75, words = "riding",
       mount = "Then buy a mount from a mount vendor (a city guard knows where)." },
@@ -180,6 +204,35 @@ function R.Of(due, here, npcs, money)
     return step
 end
 
+function R.Named(raceId)
+    local N = ns.Nav
+    local names = type(N) == "table" and N.RidingNames or nil
+    if raceId == nil or type(names) ~= "table" or type(names.RACE) ~= "table"
+        or type(names.mount) ~= "table" then
+        return nil
+    end
+    local token = names.RACE[raceId]
+    if token == nil then return nil end
+    local row = names.mount[token]
+    if type(row) ~= "table" or not text(row.trainer) then return nil end
+    return row.trainer
+end
+
+function R.Elsewhere(step, name, place)
+    if type(step) ~= "table" or step.place ~= nil or not text(name) or type(place) ~= "function" then
+        return step
+    end
+    local ok, to = pcall(place, { kind = R.ASK, name = name })
+    if not ok or type(to) ~= "table" or to.map == nil or not (share(to.x) and share(to.y)) then return step end
+    step.name = name
+    step.place = { map = to.map, x = to.x, y = to.y }
+    step.listed = true
+    step.detail = R.LISTED
+    local long = R.LABEL .. ": " .. name
+    if #long <= labelMax() then step.label = long end
+    return step
+end
+
 function R.Lines(step)
     if type(step) ~= "table" or not text(step.words) then return {} end
     local head = "You can learn " .. step.words .. " now"
@@ -194,6 +247,7 @@ function R.Lines(step)
     else
         lines[1] = head .. " (price not seen yet). Ask a city guard for the riding trainer."
     end
+    if step.listed == true then lines[#lines + 1] = R.LISTED end
     if finite(step.cost) and finite(step.money) and step.money < step.cost then
         local short = coin(step.cost - step.money)
         if short then lines[#lines + 1] = "You need " .. short .. " more." end
@@ -280,7 +334,22 @@ function R.Declare(k)
             local ok, v = pcall(ctx.store.get, ctx.store, "account", R.NPCS)
             if ok then npcs = v end
         end
-        return R.Of(due, ask("position"), npcs, ask("money"))
+        local step = R.Of(due, ask("position"), npcs, ask("money"))
+        if step and step.place == nil then
+            -- No riding trainer seen on this map: the one named for the
+            -- player's race, where the player's own Questie puts it. The
+            -- feed is looked up now, never when this file loads.
+            local name = R.Named(ask("raceId"))
+            local N = ns.Nav
+            local feedName = type(N) == "table" and type(N.ProfFeed) == "table" and N.ProfFeed.NAME or nil
+            if name and feedName ~= nil and type(ctx.use) == "function" then
+                local okUse, feed = pcall(ctx.use, feedName)
+                if okUse and type(feed) == "table" and type(feed.Place) == "function" then
+                    R.Elsewhere(step, name, feed.Place)
+                end
+            end
+        end
+        return step
     end
 
     function api.lines()
