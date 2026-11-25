@@ -56,8 +56,10 @@ local function boot(opts)
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(10, 40)
-    c.slashes[ns.id.slash]("dungeons")
-    c.advance(2, 20)
+    if not opts.noWord then
+        c.slashes[ns.id.slash]("dungeons")
+        c.advance(2, 20)
+    end
     return c, addon, addon.problems:count()
 end
 
@@ -144,6 +146,28 @@ tests["dungeon ready: a bank seen after the first plan is in the next plan"] = f
     t.eq(addon.store:set("char", "learned.places.services", { b1 = bankOf() }), true, "the bank is saved")
     t.ok(plan(c), "planned again")
     t.eq(first(c), "Get ready: Bank", "the bank first now")
+    t.eq(addon.problems:count(), base, "no new problem")
+end
+
+-- R9 (lead section 564): the "Get ready" stops reached without the
+-- dungeons word. Right-click the arrow, Dungeon quests, pick the dungeon,
+-- Plan the run: the bank comes first. The arrow itself is the demo one
+-- (a test stand-in for any arrow on screen). Look only.
+tests["dungeon ready: reached from the arrow menu, no dungeons word"] = function(t)
+    local c, addon = boot({ char = { learned = { places = { services = { b1 = bankOf() } } } }, noWord = true })
+    c.slashes[ns.id.slash]("arrow demo")
+    c.advance(0.1, 2)
+    local q = c.arrows[1]
+    t.ok(q ~= nil, "an arrow to right-click")
+    if not q then return end
+    q.click("right")
+    t.eq(q.pickRow(ns.ArrowMenu.DUNGEONS), true, "the Dungeon quests row")
+    c.advance(2, 20)
+    c.slashes[ns.id.slash]("arrow demo")   -- the stand-in off again
+    c.advance(0.1, 2)
+    local base = addon.problems:count()
+    t.ok(plan(c), "the window is open and Plan the run is live")
+    t.eq(first(c), "Get ready: Bank", "the bank first")
     t.eq(addon.problems:count(), base, "no new problem")
 end
 
