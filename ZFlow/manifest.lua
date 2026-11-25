@@ -61,6 +61,7 @@ return {
         "Settings/Model.lua",
         "Settings/Topics.lua",
         "Settings/Rows.lua",
+        "Settings/GameSuggest.lua",
 
         -- Items
         "Items/Key.lua",
