@@ -36,6 +36,29 @@
 --               A row said to be "soon" or "now" also has urgency; an
 --               "info" row has no such field.
 --   Advisor.Urgency(row) -> "info" | "soon" | "now"   pure: a row's level
+--
+-- Hiding a row (parity row C-46, the data half; the buttons are the
+-- drawing lane's). As Flow's Modules/Advisor/Advisor.lua:83-112: a row the
+-- player hid is not shown, the hidden ones can be listed, and one can be
+-- brought back; kept for the character.
+--   Advisor.KeyOf(id) -> key or nil   pure: the id with each dot-part
+--               that is all digits as "#", so "train.2" stays hidden as
+--               "train.3"; digits inside a word stay ("l6c.repair"). Lead
+--               section 671. Flow made its key from the text, with every
+--               digit run out; an id's digits inside a word are its name.
+--   Advisor.Hide(id)    -> true | false, reason   the prompt of that id,
+--               which must be there and not hidden. Nothing is hidden
+--               before the module starts, past Advisor.MAX_HIDDEN keys, or
+--               when the saved data cannot be read or written.
+--   Advisor.Unhide(key) -> true when something was hidden under that key
+--   Advisor.Hidden()    -> { { key, text, at, applies, id }, ... } by key:
+--               every hidden key. applies: a prompt of that key is there
+--               now (then id is its id and text its words now); else text
+--               is what it said when it was hidden. at: client.clock()
+--               when hidden, absent when the client gave no time.
+--   A hidden prompt is left out of List() and the panel, tells no Watch
+--   and opens no closed window. Remove and Add work on it as before.
+--   Saved: char Advisor.HIDDEN = { [key] = { text, at } }.
 --   Advisor.Watch(fn)  -> cancel | nil (N68). fn(id, text) is told when a
 --               prompt id that was not there is added: a rule that turned
 --               true. A replaced text is not new; a prompt removed and added
@@ -69,7 +92,8 @@
 -- Off hides the panel at once; prompts are still taken and kept, and show
 -- again when it is turned back on.
 --
--- Reads: none from the game. Writes: none.
+-- Reads: none from the game (client.clock() for when a row was hidden).
+-- Writes: none to the game; the hidden keys to the character's saved data.
 local _, ns = ...
 
 local Advisor = ns.Advisor or {}
@@ -91,6 +115,26 @@ Advisor.TITLE = "Advice"
 -- section 578 point A). A section row, so it is never read as one of the
 -- prompts; the plain panel the window falls back to does not carry it.
 Advisor.ABOUT = "Things worth doing now, such as a repair."
+-- Parity row C-46: the rows the player hid, for the character.
+Advisor.HIDDEN = "state.advisor.hidden"
+Advisor.MAX_HIDDEN = 200
+Advisor.NO_PROMPT = "there is no such advice now."
+Advisor.HID = "that advice is hidden already."
+Advisor.FULL = "too many rows are hidden: bring one back first."
+Advisor.UNREAD = "what is hidden could not be read, so nothing was changed."
+Advisor.UNSAVED = "what is hidden could not be saved, so nothing was changed."
+
+function Advisor.KeyOf(id)
+    if type(id) ~= "string" or id == "" then return nil end
+    -- Split on dots, keeping empty parts, and put back with dots.
+    local parts = {}
+    for part in (id .. "."):gmatch("([^.]*)%.") do
+        if part:find("^%d+$") then part = "#" end
+        parts[#parts + 1] = part
+    end
+    return table.concat(parts, ".")
+end
+
 -- Parity row C-44: how pressing a prompt is, least pressing first.
 Advisor.LEVELS = { "info", "soon", "now" }
 local LEVEL = {}
@@ -184,10 +228,21 @@ function Advisor.Declare(k, diag)
     local asked = false
     local watchers = {}        -- by token: fn(id, text)
     local watchSeq = 0
+    -- C-46: the hidden keys as saved, { [key] = { text, at } }. nil before
+    -- the module starts; false when what is saved there is not a table
+    -- (then nothing is hidden and nothing is written over).
+    local hid
 
+    local function isHidden(id)
+        return type(hid) == "table" and hid[Advisor.KeyOf(id)] ~= nil
+    end
+
+    -- The prompts the player has not hidden, in shown order.
     local function sorted()
         local list = {}
-        for i = 1, #entries do list[i] = entries[i] end
+        for i = 1, #entries do
+            if not isHidden(entries[i].id) then list[#list + 1] = entries[i] end
+        end
         table.sort(list, function(a, b)
             if a.priority ~= b.priority then return a.priority > b.priority end
             return a.seq < b.seq
@@ -210,11 +265,13 @@ function Advisor.Declare(k, diag)
     local function render()
         if not host then return end
         if #entries == 0 and not asked then closed = false end
-        if not enabled() or (not asked and (#entries == 0 or held())) then
+        -- C-46 (lead section 671): with every prompt hidden there is
+        -- nothing to show, the same as with none.
+        local list = sorted()
+        if not enabled() or (not asked and (#list == 0 or held())) then
             host.show(false)
             return
         end
-        local list = sorted()
         local lines = {}
         local levels = {}
         for i = 1, math.min(#list, Advisor.MAX_SHOWN) do
@@ -263,11 +320,11 @@ function Advisor.Declare(k, diag)
             seq = seq + 1
             entries[#entries + 1] = { id = id, text = text, priority = priority, urgency = urgency, seq = seq }
             -- A new prompt opens a window the player closed; a replaced
-            -- text does not.
-            closed = false
+            -- text does not, and neither does one the player hid.
+            if not isHidden(id) then closed = false end
         end
         render()
-        if not at then
+        if not at and not isHidden(id) then
             local tokens = {}
             for token in pairs(watchers) do tokens[#tokens + 1] = token end
             table.sort(tokens)
@@ -300,6 +357,74 @@ function Advisor.Declare(k, diag)
         local out = {}
         for i, e in ipairs(sorted()) do
             out[i] = { id = e.id, text = e.text, priority = e.priority, urgency = e.urgency }
+        end
+        return out
+    end
+
+    -- C-46: writes the hidden keys, a new table, never the stored one.
+    local function keep(now)
+        if not ctx then return false end
+        local ok, done = pcall(ctx.store.set, ctx.store, "char", Advisor.HIDDEN, now)
+        if not ok or done ~= true then return false end
+        hid = now
+        return true
+    end
+
+    local function copyHid()
+        local now, n = {}, 0
+        for key, v in pairs(hid) do now[key], n = v, n + 1 end
+        return now, n
+    end
+
+    function api.Hide(id)
+        local problem = checkId(id)
+        if problem then return false, problem end
+        local at = find(id)
+        if not at then return false, Advisor.NO_PROMPT end
+        if hid == nil then return false, Advisor.NOT_READY end
+        if hid == false then return false, Advisor.UNREAD end
+        local key = Advisor.KeyOf(id)
+        if hid[key] ~= nil then return false, Advisor.HID end
+        local now, n = copyHid()
+        if n >= Advisor.MAX_HIDDEN then return false, Advisor.FULL end
+        local when
+        if type(ctx.client) == "table" and type(ctx.client.clock) == "function" then
+            local ok, t = pcall(ctx.client.clock)
+            if ok and isFinite(t) then when = t end
+        end
+        now[key] = { text = entries[at].text, at = when }
+        if not keep(now) then return false, Advisor.UNSAVED end
+        render()
+        return true
+    end
+
+    function api.Unhide(key)
+        if type(key) ~= "string" or type(hid) ~= "table" or hid[key] == nil then return false end
+        local now = copyHid()
+        now[key] = nil
+        if not keep(now) then return false end
+        render()
+        return true
+    end
+
+    function api.Hidden()
+        local out = {}
+        if type(hid) ~= "table" then return out end
+        local keys = {}
+        for key in pairs(hid) do
+            if type(key) == "string" then keys[#keys + 1] = key end
+        end
+        table.sort(keys)
+        for _, key in ipairs(keys) do
+            local v = type(hid[key]) == "table" and hid[key] or {}
+            local row = { key = key, text = v.text, at = v.at, applies = false }
+            for i = 1, #entries do
+                if Advisor.KeyOf(entries[i].id) == key then
+                    row.applies, row.id, row.text = true, entries[i].id, entries[i].text
+                    break
+                end
+            end
+            out[#out + 1] = row
         end
         return out
     end
@@ -344,9 +469,19 @@ function Advisor.Declare(k, diag)
         name = Advisor.NAME,
         needs = { "client", "store", "settings" },
         provides = { Add = api.Add, Remove = api.Remove, List = api.List, Watch = api.Watch,
-            Open = api.Open },
+            Open = api.Open, Hide = api.Hide, Unhide = api.Unhide, Hidden = api.Hidden },
         start = function(c)
             ctx = c
+            -- C-46: what the character hid. Not a table: nothing is hidden,
+            -- and it is not written over.
+            local okHid, saved = pcall(c.store.get, c.store, "char", Advisor.HIDDEN)
+            if okHid and saved == nil then
+                hid = {}
+            elseif okHid and type(saved) == "table" then
+                hid = saved
+            else
+                hid = false
+            end
             -- Follow the setting while running: turning it off hides the
             -- panel at once, turning it on shows the kept prompts.
             local row = c.settings:row(Advisor.SETTING)
@@ -397,3 +532,6 @@ Advisor.Remove = ns.advisor.Remove
 Advisor.List = ns.advisor.List
 Advisor.Watch = ns.advisor.Watch
 Advisor.Open = ns.advisor.Open
+Advisor.Hide = ns.advisor.Hide
+Advisor.Unhide = ns.advisor.Unhide
+Advisor.Hidden = ns.advisor.Hidden
