@@ -24,10 +24,21 @@ local function start()
     return c, api, k, function() return told end
 end
 
+-- The player's cast as the client.casting read gives it (a CLIENT NEED,
+-- the one Rotation/CastEdge.lua names): start and end in milliseconds on
+-- the clock client.now() reads. secs nil: the read answers no times.
 local function cast(c, id, secs)
-    c.setOwnCastSeconds(secs)
+    local from = c.now()
+    if secs then
+        c.casting = function() return from * 1000, (from + secs) * 1000, false end
+    else
+        c.casting = function() return nil end
+    end
     c.fire(P.START, "player", "Cast-1", id)
 end
+
+-- The cast is over: the read says nothing is being cast.
+local function idle(c) c.casting = function() return nil end end
 
 tests["craft progress: seconds left, from one cast's length and how far into it"] = function(t)
     t.eq(P.Left(10, 3, 3, 0), 21)
@@ -69,12 +80,18 @@ tests["craft progress: a run counts each craft the game says succeeded, and says
     t.eq(api.Current().text, "Making Linen Bandage 0/10 (about 30 s)")
     c.advance(1, 1)
     t.eq(api.Current().text, "Making Linen Bandage 0/10 (about 29 s)", "one second into the cast")
-    for _ = 1, 3 do c.fire(P.DONE, "player", "Cast-1", BANDAGE) end
+    for _ = 1, 3 do
+        c.fire(P.DONE, "player", "Cast-1", BANDAGE)
+        cast(c, BANDAGE, 3)
+    end
     local view = api.Current()
     t.eq(view.done, 3); t.eq(view.total, 10); t.eq(view.made, 3); t.eq(view.all, 10)
     t.eq(view.text, "Making Linen Bandage 3/10 (about 21 s)")
     t.ok(told() >= 5, "each change is told on the bus")
-    for _ = 1, 7 do c.fire(P.DONE, "player", "Cast-1", BANDAGE) end
+    for _ = 1, 7 do
+        c.fire(P.DONE, "player", "Cast-1", BANDAGE)
+        cast(c, BANDAGE, 3)
+    end
     t.eq(api.Current().finished, true)
     t.eq(api.Current().text, "Made 10 Linen Bandage")
     c.fire(P.DONE, "player", "Cast-1", BANDAGE)
@@ -125,7 +142,9 @@ tests["craft progress: a run of two recipes goes on to the second, whose cast le
     api.Begin({ { id = 2657, name = "Copper Bar", count = 2 }, { id = 3304, name = "Tin Bar", count = 2 } })
     cast(c, 2657, 2)
     c.fire(P.DONE, "player", "Cast-1", 2657)
+    cast(c, 2657, 2)
     c.fire(P.DONE, "player", "Cast-1", 2657)
+    cast(c, 3304, nil)
     local view = api.Current()
     t.eq(view.name, "Tin Bar"); t.eq(view.at, 2); t.eq(view.rows, 2)
     t.eq(view.made, 2); t.eq(view.all, 4)
@@ -139,7 +158,7 @@ tests["craft progress: with no cast length from the client no time is said"] = f
     api.Begin({ { id = BANDAGE, name = "Linen Bandage", count = 4 } })
     cast(c, BANDAGE, nil)
     t.eq(api.Current().text, "Making Linen Bandage 0/4")
-    c.ownCastSeconds = nil
+    c.casting = nil
     c.fire(P.START, "player", "Cast-2", BANDAGE)
     t.eq(api.Current().text, "Making Linen Bandage 0/4", "a client with no such read")
 end
@@ -163,6 +182,86 @@ tests["craft progress: a client that cannot tell of the craft call still takes B
     t.eq(k.problems:count(), 0)
     t.eq(api.Begin({ { id = BANDAGE, name = "Linen Bandage", count = 2 } }), true)
     t.eq(ns.craftProgress ~= nil, true, "the addon's own is declared")
+end
+
+-- Zen-3's review of E-57 (lead section 664), as Flow's CB.Stalled
+-- (Modules/Crafting/CraftBar.lua:73-78, its watch :170-180): a run that
+-- goes quiet is over. Running out of reagents, closing the window or
+-- walking away fires no interrupt. Fails before: no P.Stalled, and the run
+-- says "Making" for ever.
+tests["craft progress: the stall rule, pure"] = function(t)
+    local view = { done = 3, total = 10, lastAt = 100 }
+    t.eq(P.Stalled(view, 102, false), false, "within the idle time")
+    t.eq(P.Stalled(view, 100 + P.IDLE + 0.1, false), true, "nothing made for longer: over")
+    t.eq(P.Stalled(view, 200, true), false, "a cast going: not over")
+    t.eq(P.Stalled(view, 105, false, 10), false, "its own idle time")
+    t.eq(P.Stalled({ done = 10, total = 10, lastAt = 100, finished = true }, 200, false), false, "finished")
+    t.eq(P.Stalled({ done = 3, total = 10, lastAt = 100, stopped = "x" }, 200, false), false, "stopped")
+    t.eq(P.Stalled({ done = 3, total = 10 }, 200, false), false, "no time kept: not said to be over")
+    t.eq(P.Stalled(view, nil, false), false, "no time now")
+    t.eq(P.Stalled(nil, 200, false), false)
+end
+
+tests["craft progress: a run with nothing cast for a while is over, without any interrupt"] = function(t)
+    local c, api = start()
+    api.Begin({ { id = BANDAGE, name = "Linen Bandage", count = 10 } })
+    cast(c, BANDAGE, 3)
+    c.advance(3, 3)
+    c.fire(P.DONE, "player", "Cast-1", BANDAGE)
+    idle(c)
+    c.advance(1, 2)
+    t.eq(api.Current().stopped, nil, "a moment between casts")
+    c.advance(P.IDLE + 1, 6)
+    t.eq(api.Current().stopped, "stalled", "out of reagents, the window closed: over")
+    t.eq(api.Current().text, "Stopped: Linen Bandage 1/10")
+end
+
+tests["craft progress: a long cast is no stall, while the game says it is casting"] = function(t)
+    local c, api = start()
+    api.Begin({ { id = BANDAGE, name = "Linen Bandage", count = 3 } })
+    cast(c, BANDAGE, 10)
+    c.advance(8, 16)
+    t.eq(api.Current().stopped, nil)
+end
+
+-- The low note: an interrupt whose spell the game does not name is not
+-- read as the run's; the stall rule ends the run instead.
+tests["craft progress: an interrupt that names no spell ends the run by the stall rule"] = function(t)
+    local c, api = start()
+    api.Begin({ { id = BANDAGE, name = "Linen Bandage", count = 4 } })
+    cast(c, BANDAGE, 3)
+    c.fire(P.BROKEN, "player", "Cast-1", nil)
+    idle(c)
+    t.eq(api.Current().stopped, nil, "not said to be ours")
+    c.advance(P.IDLE + 1, 6)
+    t.eq(api.Current().stopped, "stalled")
+end
+
+tests["craft progress: with no casting read a cast seen starting is waited for until its end"] = function(t)
+    local c, api = start()
+    api.Begin({ { id = BANDAGE, name = "Linen Bandage", count = 4 } })
+    c.casting = nil
+    c.fire(P.START, "player", "Cast-1", BANDAGE)
+    c.advance(P.IDLE + 1, 6)
+    t.eq(api.Current().stopped, nil, "its length not known: the run is not called over")
+    c.fire(P.DONE, "player", "Cast-1", BANDAGE)
+    c.advance(P.IDLE + 1, 6)
+    t.eq(api.Current().stopped, "stalled", "nothing started since: over")
+end
+
+-- Zen-3's review: the game's craft call must not replace a run going for
+-- the same recipe (one begun through Begin with several rows).
+tests["craft progress: the game's craft call for the recipe being made does not replace the run"] = function(t)
+    local c, api = start()
+    api.Begin({ { id = 2657, name = "Copper Bar", count = 2 }, { id = 3304, name = "Tin Bar", count = 2 } })
+    c.craftStarted(2657, 2, "Copper Bar")
+    t.eq(api.Current().rows, 2, "still the two-recipe run")
+    c.craftStarted(3304, 5, "Tin Bar")
+    t.eq(api.Current().rows, 1, "another recipe: a new run")
+    t.eq(api.Current().name, "Tin Bar")
+    api.Stop("click")
+    c.craftStarted(3304, 5, "Tin Bar")
+    t.eq(api.Current().stopped, nil, "a stopped run is no run going: the call starts one")
 end
 
 return tests
