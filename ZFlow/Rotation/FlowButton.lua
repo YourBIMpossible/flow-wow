@@ -28,8 +28,11 @@ local _, ns = ...
 -- Size and place come from the Flow import (Import/Stored.lua): the Flow
 -- button at layout.rotation.frame and scale, the self button at
 -- layout.buffButton.frame and scale, else beside the Flow button at
--- FB.SELF_DEFAULT_POINT, or docked under it (buffButton.dock, off by
--- default: lead section 340) at the dock scale.
+-- FB.SELF_DEFAULT_POINT, or docked under it (buffButton.dock) at the dock
+-- scale. Recovery R1 (lead section 564): docked by default, as legacy Flow
+-- (BB.DockWanted: docked unless taken off) and as Settings/Model.lua and
+-- Import/Stored.lua already read it. A saved choice wins; with none saved,
+-- a self button the player has given a place of its own stays there.
 --
 -- Lead section 340: three things on screen, each saying what it is in its
 -- tooltip. The rotation icon (UI/RotationIcon.lua) shows the next spell and
@@ -299,7 +302,18 @@ function FB.Declare(k)
         return roundSize(St.RotationScale(raw("layout")))
     end
 
+    -- The saved choice when there is one. With none: docked (the
+    -- default), unless the self button has a saved place of its own: the
+    -- player put it there while "apart" was the default, and moving an
+    -- undocked button wrote no dock value. Nothing is written here.
     local function docked()
+        local saved = nil
+        if store then
+            local ok, v = pcall(store.get, store, "account", "settings." .. FB.DOCK)
+            if ok and type(v) == "boolean" then saved = v end
+        end
+        if saved ~= nil then return saved end
+        if St.Point(setting(FB.SELF_LAYOUT)) then return false end
         return setting(FB.DOCK) == true
     end
 
@@ -367,10 +381,10 @@ function FB.Declare(k)
             if face and type(face.dim) == "function" then pcall(face.dim, mode) end
         end
 
-        -- Lead section 415: the empty buff button takes no mouse; holding
-        -- a buff it does. Changed only while the lock reads a plain false;
-        -- in a fight it stays as it was (what it holds cannot change then
-        -- either). The Flow button always takes the mouse (hover line).
+        -- Recovery R1 (lead section 564): the buff button takes the mouse
+        -- whether or not it holds a buff, so its tooltip shows on an empty
+        -- one too (legacy BuffButton.lua). Set only while the lock reads a
+        -- plain false. The Flow button always takes the mouse.
         local function mouse(on)
             if which ~= "self" or not face or type(face.mouse) ~= "function" then return end
             if lockdown() ~= false then return end
@@ -380,8 +394,9 @@ function FB.Declare(k)
         -- The icon of what it holds; the plain face with nothing held, or
         -- no icon read.
         -- Lead section 409 item 1: the self button holding nothing shows
-        -- the last buff it held, dimmed, never a "?"; having held none, it
-        -- draws nothing. Look only: the click still casts nothing.
+        -- the last buff it held, dimmed, never a "?". Recovery R1 (lead
+        -- section 564): having held none it still shows, its plain dark
+        -- face and its word. Look only: the click still casts nothing.
         local function icon(e)
             if not row then return end
             local tex = nil
@@ -390,14 +405,13 @@ function FB.Declare(k)
             -- Lead section 415: the Flow button too: the last spell dimmed,
             -- or, never having held one, its plain word "Flow"; a held
             -- spell with no icon read shows the word. Never a "?".
-            local none = "gone"
-            if which == "flow" then none = "word" end
+            local none = "word"
             if e == nil then
                 tex = u.lastTex
                 mode = "picture"
                 if tex == nil then mode = none end
             end
-            mouse(e ~= nil)
+            mouse(true)
             if tex == nil or type(row.icon) ~= "function" then
                 if mode == nil then mode = "word" end
                 plain(true)
@@ -469,7 +483,8 @@ function FB.Declare(k)
                 if okFace and type(got) == "table" and type(got.empty) == "function" then face = got end
             end
             plain(true)
-            if which == "self" then dim("gone"); mouse(false) else dim("word") end
+            dim("word")
+            mouse(true)
             local size = sizeOf()
             -- Lead section 409 item 3: the grip's yellow bar is drawn only
             -- while the mouse is over it or the button (quiet).
@@ -593,10 +608,10 @@ function FB.Declare(k)
             synonyms = { "buff", "self", "button", "buff button", "self buff" },
             help = "A button that holds a buff you are missing, cast on you when you click it. Seals, shouts and forms stay on the Flow button. Set outside fights only. It binds no key and presses nothing for you.",
         }, {
-            key = FB.DOCK, scope = "account", type = "bool", default = false,
+            key = FB.DOCK, scope = "account", type = "bool", default = true,
             label = FB.DOCK_LABEL, group = "combat",
             synonyms = { "dock", "buff button", "self", "under" },
-            help = "On, the self button stands under the Flow button. Off (the default), it stands apart, to the right of it. Moving the self button with its grip turns this off.",
+            help = "On (the default), the self button stands under the Flow button. Off, it stands apart, to the right of it. Moving the self button with its grip turns this off.",
         }, {
             key = FB.LAYOUT, scope = "account", type = "table", path = FB.PATH,
             label = "Flow button position", group = "combat", synonyms = { "flow", "button", "position", "move" },
