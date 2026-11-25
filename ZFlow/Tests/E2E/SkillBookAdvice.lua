@@ -101,9 +101,53 @@ tests["skill book advice e2e: below the best rank the card says keep it, and unt
     t.eq(newProblems(addon), 0, said(addon))
 end
 
-tests["skill book advice e2e: a skill not learned says keep it and learn it first"] = function(t)
-    local _, addon = boot({ Mining = { rank = 40, max = 75 } })
-    t.eq(text(addon), "Angler's Notes: Keep it: learn Fishing first")
+-- Lazy's review of 50d68597 (lead section 551), point 2: a skill that is
+-- not in the ranks read may be learned and only under a closed header, so
+-- "learn it first" would be a guess. No card until its rank is a number.
+tests["skill book advice e2e: a skill missing from the ranks read gets no card, not learn it first"] = function(t)
+    local c, addon = boot({ Mining = { rank = 40, max = 75 } })
+    t.eq(#cards(addon), 0, "no rank for Fishing: no card")
+    c.setSkillRanks({ Mining = { rank = 40, max = 75 }, Fishing = { max = 75 } })
+    c.advance(10, 40)
+    t.eq(#cards(addon), 0, "a rank that is not a number: no card")
+    c.setSkillRanks({ Mining = { rank = 40, max = 75 }, Fishing = { rank = 70, max = 75 } })
+    c.advance(10, 40)
+    t.eq(text(addon), "Angler's Notes: Use it now: Fishing is 70, the best moment for +5", "the rank is read: the card")
+    t.eq(newProblems(addon), 0, said(addon))
+end
+
+-- Same review, point 1: a book whose tooltip text is not loaded yet (no
+-- lines, or the game's own "Retrieving item information" line) is not
+-- called "not a skill book" for the rest of the session. It is asked again
+-- and gets its card once the text is there.
+local LATE = 9105
+local function lateBook(t, first)
+    local c, addon = boot({ Fishing = { rank = 70, max = 75 } }, { { item = ROCK, count = 1 } })
+    local info = {}
+    for id, row in pairs(INFO) do info[id] = row end
+    info[LATE] = { name = "Late Notes", quality = 1, sellPrice = 10 }
+    c.setItemInfo(info)
+    c.setItemLines(LATE, first)
+    c.setBagItems({ { item = LATE, count = 1 }, { item = ROCK, count = 1 } })
+    c.fire("BAG_UPDATE")
+    c.advance(1, 5)
+    t.eq(#cards(addon), 0, "its text is not there yet: no card")
+    c.fire("BAG_UPDATE")
+    c.advance(1, 5)
+    t.eq(#cards(addon), 0, "still no card")
+    c.setItemLines(LATE, { "Late Notes", "Use: Increases your Fishing skill by 5, up to a maximum of 75." })
+    c.fire("BAG_UPDATE")
+    c.advance(1, 5)
+    t.eq(text(addon), "Late Notes: Use it now: Fishing is 70, the best moment for +5", "the text loaded: the card")
+    t.eq(newProblems(addon), 0, said(addon))
+end
+
+tests["skill book advice e2e: a book with no tooltip lines yet gets its card once they load"] = function(t)
+    lateBook(t, {})
+end
+
+tests["skill book advice e2e: a book still retrieving its text gets its card once it loads"] = function(t)
+    lateBook(t, { "Retrieving item information" })
 end
 
 tests["skill book advice e2e: at the cap the card says it does nothing"] = function(t)
