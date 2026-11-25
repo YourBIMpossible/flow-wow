@@ -8,16 +8,23 @@
 # end do the same for ZFlow/.
 name: Checks
 
-# One remote verification path: a push of an integrated candidate to zflow or
-# main. Worker branches are verified locally by their author (the same
-# tools/*.ps1 steps below) and handed off by exact SHA; the lead integrates
-# them, verifies the batch locally, and pushes zflow once per candidate. There
-# is no pull_request or workflow_dispatch trigger, so no worker branch, PR or
-# hand-started run uses this workflow. A failed run is rerun (gh run rerun)
-# only for an infrastructure fault such as a failed apt install or runner loss.
+# Trigger contract. A full remote run starts only when the lead pushes a
+# finished integration candidate to zflow (or main). Nothing else starts one:
+# - worker branches and PRs: no branch, pull_request or workflow_dispatch
+#   trigger matches them, so their pushes launch nothing;
+# - intermediate integration: the lead merges READY SHAs on the integration
+#   branch zflow-recovery, which matches no trigger, and moves zflow only
+#   once per batched candidate, after all nine steps below pass locally on a
+#   machine with Lua 5.1 and luacheck (White);
+# - documentation-only pushes (Markdown, docs/): no step below reads them.
+# A failed run is rerun (gh run rerun) only for an infrastructure fault such
+# as a failed apt install or runner loss, never for a code failure.
 on:
   push:
     branches: [main, zflow]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
 
 permissions:
   contents: read

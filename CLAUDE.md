@@ -35,13 +35,17 @@ registry first, or add one.
   outside the game, on Lua 5.1 with fixtures. Only tests that touch nothing of the client can
   PASS there; the rest are SKIP. A FAIL, ERROR or SKIP-FAIL, a file that doesn't load and a
   global that is neither Flow's nor in `tools/offline/client-globals.txt` each fail it. CI
-  runs it, with `tools\lint.ps1` and `tools\check-structure.ps1`. On Z-Flow a worker runs
-  the same `tools\*.ps1` steps as `.github/workflows/checks.yml` locally and hands off READY
-  as branch + exact SHA + the commands run and their result; a step the machine can't run
-  (no Lua 5.1 or luacheck) is named as not run, never as passed. The lead integrates, runs
-  the set locally, and pushes zflow once per candidate: that push is the only GitHub
-  "Checks" run. Workers never start, rerun or trigger it (no `gh workflow run`, no PR run);
-  nobody reruns an unchanged commit except for an infrastructure fault. It is not a test in
+  runs it, with `tools\lint.ps1` and `tools\check-structure.ps1`. On Z-Flow a worker runs the checks relevant to its change
+  (lint on the changed files, the tests of the area it touched, structure and TOC when it adds
+  or moves files), not the whole suite on its branch unless there is a concrete reason, and
+  hands off READY as branch + exact SHA + the commands run and their result. READY means
+  implementation complete; a step the machine can't run (no Lua 5.1 or luacheck) is named
+  as not run, never as passed, so READY is never verification complete. The lead batches
+  related READY SHAs on the integration branch `zflow-recovery`, runs all nine
+  `checks.yml` steps once on that exact candidate on White (verification complete), and
+  only then pushes `zflow`: that one push is the only GitHub "Checks" run, and intermediate
+  merges never move `zflow`. Workers never start, rerun or trigger a run (no
+  `gh workflow run`, no PR run); nobody reruns an unchanged commit except for an infrastructure fault. It is not a test in
   the game and never stands in for one (`docs/TESTING.md`).
 - Add a test for every behaviour you change: `ns:Register("test", "area: what it checks", function(t) ... end)`
   in `Modules/Tests.lua`, using `t:ok(cond, msg)`, `t:eq(a, b, msg)`, `t:near(a, b, tol, msg)`.
