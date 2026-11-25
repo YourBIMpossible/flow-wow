@@ -465,16 +465,36 @@ function T.XpOf(mod)
     end
 end
 
+-- FLOW-PARITY A2-15: near steps first, the rule of legacy Flow's
+-- Modules/Nav/NearFirst.lua (F.Multiplier, :46-52): a stop up to NEAR_YARDS
+-- away counts as it is; beyond, it counts NEAR_SPAN yards for one more
+-- time, at most NEAR_MAX times. Flow's tuning, not a game fact. As in Flow
+-- (F.Applies, :36-43) it reweighs the XP order only: shortest first already
+-- goes by travel alone. Flow's extra weight for item-drop steps is left
+-- out: a stop here does not know whether its objective is a drop.
+T.NEAR_YARDS, T.NEAR_SPAN, T.NEAR_MAX = 300, 700, 3
+function T.NearMul(d)
+    if not finite(d) or d <= T.NEAR_YARDS then return 1 end
+    return math.min(T.NEAR_MAX, 1 + (d - T.NEAR_YARDS) / T.NEAR_SPAN)
+end
+
 -- Stops of quests worth the most XP first (a quest's stops keep their
 -- planned order); stops whose XP is not known, and town stops, after them
--- in their planned order.
-function T.SortXp(stops, xpOf)
+-- in their planned order. With here and size (yards) known, a stop's XP is
+-- divided by T.NearMul of its distance (A2-15).
+function T.SortXp(stops, xpOf, here, size)
+    local measure = type(here) == "table" and finite(here.x) and finite(here.y) and type(size) == "table"
+        and finite(size.w) and finite(size.h)
     local known, unknown = {}, {}
     for i, s in ipairs(type(stops) == "table" and stops or {}) do
         local xp
         if type(xpOf) == "function" and s.quest ~= nil then xp = xpOf(s.quest) end
-        if finite(xp) then known[#known + 1] = { i = i, xp = xp, s = s }
-        else unknown[#unknown + 1] = s end
+        if finite(xp) then
+            if measure then xp = xp / T.NearMul(yardsTo(s, here, size)) end
+            known[#known + 1] = { i = i, xp = xp, s = s }
+        else
+            unknown[#unknown + 1] = s
+        end
     end
     table.sort(known, function(a, b)
         if a.xp ~= b.xp then return a.xp > b.xp end
@@ -969,7 +989,9 @@ function T.Declare(k, diag)
             local okMod, mod = pcall(c.questieModule, "QuestXP")
             if not okMod then mod = nil end
             local nKnown
-            moved, nKnown = T.SortXp(r.stops, T.XpOf(mod))
+            local sizeNow
+            if known then sizeNow = { w = w, h = h } end
+            moved, nKnown = T.SortXp(r.stops, T.XpOf(mod), here, sizeNow)
             if nKnown == 0 then r.note = T.SORT_NO_XP end
         elseif T.ModeFlags(mode()).hub and known then
             moved = T.HubFirst(r.stops, here, { w = w, h = h }, T.HUB_YARDS, nil)
