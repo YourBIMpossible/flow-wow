@@ -98,28 +98,27 @@ T["client picture: place, show, alpha and the texture land on the frame"] = func
     t.eq(last(tex, "SetTexture")[1], 134400)
     t.eq(h.setTexture(nil), false, "none: cleared, and said so")
     t.eq(last(f, "EnableMouse")[1], false, "still no mouse after all of it")
+    -- The path with both its separators (a lost backslash draws nothing).
+    local sep = string.char(92)
+    t.eq(last(rawget(f, "made")[2], "SetTexture")[1], "Interface" .. sep .. "CharacterFrame" .. sep .. "TempPortraitAlphaMask")
 end
 
-T["client picture: round with a thin ring when the client has masks; the ring takes a colour"] = function(t)
-    local h, f = picture()
+T["client picture: round when the client has masks"] = function(t)
+    local _, f = picture()
     local made = rawget(f, "made")
     local kinds = {}
     for i, o in ipairs(made) do kinds[i] = o.kind end
-    t.eq(kinds, { "CreateTexture", "CreateMaskTexture", "CreateTexture" }, "the picture, its mask, the ring")
+    t.eq(kinds, { "CreateTexture", "CreateMaskTexture" }, "the picture and its mask")
     t.eq(last(made[1], "AddMaskTexture")[1], made[2], "the mask is on the picture")
-    t.eq(h.ring(0.2, 0.8, 0.4), true)
-    local col = last(made[3], "SetVertexColor")
-    t.eq({ col[1], col[2], col[3] }, { 0.2, 0.8, 0.4 })
-    t.eq(h.ring("x"), false, "not a colour: left as it is")
+    t.eq(last(made[2], "SetAllPoints")[1], made[1], "and exactly over it")
 end
 
-T["client picture: no masks on this client: square, no ring, no error"] = function(t)
+T["client picture: no masks on this client: square, no error"] = function(t)
     local h, f = picture({ CreateMaskTexture = true })
     t.ok(type(h) == "table", "still a handle")
     local made = rawget(f, "made")
     t.eq(#made, 1, "only the picture")
     t.eq(#called(made[1], "AddMaskTexture"), 0)
-    t.eq(h.ring(1, 1, 1), false, "no ring to colour")
     t.eq(h.setTexture(134400), true)
 end
 

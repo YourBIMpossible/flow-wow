@@ -3084,6 +3084,76 @@ function ns.make.client(env)
         return h
     end
 
+    -- One picture that only shows (B-28: the travel spell's or the
+    -- hearthstone's picture in the quest arrow's place), or nil when the
+    -- client cannot make a frame. First guess, not seen in game.
+    --   spec = { name = global frame name or nil, size = n (the frame; the
+    --            quest arrow's, so one point places both alike), art = n
+    --            (the picture drawn in its middle), level = frame level }
+    --   h.setTexture(value) -> true when the client took a value; nil
+    --                   clears the picture and answers false.
+    --   h.place(point), h.show(on), h.alpha(n): as the arrow's.
+    -- It must not look clickable: it takes no mouse, runs no script, is
+    -- not dragged and holds no action. Round where the client has mask
+    -- textures (CreateMaskTexture, AddMaskTexture; docs, warcraft.wiki.gg:
+    -- both on retail and 1.14+, not seen on 16001), else square with the
+    -- icon's border cut off. A new picture is hidden and has no place.
+    function c.picture(spec)
+        spec = type(spec) == "table" and spec or {}
+        local parent = env.UIParent
+        local ok, f = call(env.CreateFrame, "Frame", spec.name, parent)
+        if not ok or f == nil then return nil end
+        local h = {}
+        local size = tonumber(spec.size) or 56
+        local art = tonumber(spec.art) or 38
+        local level = tonumber(spec.level) or 5
+
+        method(f, "Hide")
+        if not method(f, "SetSize", size, size) then
+            method(f, "SetWidth", size)
+            method(f, "SetHeight", size)
+        end
+        method(f, "SetFrameStrata", "HIGH")
+        method(f, "SetFrameLevel", level)
+        method(f, "EnableMouse", false)
+
+        local okTex, tex = method(f, "CreateTexture", nil, "ARTWORK")
+        if not okTex then tex = nil end
+        if tex ~= nil then
+            if not method(tex, "SetSize", art, art) then
+                method(tex, "SetWidth", art)
+                method(tex, "SetHeight", art)
+            end
+            method(tex, "SetPoint", "CENTER", f, "CENTER", 0, 0)
+            method(tex, "SetTexCoord", 0.07, 0.93, 0.07, 0.93)
+            local okMask, mask = method(f, "CreateMaskTexture")
+            if okMask and mask ~= nil then
+                method(mask, "SetTexture", "Interface\\CharacterFrame\\TempPortraitAlphaMask",
+                    "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+                method(mask, "SetAllPoints", tex)
+                method(tex, "AddMaskTexture", mask)
+            end
+        end
+
+        function h.setTexture(value)
+            if tex == nil then return false end
+            local okSet = method(tex, "SetTexture", value)
+            return okSet and value ~= nil
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
+        end
+        function h.show(on)
+            method(f, on and "Show" or "Hide")
+        end
+        function h.alpha(n)
+            if type(n) == "number" then method(f, "SetAlpha", n) end
+        end
+        return h
+    end
+
     -- Arrow frames, by handle: attach() needs the other arrow's frame.
     local arrowFrames = setmetatable({}, { __mode = "k" })
 

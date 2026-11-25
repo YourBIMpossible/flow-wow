@@ -686,6 +686,30 @@ function ns.make.fakeClient(opts)
     end
     function c.spellTexture(id) return s.spellTextures and s.spellTextures[id] or nil end
 
+    -- Every picture made (B-28) is in c.pictures, in order: .spec, .shown,
+    -- .texture, .point, .faded (alpha). It takes no mouse: the fake gives
+    -- the test nothing to click or drag. setTexture(nil) clears and
+    -- answers false, as on the client.
+    c.pictures = {}
+    function c.picture(spec)
+        if s.noFrames then return nil end
+        local h = { spec = spec, shown = false }
+        function h.setTexture(tex)
+            h.texture = tex
+            return tex ~= nil
+        end
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            h.point = { point[1], point[2], point[3], point[4] }
+        end
+        function h.show(on) h.shown = on and true or false end
+        function h.alpha(n)
+            if type(n) == "number" then h.faded = n end
+        end
+        c.pictures[#c.pictures + 1] = h
+        return h
+    end
+
     -- Every arrow made is in c.arrows, in order. A handle keeps what it
     -- was last told: point or attached (the other handle), shown, lookIs,
     -- drawn (the last draw table), scaled, faded (alpha), under (behind),
