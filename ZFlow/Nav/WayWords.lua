@@ -227,12 +227,13 @@ function WW.Declare(k, diag)
             local _, line = api.SetFromText(text)
             if type(line) == "string" and type(c.print) == "function" then
                 -- The add-on's title read inside the pcall too (Lazy's
-                -- CHANGES-1): a missing id or title never raises here.
+                -- CHANGES-1): a missing id or title never raises here, and
+                -- the line is then said with no prefix (CHANGES-2).
                 pcall(function()
                     local id = k.id or ns.id
-                    local title = "Z-Flow"
-                    if type(id) == "table" and type(id.title) == "string" then title = id.title end
-                    c.print(title .. ": " .. line)
+                    local said = line
+                    if type(id) == "table" and type(id.title) == "string" then said = id.title .. ": " .. line end
+                    c.print(said)
                 end)
             end
         end)
