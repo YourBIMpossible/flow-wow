@@ -30,6 +30,8 @@ local KIND = {
              "markBagKinds",
              -- N59: the info bar, and its data broker feed where the library is loaded.
              "infoBar", "broker",
+             -- B-28: the travel picture by the quest arrow (UI/TravelPicture.lua).
+             "picture",
              -- N57: the key-capture overlay on the settings page.
              "keyCapture",
              -- F7 (section 447 item 6): route and waypoint lines on the world map.
