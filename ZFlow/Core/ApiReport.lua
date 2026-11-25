@@ -2,7 +2,7 @@ local _, ns = ...
 
 -- The client check report (FLOW-PARITY F-03; lead sections 580 item 7, 850):
 -- what the "api" word prints, as Flow's /flow api (Core.lua:330-421) says
--- which game functions this client has. Read only, and only from what the
+-- which client names this client has. Read only, and only from what the
 -- diagnostics already save: diag.names (Diag.Save: each name in Diag.NAMES
 -- and its type, with the build) and diag.reads (Diag.SaveReads: the newest
 -- run of Diag.Reads). Nothing here calls the game.
@@ -17,12 +17,13 @@ ns.ApiReport = AR
 AR.MISSING_MAX = 12
 AR.NONE = "No client check is saved yet. It is taken when you log in or reload: /reload, then ask again."
 AR.BUILD = "Client check of build %s."
-AR.COUNT = "%d of %d game functions this add-on asks about are there."
+AR.COUNT = "%d of %d client names this add-on asks about are there."
 AR.ALL_THERE = "Every one of them is there."
 AR.MISSING = "Not there: "
 AR.MORE = "(%d more not shown)"
 AR.SECRET_YES = "This client hides some values from add-ons (secret values)."
 AR.SECRET_NO = "This client does not hide values from add-ons."
+AR.SECRET_UNKNOWN = "Whether this client hides values from add-ons is not known."
 AR.FAILED = "Reads that failed: "
 AR.READS_OK = "Every read the check tried answered."
 AR.NO_READS = "No reads saved yet."
@@ -66,10 +67,14 @@ function AR.Lines(diag)
         lines[#lines + 1] = AR.NO_READS
         return lines
     end
+    -- F-03 CHANGES-1 (lead section 856): "no" only when the client said it
+    -- has no issecretvalue; any other answer, or none, is not known (611).
     if reads.secretFn == "function" then
         lines[#lines + 1] = AR.SECRET_YES
-    else
+    elseif reads.secretFn == "nil" then
         lines[#lines + 1] = AR.SECRET_NO
+    else
+        lines[#lines + 1] = AR.SECRET_UNKNOWN
     end
     local failed = {}
     for key, v in pairs(reads) do

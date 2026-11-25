@@ -49,6 +49,19 @@ tests["api report F-03: nothing saved yet says so; a long missing list is cut"] 
     t.ok(has(lines, AR().NO_READS), "no reads saved")
 end
 
+-- F-03 CHANGES-1 (lead section 856): "no" only when the check read
+-- issecretvalue as "nil"; a read with no secretFn says it is not known.
+tests["api report F-03: hidden values are no only when read as missing, else not known"] = function(t)
+    if type(AR()) ~= "table" then return t.ok(false, "no ApiReport") end
+    local function with(reads)
+        return AR().Lines({ names = DIAG.names, reads = { { at = 1, reads = reads } } })
+    end
+    t.ok(has(with({ secretFn = "nil" }), AR().SECRET_NO), "read as missing")
+    local unknown = with({ gcd = {} })
+    t.ok(has(unknown, AR().SECRET_UNKNOWN), table.concat(unknown, " / "))
+    t.ok(not has(unknown, AR().SECRET_NO), "never no without the read")
+end
+
 tests["api report F-03: Run reads the account's saved diagnostics"] = function(t)
     if type(AR()) ~= "table" then return t.ok(false, "no ApiReport") end
     local c = ns.make.fakeClient()
