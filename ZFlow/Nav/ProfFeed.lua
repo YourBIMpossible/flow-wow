@@ -80,6 +80,11 @@ local _, ns = ...
 --   vendor, repair vendor, flight master, innkeeper, banker or auctioneer
 --   (N.ProfPlace.Service) from the same one reader and pass, for N.Nearest
 --   (Nav/ServiceNearest.lua, parity rows A2-10 and A1-41).
+--   List(kind, client) -> { { name, map, x, y } }, or nil and true while
+--   Questie's list is still being gone through (nil alone: no Questie):
+--   every NPC of that service kind the player's faction can use, on any
+--   map (N.ProfPlace.List), from the same one reader and pass, for
+--   Nav/FlightUnknown.lua (parity row B-08). The ask reads nothing itself.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
@@ -575,6 +580,23 @@ function F.Declare(k, diag)
         return to
     end
 
+    -- Every one of Questie's NPCs of a service kind the player's faction
+    -- can use (N.ProfPlace.List), for Nav/FlightUnknown.lua: the kept
+    -- answer of the one pass, or nil, and true while it is still on its
+    -- way. client as for service. The ask reads nothing of Questie.
+    local function list(kind, client)
+        local PP = N.ProfPlace
+        if not ctx or (client ~= nil and client ~= ctx.client) then return nil end
+        if type(PP) ~= "table" or type(PP.List) ~= "function" then return nil end
+        if type(PP.SERVICES) ~= "table" or PP.SERVICES[kind] ~= true then return nil end
+        if questie == nil and type(PP.Questie) == "function" then questie = PP.Questie() end
+        if type(questie) ~= "table" then return nil end
+        local out = PP.List(kind, call(questie.places, ctx.client), ask("faction"))
+        if out then return out end
+        if call(questie.waiting, ctx.client) == true then return nil, true end
+        return nil
+    end
+
     function api.result()
         if not ctx then return nil end
         local zone = ask("zone")
@@ -664,7 +686,7 @@ function F.Declare(k, diag)
                          if type(step) ~= "table" then return nil end
                          return place(step, prof, true)
                      end,
-                     Service = service },
+                     Service = service, List = list },
         ticks = {
             { every = F.PIN_EVERY, when = "always", run = function() api.pin() end },
             -- Lead section 564: the Questie read is spread over frames and

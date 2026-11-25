@@ -157,16 +157,12 @@ end
 T["flight unknown: masters are put in the world by their map's corners, one not placed is left out"] = function(t)
     local FU = parts(t, ns)
     if not FU then return end
-    local asked = {}
     local placed, left = FU.Placed({
         { name = "Near Wing", map = MAP, x = 0.2, y = 0.5 },
         { name = "Next Wing", map = NEXT_MAP, x = 0.3, y = 0.5 },
         { name = "Lost Wing", map = LOST_MAP, x = 0.3, y = 0.5 },
         { name = "Carrier", map = MAP, x = 0.4, y = 0.5 },
-    }, function(map)
-        asked[map] = (asked[map] or 0) + 1
-        return CORNERS[map]
-    end, function(name) return name == "Carrier" end)
+    }, function(map) return CORNERS[map] end, function(name) return name == "Carrier" end)
     t.eq(names(placed), { "Near Wing", "Next Wing" }, "the two the world places, not the one that carries you itself")
     t.eq(placed[1] and { placed[1].cont, placed[1].wx, placed[1].wy }, { 1, 200, 250 })
     t.eq(placed[2] and { placed[2].cont, placed[2].wx, placed[2].wy }, { 1, 1300, 250 })
