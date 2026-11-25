@@ -257,8 +257,10 @@ local pack = {
     },
 
     -- One damage role (D2: "Marksmanship", a first guess at the name).
+    -- trees: the talent tree names the game gives (GetTalentTabInfo), as in
+    -- this pack's talentBuilds trees list below.
     roles = {
-        dps = { name = "Marksmanship", evidence = GUESS },
+        dps = { name = "Marksmanship", evidence = GUESS, trees = { "Beast Mastery", "Marksmanship", "Survival" } },
     },
 
     -- G31: the spec recommended while levelling alone, and why. Written for

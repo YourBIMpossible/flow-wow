@@ -239,8 +239,10 @@ local pack = {
 
     -- One role: a mage deals damage. A mage has no heal or tank spec in this
     -- game, so there is no heal or tank row.
+    -- trees: the talent tree names the game gives (GetTalentTabInfo), as in
+    -- this pack's talentBuilds trees list below.
     roles = {
-        dps = { name = "Frost", evidence = GUESS },
+        dps = { name = "Frost", evidence = GUESS, trees = { "Arcane", "Fire", "Frost" } },
     },
 
     -- G31: the spec recommended while levelling alone, and why. Written for

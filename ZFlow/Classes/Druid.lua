@@ -330,10 +330,14 @@ local pack = {
             .. "the Cat Form rule is an authored model with its own note. No guide, database or other addon used.",
     },
 
+    -- trees: the talent tree names the game gives (GetTalentTabInfo), as in
+    -- this pack's talentBuilds trees list below.
+    -- Flow b657e6e5 Classes/Druid/Data.lua:108 lists the same. Feral Combat
+    -- is in no role: tank or damage by gear and form.
     roles = {
-        dps  = { name = "Feral (Cat)", evidence = GUESS },
-        heal = { name = "Restoration", evidence = GUESS },
-        tank = { name = "Feral (Bear)", evidence = GUESS },
+        dps  = { name = "Feral (Cat)", evidence = GUESS, trees = { "Balance" } },
+        heal = { name = "Restoration", evidence = GUESS, trees = { "Restoration" } },
+        tank = { name = "Feral (Bear)", evidence = GUESS, trees = {} },
     },
 
     -- G31: the spec recommended while levelling alone, and why. Written for
