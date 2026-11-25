@@ -113,6 +113,10 @@ tests["forget: facts reset clears the first levels and keeps the trainer lines"]
         first = { WARRIOR = { Charge = 4, Rend = 6 } }, firstAt = { WARRIOR = { Charge = 1 } } } } })
     run(c, "facts")
     t.ok(c.saved(ns.id.accountDB).learned.facts.first.WARRIOR.Charge == 4, "the bare word keeps them")
+    -- Lead section 814 (Lazy CHANGES-1): the bare word prints only the facts,
+    -- as before; the reset is named in its help line instead.
+    t.eq(said(c, "reset"), nil, "no hint line under the facts")
+    t.ok(tostring(ns.Facts.HELP):find("facts reset", 1, true) ~= nil, "the help names facts reset")
     run(c, "facts reset")
     t.ok(said(c, "2") ~= nil, "says how many")
     local f = c.saved(ns.id.accountDB).learned.facts
