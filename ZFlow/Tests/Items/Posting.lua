@@ -111,7 +111,7 @@ tests["posting: the lines say the ask, the seen price and its age, the vendor an
     t.eq(lines, {
         "T Auctions: 3 thing(s) worth the auction house (from prices in your own searches)",
         "20 x Linen Cloth: ask 2s each (seen 3s, 1 h ago; a vendor pays 13c; about +35.4s over vendoring, the deposit not counted)",
-        "5 x Silk Cloth: ask 3s each (seen 4s, 43 min ago; a vendor pays 1.5s; about +6s 75c over vendoring, the deposit not counted)",
+        "5 x Silk Cloth: ask 3s each (seen 4s, 43 min ago; a vendor pays 1.5s; about +6.75s over vendoring, the deposit not counted)",
         "10 x Light Leather: ask 1s each (seen 1.2s, 1 h ago; a vendor pays 15c; about +8s over vendoring, the deposit not counted)",
         "Posting is yours, in the auction window: T posts nothing.",
     })

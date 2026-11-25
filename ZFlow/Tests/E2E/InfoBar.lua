@@ -167,7 +167,7 @@ tests["info bar: a reload keeps the place, size, layout, look and metrics"] = fu
     local b = bar(c2)
     t.ok(b ~= nil and b.shown, "shown after the reload")
     if not b then return end
-    t.eq(b.text, "XP 45%\n1g 23s 45c")
+    t.eq(b.text, "XP 45%\n1.23g")
     t.eq(b.point, { "TOP", "TOP", 10, -40 })
     t.eq({ b.width, b.height }, { 180, 50 })
     t.eq(b.fontSize, 16)
