@@ -551,5 +551,12 @@ KIND.show[#KIND.show + 1] = "inputBox"
 -- Hide or show a tracker frame, only on the player's own setting.
 KIND.act[#KIND.act + 1] = "hideGameTracker"
 KIND.act[#KIND.act + 1] = "hideQuestieTracker"
+KIND.act[#KIND.act + 1] = "showQuestWatch"
+KIND.act[#KIND.act + 1] = "showQuestieTracker"
+-- F-28 (lead sections 740 and 768): the queue read and the one accept.
+READS.queued = false
+KIND.act[#KIND.act + 1] = "acceptGroup"
+-- D-26 (lead sections 746 and 753): each press of the rotation key.
+KIND.listen[#KIND.listen + 1] = "onKeyPress"
 
 return tests
