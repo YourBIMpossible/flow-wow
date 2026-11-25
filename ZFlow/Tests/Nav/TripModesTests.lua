@@ -177,4 +177,16 @@ tests["quest XP: a stop's line says its XP when known, nothing when not"] = func
     t.ok(lines[3]:find("XP", 1, true) == nil, lines[3])
 end
 
+-- Lead section 713 (Lazy's review of f288bcbd): a Settings row's saved place
+-- must start with settings. or layout. (Core/Settings.lua), or the row is
+-- refused at load. The route word and the store watch use the same place.
+tests["route modes: the three saved places are under settings."] = function(t)
+    for _, path in ipairs({ T().MODE_PATH, T().SORT_PATH, T().SHOWN_PATH }) do
+        t.eq(tostring(path):sub(1, 9), "settings.", tostring(path))
+    end
+    t.eq(T().MODE_PATH, "settings." .. T().MODE_KEY, "the row's own default place")
+    t.eq(T().SORT_PATH, "settings." .. T().SORT_KEY)
+    t.eq(T().SHOWN_PATH, "settings." .. T().SHOWN_KEY)
+end
+
 return tests
