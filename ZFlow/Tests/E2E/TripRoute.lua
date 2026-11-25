@@ -374,11 +374,11 @@ tests["trip route words: mode quests leaves out pick-ups and town stops, and is 
     c.slashes[ns.id.slash]("route mode quests")
     c.advance(1, 5)
     t.ok(said(c, ns.Nav.TripRoute.MODE_SAID.quests) ~= nil, "the mode is said")
-    t.eq(addon.store:get("account", ns.Nav.TripRoute.MODE_PATH), "quests", "and kept")
+    t.eq(addon.store:get("account", ns.Nav.TripRoute.MODE_PATH), "My quests only", "and kept, in the words Settings shows")
     t.eq(said(c, "sell at"), nil, "no town stop on quests only")
     c.slashes[ns.id.slash]("route mode optimal")
     c.advance(1, 5)
-    t.eq(addon.store:get("account", ns.Nav.TripRoute.MODE_PATH), "optimal")
+    t.eq(addon.store:get("account", ns.Nav.TripRoute.MODE_PATH), "Today's route")
     t.ok(said(c, "Bags full: sell at Bread Seller") ~= nil, "optimal: the sell stop again")
 end
 
@@ -396,7 +396,7 @@ tests["trip route words: steps cuts the list and says how many more; all clears 
     local c, addon = boot()
     c.slashes[ns.id.slash]("route")
     c.slashes[ns.id.slash]("route steps 1")
-    t.eq(addon.store:get("account", ns.Nav.TripRoute.SHOWN_PATH), 1)
+    t.eq(addon.store:get("account", ns.Nav.TripRoute.SHOWN_PATH), "1")
     t.ok(said(c, "more stops.") ~= nil, "the rest are counted")
     c.printed = {}
     c.slashes[ns.id.slash]("route steps all")
@@ -409,7 +409,7 @@ tests["trip route words: sort xp puts the quest worth the most XP first, from Qu
     c.setQuestieModule("QuestXP", xpModule({ [401] = 100, [402] = 900 }))
     c.slashes[ns.id.slash]("route sort xp")
     c.advance(1, 5)
-    t.eq(addon.store:get("account", ns.Nav.TripRoute.SORT_PATH), "xp")
+    t.eq(addon.store:get("account", ns.Nav.TripRoute.SORT_PATH), "Most XP first")
     t.eq(first(c), "Herbs", "900 XP first, though it is the farthest")
     c.slashes[ns.id.slash]("route sort distance")
     c.advance(1, 5)

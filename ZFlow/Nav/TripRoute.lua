@@ -356,6 +356,18 @@ end
 -- mode only sets the switches this route already has.
 T.MODES = { "quests", "optimal", "complete" }
 T.MODE_PATH = "nav.routeMode"     -- account, the word's choice
+-- Lead section 651 (Muse's MUSE-TO-WHITE-ROUTE-MODES.md): the same choice
+-- as a Settings row and in the route menu. The Settings kit shows a choice
+-- by its saved value, so the saved value is the words the player reads;
+-- T.ModeOf turns them (or the typed word) back into the mode.
+T.MODE_KEY = "nav.routeMode"
+T.MODE_LABELS = { quests = "My quests only", optimal = "Today's route", complete = "Everything" }
+function T.ModeOf(v)
+    for _, m in ipairs(T.MODES) do
+        if v == m or v == T.MODE_LABELS[m] then return m end
+    end
+    return "optimal"
+end
 T.MODE_HOW = "Pick one with the route word: mode quests, mode optimal or mode complete."
 T.MORE = "... and %d more stops."
 T.MODE_SAID = {
@@ -436,8 +448,11 @@ T.SORT_SAID = {
 }
 T.SORT_HOW = "Pick one with the route word: sort xp or sort distance."
 T.SORT_NO_XP = "Questie gives no XP for these quests, so the route stays shortest first."
+T.SORT_KEY = "nav.routeSort"
+T.SORTS = { "distance", "xp" }
+T.SORT_LABELS = { distance = "Shortest first", xp = "Most XP first" }
 function T.SortOf(v)
-    if v == "xp" then return "xp" end
+    if v == "xp" or v == T.SORT_LABELS.xp then return "xp" end
     return "distance"
 end
 
@@ -474,6 +489,9 @@ end
 -- FLOW-PARITY A1-29: how many steps show. The first n of the route (nil:
 -- all) and how many more there are.
 T.SHOWN_PATH = "nav.routeShown"   -- account, the word's choice
+T.SHOWN_KEY = "nav.routeShown"
+T.SHOWN_ALL = "All"
+T.SHOWN_CHOICES = { "5", "10", "15", "20", T.SHOWN_ALL }
 function T.Shown(route, n)
     if type(route) ~= "table" or type(route.stops) ~= "table" then return nil end
     local out = {}
@@ -747,7 +765,7 @@ function T.Declare(k, diag)
         local st = ctx and ctx.store
         if type(st) ~= "table" or type(st.get) ~= "function" then return "optimal" end
         local ok, v = pcall(st.get, st, "account", T.MODE_PATH)
-        if ok and (v == "quests" or v == "complete") then return v end
+        if ok then return T.ModeOf(v) end
         return "optimal"
     end
 
@@ -763,7 +781,10 @@ function T.Declare(k, diag)
         local st = ctx and ctx.store
         if type(st) ~= "table" or type(st.get) ~= "function" then return nil end
         local ok, v = pcall(st.get, st, "account", T.SHOWN_PATH)
-        if ok and finite(v) then return v end
+        -- A number as text ("5", the Settings list; the word's own count too).
+        local n
+        if ok then n = tonumber(v) end
+        if finite(n) and n >= 1 then return n end
         return nil
     end
 
@@ -1208,7 +1229,7 @@ function T.Declare(k, diag)
                 say({ T.MODE_SAID[mode()], T.MODE_HOW })
                 return
             end
-            keep(T.MODE_PATH, arg)
+            keep(T.MODE_PATH, T.MODE_LABELS[arg])
             say({ T.MODE_SAID[arg] })
             api.Plan()
             say(api.Lines() or { T.DONE })
@@ -1219,7 +1240,7 @@ function T.Declare(k, diag)
                 say({ T.SORT_SAID[sortBy()], T.SORT_HOW })
                 return
             end
-            keep(T.SORT_PATH, arg)
+            keep(T.SORT_PATH, T.SORT_LABELS[arg])
             say({ T.SORT_SAID[arg] })
             local r = api.Plan()
             if r and r.note == T.SORT_NO_XP then say({ T.SORT_NO_XP }) end
@@ -1229,7 +1250,7 @@ function T.Declare(k, diag)
         if word == "steps" then
             local n = tonumber(arg)
             if n and n >= 1 then
-                keep(T.SHOWN_PATH, math.floor(n))
+                keep(T.SHOWN_PATH, tostring(math.floor(n)))
             else
                 keep(T.SHOWN_PATH, nil)
             end
@@ -1288,13 +1309,58 @@ function T.Declare(k, diag)
         help = "Acts when you plan a quest route with the route word: quests you can take now whose giver stands on this map (from Questie) are added as stops when on the way, else listed as skipped. Nothing is accepted for you.",
         synonyms = { "route", "pick", "pickup", "giver", "new", "quest" } })
 
+    -- Lead section 651: Muse's three rows, under "The way there".
+    local modeChoices, sortChoices = {}, {}
+    for i, m in ipairs(T.MODES) do modeChoices[i] = T.MODE_LABELS[m] end
+    for i, s in ipairs(T.SORTS) do sortChoices[i] = T.SORT_LABELS[s] end
+    k:Setting({ key = T.MODE_KEY, scope = "account", type = "choice", choices = modeChoices,
+        default = T.MODE_LABELS.optimal, path = T.MODE_PATH,
+        label = "What the route includes", group = "travel.route",
+        help = "My quests only: only the quests in your log. No pick-ups, no town stops, no hub tour."
+            .. " Today's route: today's route, with nearby turn-ins and pick-ups first."
+            .. " Everything: today's route, plus pick-ups far below your level.",
+        synonyms = { "route", "mode", "includes", "quests", "everything", "pick" } })
+    k:Setting({ key = T.SORT_KEY, scope = "account", type = "choice", choices = sortChoices,
+        default = T.SORT_LABELS.distance, path = T.SORT_PATH,
+        label = "Order the route by", group = "travel.route",
+        help = "Shortest first: the nearest stops first, so you walk the least."
+            .. " Most XP first: the quests worth the most XP first, from Questie. The rest by distance.",
+        synonyms = { "route", "order", "sort", "xp", "experience", "distance", "shortest" } })
+    k:Setting({ key = T.SHOWN_KEY, scope = "account", type = "choice", choices = T.SHOWN_CHOICES,
+        default = T.SHOWN_ALL, path = T.SHOWN_PATH,
+        label = "How many stops to show", group = "travel.route",
+        help = "The route lists this many stops, then says how many more there are.",
+        synonyms = { "route", "stops", "steps", "count", "list", "many" } })
+
+    -- Section 651: a mode or sort changed anywhere (Settings, the route
+    -- menu, the word) plans the current quest route again at once. With no
+    -- route yet the choice waits for the next plan.
+    local cancelWatch = {}
+    local function replan()
+        if route and route.kind == "quests" then
+            local ok, err = pcall(api.Plan)
+            if not ok then k.problems:add(T.NAME, "replan", tostring(err)) end
+        end
+    end
+
     k:Module({
         name = T.NAME,
         needs = { "client", "store", "settings" },
         provides = { Step = api.Step, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
                      Lines = api.Lines, Current = api.Current, View = api.View },
-        start = function(c) ctx = c end,
-        stop = function() route, at = nil, 1 end,
+        start = function(c)
+            ctx = c
+            if type(c.store) == "table" and type(c.store.watch) == "function" then
+                for _, path in ipairs({ T.MODE_PATH, T.SORT_PATH }) do
+                    cancelWatch[#cancelWatch + 1] = c.store:watch("account", path, replan)
+                end
+            end
+        end,
+        stop = function()
+            for _, cancel in ipairs(cancelWatch) do pcall(cancel) end
+            cancelWatch = {}
+            route, at = nil, 1
+        end,
     })
     return api
 end
