@@ -213,6 +213,8 @@ return {
         "UI/Rows.lua",
         "UI/Intro.lua",
         "UI/LoginIntro.lua",
+        -- F-new-3: the short, still login intro rule (data only; the arrow draws it).
+        "UI/IntroStill.lua",
         "UI/WindowButtons.lua",
         "Nav/ArrowMenuRows.lua",
         "UI/ArrowMenu.lua",

@@ -72,6 +72,11 @@ R.ROWS = {
       label = "Show the advisor panel",
       help = ((ns.Advisor or {}).APPEARS or "The panel appears only while there is a prompt for you.")
           .. " Off hides the panel at once; its prompts are kept and show again when it is back on." },
+    -- F-new-3: less motion at login (UI/IntroStill.lua). Off by default, as in Flow.
+    { key = "splash.short", scope = "account", type = "bool", default = false, group = "general.windows",
+      synonyms = { "intro", "motion", "animation", "login", "spin", "still" },
+      label = "Keep the login intro brief and still",
+      help = "After logging in or reloading, the title appears without anything turning and is gone in under two seconds." },
 }
 
 -- Declares each row on kernel k that k does not hold yet. Returns how many.
