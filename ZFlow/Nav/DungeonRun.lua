@@ -15,7 +15,7 @@ local _, ns = ...
 --     turned off), "plan" (the run is planned again) or nil
 --   DR.Done(total, left) -> done             planned steps less those left
 --   DR.ModeState(state, routeOn, extra) -> DungeonMode.Items' state | nil
--- Module "dungeonRun" provides Prepared, SetPlanner, Act, Line, Items,
+-- Module "dungeonRun" provides Prepared, SetPlanner, SetCounter, Act, Line, Items,
 -- PrepOn, State. Not tested in game.
 local DR = {}
 ns.DungeonRun = DR
@@ -63,7 +63,7 @@ end
 
 function DR.Declare(k)
     local api = {}
-    local ctx, planner
+    local ctx, planner, counter
 
     local function store() return ctx and ctx.store or k.store end
 
@@ -99,14 +99,20 @@ function DR.Declare(k)
 
     -- Called by "Plan the run" once the run is on the route.
     function api.Prepared(key, name, wing, total)
-        local was = load()
+        -- The get-ready choice is kept as it was (on unless turned off).
         save({ key = key, name = tostring(name), wing = wing, only = true, total = total,
-               prep = not was or was.prep ~= false })
+               prep = api.PrepOn() })
     end
 
     -- The window's planner: fn(key, wing, prep) -> total | nil.
     function api.SetPlanner(fn)
         if type(fn) == "function" then planner = fn end
+    end
+
+    -- The window's counts: fn(key) -> { on, missing, inside } from the
+    -- dungeon pane (Questie and the log), for the menu's count lines.
+    function api.SetCounter(fn)
+        if type(fn) == "function" then counter = fn end
     end
 
     function api.PrepOn()
@@ -123,11 +129,16 @@ function DR.Declare(k)
             local tr = trip()
             if tr and type(tr.Off) == "function" then pcall(tr.Off) end
         end
+        -- Saved first, so a planner that reads the choice back sees the new
+        -- one (Lazy's review of 5531d93b, item 1).
+        save(state)
         if effect == "plan" and state and planner then
             local ok, total = pcall(planner, state.key, state.wing, state.prep ~= false)
-            if ok and type(total) == "number" then state.total = total end
+            if ok and type(total) == "number" then
+                state.total = total
+                save(state)
+            end
         end
-        save(state)
         return state
     end
 
@@ -152,13 +163,19 @@ function DR.Declare(k)
     function api.Items(extra)
         local M = ns.DungeonMode
         if not M then return {} end
-        return M.Items(DR.ModeState(load(), true, extra))
+        local state = load()
+        local mode = DR.ModeState(state, true, extra)
+        if mode and counter then
+            local ok, counts = pcall(counter, state.key)
+            if ok and type(counts) == "table" then mode.counts = counts end
+        end
+        return M.Items(mode)
     end
 
     k:Module({
         name = DR.NAME,
         needs = { "store" },
-        provides = { Prepared = api.Prepared, SetPlanner = api.SetPlanner, Act = api.Act, Line = api.Line,
+        provides = { Prepared = api.Prepared, SetPlanner = api.SetPlanner, SetCounter = api.SetCounter, Act = api.Act, Line = api.Line,
                      Items = api.Items, PrepOn = api.PrepOn, State = api.State },
         start = function(c) ctx = c end,
         stop = function() ctx = nil end,

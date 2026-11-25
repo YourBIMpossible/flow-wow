@@ -51,7 +51,8 @@ function M.CountLines(name, counts)
     local done, on = tonumber(c.done) or 0, tonumber(c.on) or 0
     local missing, inside = tonumber(c.missing) or 0, tonumber(c.inside) or 0
     local out = { type(name) == "string" and name or M.RUN }
-    out[#out + 1] = string.format("- %s completed", quests(done))
+    -- Handed-in quests only when they are known (the dungeon pane has none).
+    if c.done ~= nil then out[#out + 1] = string.format("- %s completed", quests(done)) end
     out[#out + 1] = string.format("- You're on %s", quests(on))
     local outside = ""
     if missing > 0 then outside = " (to pick up outside)" end

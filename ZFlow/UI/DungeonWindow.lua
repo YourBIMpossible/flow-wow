@@ -179,7 +179,8 @@ function W.Declare(k, diag)
     end
 
     -- wing (B-57): that wing's run only. Answers true when a run is planned.
-    local function planRun(d, wing)
+    -- prep: false leaves out the get-ready steps; nil asks dungeonRun.
+    local function planRun(d, wing, prep)
         local run, why = R.Run(st, client(), d and d.key, wing)
         if not run then
             view.said = why[1]
@@ -195,7 +196,8 @@ function W.Declare(k, diag)
         -- route's menu (Nav/DungeonRun.lua); on unless it is.
         local runs = k.use and k.use("dungeonRun")
         local ready, words = {}, {}
-        if not (type(runs) == "table" and type(runs.PrepOn) == "function" and runs.PrepOn() == false) then
+        if prep == nil and type(runs) == "table" and type(runs.PrepOn) == "function" then prep = runs.PrepOn() end
+        if prep ~= false then
             ready, words = readySteps()
         end
         if #ready > 0 then
@@ -497,15 +499,27 @@ function W.Declare(k, diag)
             -- prepared run again through this window's planner.
             local runs = k.use and k.use("dungeonRun")
             if type(runs) == "table" and type(runs.SetPlanner) == "function" then
-                runs.SetPlanner(function(key, wing)
+                runs.SetPlanner(function(key, wing, prep)
                     if not (st and st.state == "ready" and type(st.byKey) == "table") then return nil end
                     local d = st.byKey[key]
-                    if not d or not planRun(d, wing) then return nil end
+                    if not d or not planRun(d, wing, prep) then return nil end
                     local tr = k.use and k.use("tripRoute")
                     local cur
                     if tr and type(tr.Current) == "function" then cur = tr.Current() end
                     if type(cur) == "table" and type(cur.stops) == "table" then return #cur.stops end
                     return nil
+                end)
+            end
+            if type(runs) == "table" and type(runs.SetCounter) == "function" then
+                runs.SetCounter(function(key)
+                    if not (st and st.state == "ready") then return nil end
+                    local pane = R.Pane(st, client(), key)
+                    if type(pane) ~= "table" or pane.why then return nil end
+                    local n = { log = 0, pickup = 0, inside = 0 }
+                    for _, g in ipairs(pane.groups or {}) do
+                        if n[g.id] then n[g.id] = #g.rows end
+                    end
+                    return { on = n.log, missing = n.pickup, inside = n.inside }
                 end)
             end
         end,
