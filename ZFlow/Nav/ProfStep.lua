@@ -1201,6 +1201,9 @@ local function spotsOf(zones, spawns, max, only)
     return out
 end
 
+-- Shared with Nav/MobHop.lua (A2-25).
+N.ProfSpotsOf = spotsOf
+
 -- Is the bit of flag (a power of two) set in mask?
 local function flagged(mask, flag)
     return math.floor(mask / flag) % 2 == 1
