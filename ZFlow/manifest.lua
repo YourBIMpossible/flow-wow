@@ -131,6 +131,8 @@ return {
 
         -- Navigation
         "Nav/ArrowLayout.lua",
+        -- Pathing UI slice 1 (lead section 519): the one colour of a step at a distance (after ArrowLayout).
+        "Nav/RouteColor.lua",
         "Nav/Bearing.lua",
         "Nav/ArrowView.lua",
         "Nav/ArrowMotion.lua",
