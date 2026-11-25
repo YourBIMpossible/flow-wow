@@ -294,4 +294,76 @@ tests["plate quests module (PM-3): switching off by the setting hides the marks 
     t.eq(m and m.shown, true, "on again: back")
 end
 
+-- Parity rows C-17 and C-18, the data half (lead section 715), as Flow's
+-- Modules/QuestMarks.lua (:1-20: skull to kill, diamond for a drop, a mark
+-- on the unit your step is about): which kind each marked mob is (kill,
+-- loot or use), read from the player's own Questie objective data, and
+-- whether it is the player's current target. "use": a creature objective
+-- of a quest that hands you an item (Questie's sourceItemId) whose log
+-- line does not say "slain". The icons are the drawing lane's. Fails
+-- before: one "kill" or "drop" kind, no "use", no target.
+local USEMOB, TOOL = 2005, 4001
+local function useQuestie()
+    local db = questie()
+    local get = db.GetQuest
+    db.GetQuest = function(id)
+        if id == 103 then
+            return { sourceItemId = TOOL, ObjectiveData = { { Type = "monster", Id = USEMOB } } }
+        end
+        return get(id)
+    end
+    return db
+end
+local function useLog()
+    local rows = log()
+    rows[#rows + 1] = { id = 103, title = "Testing", complete = false, failed = false, objectives = {
+        { text = "Tested Silithid: 1/5", done = false },
+    } }
+    return rows
+end
+
+tests["plate quests kinds: kill, loot and use, from Questie's objective data"] = function(t)
+    local index = PQ.Index(useLog(), useQuestie(), nil)
+    t.eq(index[VERMIN] and index[VERMIN][1].what, "kill")
+    t.eq(index[GNOLL] and index[GNOLL][1].what, "loot")
+    t.eq(index[USEMOB] and index[USEMOB][1].what, "use")
+    t.eq(type(PQ.Kinds), "function")
+    if type(PQ.Kinds) ~= "function" then return end
+    t.eq(PQ.Kinds({ { what = "loot" }, { what = "kill" }, { what = "loot" } }), { "kill", "loot" },
+        "each once, in a fixed order")
+    t.eq(PQ.Kinds(nil), {})
+end
+
+tests["plate quests kinds: a slain line of a quest that hands an item stays kill"] = function(t)
+    local rows = useLog()
+    rows[3].objectives[1].text = "Silithid slain: 1/5"
+    local index = PQ.Index(rows, useQuestie(), nil)
+    t.eq(index[USEMOB] and index[USEMOB][1].what, "kill")
+end
+
+tests["plate quests mark data: the kinds on a plate, and whether it is your target"] = function(t)
+    local _, c, api = start()
+    t.eq(type(api.markOf), "function")
+    if type(api.markOf) ~= "function" then return end
+    mob(c, "nameplate1", VERMIN)
+    mob(c, "nameplate2", GNOLL)
+    c.setPlateIsTarget("nameplate2", true)
+    c.advance(1, 2)
+    local a, b = api.markOf("nameplate1"), api.markOf("nameplate2")
+    t.eq(a and { a.kinds, a.label, a.target }, { { "kill" }, "3/8", false })
+    t.eq(b and { b.kinds, b.target }, { { "loot" }, true })
+    t.eq(api.markOf("nameplate3"), nil, "no plate, no mark")
+    t.eq(api.markOf("target"), nil, "only nameplate units")
+end
+
+tests["plate quests mark data: a target the client cannot read is unknown, never no"] = function(t)
+    local _, c, api = start()
+    if type(api.markOf) ~= "function" then return t.ok(false, "no markOf") end
+    mob(c, "nameplate1", VERMIN)
+    c.plateIsTarget = function() error("refused (test)") end
+    c.advance(1, 2)
+    local m = api.markOf("nameplate1")
+    t.eq(m and m.target, nil)
+end
+
 return tests
