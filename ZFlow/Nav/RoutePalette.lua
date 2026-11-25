@@ -53,15 +53,22 @@ function RP.Key(palette)
     return "standard"
 end
 
+-- Lead section 838 (F-23 nit): each source table is checked before it is
+-- read, so a missing or half-loaded table gives no colour instead of an error.
+local function field(tbl, key)
+    if type(tbl) ~= "table" then return nil end
+    return tbl[key]
+end
+
 local function source(key, role)
-    if DISTANCE[role] then return N.ARROW_PALETTE[key][role] end
+    if DISTANCE[role] then return field(field(N.ARROW_PALETTE, key), role) end
     if role == "corpse" then return N.CORPSE_RED end
     if role == "fallback" then return RP.FALLBACK[key] end
     local RC = ns.RouteColor
     if type(RC) ~= "table" then return nil end
     if role == "waypoint" then return RC.WAYPOINT[key] end
-    if role == "profFar" then return RC.PROFESSION[key].far end
-    if role == "profNear" then return RC.PROFESSION[key].near end
+    if role == "profFar" then return field(field(RC.PROFESSION, key), "far") end
+    if role == "profNear" then return field(field(RC.PROFESSION, key), "near") end
     if role == "x" then return RC.DESTINATION_X end
     return nil
 end
