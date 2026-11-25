@@ -104,6 +104,16 @@ function P.Candidate(q, ctx)
     end
     local bg = N.BattlegroundQuests
     if bg and bg.Is(q) and ctx.battlegrounds ~= true then return false, P.WHY_BATTLEGROUND end
+    -- A2-17 (lead sections 667, 680): an earlier quest or a spell that still
+    -- holds the quest is named, in Nav/StepNeeds.lua's words ("after Old
+    -- Letters", "after you learn Bear Form"). A need the game cannot answer
+    -- (SN.Why's SN.UNKNOWN) adds nothing and holds nothing: the checks below
+    -- then decide, as before, and nothing reads that nil as "not locked".
+    local needs = N.StepNeeds
+    if needs and type(needs.Why) == "function" then
+        local okWhy, why = pcall(needs.Why, q, ctx)
+        if okWhy and type(why) == "table" and type(why.text) == "string" then return false, why.text end
+    end
     for _, id in ipairs(list(q.preQuestGroup)) do
         if done(id) == false then return false, "an earlier quest first" end
     end
@@ -277,6 +287,12 @@ function P.Read(client, here, log, opts)
         me = { raceId = ask(client, "raceId"), classId = class and S.CLASS_ID[class] or nil,
                faction = ask(client, "faction") },
         done = function(id) return ask(client, "questDone", id) end,
+        -- A2-17: names for the reason a pick-up is held (Questie's quest
+        -- name, the game's spell name). Whether a spell is known by its id
+        -- has no client read yet (a CLIENT NEED), so a spell need holds
+        -- nothing until there is one.
+        questName = function(id) return quick(db, id, "name") end,
+        spellName = function(id) return ask(client, "spellName", id) end,
         low = low,
         grouped = ask(client, "grouped"), holdOn = holdOn(), lowOn = lowOn(),
         battlegrounds = battlegroundsOn(),
