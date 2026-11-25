@@ -1522,6 +1522,20 @@ function ns.make.fakeClient(opts)
         return n
     end
     function c.merchantMarked() return merchantMarkedNow end
+    -- E-13 (lead section 660) STUB for a CLIENT NEED the real client lacks:
+    -- c.onBoughtBack(fn) calls fn(item link) each time the player buys an
+    -- item back on the merchant's Buyback tab (in game: a hooksecurefunc on
+    -- BuybackItem, the link read with GetBuybackItemLink before the buy, as
+    -- Flow's Modules/Items/Vendor.lua:718-720). c.buyBack(item) is that buy.
+    local boughtBackFns = {}
+    function c.onBoughtBack(fn)
+        if type(fn) ~= "function" then return nil end
+        boughtBackFns[#boughtBackFns + 1] = fn
+        return true
+    end
+    function c.buyBack(item)
+        for _, fn in ipairs({ unpack(boughtBackFns) }) do fn(item) end
+    end
     function c.onMerchantRedraw(fn)
         if type(fn) ~= "function" then return nil end
         merchantRedrawFns[#merchantRedrawFns + 1] = fn

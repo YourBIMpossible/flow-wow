@@ -373,12 +373,13 @@ function Present.KeepUsage(slash)
 end
 
 -- One answer of the command. what: "added", "removed", "already", "absent"
--- (each with the item's name), "failed" (the write was refused; no internal
+-- (each with the item's name), "boughtBack" (E-13: added on a buy-back), "failed" (the write was refused; no internal
 -- reason is shown), or "header" (with how many are on the list).
 function Present.KeepText(what, value)
     if what == "added" then return tostring(value) .. " is now on your never-sell list." end
     if what == "removed" then return tostring(value) .. " is off your never-sell list." end
     if what == "already" then return tostring(value) .. " is already on your never-sell list." end
+    if what == "boughtBack" then return tostring(value) .. " bought back, so it is now on your never-sell list." end
     if what == "absent" then return tostring(value) .. " is not on your never-sell list." end
     if what == "header" then return "Never sold (" .. tostring(value) .. "):" end
     return "That could not be saved, so nothing was changed."

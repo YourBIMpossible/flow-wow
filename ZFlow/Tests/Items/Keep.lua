@@ -268,7 +268,7 @@ tests["keep: a buy-back that names no item, or before the saved data loads, writ
     lines, changed = K.BoughtBack(k, "not an item")
     t.eq(changed, false); t.eq(#lines, 0)
     t.eq(next(never(c)), nil)
-    local k2 = start({ char = false })
+    local k2 = start({ char = false, beforeLoad = true })
     lines, changed = K.BoughtBack(k2, LINK)
     t.eq(changed, false); t.eq(#lines, 0)
 end
