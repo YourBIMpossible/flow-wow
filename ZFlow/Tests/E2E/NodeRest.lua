@@ -51,6 +51,21 @@ tests["node rest e2e: standing at an empty node skips it"] = function(t)
     t.eq(nextName(addon), "Silverleaf", "nothing there: on to the next")
 end
 
+-- Zen's review of 9f6d556e (lead section 606), as Flow Nav.lua:4551: no
+-- watching in combat. Standing by a node in a fight says nothing about it.
+-- Fails before: five seconds by the node in combat rests it.
+tests["node rest e2e: standing at a node in combat does not rest it"] = function(t)
+    local c, addon = boot()
+    c.setCombat(true)
+    c.advance(5, 5)
+    t.eq(nextName(addon), "Peacebloom", "in combat: not watched, so not resting")
+    c.setCombat(false)
+    c.advance(2, 2)
+    t.eq(nextName(addon), "Peacebloom", "combat over: the watch starts again from nothing")
+    c.advance(4, 4)
+    t.eq(nextName(addon), "Silverleaf", "then four seconds out of combat skip it, as before")
+end
+
 tests["node rest e2e: a node far away is never rested by standing"] = function(t)
     local c, addon = boot()
     c.setPosition(MAP, 0.3, 0.5)
