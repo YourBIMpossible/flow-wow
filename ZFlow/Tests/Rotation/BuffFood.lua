@@ -587,4 +587,27 @@ tests["well fed food why: the driver lists every fight food in the bags with wha
     t.eq(D.Foods(c, nil, "dps"), nil, "bags not read: nil, never none")
 end
 
+-- Zen-3's notes on D-13 (lead section 698): with a fishing pole on, a
+-- Fishing food is the one suggested, so no fight food carries the star.
+tests["well fed food why: with a fishing pole on no fight food is the pick"] = function(t)
+    local BF = ns.BuffFood
+    local lines = BF.WhyText({ { id = 1, name = "Spiced Wolf Ribs", score = 10.5, gain = { Stamina = 6 } } },
+        "dps", false, true)
+    t.eq(lines[2], "  Spiced Wolf Ribs: 6 Stamina; score 10.5", "no star")
+    t.eq(lines[#lines], BF.WHY_POLE)
+end
+
+tests["well fed food why: the driver says whether a pole is on"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setItemInfo(INFO)
+    c.setBagItems({ { item = RIBS, count = 2 } })
+    for id, l in pairs(LINES) do c.setItemLines(id, l) end
+    c.fishingPole = function() return true end
+    local _, _, pole = D.Foods(c, nil, "dps")
+    t.eq(pole, true)
+    c.fishingPole = function() return false end
+    local _, _, none = D.Foods(c, nil, "dps")
+    t.eq(none, false)
+end
+
 return tests

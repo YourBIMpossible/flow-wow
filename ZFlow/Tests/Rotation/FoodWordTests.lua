@@ -58,4 +58,19 @@ tests["food word: bags not read are said to be not read, never empty"] = functio
     t.ok(c.printed[1]:find(FW.UNREAD, 1, true) ~= nil, c.printed[1])
 end
 
+-- Zen-3's notes on D-13: Well Fed is read by the buff's own name
+-- (BuffFood.WELL_FED), and the setting being off is said.
+tests["food word: the Well Fed food setting off is said"] = function(t)
+    local c, k, diag = start()
+    k:Setting({ key = ns.RotationDriver.FOOD, scope = "char", type = "bool", default = true, label = "food" })
+    k.settings:set(ns.RotationDriver.FOOD, false)
+    c.printed = {}
+    diag.commands[FW.WORD]("")
+    t.eq(c.printed[#c.printed], FW.OFF)
+end
+
+tests["food word: Well Fed on you is read by the buff's own name"] = function(t)
+    t.eq(FW.WELL_FED, ns.BuffFood.WELL_FED)
+end
+
 return tests
