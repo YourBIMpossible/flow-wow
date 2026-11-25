@@ -4,9 +4,17 @@ local _, ns = ...
 -- your class can learn but you have not trained (Gear/WeaponSkill.lua), a
 -- "visit a weapon master" step. Where: the nearest weapon master this
 -- player has saved on the map they are on (account "learned.places.npcs",
--- an entry with roles.weaponMaster = true); with none saved, words only
--- ("a weapon master in a capital city teaches <kind>") and no place, so
--- the arrow has no needle for it. No weapon master data is carried here.
+-- an entry with roles.weaponMaster = true). With none saved there, the
+-- module asks the profession feed (Nav/ProfFeed.lua's Place, the one owner
+-- of the Questie read) for the nearest weapon master known: one saved on
+-- another map of this continent, or one the player's own Questie names (an
+-- NPC whose sub-name is "Weapon Master", of the player's faction, on this
+-- map, else on this continent). One from Questie is one the player has not
+-- visited: the step and its words say so, and that which weapons they
+-- teach is not known until then. With no Questie, or none found: words
+-- only ("a weapon master in a capital city teaches <kind>") and no place,
+-- so the arrow has no needle for it. No weapon master data is carried
+-- here, and none is guessed.
 --
 -- LOOK ONLY. Nothing here trains, buys, clicks or opens anything, and
 -- nothing moves the player: it reads what the client shows and saved
@@ -26,6 +34,9 @@ local _, ns = ...
 --           roles = { weaponMaster = true } } }
 --   step    { kind = "weaponMaster", label, skill, subclassID, name,
 --             place = { map, x, y } (left out for words only), radius }
+--           From the module only, for a weapon master not visited:
+--           unvisited = true, detail = WM.NOT_KNOWN (the arrow's line
+--           under the label).
 --
 -- Module: WeaponMasterStep.Declare(k[, packs]) -> api; api.step(),
 --   api.lines(). ns.use(WeaponMasterStep.NAME) -> { Step, Lines }.
@@ -34,6 +45,10 @@ local _, ns = ...
 --   starts with none. Each ask reads client.weaponSkills() again, so a skill
 --   learned takes its step away at once (SKILL_LINES_CHANGED needs no
 --   listener); skills not read, or the read raising: no step.
+--   The feed is looked up when a step is asked for, never when this file
+--   loads, so the order of the files does not matter. The first ask only
+--   says a place is wanted; the feed reads Questie over the next frames,
+--   out of combat, once, and a later ask has the place.
 -- Setting "nav.weaponMasterStep" (bool, default true): false turns the
 -- step off. Not seen in game: needs game test.
 
@@ -46,6 +61,12 @@ WM.KIND = "weaponMaster"
 WM.NPCS = "learned.places.npcs"
 WM.RADIUS = 10
 WM.LABEL = "Weapon master"
+-- The step kind the profession feed is asked for a place with
+-- (N.ProfPlace.KIND).
+WM.ASK = "visit_weapon_master"
+-- A weapon master the player has not visited: the skill, then the name.
+WM.UNVISITED = "To train %s, try the weapon master %s."
+WM.NOT_KNOWN = "You have not visited them: which weapons they teach is not known yet."
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -85,23 +106,29 @@ local function nearest(here, npcs)
     return { name = bestName, map = best.map, x = best.x, y = best.y }
 end
 
+-- Points step at found = { name, map, x, y }.
+local function point(step, found)
+    step.name = found.name
+    step.place = { map = found.map, x = found.x, y = found.y }
+    local long = WM.LABEL .. ": " .. found.name
+    if #long <= labelMax() then step.label = long end
+end
+
 function WM.Of(wanted, here, npcs)
     if type(wanted) ~= "table" or not text(wanted.skill) then return nil end
     local step = { kind = WM.KIND, label = WM.LABEL, skill = wanted.skill, subclassID = wanted.subclassID,
                    radius = WM.RADIUS }
     local found = nearest(here, npcs)
-    if found then
-        step.name = found.name
-        step.place = { map = found.map, x = found.x, y = found.y }
-        local long = WM.LABEL .. ": " .. found.name
-        if #long <= labelMax() then step.label = long end
-    end
+    if found then point(step, found) end
     return step
 end
 
 function WM.Lines(step)
     if type(step) ~= "table" or not text(step.skill) then return {} end
     if type(step.place) == "table" and text(step.name) then
+        if step.unvisited == true then
+            return { WM.UNVISITED:format(step.skill, step.name), WM.NOT_KNOWN }
+        end
         return { "Train " .. step.skill .. " at a weapon master you have seen: " .. step.name .. "." }
     end
     return { "A weapon master in a capital city teaches " .. step.skill .. "." }
@@ -165,6 +192,28 @@ function WM.Declare(k, packs)
         return nil
     end
 
+    -- A step with no weapon master saved on this map: the nearest one
+    -- known elsewhere (the profession feed's Place), when there is one.
+    -- Only a place said to be a saved one counts as visited.
+    local function elsewhere(step)
+        local N = ns.Nav
+        local feedName = type(N) == "table" and type(N.ProfFeed) == "table" and N.ProfFeed.NAME or nil
+        if feedName == nil or type(ctx.use) ~= "function" then return end
+        local okUse, feed = pcall(ctx.use, feedName)
+        if not okUse or type(feed) ~= "table" or type(feed.Place) ~= "function" then return end
+        local ok, to, from = pcall(feed.Place, { kind = WM.ASK })
+        if not ok or type(to) ~= "table" or not text(to.name) or to.map == nil
+            or not (share(to.x) and share(to.y)) then
+            return
+        end
+        point(step, to)
+        local PP = N.ProfPlace
+        if type(PP) ~= "table" or PP.SAVED == nil or from ~= PP.SAVED then
+            step.unvisited = true
+            step.detail = WM.NOT_KNOWN
+        end
+    end
+
     function api.step()
         if not ctx or not on() then return nil end
         local want = wanted()
@@ -174,7 +223,9 @@ function WM.Declare(k, packs)
             local ok, v = pcall(ctx.store.get, ctx.store, "account", WM.NPCS)
             if ok then npcs = v end
         end
-        return WM.Of(want, ask("position"), npcs)
+        local step = WM.Of(want, ask("position"), npcs)
+        if step and step.place == nil then elsewhere(step) end
+        return step
     end
 
     function api.lines()

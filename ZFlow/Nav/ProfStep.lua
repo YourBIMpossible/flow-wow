@@ -748,11 +748,19 @@ end
 --       Blacksmithing trainer, who works by both (the predecessor's rule,
 --       and what the plan's own "look for" line says). A fire is never
 --       looked for: the player can light one.
+--   visit_weapon_master        a weapon master (asked for by
+--       Nav/WeaponMasterStep.lua, no step of the plan). Saved: the account
+--       npcs whose roles say weaponMaster (Nav/WeaponMasterSeen.lua).
+--       Questie: an NPC whose sub-name is exactly PP.WEAPON_MASTER. Which
+--       weapons one teaches is not read: not known until the player visits.
 -- Any other kind: nil. The plan gives a vendor or node step its own place.
 -- An npc the player's faction cannot use is left out: a saved one by its
 -- factions (none saved, or the faction not known: it stays in), Questie's
 -- by friendlyToFaction ("A", "H", "AH").
 --
+--   PP.Pick(step, prof, known) -> { name, map, x, y }, from or nil   pure
+--     The same answer as PP.Of with the name when it has one (an npc's),
+--     and for an npc where it is from: PP.SAVED or PP.QUESTIE.
 --   PP.Of(step, prof, known) -> { map, x, y } or nil            pure
 --     known = { here = { map, x, y, faction, size }, npcs, services,
 --               stations = { { kind, map, x, y } },
@@ -765,7 +773,9 @@ end
 --     One pass over every NPC Questie knows (db.NPCPointers), two reads
 --     each (subName, npcFlags). found = { trainer = { [profession] =
 --     { { name, map, x, y, side } } }, banker = { ... }, auction = { ... } },
---     at most PP.SPOTS places an NPC; n = how many places in all.
+--     and weaponMaster = { ... } once one is met (the sub-name read, no
+--     read more), at most PP.SPOTS places an NPC; n = how many places in
+--     all.
 --   PP.ScanStart(db) -> pass or nil; PP.ScanStep(pass, zones, count) ->
 --     done: the same pass a part at a time, count NPCs a call. pass.found
 --     and pass.n are the answer once done.
@@ -804,9 +814,14 @@ PP.KIND = {
     take_bank = "banker", buy_auction = "auction",
     gather_skill = "node",
     craft = "station", make_part = "station", go_station = "station",
+    visit_weapon_master = "weaponMaster",
 }
--- The npc role of an imported entry, by service kind.
-PP.ROLE = { banker = "bank", auction = "auction" }
+-- The npc role of a saved entry, by place kind.
+PP.ROLE = { banker = "bank", auction = "auction", weaponMaster = "weaponMaster" }
+-- Questie's sub-name of a weapon master, the whole of it.
+PP.WEAPON_MASTER = "Weapon Master"
+-- Where an npc's place is from (PP.Pick).
+PP.SAVED, PP.QUESTIE = "saved", "questie"
 PP.STATION_FAR = { anvil = true, forge = true }
 PP.STATION_PROF = "Blacksmithing"
 PP.NPCS = "learned.places.npcs"
@@ -962,10 +977,16 @@ end
 local function npcPlace(known, kind, prof, same)
     local seen = seenList(known, kind, prof)
     local to = onMap(seen, known)
-    if to then return to end
+    if to then return to, PP.SAVED end
     -- Questie is asked only now: nothing saved is on this map.
     local q = questieList(known, kind, prof)
-    return onMap(q, known) or onContinent(seen, known, same) or onContinent(q, known, same)
+    to = onMap(q, known)
+    if to then return to, PP.QUESTIE end
+    to = onContinent(seen, known, same)
+    if to then return to, PP.SAVED end
+    to = onContinent(q, known, same)
+    if to then return to, PP.QUESTIE end
+    return nil
 end
 
 local function nodeOf(known, prof)
@@ -1003,17 +1024,17 @@ local function stationOf(known, kind, same)
     return onContinent(list, known, same) or npcPlace(known, "trainer", PP.STATION_PROF, same)
 end
 
-function PP.Of(step, prof, known)
+function PP.Pick(step, prof, known)
     if type(step) ~= "table" or type(known) ~= "table" then return nil end
     local here = known.here
     if type(here) ~= "table" or here.map == nil or not (share(here.x) and share(here.y)) then return nil end
     local kind = PP.KIND[step.kind]
-    local to
+    local to, from
     if kind == "trainer" then
         if step.npc ~= nil or type(prof) ~= "string" then return nil end
-        to = npcPlace(known, kind, prof, sameOf(known))
-    elseif kind == "banker" or kind == "auction" then
-        to = npcPlace(known, kind, nil, sameOf(known))
+        to, from = npcPlace(known, kind, prof, sameOf(known))
+    elseif kind == "banker" or kind == "auction" or kind == "weaponMaster" then
+        to, from = npcPlace(known, kind, nil, sameOf(known))
     elseif kind == "node" then
         local what = step.gather
         if type(what) ~= "string" then what = prof end
@@ -1022,6 +1043,12 @@ function PP.Of(step, prof, known)
         to = stationOf(known, step.station, sameOf(known))
     end
     if not placed(to) then return nil end
+    return { name = to.name, map = to.map, x = to.x, y = to.y }, from
+end
+
+function PP.Of(step, prof, known)
+    local to = PP.Pick(step, prof, known)
+    if not to then return nil end
     return { map = to.map, x = to.x, y = to.y }
 end
 
@@ -1098,6 +1125,10 @@ function PP.ScanStep(pass, zones, count)
             if prof ~= nil and N.PROF_NAMES[prof] then
                 found.trainer[prof] = found.trainer[prof] or {}
                 lists[#lists + 1] = found.trainer[prof]
+            end
+            if sub == PP.WEAPON_MASTER then
+                found.weaponMaster = found.weaponMaster or {}
+                lists[#lists + 1] = found.weaponMaster
             end
         end
         local mask = call(db.QueryNPCSingle, id, "npcFlags")
@@ -1253,7 +1284,8 @@ function PP.From(client, store, use, kind, reads)
         end
     end
     local q = type(reads.questie) == "table" and reads.questie or nil
-    if kind == "trainer" or kind == "banker" or kind == "auction" or kind == "station" then
+    if kind == "trainer" or kind == "banker" or kind == "auction" or kind == "station"
+        or kind == "weaponMaster" then
         known.npcs = saved(store, "account", PP.NPCS)
         if q then known.questie = function() return call(q.places, client) end end
     end
