@@ -41,7 +41,20 @@ tests["drop lines: the words, with a level when known"] = function(t)
     t.eq(DL().Lines({}, levelOf), {}, "none: no lines")
     local many = {}
     for i = 1, 8 do many[i] = { npc = i, name = "Mob " .. i, times = 1, looted = 2 } end
-    t.eq(#DL().Lines(many, nil), DL().MAX, "at most MAX lines, as Flow's MOB_LINES")
+    -- Lead section 808: past MAX, one more line says how many are left out
+    -- (as Flow's Goals.lua:467-469); our own words.
+    local lines8 = DL().Lines(many, nil)
+    t.eq(#lines8, DL().MAX + 1, "MAX lines, then how many more")
+    t.eq(lines8[DL().MAX + 1], "2 more mobs also drop it")
+    t.eq(#DL().Lines({ many[1], many[2] }, nil), 2, "under MAX: no such line")
+    local six = {}
+    for i = 1, DL().MAX do six[i] = many[i] end
+    t.eq(#DL().Lines(six, nil), DL().MAX, "exactly MAX: no such line")
+    -- Nit: a level is shown only when it is above 0.
+    local function zero() return 0, 0 end
+    t.eq(DL().Lines({ many[1] }, zero)[1], "Mob 1: 1 of your 2 loots", "level 0: none shown")
+    local function low() return 0, 5 end
+    t.eq(DL().Lines({ many[1] }, low)[1], "Mob 1: 1 of your 2 loots", "a low end of 0: none shown")
 end
 
 return tests
