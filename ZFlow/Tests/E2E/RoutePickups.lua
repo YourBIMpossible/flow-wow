@@ -158,4 +158,24 @@ tests["route pickups: battleground quests stay off until the setting is on"] = f
     t.ok(said(c, "Pick up: Gulch Duty (Herald)") ~= nil, "on: the battleground quest is offered")
 end
 
+-- Row A2-03 (lead section 667): after /route, the pick-ups the route left
+-- off are offered as candidate next steps for the arrow, nearest first.
+tests["route pickups: pick-ups off the planned route become next steps"] = function(t)
+    local c, addon = boot()
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    local view = addon.use(ns.Nav.TripRoute.NAME).View()
+    t.ok(view ~= nil, "a route is planned")
+    local here = { map = MAP, x = 0.5, y = 0.5, size = { w = 1000, h = 1000 } }
+    local log = {}
+    for _, row in ipairs(LOG) do log[row.id] = true end
+    local RP = ns.Nav.RoutePickups
+    local steps = RP.NextSteps(view, RP.Read(c, here, log), here)
+    local labels = {}
+    for _, s in ipairs(steps) do labels[s.label] = true end
+    t.ok(labels["Pick up: Hermit Tea (Hermit)"] == true, "the skipped giver is a next step")
+    t.ok(labels["Pick up: Lost Pages (Marshal)"] == nil, "a pick-up on the route is not repeated")
+    t.eq(steps[1] and steps[1].kind, "next")
+end
+
 return tests
