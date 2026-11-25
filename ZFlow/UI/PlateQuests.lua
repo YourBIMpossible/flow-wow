@@ -29,6 +29,7 @@ local _, ns = ...
 --   PQ.Index(rows, db, book) -> { [npc id] = { { quest, label, kind, from } } }
 --     kind "kill" | "drop"; from "questie" | "learned"
 --   PQ.Label(list) -> text | nil   each count once, at most PQ.MAX_LABELS
+--   PQ.PlatesNote(on, mobs, setting, told) -> true: say PQ.PLATES_OFF now
 -- PQ.Declare(k, diag) -> api
 --   api.status() -> { on, source, inView, shown, mobs }
 --   api.lines()   what the word PQ.WORD prints
@@ -36,6 +37,15 @@ local _, ns = ...
 -- PLAYER_ENTERING_WORLD, read once PQ.WAIT seconds after the first of a
 -- burst; a plate coming in is marked at once from what was read. No tick.
 -- Setting (account): plateQuests.off (its row in Settings/Model.lua).
+-- ENEMY NAMEPLATES OFF (parity row C-22, lead section 600): the marks sit on
+-- nameplates, so with the game's "nameplateShowEnemies" at "0" nothing can
+-- show. Once a session, after a read that found creatures to mark, the chat
+-- says so (PQ.PLATES_OFF). As Flow Modules/QuestMarks.lua platesNote, with
+-- two changes: Flow also offered "/flow quest plates", which writes the
+-- setting; nothing here writes one, so only the V key is named. And Flow
+-- told whenever a quest had a kill or collect objective; here only when
+-- Questie gave creatures to mark, since without it there is no mark anyway.
+-- Read: client.gameSetting (Core/Client.lua, G59), already there.
 -- Not tested in game.
 local PQ = {}
 ns.PlateQuests = PQ
@@ -51,6 +61,8 @@ PQ.DROPS = "learned.drops"
 PQ.WAIT = 0.5
 PQ.LOOK = 0.5      -- seconds between looks at the switch (lead section 274 PM-3)
 PQ.MARK = "!"
+PQ.PLATES = "nameplateShowEnemies"
+PQ.PLATES_OFF = "your enemy nameplates are off, so quest mobs can't be marked (the count sits on the nameplate). Press V to turn them on."
 PQ.MAX_LABELS = 2
 PQ.COLOR = { 1, 0.82, 0 }
 PQ.EVENTS = { "QUEST_LOG_UPDATE", "UNIT_QUEST_LOG_CHANGED", "PLAYER_ENTERING_WORLD" }
@@ -357,6 +369,10 @@ local function ask(client, name, ...)
     return v
 end
 
+function PQ.PlatesNote(on, mobs, setting, told)
+    return on == true and type(mobs) == "number" and mobs > 0 and not told and tostring(setting) == "0"
+end
+
 function PQ.Declare(k, diag)
     local api = {}
     local ctx
@@ -367,6 +383,7 @@ function PQ.Declare(k, diag)
     local source = "none"
     local cancelPlates, pending, cancelLook
     local wasOn = false
+    local toldPlates = false  -- once a session: not cleared on stop
 
     local function on() return ctx ~= nil and ctx.settings:get(PQ.OFF) ~= true end
 
@@ -543,6 +560,14 @@ function PQ.Declare(k, diag)
         if not ctx then return end
         read()
         drawAll()
+        local mobs = 0
+        if type(index) == "table" then
+            for _ in pairs(index) do mobs = mobs + 1 end
+        end
+        if PQ.PlatesNote(on(), mobs, ask(ctx.client, "gameSetting", PQ.PLATES), toldPlates) then
+            toldPlates = true
+            ctx.client.print(ns.id.title .. ": " .. PQ.PLATES_OFF)
+        end
     end
 
     local function soon()
