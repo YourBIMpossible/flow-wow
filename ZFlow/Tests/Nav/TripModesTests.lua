@@ -127,4 +127,27 @@ tests["sort by XP: the word's choice, distance unless xp"] = function(t)
     t.eq(T().SortOf("gold"), "distance")
 end
 
+-- A2-15 (lead section 660): near steps first, legacy Flow NearFirst.lua.
+-- Only the XP order is reweighed; shortest first is travel alone already.
+tests["near first: a stop's weight by how far it is, Flow's tuning"] = function(t)
+    t.eq(T().NearMul(100), 1, "close: as it is")
+    t.eq(T().NearMul(T().NEAR_YARDS), 1)
+    t.eq(T().NearMul(T().NEAR_YARDS + T().NEAR_SPAN), 2, "one span beyond: twice")
+    t.eq(T().NearMul(5000), T().NEAR_MAX, "never more than the cap")
+    t.eq(T().NearMul(nil), 1, "not known: as it is")
+end
+
+tests["near first: by XP, a big quest far off waits behind a fair one close by"] = function(t)
+    local stops = {
+        stop("Far big", 0.5, 0.5 + 2000 / 10000, { quest = 1 }),
+        stop("Near fair", 0.5, 0.5 + 100 / 10000, { quest = 2 }),
+    }
+    local xp = function(id) return ({ [1] = 900, [2] = 400 })[id] end
+    local here, size = { map = 1, x = 0.5, y = 0.5 }, { w = 10000, h = 10000 }
+    local near = T().SortXp(stops, xp, here, size)
+    t.eq(near[1].label, "Near fair", "900 XP at 2000 yd counts as 300; 400 XP at 100 yd as 400")
+    local plain = T().SortXp(stops, xp)
+    t.eq(plain[1].label, "Far big", "no place known: XP alone")
+end
+
 return tests
