@@ -320,6 +320,15 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     row(button, "spell", kind == "spell" and spell or nil)
     row(button, "unit", unit)
     row(button, "item", item and ("item:" .. item) or nil)
+    -- D-19 (lead section 697): an item used on one of your weapon hands (a
+    -- lure on the fishing pole), the secure item type's own target-slot.
+    -- Set out of a fight only, as every row is.
+    local slot
+    if kind == "item" and source == "suggestion" and type(suggestion) == "table"
+        and (suggestion.targetSlot == 16 or suggestion.targetSlot == 17) then
+        slot = suggestion.targetSlot
+    end
+    row(button, "target-slot", slot)
     -- N8: with plan.altItem the Alt slot uses that item instead of its
     -- spell. Section 246 (N63-E): as the item type, "*type-alt" = "item" and
     -- "*item-alt" = "item:ID", the modifier form legacy Flow's slots used.
