@@ -3,7 +3,7 @@ local _, ns = ...
 -- End to end (E-33): the whole add-on (ns.offline.addon) on a fake client.
 -- Bare `ah` lists the watch list with the last price seen in the player's
 -- own searches, as the legacy /flow ah did
--- (F:/flow-wow/Modules/Items/Auction.lua:479-489): a heading, one line an
+-- (Flow d78839f7 Modules/Items/Auction.lua:224-235): a heading, one line an
 -- item, then the words. Advice only: nothing searches, posts, bids, buys or
 -- cancels. Made-up realm, items and prices.
 

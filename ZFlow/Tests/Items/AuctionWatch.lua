@@ -93,7 +93,7 @@ end
 
 -- E-31 (lead 681, 682): the short form the add-on prints ("1.36g", "5.52s",
 -- "52c", "13.6g") reads back, as the legacy AH.ParseMoney does
--- (F:/flow-wow/Modules/Items/Auction.lua:35): a plain number is gold, joined
+-- (Flow d78839f7 Modules/Items/Auction.lua:40-52): a plain number is gold, joined
 -- amounts ("1g50s") add up, anything else is no mark.
 tests["auction watch: the short money form reads back as a mark"] = function(t)
     if type(W()) ~= "table" then return t.ok(false, "ns.AuctionWatch") end
@@ -171,7 +171,7 @@ tests["auction watch: the ah word watches and unwatches"] = function(t)
     t.eq(say(c, "ah scan"), { T("watch: ah watch <item> [price] | ah unwatch <item> | ah (the list). It buys nothing.") })
 end
 
--- E-33: bare ah, as the legacy /flow ah (F:/flow-wow/Modules/Items/Auction.lua:479-489):
+-- E-33: bare ah, as the legacy /flow ah (Flow d78839f7 Modules/Items/Auction.lua:224-235):
 -- a heading, each watched item with its last price, then the words.
 tests["auction watch: AhLines frames the list as the legacy ah did"] = function(t)
     if type(W()) ~= "table" or type(W().AhLines) ~= "function" then return t.ok(false, "AuctionWatch.AhLines") end
