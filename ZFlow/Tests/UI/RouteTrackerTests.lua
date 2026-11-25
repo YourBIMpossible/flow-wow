@@ -169,4 +169,20 @@ tests["tracker wiring: an empty route with steps that can't be placed lists them
     t.eq(r2 and #r2, 3, "neither: the walked route, as before")
 end
 
+-- Lazy's CHANGES-1 (lead section 773): a route with only steps that can't
+-- be placed has no current step: no "current" line, no TONE_NOW, and no
+-- item line. Fails before: currentIndex fell back to the first row.
+tests["tracker parts: only steps that can't be placed: none is current, no item line"] = function(t)
+    local view = { stops = {}, left = { { label = "Kill Hogger", quest = 9, why = "no place known" },
+                                       { label = "Find Bob", why = "no place known" } } }
+    local rows = RT().Rows(view, nil, HERE)
+    local item = { id = 7001, name = "Test Whistle", count = 1 }
+    local kids = RT().Children(rows, item, 0)
+    t.eq(byKey(kids, "current"), nil, "no current line")
+    t.eq(byKey(kids, "questItem"), nil, "no item line")
+    for _, k in ipairs(kids) do
+        t.ok(k.tone ~= RT().TONE_NOW, "nothing in the now tone: " .. tostring(k.key))
+    end
+end
+
 return tests
