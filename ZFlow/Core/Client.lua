@@ -6867,6 +6867,14 @@ function ns.make.client(env)
     --       hides any made before past their count; a pin or line not placed
     --       by plain numbers is skipped.
     --   h.clear()   hides them all
+    --   h.onClick(fn) -> true: a click on a dot calls fn(pin.name, button)
+    --       (B-10). Each dot is a small Button (it was a bare texture,
+    --       which takes no mouse) holding its colour texture; its OnEnter
+    --       shows pin.title, then each line of pin.tip, in GameTooltip
+    --       owned by the dot, and OnLeave hides it (B-11).
+    -- First guesses, not seen on 16001: Button RegisterForClicks
+    -- ("LeftButtonUp", "RightButtonUp"), OnClick's button argument, a
+    -- Button made on a frame that itself takes no mouse still taking clicks.
     -- All first guesses, not seen on 1.60.1: WorldMapFrame, its
     -- ScrollContainer.Child canvas (named in RESEARCH-worldmap-button.md),
     -- IsShown, GetMapID, CreateLine, SetStartPoint, SetEndPoint,
@@ -6884,6 +6892,39 @@ function ns.make.client(env)
         method(host, "SetAllPoints", canvas)
         local dots, lines = {}, {}
         local nDots, nLines = 0, 0
+        local clickFns = {}
+        -- One dot: a Button with its colour texture, clickable, with a
+        -- tooltip. false when the client will not make one.
+        local function makeDot()
+            local okB, b = call(env.CreateFrame, "Button", nil, host)
+            if not okB or b == nil then return false end
+            local d = { button = b, tip = {} }
+            local okT, tex = method(b, "CreateTexture", nil, "OVERLAY")
+            if okT and tex ~= nil then
+                method(tex, "SetAllPoints", b)
+                d.tex = tex
+            end
+            method(b, "RegisterForClicks", "LeftButtonUp", "RightButtonUp")
+            method(b, "SetScript", "OnClick", function(_, button)
+                if d.name == nil then return end
+                for _, fn in ipairs(clickFns) do pcall(fn, d.name, button) end
+            end)
+            method(b, "SetScript", "OnEnter", function()
+                local tip = env.GameTooltip
+                if tip == nil or d.title == nil then return end
+                method(tip, "SetOwner", b, "ANCHOR_RIGHT")
+                method(tip, "SetText", d.title)
+                for _, line in ipairs(d.tip) do
+                    method(tip, "AddLine", line, 1, 1, 1, true)
+                end
+                method(tip, "Show")
+            end)
+            method(b, "SetScript", "OnLeave", function()
+                local tip = env.GameTooltip
+                if tip ~= nil then method(tip, "Hide") end
+            end)
+            return d
+        end
         local COLOUR = {
             from = { 0.3, 1, 0.4 }, to = { 0.3, 1, 0.4 },
             have = { 1, 0.82, 0 }, new = { 0.6, 0.6, 0.6 },
@@ -6891,6 +6932,10 @@ function ns.make.client(env)
         local function plain(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
 
         local h = {}
+        function h.onClick(fn)
+            if type(fn) == "function" then clickFns[#clickFns + 1] = fn end
+            return true
+        end
         function h.map()
             local okS, shown = method(wm, "IsShown")
             if not okS or shown ~= true then return nil end
@@ -6899,7 +6944,7 @@ function ns.make.client(env)
             return map
         end
         function h.clear()
-            for i = 1, nDots do if dots[i] then method(dots[i], "Hide") end end
+            for i = 1, nDots do if dots[i] then method(dots[i].button, "Hide") end end
             for i = 1, nLines do if lines[i] then method(lines[i], "Hide") end end
             nDots, nLines = 0, 0
         end
@@ -6917,21 +6962,27 @@ function ns.make.client(env)
                     n = n + 1
                     local d = dots[n]
                     if d == nil then
-                        local okT, made = method(host, "CreateTexture", nil, "OVERLAY")
-                        d = okT and made or false
+                        d = makeDot()
                         dots[n] = d
                     end
                     if d then
                         local col = COLOUR[p.role or ""] or COLOUR[p.kind or ""] or COLOUR.new
-                        method(d, "SetSize", 10, 10)
-                        method(d, "SetColorTexture", col[1], col[2], col[3], 1)
-                        method(d, "ClearAllPoints")
-                        method(d, "SetPoint", "CENTER", canvas, "TOPLEFT", p.x * w, -p.y * ht)
-                        method(d, "Show")
+                        d.name, d.title, d.tip = p.name, nil, {}
+                        if type(p.title) == "string" then d.title = p.title end
+                        if type(p.tip) == "table" then
+                            for _, line in ipairs(p.tip) do
+                                if type(line) == "string" then d.tip[#d.tip + 1] = line end
+                            end
+                        end
+                        method(d.button, "SetSize", 10, 10)
+                        if d.tex then method(d.tex, "SetColorTexture", col[1], col[2], col[3], 1) end
+                        method(d.button, "ClearAllPoints")
+                        method(d.button, "SetPoint", "CENTER", canvas, "TOPLEFT", p.x * w, -p.y * ht)
+                        method(d.button, "Show")
                     end
                 end
             end
-            for i = n + 1, nDots do if dots[i] then method(dots[i], "Hide") end end
+            for i = n + 1, nDots do if dots[i] then method(dots[i].button, "Hide") end end
             nDots = n
             local m = 0
             for _, l in ipairs(type(segs) == "table" and segs or {}) do
@@ -13334,6 +13385,10 @@ function ns.make.client(env)
     --       the mark; text, sub the tooltip's lines; now marks the stop
     --       the arrow points at. Marks past the count are hidden.
     --   h.clear()   hides them all
+    --   h.onClick(fn) -> true: a click on a mark calls fn(n, button), n
+    --       the number drawn on it (B-19). First guesses, not seen on
+    --       16001: RegisterForClicks("LeftButtonUp", "RightButtonUp") and
+    --       OnClick's button argument.
     -- The canvas's own scale is not read (as c.mapPins): the marks may
     -- draw small or large when the map is zoomed.
     function c.routePins()
@@ -13347,6 +13402,7 @@ function ns.make.client(env)
         method(host, "SetFrameStrata", "HIGH")
         local marks, count = {}, 0
         local SIZE = 22
+        local clickFns = {}
 
         local function make()
             local okB, b = call(env.CreateFrame, "Button", nil, host)
@@ -13364,6 +13420,11 @@ function ns.make.client(env)
                 method(fs, "SetPoint", "CENTER", b, "CENTER", 0, 0)
                 m.label = fs
             end
+            method(b, "RegisterForClicks", "LeftButtonUp", "RightButtonUp")
+            method(b, "SetScript", "OnClick", function(_, button)
+                if m.n == nil then return end
+                for _, fn in ipairs(clickFns) do pcall(fn, m.n, button) end
+            end)
             method(b, "SetScript", "OnEnter", function()
                 local tip = env.GameTooltip
                 if tip == nil or m.text == nil then return end
@@ -13380,6 +13441,10 @@ function ns.make.client(env)
         end
 
         local h = {}
+        function h.onClick(fn)
+            if type(fn) == "function" then clickFns[#clickFns + 1] = fn end
+            return true
+        end
         function h.map()
             local okS, shown = method(wm, "IsShown")
             if not okS or shown ~= true then return nil end
@@ -13408,6 +13473,7 @@ function ns.make.client(env)
                         marks[n] = m
                     end
                     if m then
+                        m.n = p.n
                         m.text = type(p.text) == "string" and p.text or nil
                         m.sub = type(p.sub) == "string" and p.sub ~= "" and p.sub or nil
                         if m.disc then
