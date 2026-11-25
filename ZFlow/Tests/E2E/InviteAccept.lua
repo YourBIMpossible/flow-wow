@@ -1,5 +1,5 @@
--- Parity row F-28 (lead section 738): a group invite from a friend or a
--- guild member is accepted for you, as Flow's Modules/Invites.lua (:1-3
+-- Parity row F-28 (lead sections 738 and 740): a group invite from a
+-- friend is accepted for you (friends only, as Flow; not guild members), as Flow's Modules/Invites.lua (:1-3
 -- "accepted for you", on by default; :78-87 the event, not when already
 -- in a group, only a friend). Never in a fight, never from a stranger,
 -- never while queued, never in a group already, never with the setting
@@ -20,9 +20,7 @@ local function boot()
     c.advance(2, 10)
     c.setFriend(FRIEND, true)
     c.setFriend(STRANGER, false)
-    c.setGuildmate(GUILDIE, true)
-    c.setGuildmate(STRANGER, false)
-    c.setGuildmate(FRIEND, false)
+    c.setFriend(GUILDIE, false)
     c.setGrouped(false)
     c.setQueued(false)
     c.setCombat(false)
@@ -41,13 +39,21 @@ tests["invite accept: names and the default, on as Flow's"] = function(t)
     t.eq(addon.settings:get(IA().SETTING), true, "on as made (Flow: on by default)")
 end
 
-tests["invite accept: a friend's invite and a guild member's are accepted"] = function(t)
+tests["invite accept: a friend's invite is accepted"] = function(t)
     if type(IA()) ~= "table" then return t.ok(false, "not loaded") end
     local c = boot()
     invite(c, "Friendname", FRIEND)
     t.eq(c.groupAccepts, 1, "the friend")
+end
+
+-- Lead section 740: Flow accepts friends only.
+tests["invite accept: a guild member who is not a friend is not accepted"] = function(t)
+    if type(IA()) ~= "table" then return t.ok(false, "not loaded") end
+    local c = boot()
     invite(c, "Guildname", GUILDIE)
-    t.eq(c.groupAccepts, 2, "the guild member")
+    t.eq(c.groupAccepts, 0, "a guild member, not a friend")
+    t.eq(IA().Decide({ on = true, inCombat = false, grouped = false, queued = false, friend = false, guild = true }),
+        "stranger", "a guild answer counts for nothing")
 end
 
 tests["invite accept: never from a stranger, or one whose standing is not known"] = function(t)
