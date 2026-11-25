@@ -68,7 +68,7 @@ tests["quest offers: one talk drops a quest the giver does not offer"] = functio
     t.eq(api.dropped(11), false, "offered by id")
     t.eq(api.dropped(12), false, "offered by title")
     t.eq(api.dropped(13), true, "not on offer: dropped after one talk")
-    t.eq(saved(c)[13].at, 100000)
+    t.eq(saved(c)[13].firstAt, 100000, "the first talk without it (section 806: Flow's firstAt)")
     t.eq(saved(c)[13].npc, "Old Giver")
     t.eq(k.problems:count(), 0)
 end
@@ -116,11 +116,22 @@ tests["quest offers: offered again later brings the quest back"] = function(t)
     t.eq(api.dropped(13), false)
 end
 
-tests["quest offers: a drop runs out after a day"] = function(t)
+-- Lead section 806 (section 563, as Flow's Q.NoteOffer and Q:Offered,
+-- Modules/Quests/QuestData.lua:342-344, :362-373, :421-430 at origin/local
+-- 4ce93c83): one talk without the quest drops it for QO.PAUSE (10 min);
+-- missing again at a talk at least QO.GAP later drops it for QO.HIDE (a day).
+tests["quest offers: one talk drops it for ten minutes, a second talk for a day"] = function(t)
     local _, c, api = start({ offered = { ids = {}, titles = {} } })
     c.fire("GOSSIP_SHOW")
-    c.setClock(100000 + QO.HIDE + 1)
-    t.eq(api.dropped(13), false)
+    t.eq(api.dropped(13), true, "dropped after the first talk")
+    c.setClock(100000 + QO.PAUSE + 1)
+    t.eq(api.dropped(13), false, "back after ten minutes")
+    c.fire("GOSSIP_SHOW")
+    t.eq(api.dropped(13), true, "missing again: dropped")
+    c.setClock(100000 + QO.PAUSE + 1 + QO.HIDE - 10)
+    t.eq(api.dropped(13), true, "for a day")
+    c.setClock(100000 + QO.PAUSE + 1 + QO.HIDE + 1)
+    t.eq(api.dropped(13), false, "and back after it")
 end
 
 tests["quest offers: an entry imported from Flow counts"] = function(t)
@@ -129,10 +140,18 @@ tests["quest offers: an entry imported from Flow counts"] = function(t)
 end
 
 tests["quest offers: pure note and dropped"] = function(t)
+    t.eq(QO.PAUSE, 600)
+    t.eq(QO.HIDE, 86400)
+    t.eq(QO.GAP, 60)
     local list = {}
-    t.eq(QO.Note(list, 5, false, 10, "A"), "dropped")
-    t.eq(QO.Dropped(list, 5, 10 + QO.HIDE - 1), true)
-    t.eq(QO.Dropped(list, 5, 10 + QO.HIDE), false)
+    t.eq(QO.Note(list, 5, false, 10, "A"), "pause", "first talk without it")
+    t.eq(QO.Dropped(list, 5, 10 + QO.PAUSE - 1), true)
+    t.eq(QO.Dropped(list, 5, 10 + QO.PAUSE), false)
+    t.eq(QO.Note(list, 5, false, 10 + QO.GAP - 1, "A"), nil, "a second talk too soon counts for nothing")
+    t.eq(QO.Note(list, 5, false, 10 + QO.GAP, "A"), "day", "missing again at least a minute later")
+    t.eq(QO.Dropped(list, 5, 10 + QO.GAP + QO.HIDE - 1), true)
+    t.eq(QO.Dropped(list, 5, 10 + QO.GAP + QO.HIDE), false)
+    t.eq(QO.Note(list, 5, false, 20 + QO.GAP, "A"), nil, "already dropped for the day: no change")
     t.eq(QO.Note(list, 5, true, 20), "back")
     t.eq(list[5], nil)
     t.eq(QO.Note(list, 6, true, 20), nil, "never dropped: nothing changes")
