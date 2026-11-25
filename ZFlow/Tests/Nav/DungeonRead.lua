@@ -86,6 +86,8 @@ local function client(opts)
     end
     c.setClass(opts.class or "WARRIOR"); c.setRaceId(opts.race or 1); c.setFaction(opts.faction or "Alliance")
     if opts.noLevel then c.setLevel(nil) else c.setLevel(opts.level or 18) end
+    -- R-02: the quest log read, empty, unless opts.noLog (not read).
+    if not opts.noLog then c.setQuestLog({}) end
     -- Every quest of the made-up Questie read as not handed in, unless
     -- opts.doneUnknown (Twin review, F2).
     if not opts.doneUnknown then
@@ -594,6 +596,18 @@ tests["dungeon read (d): the dungeon of an instance name, any case; unknown is n
     t.eq(R.DungeonNamed(st, "Nowhere Keep"), nil)
     t.eq(R.DungeonNamed(st, nil), nil)
     t.eq(R.DungeonNamed(nil, "The Deadmines"), nil)
+end
+
+-- R-02 (lead section 777; Plexy's note on zflow-dungeon-2): a quest log
+-- that was not read is not an empty log. The pane waits and says so, as
+-- for a level not known (F1). Fails before: an unread log was read as empty.
+tests["dungeon read R-02: your quest log not read: the pane says so instead of guessing"] = function(t)
+    local c = client({ noLog = true })
+    local st = indexed(c)
+    t.eq(R.Pane(st, c, DM).why, R.WHY_NO_LOG)
+    t.eq(#R.WHY_NO_LOG, 2)
+    c.setQuestLog({})
+    t.eq(R.Pane(st, c, DM).why ~= R.WHY_NO_LOG, true, "read, even empty: no wait")
 end
 
 return tests
