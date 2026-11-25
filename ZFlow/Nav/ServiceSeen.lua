@@ -22,6 +22,19 @@ local _, ns = ...
 --   CONFIRM_BINDER    an innkeeper (the player asked to make the inn home)
 --   MAIL_SHOW         a mailbox
 --   AUCTION_HOUSE_SHOW  an auctioneer (the auction house window opened)
+--   GOSSIP_SHOW       (A2-27) each service the npc's gossip options show,
+--                     by the game's own option type (GOSSIP_KINDS: vendor,
+--                     taxi, banker, binder), saved as one sighting of the
+--                     one npc. client.gossipOptions() -> a list of
+--                     { type = the option type, icon = number or nil }
+--                     (CLIENT NEED: C_GossipInfo.GetOptions, else the older
+--                     GetGossipOptions); read once, never chosen. With no
+--                     such read, a read that raises, or no option of a
+--                     known type, nothing is written. The option's words
+--                     and its icon are not read as a kind: the words differ
+--                     by language, the icons are not known here. Whether a
+--                     vendor repairs or sells trade goods is not asked at
+--                     the gossip; those marks stay as saved.
 --
 -- Saved per character, char "learned.places.services"[key] =
 --   { name, guid, map, x, y, kinds = { [kind] = true }, seen, n }
@@ -46,13 +59,17 @@ local _, ns = ...
 -- not written. A store that refuses a write is left as it was.
 --
 --   ServiceSeen.Seen(kind, client, store) -> report   one sighting read
+--   ServiceSeen.GossipKinds(options)      -> kinds    pure: the option rule
+--   ServiceSeen.Gossip(client, store)     -> report or nil   one gossip read
 --   ServiceSeen.Declare(k)                -> api      declares the module
 --     api.last()   the report of the last event read, nil before the first
 --   ns.use(ServiceSeen.NAME) -> { Last = api.last }
 --
 --   report = { kind = "service", service (the kind), ok, reason (when not
 --              ok), key, name, repair (vendor: true / false / nil),
---              moved (true / false on a known entry, nil on a new one) }
+--              moved (true / false on a known entry, nil on a new one),
+--              gossip = true and services (the kinds, service being the
+--              first) when read from a gossip window }
 --
 -- Keys are names and GUIDs the client gave and may hold a dot, so the
 -- table is written by key and never through a dotted path.
@@ -82,6 +99,13 @@ ServiceSeen.EVENTS = {
     { event = "MAIL_SHOW", kind = "mailbox" },
     { event = "AUCTION_HOUSE_SHOW", kind = "auction" },
 }
+
+-- The gossip window (A2-27): the game's own option types that name a
+-- service saved here. Every other type (gossip, trainer, battlemaster,
+-- healer, petition, tabard, unlearn, ...) is left out. First guesses, not
+-- seen in game.
+ServiceSeen.GOSSIP_EVENT = "GOSSIP_SHOW"
+ServiceSeen.GOSSIP_KINDS = { vendor = "vendor", taxi = "flight", banker = "banker", binder = "innkeeper" }
 
 local KINDS = { vendor = true, banker = true, flight = true, innkeeper = true, mailbox = true, auction = true }
 
@@ -148,8 +172,13 @@ local function count(t)
     return n
 end
 
-function ServiceSeen.Seen(kind, client, store)
+-- One sighting. gossip: nil for a service window; for a gossip window the
+-- list of kinds its options showed, kind being the first of them. A gossip
+-- window is no merchant window: whether the npc repairs and what it sells
+-- are not read there, and marks already saved stay.
+local function save(kind, client, store, gossip)
     local report = { kind = "service", service = kind }
+    if gossip then report.services, report.gossip = gossip, true end
     if not KINDS[kind] then return refuse(report, "not a kind of service") end
     -- Every read comes before the first write.
     local guid, name
@@ -164,13 +193,13 @@ function ServiceSeen.Seen(kind, client, store)
         return refuse(report, "the position is not known")
     end
     local repair
-    if kind == "vendor" then
+    if kind == "vendor" and not gossip then
         repair = ask(client, "merchantRepairs")
         if type(repair) ~= "boolean" then repair = nil end
         report.repair = repair
     end
     local trade
-    if kind == "vendor" then trade = sellsTrade(client) end
+    if kind == "vendor" and not gossip then trade = sellsTrade(client) end
     local now = ask(client, "clock")
     if not finite(now) then now = nil end
 
@@ -202,6 +231,7 @@ function ServiceSeen.Seen(kind, client, store)
         for k, v in pairs(e.kinds) do kinds[k] = v end
     end
     kinds[kind] = true
+    for _, more in ipairs(gossip or {}) do kinds[more] = true end
     if repair == true then kinds.repair = true elseif repair == false then kinds.repair = nil end
     e.kinds = kinds
     if trade == true then e.trade = true elseif trade == false then e.trade = nil end
@@ -222,6 +252,40 @@ function ServiceSeen.Seen(kind, client, store)
     places[key] = e
     report.ok = true
     return report
+end
+
+function ServiceSeen.Seen(kind, client, store)
+    return save(kind, client, store, nil)
+end
+
+-- Pure: the kinds a list of gossip options shows, in the order of the
+-- options, each once. An option is { type = the game's own option type };
+-- anything else, and a type not in GOSSIP_KINDS, is left out.
+function ServiceSeen.GossipKinds(options)
+    local out, had = {}, {}
+    if type(options) ~= "table" then return out end
+    for _, o in ipairs(options) do
+        local kind
+        if type(o) == "table" and type(o.type) == "string" then kind = ServiceSeen.GOSSIP_KINDS[o.type] end
+        if kind and KINDS[kind] and not had[kind] then
+            had[kind] = true
+            out[#out + 1] = kind
+        end
+    end
+    return out
+end
+
+-- One gossip window read: the options are read once, never chosen. Nil,
+-- and nothing written, when the client has no gossip read, the read
+-- raises or answers no list, or no option is a service; else the report
+-- of the one sighting saved (or refused) for all the kinds shown.
+function ServiceSeen.Gossip(client, store)
+    if type(client) ~= "table" or type(client.gossipOptions) ~= "function" then return nil end
+    local ok, options = pcall(client.gossipOptions)
+    if not ok then return nil end
+    local kinds = ServiceSeen.GossipKinds(options)
+    if not kinds[1] then return nil end
+    return save(kinds[1], client, store, kinds)
 end
 
 -- Declares the module on kernel k. Usable at once: before the first event
@@ -245,6 +309,12 @@ function ServiceSeen.Declare(k)
                     last = ServiceSeen.Seen(row.kind, ctx.client, ctx.store)
                 end)
             end
+            -- A window with no service among its options is no sighting:
+            -- the last report stays.
+            ctx.bus:on(ServiceSeen.NAME, ServiceSeen.GOSSIP_EVENT, function()
+                local report = ServiceSeen.Gossip(ctx.client, ctx.store)
+                if report then last = report end
+            end)
         end,
     })
     return api
