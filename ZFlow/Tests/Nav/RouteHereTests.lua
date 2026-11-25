@@ -1,7 +1,7 @@
 local _, ns = ...
 -- A2-20 (lead section 674): the tracker's "here" mode, data half
--- (Nav/RouteHere.lua). Ported from legacy Flow's rule (Modules/Nav/Nav.lua
--- N.IsHere / N.HereStops, N.HERE_YARDS = 150): the next step, and every step
+-- (Nav/RouteHere.lua). Ported from legacy Flow's rule (origin/buff-fishing-prof-path
+-- Modules/Nav/Nav.lua:1405-1435, N.HereStops, N.HERE_YARDS = 150): the next step, and every step
 -- within the yards of the player or of the next step, in route order.
 -- Made-up stops and places; not tested in game.
 

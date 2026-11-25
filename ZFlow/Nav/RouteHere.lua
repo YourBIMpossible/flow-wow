@@ -6,8 +6,8 @@ local _, ns = ...
 --
 -- The steps come from the existing step source, Nav/TripRoute.lua
 -- api.Current() (the stops still to walk, in route order). Ported from
--- legacy Flow (Modules/Nav/Nav.lua:2443 N.HERE_YARDS = 150, :2495 N.IsHere,
--- :2502 N.HereStops): a step is here when it is the next step, or one of
+-- legacy Flow (origin/buff-fishing-prof-path Modules/Nav/Nav.lua:1405-1435:
+-- :1409 N.HERE_YARDS = 150, :1427 N.HereStops): a step is here when it is the next step, or one of
 -- its points is within RH.YARDS of the player, or of the next step. Order:
 -- the route's own.
 --
@@ -31,7 +31,7 @@ local RH = {}
 N.RouteHere = RH
 
 RH.NAME = "routeHere"
-RH.YARDS = 150   -- Flow's N.HERE_YARDS (Modules/Nav/Nav.lua:2443)
+RH.YARDS = 150   -- Flow's N.HERE_YARDS (origin/buff-fishing-prof-path Modules/Nav/Nav.lua:1409)
 
 local function finite(v)
     return type(v) == "number" and v == v and v > -math.huge and v < math.huge
