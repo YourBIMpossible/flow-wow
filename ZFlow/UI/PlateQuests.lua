@@ -163,16 +163,47 @@ local function learnedFrom(book, itemId)
     return out
 end
 
+-- Parity rows C-17 and C-18, the data half (lead section 715), as Flow's
+-- Modules/QuestMarks.lua (:1-20): what you do to a marked mob. Each entry
+-- of PQ.Index carries what = "kill" | "loot" | "use". A creature objective
+-- is "use" when the player's Questie says the quest hands an item
+-- (quest.sourceItemId, a number) and the log line does not say "slain"
+-- (the game's own words, as "Tested Silithid: 1/5"); else "kill". An item
+-- objective is "loot". Read from Questie at runtime; nothing copied.
+PQ.KINDS = { "kill", "loot", "use" }
+function PQ.MonsterKind(quest, text)
+    if type(quest) == "table" and type(quest.sourceItemId) == "number" and quest.sourceItemId > 0
+        and type(text) == "string" and not text:lower():find("slain", 1, true) then
+        return "use"
+    end
+    return "kill"
+end
+
+-- The kinds in a plate's list, each once, in PQ.KINDS order.
+function PQ.Kinds(list)
+    local has = {}
+    if type(list) == "table" then
+        for _, e in ipairs(list) do
+            if type(e) == "table" and type(e.what) == "string" then has[e.what] = true end
+        end
+    end
+    local out = {}
+    for _, kind in ipairs(PQ.KINDS) do
+        if has[kind] then out[#out + 1] = kind end
+    end
+    return out
+end
+
 function PQ.Index(rows, db, book)
     local out = {}
     if type(rows) ~= "table" or type(db) ~= "table" then return out end
-    local function add(npc, quest, label, kind, from)
+    local function add(npc, quest, label, kind, from, what)
         local list = out[npc]
         if list == nil then
             list = {}
             out[npc] = list
         end
-        list[#list + 1] = { quest = quest, label = label, kind = kind, from = from }
+        list[#list + 1] = { quest = quest, label = label, kind = kind, from = from, what = what }
     end
     for _, row in ipairs(rows) do
         if type(row) == "table" and row.complete ~= true and row.failed ~= true then
@@ -186,7 +217,8 @@ function PQ.Index(rows, db, book)
                     if type(o) == "table" and o.done ~= true and type(od) == "table" then
                         local label = PQ.Progress(o.text) or PQ.MARK
                         if od.Type == "monster" then
-                            for _, npc in ipairs(ids(od.Id)) do add(npc, row.id, label, "kill", "questie") end
+                            local what = PQ.MonsterKind(quest, o.text)
+                            for _, npc in ipairs(ids(od.Id)) do add(npc, row.id, label, "kill", "questie", what) end
                         elseif od.Type == "item" then
                             local seen = {}
                             local item = dbCall(db, "GetItem", od.Id)
@@ -194,13 +226,13 @@ function PQ.Index(rows, db, book)
                             if type(item) == "table" then drops = item.npcDrops end
                             for _, npc in ipairs(ids(drops)) do
                                 seen[npc] = true
-                                add(npc, row.id, label, "drop", "questie")
+                                add(npc, row.id, label, "drop", "questie", "loot")
                             end
                             for _, itemId in ipairs(ids(od.Id)) do
                                 for _, npc in ipairs(learnedFrom(book, itemId)) do
                                     if not seen[npc] then
                                         seen[npc] = true
-                                        add(npc, row.id, label, "drop", "learned")
+                                        add(npc, row.id, label, "drop", "learned", "loot")
                                     end
                                 end
                             end
@@ -283,6 +315,26 @@ function PQ.Declare(k, diag)
         shownOn[unit] = true
     end
 
+    -- C-17/C-18: what a marked plate is for, for the icons the drawing lane
+    -- makes: { kinds, label, target } or nil (no mark, not a nameplate
+    -- unit, not on screen). target: client.plateIsTarget(unit), a CLIENT
+    -- NEED (UnitIsUnit(unit, "target"), stubbed in Core/ClientFake.lua);
+    -- true or false, nil when not read. Read only, never chosen.
+    function api.markOf(unit)
+        if type(unit) ~= "string" or not unit:find("^nameplate%d+$") or not inView[unit] then return nil end
+        if not ctx or not on() or type(index) ~= "table" then return nil end
+        local client = ctx.client
+        if ask(client, "canAttack", unit) ~= true then return nil end
+        local id = ask(client, "plateCreature", unit)
+        local list
+        if id ~= nil then list = index[id] end
+        local label = PQ.Label(list)
+        if label == nil then return nil end
+        local target = ask(client, "plateIsTarget", unit)
+        if type(target) ~= "boolean" then target = nil end
+        return { kinds = PQ.Kinds(list), label = label, target = target }
+    end
+
     local function drawAll()
         for unit in pairs(inView) do drawOne(unit) end
     end
@@ -361,7 +413,7 @@ function PQ.Declare(k, diag)
     k:Module({
         name = PQ.NAME,
         needs = { "client", "settings", "bus", "sched", "store" },
-        provides = { Status = api.status, Lines = api.lines },
+        provides = { Status = api.status, Lines = api.lines, MarkOf = api.markOf },
         start = function(c)
             ctx = c
             cancelPlates = ask(c.client, "plates", onPlate)

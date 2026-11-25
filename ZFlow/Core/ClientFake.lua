@@ -4995,3 +4995,22 @@ do
         return c
     end
 end
+
+-- § C-17 (UI/PlateQuests.lua; lead section 715): one CLIENT NEED,
+-- stubbed here only. Core/Client.lua does not have it yet.
+--   c.plateIsTarget(unit) -> true when that nameplate unit is your target,
+--     false when not, nil when not known: UnitIsUnit(unit, "target").
+--   c.setPlateIsTarget(unit, v) sets it; as made, every plate is false.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local isTarget = {}
+        function c.setPlateIsTarget(unit, v) isTarget[unit] = v end
+        function c.plateIsTarget(unit)
+            if isTarget[unit] == nil then return false end
+            return isTarget[unit]
+        end
+        return c
+    end
+end
