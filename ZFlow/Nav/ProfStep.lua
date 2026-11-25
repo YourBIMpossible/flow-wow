@@ -738,7 +738,8 @@ end
 --       one, else PP.FLAG (256 and 4096, the first game's, as the
 --       predecessor's Services.lua).
 --   gather_skill               a node of that profession on the map the
---       player is on: the nearest the player gathered there (Nav/Nodes.lua);
+--       player is on: the nearest the player gathered there (Nav/Nodes.lua)
+--       that is not resting (Nav/NodeRest.lua: just looted or found empty);
 --       else the nearest place Questie gives for an object the player has
 --       gathered before, on any map (its saved object id): a node this
 --       player can gather, never one picked by its name.
@@ -812,6 +813,7 @@ PP.STATION_PROF = "Blacksmithing"
 PP.NPCS = "learned.places.npcs"
 PP.NODES_PATH = "learned.nodes"
 PP.NODE_MODULE = "nodes"
+PP.REST_MODULE = "nodeRest"
 -- How many of the nearest gathered nodes are asked for.
 PP.NODES = 50
 PP.TRAINER_TITLE = "^(.-) Trainer$"
@@ -1265,10 +1267,16 @@ function PP.From(client, store, use, kind, reads)
         local mod = call(use, PP.NODE_MODULE)
         local list
         if type(mod) == "table" then list = call(mod.Nearest, PP.NODES) end
+        -- Parity row A1-21: a node that is resting (just looted, or found
+        -- empty; Nav/NodeRest.lua) is passed over for the next one.
+        local rest = call(use, PP.REST_MODULE)
+        local resting = type(rest) == "table" and rest.Resting or nil
         if type(list) == "table" then
             known.nodes = {}
             for _, r in ipairs(list) do
-                if type(r) == "table" and type(r.node) == "table" then known.nodes[#known.nodes + 1] = r.node end
+                if type(r) == "table" and type(r.node) == "table" and call(resting, r.node) ~= true then
+                    known.nodes[#known.nodes + 1] = r.node
+                end
             end
         end
         if q and known.here then
