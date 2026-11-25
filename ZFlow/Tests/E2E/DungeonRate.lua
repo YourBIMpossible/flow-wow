@@ -183,37 +183,37 @@ tests["dungeon rate: both rates are kept over a reload"] = function(t)
     t.eq(addon2.problems:count(), base2, "no new problem")
 end
 
--- White's run (lead section 539): a character that never was in a dungeon
--- and never asked costs no XP read and no XP event. Red on 63f99da0: XP was
--- read at login and its event listened to for every character.
-tests["dungeon rate: XP is not read or listened to until the character enters a dungeon or asks"] = function(t)
-    local function listens(c)
-        for _, event in ipairs(c.events()) do
-            if event == "PLAYER_XP_UPDATE" then return true end
-        end
-        return false
+-- White's run (lead section 539): for a character that never was in a
+-- dungeon and never asked, this module reads no XP and listens to no XP
+-- event. Twin, lead section 550 (F1): the check is on this module's own
+-- measuring. The whole client's listeners cannot be asked, because the
+-- info bar, shown by default, listens to PLAYER_XP_UPDATE for its own row.
+-- Red on 63f99da0: XP was measured from login for every character.
+tests["dungeon rate: this module measures no XP until the character enters a dungeon or asks"] = function(t)
+    local function measuring(addon)
+        local visit = addon.use("dungeonVisit")
+        return type(visit) == "table" and type(visit.Measuring) == "function" and visit.Measuring()
     end
     local c, addon = boot(1000, { fresh = true })
-    local reads = 0
-    local real = c.xp
-    c.xp = function(...)
-        reads = reads + 1
-        return real(...)
-    end
     c.advance(30, 60)
     gain(c, 1300, 500)
-    t.eq(listens(c), false, "a fresh character: the XP event is not listened to")
+    t.eq(measuring(addon), false, "a fresh character: not measuring")
     t.eq(addon.store:get("char", "dungeon.xpSamples"), nil, "and nothing is sampled")
-    local before = reads
+    t.eq(addon.store:get("char", "dungeon.measure"), nil, "nothing is kept")
     walkIn(c, 1400)
-    t.eq(listens(c), true, "in a dungeon: measured from now on")
-    t.ok(reads > before, "and the XP is read")
+    t.eq(measuring(addon), true, "in a dungeon: measured from now on")
     t.eq(addon.store:get("char", "dungeon.measure"), true, "kept for the next login")
-    local c2 = boot(2000, { fresh = true })
+    walkOut(c, 1500)
+    local at = 1500 + ns.DungeonVisit.GRACE + 1
+    gain(c, at + 300, 500)
+    gain(c, at + 600, 500)
+    local samples = addon.store:get("char", "dungeon.xpSamples")
+    t.eq(type(samples) == "table" and #samples, 2, "and XP gained outside is sampled now")
+    local c2, addon2 = boot(2000, { fresh = true })
     typed(c2, "dungeon")
-    t.eq(listens(c2), true, "asking the dungeon word starts it too")
-    local c3 = boot(3000, { char = c.saved(ns.id.charDB) })
-    t.eq(listens(c3), true, "after a reload it is measured from login")
+    t.eq(measuring(addon2), true, "asking the dungeon word starts it too")
+    local c3, addon3 = boot(3000, { char = c.saved(ns.id.charDB) })
+    t.eq(c3 ~= nil and measuring(addon3), true, "after a reload it is measured from login")
 end
 
 -- Red on a8fc438f: there is no V.Gain (the call raises).

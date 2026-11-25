@@ -59,9 +59,11 @@
 --                      The XP is read and its events listened to only once
 --                      this character has been in a dungeon or asked one of
 --                      the dungeon words (char V.MEASURE): a character that
---                      never does either costs no XP read at all (White's
---                      run, lead section 539: the info bar's "a hidden bar
---                      reads nothing" check).
+--                      never does either costs no XP read of this module's
+--                      (White's run, lead section 539: the info bar's "a
+--                      hidden bar reads nothing" check). The info bar reads
+--                      XP for its own row while it is shown; that is its
+--                      own and is not counted here (Twin, section 550).
 --
 --   not known          (Plexy, lead section 504 CHANGES-2) whether you are in
 --                      a dungeon has three answers: inside, outside, and
@@ -772,6 +774,10 @@ function V.Declare(k, diag)
         onXp()
     end
 
+    -- Whether this module is measuring XP: its own XP read and its own
+    -- listeners, whatever else in the add-on listens to the same events.
+    function api.Measuring() return measuring end
+
     if diag and type(diag.commands) == "table" then
         diag.commands[V.WORD] = function()
             if measure then measure() end
@@ -792,7 +798,8 @@ function V.Declare(k, diag)
     k:Module({
         name = V.NAME,
         needs = { "client", "store", "settings", "bus", "sched" },
-        provides = { Lines = api.Lines, LastLine = api.LastLine, RateLine = api.RateLine },
+        provides = { Lines = api.Lines, LastLine = api.LastLine, RateLine = api.RateLine,
+                     Measuring = api.Measuring },
         start = function(c)
             ctx = c
             -- Inside a dungeon the index is read ahead, so the word answers
