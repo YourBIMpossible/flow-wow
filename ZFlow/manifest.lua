@@ -294,6 +294,7 @@ return {
     "Nav/DungeonRun.lua",
     "Nav/DungeonMenu.lua",
     "Nav/DungeonBadge.lua",
+    "Nav/DungeonFirst.lua",
     -- Lead section 305: boss kills as the client reports them (after Diag).
     "Nav/BossKills.lua",
     -- Lead section 318: the Dungeon Quests window, on the kit (after Kit and the dungeon data).
