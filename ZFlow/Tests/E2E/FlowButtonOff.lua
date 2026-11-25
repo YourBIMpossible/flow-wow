@@ -114,7 +114,9 @@ tests["flow button off: a reload with the rotation off shows the word; switched 
     t.eq(tip(c2), "Flow button. Casts Power Word: Fortitude when you click it.")
     off(c2, addon2)
     t.ok(saysFlow(c2), "and off again: the word")
-    t.eq(addon2.problems:count(), base2, "no new problem")
+    local all = {}
+    for _, e in ipairs(addon2.problems:list()) do all[#all + 1] = e.kind .. "|" .. e.owner .. "|" .. e.text .. "|" .. tostring(e.detail) end
+    t.eq(addon2.problems:count(), base2, "no new problem: " .. table.concat(all, " ;; "))
 end
 
 tests["flow button off: the tooltip line, pure"] = function(t)
