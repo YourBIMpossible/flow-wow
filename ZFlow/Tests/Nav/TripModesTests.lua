@@ -58,8 +58,10 @@ tests["hub first: pick-ups only as many as the quest log has room for"] = functi
         stop("Turn in", 0.53, 0.5, { turnIn = true }),
     }
     local out = T().HubFirst(stops, HERE, SIZE, 250, 0)
-    t.eq(out[1].label, "Turn in", "a full log: a turn-in frees a slot")
-    t.eq(out[2].label, "Pick up A")
+    -- A full log: the turn-in frees one slot, so one pick-up (the nearest)
+    -- joins the tour; the other waits in the planned order.
+    t.eq(out[1].label, "Pick up A")
+    t.eq(out[2].label, "Turn in")
     t.eq(out[3].label, "Pick up B")
     local none = T().HubFirst(stops, HERE, SIZE, 250, nil)
     t.eq(none[1].label, "Pick up A", "room not known: every close pick-up")

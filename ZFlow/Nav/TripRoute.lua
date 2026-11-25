@@ -60,7 +60,8 @@ N.TripRoute = T
 
 T.NAME = "tripRoute"
 T.WORD = "route"
-T.HELP = "plan your quests on this map in order and walk them with the arrow; route skip, route new, route off"
+T.HELP = "plan your quests on this map in order and walk them with the arrow; route skip, route new, route off;"
+    .. " route mode quests|optimal|complete; route steps <number>|all"
 T.SETTING = "quest.route"
 T.ARRIVE_YARDS = 10      -- a run stop is reached this close
 T.ARRIVE_SHARE = 0.01    -- the same when the map's size is not known
@@ -348,6 +349,92 @@ function T.Town(o)
     return out, aside
 end
 
+-- FLOW-PARITY A1-25: the route modes, a port of legacy Flow's N:Mode and
+-- N.ModeKinds (Modules/Nav/Nav.lua:1415-1446). "quests": your log only;
+-- "optimal" (the default): pick-ups and town stops too, the hub tour
+-- first; "complete": everything, pick-ups far below your level too. Each
+-- mode only sets the switches this route already has.
+T.MODES = { "quests", "optimal", "complete" }
+T.MODE_PATH = "nav.routeMode"     -- account, the word's choice
+T.MODE_HOW = "Pick one with the route word: mode quests, mode optimal or mode complete."
+T.MORE = "... and %d more stops."
+T.MODE_SAID = {
+    quests = "Route: the quests in your log only.",
+    optimal = "Route: your quests, quests to pick up on the way and town stops.",
+    complete = "Route: everything, quests far below your level too.",
+}
+function T.ModeFlags(mode)
+    if mode == "quests" then return { pickups = false, town = false, low = false, hub = false } end
+    if mode == "complete" then return { pickups = true, town = true, low = true, hub = true } end
+    return { pickups = true, town = true, low = false, hub = true }
+end
+
+-- FLOW-PARITY A1-30: the hub tour first, a port of legacy Flow's
+-- N.HubBusiness and N:PickupKeys (Nav.lua:3149-3197). Turn-ins and quests
+-- to pick up within radius yards of the player come first, nearest first;
+-- pick-ups only as many as the quest log has room for (free free slots,
+-- plus one for each turn-in, which frees one; nil: room not known, every
+-- close pick-up). Objectives, town stops and cast stops are never hub
+-- business; the rest keep their planned order.
+T.HUB_YARDS = 250
+local function yardsTo(s, here, size)
+    if s.cast or type(s.place) ~= "table" or not finite(s.place.x) or not finite(s.place.y) then return nil end
+    local dx, dy = (s.place.x - here.x) * size.w, (s.place.y - here.y) * size.h
+    return math.sqrt(dx * dx + dy * dy)
+end
+
+function T.HubFirst(stops, here, size, radius, free)
+    local out = {}
+    for i, s in ipairs(type(stops) == "table" and stops or {}) do out[i] = s end
+    if type(here) ~= "table" or not finite(here.x) or not finite(here.y) or type(size) ~= "table"
+        or not finite(size.w) or not finite(size.h) then
+        return out
+    end
+    radius = finite(radius) and radius or T.HUB_YARDS
+    local turnins, pickups = {}, {}
+    for i, s in ipairs(out) do
+        local d = yardsTo(s, here, size)
+        if d and d <= radius then
+            if s.turnIn == true then turnins[#turnins + 1] = { i = i, d = d }
+            elseif s.kind == "pickup" then pickups[#pickups + 1] = { i = i, d = d } end
+        end
+    end
+    local function near(a, b) return a.d < b.d end
+    table.sort(pickups, near)
+    local hub = {}
+    for _, e in ipairs(turnins) do hub[#hub + 1] = e end
+    local room = #pickups
+    if finite(free) then room = math.max(0, math.min(room, free + #turnins)) end
+    for j = 1, room do hub[#hub + 1] = pickups[j] end
+    if #hub == 0 then return out end
+    table.sort(hub, near)
+    local taken, ordered = {}, {}
+    for _, e in ipairs(hub) do
+        taken[e.i] = true
+        ordered[#ordered + 1] = out[e.i]
+    end
+    for i, s in ipairs(out) do
+        if not taken[i] then ordered[#ordered + 1] = s end
+    end
+    return ordered
+end
+
+-- FLOW-PARITY A1-29: how many steps show. The first n of the route (nil:
+-- all) and how many more there are.
+T.SHOWN_PATH = "nav.routeShown"   -- account, the word's choice
+function T.Shown(route, n)
+    if type(route) ~= "table" or type(route.stops) ~= "table" then return nil end
+    local out = {}
+    for key, v in pairs(route) do out[key] = v end
+    out.stops = {}
+    local total = #route.stops
+    local upto = total
+    if finite(n) and n >= 1 then upto = math.min(total, math.floor(n)) end
+    for i = 1, upto do out.stops[i] = route.stops[i] end
+    out.more = total - upto
+    return out
+end
+
 function T.Plan(rows, places, here, legs, pickups, note)
     here = type(here) == "table" and here or {}
     if here.map == nil then return nil, T.WHY_NO_MAP end
@@ -603,7 +690,25 @@ function T.Declare(k, diag)
         return not (ok and v == false)
     end
 
+    -- A1-25: the mode the route word picked (account), optimal when none.
+    local function mode()
+        local st = ctx and ctx.store
+        if type(st) ~= "table" or type(st.get) ~= "function" then return "optimal" end
+        local ok, v = pcall(st.get, st, "account", T.MODE_PATH)
+        if ok and (v == "quests" or v == "complete") then return v end
+        return "optimal"
+    end
+
+    local function shownCount()
+        local st = ctx and ctx.store
+        if type(st) ~= "table" or type(st.get) ~= "function" then return nil end
+        local ok, v = pcall(st.get, st, "account", T.SHOWN_PATH)
+        if ok and finite(v) then return v end
+        return nil
+    end
+
     local function pickupsOn()
+        if not T.ModeFlags(mode()).pickups then return false end
         local s = ctx and ctx.settings
         if type(s) ~= "table" or type(s.get) ~= "function" then return true end
         local ok, v = pcall(s.get, s, T.PICKUP_SETTING)
@@ -611,6 +716,7 @@ function T.Declare(k, diag)
     end
 
     local function townOn()
+        if not T.ModeFlags(mode()).town then return false end
         local s = ctx and ctx.settings
         if type(s) ~= "table" or type(s.get) ~= "function" then return true end
         local ok, v = pcall(s.get, s, T.TOWN_SETTING)
@@ -744,7 +850,7 @@ function T.Declare(k, diag)
             for _, row in ipairs(rows) do
                 if type(row) == "table" and row.id ~= nil then log[row.id] = true end
             end
-            pickups, note = RP.Read(c, here, log)
+            pickups, note = RP.Read(c, here, log, { low = T.ModeFlags(mode()).low })
         end
         local function extrasOf(town)
             local extras = {}
@@ -771,6 +877,31 @@ function T.Declare(k, diag)
         for _, a in ipairs(aside or {}) do
             r.left = type(r.left) == "table" and r.left or {}
             r.left[#r.left + 1] = a
+        end
+        -- A1-30: the hub tour first. Room in the quest log is not read yet
+        -- (a CLIENT NEED), so every close pick-up joins the tour. A stop the
+        -- tour moved gets its straight-line leg again.
+        if T.ModeFlags(mode()).hub then
+            local w, h, known = scale(here)
+            if known then
+                local moved = T.HubFirst(r.stops, here, { w = w, h = h }, T.HUB_YARDS, nil)
+                local changed = false
+                for i, s in ipairs(moved) do
+                    if s ~= r.stops[i] then changed = true end
+                end
+                if changed then
+                    local fx, fy = here.x, here.y
+                    for _, s in ipairs(moved) do
+                        if not s.cast and finite(fx) and finite(s.place.x) then
+                            local dx, dy = (s.place.x - fx) * w, (s.place.y - fy) * h
+                            s.leg = math.sqrt(dx * dx + dy * dy)
+                            s.secs = T.Seconds(s.leg)
+                            fx, fy = s.place.x, s.place.y
+                        end
+                    end
+                    r.stops = moved
+                end
+            end
         end
         route, at, readAt = r, 1, ask(c, "now")
         return r
@@ -917,9 +1048,20 @@ function T.Declare(k, diag)
                  place = { map = s.place.map, x = s.place.x, y = s.place.y } }
     end
 
+    -- A1-29: with a count picked by the route word, the first that many
+    -- stops from the current one, then how many more.
     function api.Lines()
         if not route then return nil end
-        return T.Lines(route, at)
+        local n = shownCount()
+        if not n then return T.Lines(route, at) end
+        local rest = {}
+        for key, v in pairs(route) do rest[key] = v end
+        rest.stops = {}
+        for i = at, #route.stops do rest.stops[#rest.stops + 1] = route.stops[i] end
+        local shown = T.Shown(rest, n)
+        local lines = T.Lines(shown, 1)
+        if type(lines) == "table" and shown.more > 0 then lines[#lines + 1] = T.MORE:format(shown.more) end
+        return lines
     end
 
     -- G48 (Nav/PartyRoute.lua): a copy of the stops still to walk, or nil.
@@ -977,6 +1119,31 @@ function T.Declare(k, diag)
         end
         if word == "skip" or word == "next" then
             if api.Skip() then say(api.Lines()) else say({ T.DONE }) end
+            return
+        end
+        -- A1-25 and A1-29: route mode <quests|optimal|complete>, route steps <n|all>.
+        local arg = tostring(rest or ""):lower():match("^%s*%S+%s+(%S+)")
+        if word == "mode" then
+            if arg ~= "quests" and arg ~= "optimal" and arg ~= "complete" then
+                say({ T.MODE_SAID[mode()], T.MODE_HOW })
+                return
+            end
+            if ctx then pcall(ctx.store.set, ctx.store, "account", T.MODE_PATH, arg) end
+            say({ T.MODE_SAID[arg] })
+            api.Plan()
+            say(api.Lines() or { T.DONE })
+            return
+        end
+        if word == "steps" then
+            local n = tonumber(arg)
+            if ctx then
+                if n and n >= 1 then
+                    pcall(ctx.store.set, ctx.store, "account", T.SHOWN_PATH, math.floor(n))
+                else
+                    pcall(ctx.store.set, ctx.store, "account", T.SHOWN_PATH, nil)
+                end
+            end
+            say(api.Lines() or { T.DONE })
             return
         end
         if word == "new" or not route then
