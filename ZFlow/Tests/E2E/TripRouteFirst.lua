@@ -39,7 +39,7 @@ local BANDAGES = { id = 403, title = "Bandages", complete = true,
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    c.setSaved(ns.id.accountDB, opts.account or {}); c.setSaved(ns.id.charDB, opts.char or {})
     c.setClass("WARRIOR"); c.setFaction("Alliance"); c.setLevel(18)
     c.setZone(1, MAP); c.setPosition(MAP, 0.5, 0.5); c.setFacing(0)
     c.setMapSize(MAP, 1000, 1000); c.setMapCont(MAP, 0)
@@ -72,7 +72,11 @@ tests["trip route first: the second step shown goes first on a planned route"] =
     local route = addon.use("tripRoute")
     t.eq(type(route.First), "function", "the module provides First")
     if type(route.First) ~= "function" then return end
-    t.eq(route.First(2), false, "no route yet: nothing moves")
+    -- Lead section 838 (a): the self-planned route is there at boot; with
+    -- the route off there is none, and nothing moves.
+    route.Off()
+    t.eq(route.View(), nil, "no route now")
+    t.eq(route.First(2), false, "no route: nothing moves")
     slash(c, "route")
     local before = shown(addon)
     t.ok(#before >= 2, "a route of two steps or more: " .. table.concat(before, ", "))
@@ -83,6 +87,30 @@ tests["trip route first: the second step shown goes first on a planned route"] =
     t.eq(after[2], before[1], "the old first comes next")
     t.eq(route.First(1), false, "the first step stays where it is")
     t.eq(route.First(#after + 1), false, "no such step")
+end
+
+-- Lead section 838 (b): the order First made is saved, and is the order
+-- after a reload. A route planned with the word is not planned again by
+-- itself, so the kept order is the one shown.
+tests["trip route first: the new order is saved and there after a reload"] = function(t)
+    local c, addon = boot()
+    local route = addon.use("tripRoute")
+    if type(route.First) ~= "function" then return t.ok(false, "no First") end
+    slash(c, "route")
+    local before = shown(addon)
+    if #before < 2 then return t.ok(false, "a route of two steps or more") end
+    t.eq(route.First(2), true)
+    c.advance(10, 40)
+    local after = shown(addon)
+    t.eq(after[1], before[2], "moved")
+    local kept = addon.store:get("char", ns.Nav.TripRoute.SAVED)
+    local keptFirst
+    for i = (kept and kept.at or 1), #(kept and kept.stops or {}) do
+        if not kept.stops[i].gone then keptFirst = kept.stops[i].label break end
+    end
+    t.eq(keptFirst, before[2], "saved in the new order")
+    local _, addon2 = boot({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
+    t.eq(shown(addon2), after, "the same order after a reload")
 end
 
 return tests
