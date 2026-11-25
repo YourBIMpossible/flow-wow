@@ -31,7 +31,9 @@ local _, ns = ...
 -- Lead section 767.3c: as Flow's B.TakeOutRows (:321-326), a bank thing the
 -- route wants (e.step, the step's words) or a quest wants (e.quest, its
 -- title) is taken out too, the route first: { bank, take = "route" |
--- "quest", reason, next = nil } (no keep or sell choice for those). A bank
+-- "quest", reason, next = nil } (no keep or sell choice for those). Then a
+-- thing a reservation holds that no route stop names (e.hold, its reason;
+-- lead section 776): take = "hold", the same shape. A bank
 -- thing to sell has take = "sell". mine = true marks your own choice (a
 -- sell or a keep by the rule "yourChoice"), as Flow's r.mine. The auction
 -- house is never a way out here (owner boundary).

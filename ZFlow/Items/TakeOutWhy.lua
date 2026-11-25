@@ -29,6 +29,8 @@ ns.TakeOutWhy = TW
 -- A reservation's own reason, by its claim's activity.
 TW.REASONS = { goal = "for one of your item goals" }
 TW.HELD_FOR = "held for %s"
+-- A claim that names no activity: a plain word, never its internal owner key.
+TW.SOMETHING = "something you planned"
 
 local function itemOf(text)
     local Q = ns.QuestBags
@@ -85,7 +87,7 @@ function TW.HoldFor(key, grants)
                 local act = c.activity
                 if type(act) == "string" and TW.REASONS[act] then return TW.REASONS[act] end
                 if type(act) == "string" and act ~= "" then return TW.HELD_FOR:format(act) end
-                return TW.HELD_FOR:format(tostring(c.owner))
+                return TW.HELD_FOR:format(TW.SOMETHING)
             end
         end
     end
