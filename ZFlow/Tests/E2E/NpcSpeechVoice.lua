@@ -83,6 +83,8 @@ end
 
 tests["npc speech word: says off, then on, with the voices found"] = function(t)
     local c, addon = boot()
+    -- Lead section 872: the voice needs Bonus extras on, now off by default.
+    addon.settings:set("general.bonus", true)
     local from = #c.printed
     c.slashes[ns.id.slash](S.WORD)
     t.ok(printed(c, from):find("off", 1, true) ~= nil, printed(c, from))
