@@ -254,7 +254,14 @@ function RM.AskLine(board, nameOf, role)
     end
     if best and not tie then
         local ok, name = pcall(nameOf, best)
-        if ok and type(name) == "string" and name ~= "" then line = line .. " " .. RM.ASK_BEST:format(name, who) end
+        -- C-03 follow-up (lead section 720): the role's word (Rotation/
+        -- Role.lua Ro.WORDS), never its key; a role with no word: no line.
+        local Ro = ns.RotationRole
+        local word
+        if type(Ro) == "table" and type(Ro.WORDS) == "table" then word = Ro.WORDS[who] end
+        if ok and type(name) == "string" and name ~= "" and type(word) == "string" then
+            line = line .. " " .. RM.ASK_BEST:format(name, word)
+        end
     end
     if board.bestSell ~= nil then
         local ok, name = pcall(nameOf, board.bestSell)
