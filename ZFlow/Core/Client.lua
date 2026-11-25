@@ -9005,6 +9005,158 @@ function ns.make.client(env)
         return h
     end
 
+    -- Lead section 624 Step 4, the cooldown face (Rotation/Cooldowns.lua).
+    -- c.cooldownFace(spec) -> h, or nil when the client cannot make the
+    -- frame. spec = { name = global frame name or nil, size = pixels (38
+    -- when not given) }. One plain face of its own: a frame on UIParent, a
+    -- picture, the dark sweep over it (a Cooldown frame) and the seconds in
+    -- the middle. As the predecessor drew it (its Modules/Rotation/
+    -- Display.lua:80-93): the game's own countdown numbers are switched off,
+    -- the seconds stand one layer above the sweep, 18pt THICKOUTLINE, colour
+    -- (1, 0.95, 0.7). It takes no mouse, holds no action and is never
+    -- secure. A new face is hidden and has no place.
+    --   h.place(point)   point = { point, relPoint, x, y } on the screen.
+    --   h.anchor(point, to, relPoint, x, y) -> true, or false and "no
+    --     frame" / "refused". to is a frame's global name. THIS face is set
+    --     against it; the named frame is only handed to SetPoint, never
+    --     placed, shown or hidden (it may be a secure button).
+    --   h.show(on), h.shown()   this face only.
+    --   h.icon(texture) -> true when the client took it; nil clears the
+    --     picture and answers false.
+    --   h.spell(id) -> "sweep", "none" or nil. The sweep is set from the
+    --     spell's own (start, length), read here: only the client has them.
+    --     "sweep": on cooldown and drawn. "none": read, not on cooldown;
+    --     the sweep is cleared. nil: not read (hidden in a fight, no such
+    --     call, a read that fails); the sweep is cleared and nothing is
+    --     guessed. The global cooldown is not told apart: the caller asks
+    --     c.spellCooldown(id) first.
+    --   h.item(id) -> the same three answers, from the item's own times.
+    --   h.seconds(text)   the number in the middle, as the caller wants it
+    --     said; nil or "" clears it.
+    --   h.clear()   sweep and seconds off; the picture and the place stay.
+    -- First guesses, not seen in game on 16001: CreateFrame("Cooldown", nil,
+    -- parent, "CooldownFrameTemplate"), SetCooldown(start, length),
+    -- SetHideCountdownNumbers(true), STANDARD_TEXT_FONT.
+    function c.cooldownFace(spec)
+        spec = type(spec) == "table" and spec or {}
+        local parent = env.UIParent
+        local okF, f = call(env.CreateFrame, "Frame", spec.name, parent)
+        if not okF or type(f) ~= "table" then return nil end
+        local size = tonumber(spec.size) or 38
+        method(f, "Hide")
+        if not method(f, "SetSize", size, size) then
+            method(f, "SetWidth", size)
+            method(f, "SetHeight", size)
+        end
+        method(f, "SetFrameStrata", "MEDIUM")
+        method(f, "EnableMouse", false)
+
+        local okTex, tex = method(f, "CreateTexture", nil, "ARTWORK")
+        if not okTex or type(tex) ~= "table" then tex = nil end
+        if tex ~= nil then method(tex, "SetAllPoints", f) end
+
+        local okCd, cd = call(env.CreateFrame, "Cooldown", nil, f, "CooldownFrameTemplate")
+        if not okCd or type(cd) ~= "table" then cd = nil end
+        if cd ~= nil then
+            method(cd, "SetAllPoints", f)
+            -- The seconds are drawn here, so the game's own stay off.
+            method(cd, "SetHideCountdownNumbers", true)
+        end
+
+        local words
+        local okLayer, layer = call(env.CreateFrame, "Frame", nil, f)
+        if okLayer and type(layer) == "table" then
+            method(layer, "SetAllPoints", f)
+            local okLevel, level = method(cd or f, "GetFrameLevel")
+            if okLevel and type(level) == "number" then method(layer, "SetFrameLevel", level + 2) end
+            local okWords, made = method(layer, "CreateFontString", nil, "OVERLAY")
+            if okWords and type(made) == "table" then
+                words = made
+                local okFont, font = pcall(function() return env.STANDARD_TEXT_FONT end)
+                if not (okFont and type(font) == "string"
+                    and method(words, "SetFont", font, 18, "THICKOUTLINE")) then
+                    method(words, "SetFontObject", env.GameFontNormalLarge)
+                end
+                method(words, "SetPoint", "CENTER", layer, "CENTER", 0, 0)
+                method(words, "SetTextColor", 1, 0.95, 0.7)
+                method(words, "Hide")
+            end
+        end
+
+        local function plain(v)
+            return v ~= nil and not hidden(v) and type(v) == "number" and v == v and v >= 0 and v ~= math.huge
+        end
+        -- Sets the sweep from what was read; nothing is drawn for a time
+        -- that was not.
+        local function sweep(read, start, length)
+            if cd == nil then return nil end
+            if read and plain(start) and plain(length) then
+                if start > 0 and length > 0 then
+                    if method(cd, "SetCooldown", start, length) then return "sweep" end
+                    return nil
+                end
+                method(cd, "SetCooldown", 0, 0)
+                return "none"
+            end
+            method(cd, "SetCooldown", 0, 0)
+            return nil
+        end
+
+        local h = {}
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            method(f, "ClearAllPoints")
+            method(f, "SetPoint", point[1], parent, point[2], point[3], point[4])
+        end
+        function h.anchor(point, to, relPoint, x, y)
+            local other = guideFrame(to)
+            if other == nil then return false, "no frame" end
+            method(f, "ClearAllPoints")
+            if not method(f, "SetPoint", point, other, relPoint, x, y) then return false, "refused" end
+            return true
+        end
+        function h.show(on)
+            if on then method(f, "Show") else method(f, "Hide") end
+        end
+        function h.shown()
+            local okS, shown = method(f, "IsShown")
+            return okS and shown == true
+        end
+        function h.icon(texture)
+            if tex == nil then return false end
+            local okSet = method(tex, "SetTexture", texture)
+            return okSet and texture ~= nil
+        end
+        function h.spell(id)
+            if type(id) ~= "number" then return sweep(false) end
+            local read, start, length = cooldownTimes(id)
+            return sweep(read, start, length)
+        end
+        function h.item(id)
+            if type(id) ~= "number" or id <= 0 or id % 1 ~= 0 then return sweep(false) end
+            local bags = env.C_Container
+            local read, start, length = false, nil, nil
+            if type(bags) == "table" then read, start, length = call(bags.GetItemCooldown, id) end
+            if not read then read, start, length = call(env.GetItemCooldown, id) end
+            return sweep(read, start, length)
+        end
+        function h.seconds(text)
+            if words == nil then return end
+            if type(text) == "string" and text ~= "" then
+                method(words, "SetText", text)
+                method(words, "Show")
+            else
+                method(words, "SetText", "")
+                method(words, "Hide")
+            end
+        end
+        function h.clear()
+            sweep(false)
+            h.seconds(nil)
+        end
+        return h
+    end
+
     -- Lead section 305 item 1: no add-on file calls this now. The Flow and
     -- self buttons move by moveHandle; a drag on a secure button that acts
     -- on the press down would also cast. Kept in place (shared file).

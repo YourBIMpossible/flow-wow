@@ -684,6 +684,82 @@ function ns.make.fakeClient(opts)
         c.icons[#c.icons + 1] = h
         return h
     end
+    -- Lead section 624 Step 4: the cooldown face, as the real client's
+    -- c.cooldownFace(spec). Nothing is drawn: every face made is kept in
+    -- c.cooldownFaces, in order, as a record { name, size, shown, point,
+    -- anchor = { point, to, relPoint, x, y }, texture, sweep = { kind =
+    -- "spell" or "item", id } or nil, seconds }. A face has a place on the
+    -- screen (point) or is set against a frame (anchor), never both.
+    --   h.spell(id) answers from c.setSpellCooldown(id, on): true "sweep",
+    --     false "none", never set nil.
+    --   h.item(id) answers from c.setItemCooldown(id, seconds): above 0
+    --     "sweep", 0 "none", never set nil.
+    --   h.anchor answers false, "no frame" for a name with no rect set
+    --     (c.setFrameRect(name, rect)), as the client with no such frame.
+    --   c.setCooldownAnchorRefused(on): while on, h.anchor on a frame that
+    --     is there answers false, "refused" (the client turned the SetPoint
+    --     down), the record counts it in refused, and the face is left with
+    --     no place and no anchor, as on the real client, which clears the
+    --     old points before it asks.
+    c.cooldownFaces = {}
+    function c.setCooldownAnchorRefused(on) s.cooldownAnchorRefused = on and true or nil end
+    function c.cooldownFace(spec)
+        if s.noFrames then return nil end
+        spec = type(spec) == "table" and spec or {}
+        local rec = { name = spec.name, size = tonumber(spec.size) or 38, shown = false }
+        local h = {}
+        function h.place(point)
+            if type(point) ~= "table" then return end
+            rec.point = { point[1], point[2], point[3], point[4] }
+            rec.anchor = nil
+        end
+        function h.anchor(point, to, relPoint, x, y)
+            if type(to) ~= "string" or c.frameRect(to) == nil then return false, "no frame" end
+            if s.cooldownAnchorRefused then
+                rec.refused = (rec.refused or 0) + 1
+                rec.point, rec.anchor = nil, nil
+                return false, "refused"
+            end
+            rec.anchor = { point = point, to = to, relPoint = relPoint, x = x, y = y }
+            rec.point = nil
+            return true
+        end
+        function h.show(on) rec.shown = on and true or false end
+        function h.shown() return rec.shown end
+        function h.icon(texture)
+            rec.texture = texture
+            return texture ~= nil
+        end
+        function h.spell(id)
+            local on = c.spellCooldown(id)
+            rec.sweep = nil
+            if on == true then
+                rec.sweep = { kind = "spell", id = id }
+                return "sweep"
+            end
+            if on == false then return "none" end
+            return nil
+        end
+        function h.item(id)
+            local left = c.itemCooldown(id)
+            rec.sweep = nil
+            if type(left) ~= "number" then return nil end
+            if left > 0 then
+                rec.sweep = { kind = "item", id = id }
+                return "sweep"
+            end
+            return "none"
+        end
+        function h.seconds(text)
+            if type(text) == "string" and text ~= "" then rec.seconds = text else rec.seconds = nil end
+        end
+        function h.clear()
+            rec.sweep = nil
+            rec.seconds = nil
+        end
+        c.cooldownFaces[#c.cooldownFaces + 1] = rec
+        return h
+    end
     function c.spellTexture(id) return s.spellTextures and s.spellTextures[id] or nil end
 
     -- Every arrow made is in c.arrows, in order. A handle keeps what it

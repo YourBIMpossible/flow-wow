@@ -78,6 +78,9 @@ local KIND = {
 KIND.show[#KIND.show + 1] = "clickRow"
 -- G34: the hover-to-bind covers on the action buttons; binds nothing.
 KIND.show[#KIND.show + 1] = "bindHover"
+-- Lead section 624 Step 4: one plain cooldown face (a picture, the sweep,
+-- the seconds); draws only, on a frame of its own.
+KIND.show[#KIND.show + 1] = "cooldownFace"
 -- G34: one of the game's binding commands put on a key, only from the
 -- hover-to-bind mode's Save (UI/HoverBind.lua).
 KIND.act[#KIND.act + 1] = "setBinding"
