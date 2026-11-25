@@ -161,7 +161,7 @@ tests["npc speech: no local playback destination - greyed row with its reason, n
 end
 
 tests["npc speech: call and destination both there - the row is usable"] = function(t)
-    local _, addon = boot()
+    local _, addon = boot({ on = true })   -- (F-22: bonus mode is off by default)
     local e = entry(addon)
     t.eq(e and e.available, true)
     t.eq(e and e.because, nil)
