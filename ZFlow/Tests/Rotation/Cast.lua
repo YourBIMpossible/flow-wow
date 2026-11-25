@@ -147,7 +147,7 @@ return {
         t.eq(r.spell, "Moonfire", "spell")
         t.eq(r.form, 0, "form")
         t.eq(attrs(r.button), {
-            "type=spell", "spell=Moonfire", "unit=nil", "item=nil",
+            "type=spell", "spell=Moonfire", "unit=nil", "item=nil", "target-slot=nil",
             "*type-ctrl=spell", "*spell-ctrl=B", "*unit-ctrl=target",
             "*type-shift=nil", "*spell-shift=nil", "*unit-shift=nil",
             "*type-alt=nil", "*spell-alt=nil", "*unit-alt=nil",
@@ -216,6 +216,30 @@ return {
         local named = false
         for _, a in ipairs(back.button) do if a.attr == "item" then named = true end end
         t.ok(named, "the item row is named, so the old item is cleared")
+    end,
+
+    -- Parity row D-19 (lead section 697): an item used on a slot (a lure on
+    -- the fishing pole, slot 16) is the item type with target-slot.
+    -- Fails before: no target-slot row.
+    ["attributes: an item on a slot carries target-slot"] = function(t)
+        local r = ns.cast.Attributes({ itemId = 6533, targetSlot = 16, step = "fishing" }, plan(), nil, false)
+        local got = {}
+        for _, a in ipairs(r.button) do got[a.attr] = a.value end
+        t.eq(got.type, "item")
+        t.eq(got.item, "item:6533")
+        t.eq(got["target-slot"], 16)
+        local back = ns.cast.Attributes({ itemId = 4544, kind = "food" }, plan(), nil, false)
+        local had, named = {}, false
+        for _, a in ipairs(back.button) do
+            had[a.attr] = a.value
+            if a.attr == "target-slot" then named = true end
+        end
+        t.eq(had["target-slot"], nil, "no slot for food")
+        t.ok(named, "the row is named, so the old slot is cleared")
+        local odd = ns.cast.Attributes({ itemId = 6533, targetSlot = 99 }, plan(), nil, false)
+        local o = {}
+        for _, a in ipairs(odd.button) do o[a.attr] = a.value end
+        t.eq(o["target-slot"], nil, "only the two weapon hands")
     end,
 
     -- Section 246 (N63-E): no suggestion, plan or Alt item ever gives a

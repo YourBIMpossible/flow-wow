@@ -66,6 +66,64 @@ tests["key actions: a fish on the line is shown, never put on the key (reeling i
     t.eq(field(got, "spell"), nil)
 end
 
+-- Parity row D-19 (lead section 697), as Flow's Modules/Rotation/
+-- Actions.lua (:4-5, :46-48): the pole, then a lure when the pole has none,
+-- then Fishing. The lure is used on the main hand (slot 16). Lures from the
+-- bags only. Fails before: the key goes from the pole straight to Fishing.
+local LURE, LURE2 = 6533, 6529
+local function lured(over)
+    local s = fishing({ pole = true, worn = { main = POLE, off = false },
+        lure = { id = LURE, name = "Aquadynamic Fish Attractor" }, poleLured = false })
+    for k, v in pairs(over or {}) do s[k] = v end
+    return s
+end
+
+tests["key actions: the pole on with no lure: the key puts the lure from the bags on it"] = function(t)
+    if not ready(t) then return end
+    local got = KA().Pick(lured(), nil)
+    t.eq(field(got, "itemId"), LURE)
+    t.eq(field(got, "targetSlot"), 16, "on the main hand")
+    t.eq(stepOf(got), "fishing")
+    t.eq(field(got, "reason"), "Put Aquadynamic Fish Attractor on your fishing pole")
+end
+
+tests["key actions: a lure on the pole, no lure in the bags, or not known: the key casts Fishing"] = function(t)
+    if not ready(t) then return end
+    t.eq(field(KA().Pick(lured({ poleLured = true }), nil), "spell"), "Fishing", "a lure on it")
+    t.eq(field(KA().Pick(lured({ lure = nil }), nil), "spell"), "Fishing", "no lure in the bags")
+    t.eq(field(KA().Pick(lured({ poleLured = nil }), nil), "spell"), "Fishing", "not known: never a guess")
+end
+
+tests["key actions: a lure is told by its own tooltip, the bigger Fishing bonus first"] = function(t)
+    if not ready(t) then return end
+    local L = KA().LureOf
+    t.eq(L({ "Shiny Bauble", "Use: When applied to your fishing pole, increases Fishing by 25 for 10 min." }), 25)
+    t.eq(L({ "Bright Baubles", "Use: When applied to your fishing pole, increases Fishing by 75 for 10 min." }), 75)
+    t.eq(L({ "Linen Bandage", "Use: Heals 66 damage over 6 sec." }), nil, "not a lure")
+    t.eq(L(nil), nil)
+    local client = {
+        inCombat = function() return false end,
+        fishingPole = function() return true end,
+        bagItems = function() return { { item = LURE2, count = 2 }, { item = LURE, count = 1 } } end,
+        itemInfo = function(id)
+            if id == LURE then return { name = "Bright Baubles" } end
+            if id == LURE2 then return { name = "Shiny Bauble" } end
+        end,
+        itemLines = function(id)
+            if id == LURE then return { "Bright Baubles", "Use: When applied to your fishing pole, increases Fishing by 75 for 10 min." } end
+            if id == LURE2 then return { "Shiny Bauble", "Use: When applied to your fishing pole, increases Fishing by 25 for 10 min." } end
+        end,
+        weaponEnchant = function() return { main = { has = false } } end,
+    }
+    local s = KA().Read(client, { on = { fishing = true } }, nil, nil, false)
+    t.eq(s.lure, { id = LURE, name = "Bright Baubles" }, "the bigger bonus")
+    t.eq(s.poleLured, false)
+    client.weaponEnchant = function() return { main = { has = true, left = 300 } } end
+    t.eq(KA().Read(client, { on = { fishing = true } }, nil, nil, false).poleLured, true)
+    client.weaponEnchant = function() return nil end
+    t.eq(KA().Read(client, { on = { fishing = true } }, nil, nil, false).poleLured, nil, "not read")
+end
+
 tests["key actions: Fishing not known: no cast is offered"] = function(t)
     if not ready(t) then return end
     t.eq(KA().Pick(fishing({ pole = true, known = {} }), nil), nil)
