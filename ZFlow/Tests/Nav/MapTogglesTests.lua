@@ -18,6 +18,7 @@ local function start()
     local k = ns.Kernel({}, c)
     ns.MapFlights.Declare(k)
     ns.MapRouteLines.Declare(k)
+    ns.RouteList.Declare(k)
     local api = MT().Declare(k)
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
@@ -56,6 +57,20 @@ tests["map toggles B-13 B-14: the switches are the settings the map drawing read
     t.eq(api.RouteShown(), true)
     t.eq(api.Toggle("nope"), nil, "not one of ours")
     t.ok(type(k.use("mapToggles")) == "table", "provided")
+end
+
+-- B-13 CHANGES-1 (Plexy, lead section 852.5): the route lines are drawn only
+-- while the route panel (nav.routePanel) is on as well, so with the panel off
+-- the route switch reads off even with nav.mapTrail on.
+tests["map toggles B-13: the route reads off while the route panel is off"] = function(t)
+    if type(MT()) ~= "table" then return t.ok(false, "no MapToggles") end
+    local k, api = start()
+    t.eq(k.settings:get(ns.MapRouteLines.TRAIL_SETTING), true)
+    k.settings:set(ns.RouteList.SETTING, false)
+    t.eq(api.RouteShown(), false, "panel off: route off")
+    t.eq(row(api.MenuItems(), MT().ROUTE).checked, false)
+    k.settings:set(ns.RouteList.SETTING, true)
+    t.eq(api.RouteShown(), true, "both on: route on")
 end
 
 return tests

@@ -8,6 +8,9 @@ local _, ns = ...
 -- State only. Each switch is a setting the map drawing already reads:
 --   flight masters  nav.mapFlights  (Nav/MapFlights.lua, off as made)
 --   route           nav.mapTrail    (UI/MapRouteLines.lua, on as made)
+-- The route lines are drawn only while nav.routePanel (UI/RouteList.lua) is
+-- on too (MapRouteLines on(), :265-275), so RouteShown() is both (B-13
+-- CHANGES-1, lead section 852.5). SetRoute changes nav.mapTrail only.
 -- so no new setting and no new default. Both draw on their own ticks, so a
 -- change shows at the next one. The menu listing is a lead patch for
 -- UI/ArrowMenu.lua (held).
@@ -26,7 +29,7 @@ MT.ROUTE = "map.route"
 MT.FLIGHTS_TEXT = "Flight masters on the map"
 MT.ROUTE_TEXT = "Your route on the map"
 
--- The setting each switch is, read when used (the files load in any order).
+-- The settings each switch reads, looked up when used (the files load in any order).
 local function flightsKey()
     local MF = ns.MapFlights
     if type(MF) == "table" then return MF.SETTING end
@@ -36,6 +39,12 @@ end
 local function routeKey()
     local MRL = ns.MapRouteLines
     if type(MRL) == "table" then return MRL.TRAIL_SETTING end
+    return nil
+end
+
+local function panelKey()
+    local RL = ns.RouteList
+    if type(RL) == "table" then return RL.SETTING end
     return nil
 end
 
@@ -66,7 +75,7 @@ function MT.Declare(k)
     end
 
     function api.FlightsShown() return get(flightsKey(), false) end
-    function api.RouteShown() return get(routeKey(), true) end
+    function api.RouteShown() return get(routeKey(), true) and get(panelKey(), true) end
     function api.SetFlights(on) return set(flightsKey(), on) end
     function api.SetRoute(on) return set(routeKey(), on) end
 
