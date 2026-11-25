@@ -62,6 +62,31 @@ local function placed(t)
     return type(t) == "table" and finite(t.wx) and finite(t.wy)
 end
 
+-- Parity B-08: Nav/FlightPaths.lua's goals ({ name, place = { map, x, y } })
+-- as the masters MF.Pins takes: { name, cont, wx, wy, map, x, y }, in the
+-- goals' order. cornersOf(map) -> the map's corners (client.mapCorners). A
+-- goal with no name or place, or on a map with no corners read, is left
+-- out: no place is guessed.
+function MF.Masters(goals, cornersOf)
+    local out = {}
+    local Flights = ns.Nav and ns.Nav.Flights
+    if type(goals) ~= "table" or type(cornersOf) ~= "function" or type(Flights) ~= "table" then return out end
+    for _, g in ipairs(goals) do
+        if type(g) == "table" and type(g.name) == "string" and g.name ~= "" and type(g.place) == "table"
+            and g.place.map ~= nil then
+            local okC, corners = pcall(cornersOf, g.place.map)
+            if okC and type(corners) == "table" then
+                local cont, wx, wy = Flights.ToWorld(corners, g.place.x, g.place.y)
+                if cont ~= nil and finite(wx) and finite(wy) then
+                    out[#out + 1] = { name = g.name, cont = cont, wx = wx, wy = wy,
+                                      map = g.place.map, x = g.place.x, y = g.place.y }
+                end
+            end
+        end
+    end
+    return out
+end
+
 function MF.Pins(known, masters, learned, onRoute, air, same)
     same = finite(same) and same or MF.SAME
     known = type(known) == "table" and known or {}
@@ -224,9 +249,13 @@ end
 --     roles of the flight the arrow is on (Nav/TaxiMark.lua's StepFlight).
 --     The pins on the shown map's continent and inside it (client.mapCorners
 --     and Nav/Flights.lua's ToShare) are drawn, with one line from "from"
---     to "to" when both are on it. No masters list is read yet (no Z-Flow
---     source of flight masters you have not learned), so there are no
---     "new" pins. The map closed or the setting off: cleared.
+--     to "to" when both are on it. The masters you have not learned yet
+--     (parity B-08) are Nav/FlightPaths.lua's goals: flight masters this
+--     account has seen whose path this character does not have, turned to
+--     world places by MF.Masters. Each is a "new" pin; one on a map whose
+--     corners are not read has no pin (no place is guessed), and with the
+--     flight path advice off there are none. The map closed or the setting
+--     off: cleared.
 --     api.draw() -> pins, lines as drawn, or nil
 --   Look only: the pins take no mouse (so no tooltip and no click
 --   selection yet, MF.TipLines and MF.Click stay unused). Not tested in game.
@@ -296,7 +325,15 @@ function MF.Declare(k)
         local known, flight = points()
         local air = flight and { from = flight.from, to = flight.to } or nil
         local out, at = {}, {}
-        for _, p in ipairs(MF.Pins(known or {}, {}, nil, nil, air)) do
+        -- B-08: the masters not learned yet. Nav/FlightPaths.lua has already
+        -- left out the ones this character has, so no learned check is passed.
+        local masters = {}
+        local paths = k.use and k.use("flightPaths")
+        if type(paths) == "table" and type(paths.Goals) == "function" then
+            local okG, goals = pcall(paths.Goals)
+            if okG then masters = MF.Masters(goals, function(m) return ask(client, "mapCorners", m) end) end
+        end
+        for _, p in ipairs(MF.Pins(known or {}, masters, nil, nil, air)) do
             if p.cont == corners.cont then
                 local x, y = Flights.ToShare(corners, p.wx, p.wy)
                 if x and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
