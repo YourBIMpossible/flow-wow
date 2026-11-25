@@ -122,6 +122,8 @@ return {
         "Rotation/Reader.lua",
         "UI/SpellCard.lua",
         "Rotation/Driver.lua",
+        -- FLOW-PARITY D-13: the Well Fed foods you carry and the pick, as a word (after BuffFood, Driver).
+        "Rotation/FoodWord.lua",
         "Rotation/KeyFrame.lua",
         "Rotation/Role.lua",
         "Rotation/Spec.lua",
