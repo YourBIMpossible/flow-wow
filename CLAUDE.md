@@ -35,8 +35,14 @@ registry first, or add one.
   outside the game, on Lua 5.1 with fixtures. Only tests that touch nothing of the client can
   PASS there; the rest are SKIP. A FAIL, ERROR or SKIP-FAIL, a file that doesn't load and a
   global that is neither Flow's nor in `tools/offline/client-globals.txt` each fail it. CI
-  runs it, with `tools\lint.ps1` and `tools\check-structure.ps1`: run all three before a
-  commit. It is not a test in the game and never stands in for one (`docs/TESTING.md`).
+  runs it, with `tools\lint.ps1` and `tools\check-structure.ps1`. On Z-Flow a worker runs
+  the same `tools\*.ps1` steps as `.github/workflows/checks.yml` locally and hands off READY
+  as branch + exact SHA + the commands run and their result; a step the machine can't run
+  (no Lua 5.1 or luacheck) is named as not run, never as passed. The lead integrates, runs
+  the set locally, and pushes zflow once per candidate: that push is the only GitHub
+  "Checks" run. Workers never start, rerun or trigger it (no `gh workflow run`, no PR run);
+  nobody reruns an unchanged commit except for an infrastructure fault. It is not a test in
+  the game and never stands in for one (`docs/TESTING.md`).
 - Add a test for every behaviour you change: `ns:Register("test", "area: what it checks", function(t) ... end)`
   in `Modules/Tests.lua`, using `t:ok(cond, msg)`, `t:eq(a, b, msg)`, `t:near(a, b, tol, msg)`.
   Restore any saved data you change inside a test.
@@ -268,8 +274,7 @@ If anything is there, fix it before other work, even if nobody mentioned it:
    the first seconds after login stutter). So a broken button shows in the next diagnostics.
    Anything that builds a menu goes through `ns.menu:RouteItems()`-style safe builders: one
    failing entry must not stop the menu opening.
-2. Before committing, run `powershell -ExecutionPolicy Bypass -File tools\lint.ps1` and get it
-   to **0 warnings** (it runs luacheck with `.luacheckrc`, then `check-paths.ps1`). It catches
+2. Before READY, `tools\lint.ps1` on the branch tip must show **0 warnings**, run locally (on Z-Flow the lead's integration run checks it again; see the Checks note above) (it runs luacheck with `.luacheckrc`, then `check-paths.ps1`). It catches
    a missing `local`, a `local` used before it's declared, typos in names and unused values.
    Fix the code rather than widening `.luacheckrc`; use `_` for values you don't need.
    Lint can't see game values that differ on Forever (vectors that are plain tables, globals
