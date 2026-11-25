@@ -312,6 +312,8 @@ return {
     "UI/MapRoute.lua",
     -- Old-Flow parity R6: your class buffs with the time left, under the player frame (after the class packs and the kit).
     "UI/BuffStrip.lua",
+    -- Old-Flow parity A2-21: the game's quest tracker and Questie's tracker, each on or off by its own row (needs two client calls: CLIENT NEED).
+    "UI/QuestTrackers.lua",
     -- P-QUEST (lead section 354 item 4): quest advice text (after QuestRead and the advisor).
     "Nav/QuestAdvice.lua",
     -- G50 (ACTING): the share word, one quest for each word typed (after QuestAdvice).
