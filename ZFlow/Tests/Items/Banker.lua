@@ -88,6 +88,28 @@ tests["banker: what in your bank you would now sell, by the sell rules"] = funct
     t.eq(B.SellLines(nil), { B.SELL_NOT_SEEN })
 end
 
+-- E-19 join, lane A CHANGES-1 (§881): the word says why each bank thing
+-- is to be taken out, under Flow's labels: "for your route", "for a quest",
+-- "held", and "you would now sell" only for what the sell rules take.
+tests["banker: bank things a route, a quest or a hold wants are not listed to sell"] = function(t)
+    local rows = {
+        { key = 2589, name = "Linen Cloth", count = 12, reason = "Bring 12 Linen Cloth", take = "route" },
+        { key = 2318, name = "Light Leather", count = 40, reason = "A Leather Job", take = "quest" },
+        { key = 858, name = "Lesser Healing Potion", count = 5, reason = "kept for your goal", take = "hold" },
+        { key = 4865, name = "Ruined Pelt", count = 3, reason = "junk", take = "sell" },
+    }
+    t.eq(B.SellLines(rows), {
+        B.ROUTE_HEADER, "12 x Linen Cloth: Bring 12 Linen Cloth",
+        B.QUEST_HEADER, "40 x Light Leather: A Leather Job",
+        B.HOLD_HEADER, "5 x Lesser Healing Potion: kept for your goal",
+        B.SELL_HEADER, "3 x Ruined Pelt: junk",
+    })
+    t.ok(B.ROUTE_HEADER:find("for your route", 1, true) ~= nil, "Flow's label")
+    t.ok(B.QUEST_HEADER:find("for a quest", 1, true) ~= nil, "Flow's label")
+    t.ok(B.HOLD_HEADER:find("held", 1, true) ~= nil, "Flow's label")
+    t.eq(B.SellLines({ rows[2] }), { B.QUEST_HEADER, "40 x Light Leather: A Leather Job" }, "nothing to sell: no sell header")
+end
+
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
