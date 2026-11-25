@@ -46,9 +46,12 @@ local _, ns = ...
 --   The same, from the position, zone and map size the client gives, the
 --   places the store has saved, and Questie's nearest from the profession
 --   feed (use(N.ProfFeed.NAME).Service, the one owner of the Questie
---   reader; looked up when called). client, store and use default to the
---   ones of the addon (ns.client, ns.store, ns.use), so N.Nearest(kind) is
---   enough inside the addon. A read that fails is "not known". No Questie,
+--   reader; looked up when called). client and store default to the ones
+--   of the addon (ns.client, ns.store). use does NOT default (lead section
+--   626): Questie's places go only to a caller that asks for them by
+--   handing in the module lookup; with none handed in the answer is a
+--   place this character used, or nil, and Questie's read is not started.
+--   A read that fails is "not known". No Questie,
 --   none of the kind, the other faction's, another continent: the saved
 --   place or nil, as before. A mailbox is no NPC: Questie is never asked.
 --   The ask reads nothing of Questie itself (the feed's pass does, out of
@@ -169,7 +172,6 @@ end
 -- list is still being gone through. The feed is looked up now, not when
 -- this file loads.
 local function fromQuestie(kind, client, use)
-    if use == nil then use = ns.use end
     local feedName = type(N.ProfFeed) == "table" and N.ProfFeed.NAME or nil
     if feedName == nil or type(use) ~= "function" then return nil end
     local okUse, feed = pcall(use, feedName)
@@ -200,7 +202,10 @@ function N.Nearest(kind, client, store, use)
         size = type(size) == "table" and { w = size.w, h = size.h } or nil,
     }
     local saved = N.NearestOf(kind, places, here)
-    if NO_NPC[kind] then return saved end
+    -- Lead section 626: Questie's places only for a caller that asks, by
+    -- handing in the module lookup. With none handed in the answer is as it
+    -- always was: a place this character used, or none.
+    if NO_NPC[kind] or type(use) ~= "function" then return saved end
     local q, reading = fromQuestie(kind, client, use)
     local place = N.NearerOf(kind, saved, q, places, here)
     if place == nil and reading then return nil, N.READING end

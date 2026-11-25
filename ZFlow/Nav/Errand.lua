@@ -42,7 +42,7 @@ local _, ns = ...
 --
 -- E.Find(kind, client, store, use) -> place, or nil[, N.READING while
 --   Questie's list is still being gone through]
--- E.Route(client, store, use) -> route, reason   (N.RoutePlan over the nearest
+-- E.Route(client, store) -> route, reason   (N.RoutePlan over the nearest
 --   place of each kind on the map of the player)
 -- E.Hearth(client) -> text   the bind place and whether the stone is ready
 --
@@ -188,12 +188,14 @@ end
 
 -- The nearest place of each kind on the map of the player, one entry for a
 -- place that is the nearest of two kinds, in a short order to visit.
-function E.Route(client, store, use)
+function E.Route(client, store)
     local here = hereOf(client)
     if not here then return nil, "position unknown" end
     local places, seen = {}, {}
     for _, word in ipairs(E.ORDER) do
-        local place = E.Find(E.KINDS[word], client, store, use)
+        -- The route of stops is made of places this character used only
+        -- (lead section 626): Questie is not asked here.
+        local place = E.Find(E.KINDS[word], client, store)
         if place then
             local key = tostring(place.kind == "trainer" and "npc:" or "svc:") .. tostring(place.key)
             if not seen[key] then
@@ -263,7 +265,7 @@ function E.Declare(k, diag, arrow)
     end
 
     local function route()
-        local plan, why = E.Route(client, store, use)
+        local plan, why = E.Route(client, store)
         if not plan then
             if why == "size unknown" then
                 say("no route: the size of this map is not known.")
