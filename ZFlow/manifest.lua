@@ -80,6 +80,8 @@ return {
         "Items/SkillUps.lua",
         "Items/SkillBoosters.lua",
         "Items/CraftQueue.lua",
+        -- FLOW-PARITY E-57: how far a run of crafts is and about how long is left, data only (after CraftQueue).
+        "Items/CraftProgress.lua",
         "Items/Sell.lua",
         "Items/Repair.lua",
         "Items/SellView.lua",

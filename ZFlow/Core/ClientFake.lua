@@ -5141,3 +5141,32 @@ do
         return c
     end
 end
+
+-- § E-57 (Items/CraftProgress.lua; lead sections 660, 663 and 664): one
+-- CLIENT NEED, stubbed here only. Core/Client.lua does not have it yet.
+-- (client.casting, the other read E-57 uses, is Rotation/CastEdge.lua's
+-- CLIENT NEED; tests set it on the fake themselves, as CastEdge's do.)
+--   c.onCraftStarted(fn) -> cancel: fn(id, count, name) when the game's own
+--     craft call is made; c.craftStarted(id, count, name) plays one.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local started = {}
+        function c.onCraftStarted(fn)
+            if type(fn) ~= "function" then return nil end
+            started[#started + 1] = fn
+            return function()
+                for i = #started, 1, -1 do
+                    if started[i] == fn then table.remove(started, i) end
+                end
+            end
+        end
+        function c.craftStarted(id, count, name)
+            local list = {}
+            for i = 1, #started do list[i] = started[i] end
+            for i = 1, #list do list[i](id, count, name) end
+        end
+        return c
+    end
+end
