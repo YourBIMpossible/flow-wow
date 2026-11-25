@@ -4995,3 +4995,25 @@ do
         return c
     end
 end
+
+-- § F-20 (UI/TipSpot.lua): where a tooltip goes. c.setTipSpot(fn) keeps
+-- fn(anchor) -> "GAME" | anchor, as the real client is asked to (CLIENT
+-- NEED: each SetOwner in Core/Client.lua asks it, and on "GAME" calls
+-- GameTooltip_SetDefaultAnchor(tip, owner) instead); c.tipSpot(anchor)
+-- asks it (the anchor itself when nothing was handed in).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local where = nil
+        function c.setTipSpot(fn)
+            if type(fn) == "function" then where = fn end
+            return true
+        end
+        function c.tipSpot(anchor)
+            if where == nil then return anchor end
+            return where(anchor)
+        end
+        return c
+    end
+end
