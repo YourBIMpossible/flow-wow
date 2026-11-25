@@ -149,23 +149,36 @@ local function nextOfSell()
     return nil
 end
 
--- One row per thing (Flow B.TakeOutRows): the first of route, quest, hold
--- that wants it, else a sell when the sell rules sell it and its kind may
--- leave (NOT_OUT: the sell rows only, as Flow). nil and the unread flag
--- when nothing takes it out.
-local function rowOf(e, sold)
+-- A route or quest row (Flow B.TakeOutRows: it takes the whole thing), or
+-- nil.
+local function wantedOf(e)
     local take, reason = nil, nil
     if words(e.step) then
         take, reason = T.ROUTE, e.step
     elseif words(e.quest) then
         take, reason = T.QUEST, e.quest
-    elseif words(e.hold) then
-        take, reason = T.HOLD, e.hold
     end
-    if take then
-        return { key = e.key, id = ns.Items.Id(e.key), name = words(e.name), count = e.count,
-                 quality = e.quality, reason = reason, take = take }
-    end
+    if not take then return nil end
+    return { key = e.key, id = ns.Items.Id(e.key), name = words(e.name), count = e.count,
+             quality = e.quality, reason = reason, take = take }
+end
+
+-- A hold row (Z-Flow's own, lead section 776), or nil. It counts what the
+-- hold keeps (e.holdCount), else the bank's count; it does not stop the
+-- free part from being sold (E-19 join CHANGES-2: the sell rules already
+-- leave the held part out).
+local function holdOf(e)
+    if not words(e.hold) then return nil end
+    local n = e.count
+    if whole(e.holdCount) and e.holdCount > 0 then n = e.holdCount end
+    return { key = e.key, id = ns.Items.Id(e.key), name = words(e.name), count = n,
+             quality = e.quality, reason = e.hold, take = T.HOLD }
+end
+
+-- A sell row when the sell rules sell it and its kind may leave (NOT_OUT:
+-- the sell rows only, as Flow). nil and the unread flag when its kind was
+-- not read.
+local function sellOf(e, sold)
     if sold == nil then return nil end
     if e.classID == nil then return nil, true end
     if T.NOT_OUT[e.classID] then return nil end
@@ -190,12 +203,23 @@ function T.Rows(items, sells, rules, where)
         if type(e) == "table" and e.key ~= nil and not seen[e.key]
             and not (type(rules) == "table" and rules[e.key] == "bank") then
             seen[e.key] = true
-            local row, notRead = rowOf(e, sold[e.key])
-            if row then
+            local found = {}
+            local wanted = wantedOf(e)
+            if wanted then
+                found[1] = wanted
+            else
+                local held = holdOf(e)
+                if held then found[#found + 1] = held end
+                local row, notRead = sellOf(e, sold[e.key])
+                if row then
+                    found[#found + 1] = row
+                elseif notRead and not held then
+                    unread = unread + 1
+                end
+            end
+            for _, row in ipairs(found) do
                 if type(where) == "table" and where[e.key] ~= nil then row.slots = where[e.key] end
                 rows[#rows + 1] = row
-            elseif notRead then
-                unread = unread + 1
             end
         end
     end

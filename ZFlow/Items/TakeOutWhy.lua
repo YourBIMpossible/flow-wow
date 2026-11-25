@@ -18,10 +18,12 @@ local _, ns = ...
 -- only. The caller is the banker window's (a MUSE NEED for the drawing).
 --   TakeOutWhy.QuestFor(name, rows) -> quest title | nil
 --   TakeOutWhy.StepFor(name, key, view, rows) -> words | nil
---   TakeOutWhy.HoldFor(key, grants) -> reason | nil   grants: the
---     reservations' (Reservations.Grants(r)); held in the bank only
+--   TakeOutWhy.HoldFor(key, grants) -> reason, n | nil   grants: the
+--     reservations' (Reservations.Grants(r)); held in the bank only; n: how
+--     many that claim keeps in the bank (E-19 join CHANGES-2)
 --   TakeOutWhy.Fill(bank, view, rows[, grants]) -> copies of bank's entries
---     with step, quest and hold set where something wants them
+--     with step, quest and hold set where something wants them, and
+--     holdCount with hold
 -- Not tested in game.
 local TW = {}
 ns.TakeOutWhy = TW
@@ -85,9 +87,9 @@ function TW.HoldFor(key, grants)
             end
             if n > 0 then
                 local act = c.activity
-                if type(act) == "string" and TW.REASONS[act] then return TW.REASONS[act] end
-                if type(act) == "string" and act ~= "" then return TW.HELD_FOR:format(act) end
-                return TW.HELD_FOR:format(TW.SOMETHING)
+                if type(act) == "string" and TW.REASONS[act] then return TW.REASONS[act], n end
+                if type(act) == "string" and act ~= "" then return TW.HELD_FOR:format(act), n end
+                return TW.HELD_FOR:format(TW.SOMETHING), n
             end
         end
     end
@@ -103,7 +105,7 @@ function TW.Fill(bank, view, rows, grants)
             for k, v in pairs(e) do c[k] = v end
             c.step = TW.StepFor(e.name, e.key, view, rows)
             c.quest = TW.QuestFor(e.name, rows)
-            c.hold = TW.HoldFor(e.key, grants)
+            c.hold, c.holdCount = TW.HoldFor(e.key, grants)
         end
         out[i] = c
     end
