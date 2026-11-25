@@ -4995,3 +4995,29 @@ do
         return c
     end
 end
+
+-- § B-19 (UI/MapRoute.lua): a click on a route mark of the world map.
+-- h.onClick(fn) keeps fn(n, button) as the real routePins handle is asked
+-- to (CLIENT NEED: the mark's OnClick calls it with the mark's number);
+-- h.click(n, button) clicks mark n ("LeftButton" when not given).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local routePins = c.routePins
+        function c.routePins(...)
+            local h = routePins(...)
+            if type(h) ~= "table" then return h end
+            local clicks = {}
+            function h.onClick(fn)
+                if type(fn) == "function" then clicks[#clicks + 1] = fn end
+                return true
+            end
+            function h.click(n, button)
+                for _, fn in ipairs(clicks) do fn(n, button or "LeftButton") end
+            end
+            return h
+        end
+        return c
+    end
+end
