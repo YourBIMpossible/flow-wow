@@ -265,4 +265,27 @@ tests["mapFlights module: a right click sets your waypoint on a master; again ta
     t.eq(W.Get(slot) and W.Get(slot).label, MF.PointLabel({ name = "Home Post" }), "no pin: nothing changes")
 end
 
+-- R-10 (lead section 792, Lazy's B-10 gap): a mouse button down on the
+-- map, off the flight masters, clears the pick, as Flow's
+-- GLOBAL_MOUSE_DOWN handler (Modules/Nav/MapFlights.lua:590-597, while the
+-- map's scroll area is under the mouse and no pin is: MF.ClearPick). Fails
+-- before: a mouse-down changes nothing.
+tests["mapFlights module: a mouse-down on the map off the pins clears the pick"] = function(t)
+    local _, c = start({ on = true, nodes = third() })
+    c.setWorldMap(1414)
+    c.advance(2, 8)
+    local h = c.mapPinSets[1]
+    if type(h.click) ~= "function" or type(h.mapDown) ~= "function" then return t.ok(false, "no click") end
+    h.click("Far Post")
+    t.eq(#h.lines, 2, "picked")
+    h.mapDown(true)
+    t.eq(#h.lines, 2, "down on a pin: its own click decides")
+    h.mapDown(false)
+    t.eq(#h.lines, 0, "down off the pins: nothing picked")
+    t.eq(pinNamed(h, "Far Post").picked, nil)
+    local draws = h.draws
+    h.mapDown(false)
+    t.eq(h.draws, draws, "nothing picked: nothing drawn again")
+end
+
 return tests

@@ -5022,3 +5022,30 @@ do
         return c
     end
 end
+
+-- § R-10 (Nav/MapFlights.lua): a mouse button down on the world map.
+-- h.onMapDown(fn) keeps fn(onPin), as the real mapPins handle is asked to
+-- (CLIENT NEED: on GLOBAL_MOUSE_DOWN while the map's scroll area is under
+-- the mouse, fn(true when one of its pins is under the mouse));
+-- h.mapDown(onPin) presses it.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local mapPins = c.mapPins
+        function c.mapPins(...)
+            local h = mapPins(...)
+            if type(h) ~= "table" then return h end
+            local downs = {}
+            function h.onMapDown(fn)
+                if type(fn) == "function" then downs[#downs + 1] = fn end
+                return true
+            end
+            function h.mapDown(onPin)
+                for _, fn in ipairs(downs) do fn(onPin == true) end
+            end
+            return h
+        end
+        return c
+    end
+end
