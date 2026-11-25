@@ -154,4 +154,19 @@ tests["tracker wiring: no view falls back to the walked route; more counts what 
     t.eq(m and m.text, RT().MORE:format(2))
 end
 
+-- Lead section 762: the view is used whenever it has stops or steps that
+-- can't be placed (left); the walked route (Current) only when it has
+-- neither, as Flow's tracker listed its blocked goals with an empty plan
+-- (Modules/Nav/RouteTracker.lua:504-519). Fails before: an empty view fell
+-- back to Current, which carries no left list.
+tests["tracker wiring: an empty route with steps that can't be placed lists them"] = function(t)
+    local view = { stops = {}, left = { { label = "Kill Hogger", quest = 9, why = "no place known" } } }
+    local rows = RT().Rows(view, current(), HERE)
+    t.eq(rows and #rows, 1)
+    t.eq(rows and rows[1] and { rows[1].label, rows[1].left }, { "Kill Hogger", "no place known" })
+    t.eq(rows and rows[1] and rows[1].current, nil, "never the current step")
+    local r2 = RT().Rows({ stops = {}, left = {} }, current(), HERE)
+    t.eq(r2 and #r2, 3, "neither: the walked route, as before")
+end
+
 return tests
