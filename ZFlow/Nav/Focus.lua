@@ -152,7 +152,7 @@ function F.Lines(lines, idsOf, slash, missingOf)
             out[#out + 1] = F.BLOCKED:format(table.concat(m, ", "))
         end
     end
-    out[#out + 1] = F.CLEAR_HINT:format(tostring(slash or "/zflow"))
+    out[#out + 1] = F.CLEAR_HINT:format(tostring(slash or (ns.id and ns.id.slash) or ""))
     return out
 end
 
