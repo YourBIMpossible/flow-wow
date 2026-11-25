@@ -19,8 +19,19 @@
 -- LOOK ONLY: nothing is moved, targeted, cast or sent. A click on a row
 -- opens the world map on that stop's map (client.showMap), nothing else.
 --
---   RL.Rows(view, here) -> rows, left   (pure) the numbered rows and what
---                          was left off
+--   RL.Rows(view, here[, tag]) -> rows, left   (pure) the numbered rows and
+--                          what was left off; tag(quest) -> the words after
+--                          a quest's name ("" for none)
+--   RL.Tier(level, mine), RL.LevelTag(level, mine, colored) (pure)
+--
+-- Parity row C-13 (lead section 600): with RL.LEVELS on (at first), a
+-- quest's name carries its level, " [16]", coloured for its level against
+-- yours. Compared with Flow Modules/Quests/QuestLevels.lua QL.Tier, QL.Tag
+-- and QL.TIERS: the same tiers and colours. Flow shows or hides the tag
+-- and its colour by the game's own map-filter settings (showQuestLevel and
+-- a difficulty-colour one); here a setting of the addon's own does, and the
+-- tag is always coloured. The level is Questie's (QuestieDB
+-- QueryQuestSingle(id, "questLevel")); without Questie there is no tag.
 --   RL.Children(rows, left, how, onRow) -> the window's parts (pure)
 --   RL.Declare(k, diag) -> api   api.Refresh(), api.Shown(), api.Show(row)
 -- Not tested in game.
@@ -56,6 +67,12 @@ RL.WIDTH = 300
 RL.HEIGHT = 420
 RL.TONE_NOW = "good"
 RL.TONE_BLOCKED = "bad"
+RL.LEVELS = "nav.questLevels"
+-- Flow QL.TIERS: a quest's level against yours.
+RL.TIERS = {
+    red = "ff3030", orange = "ff8040", yellow = "ffff00",
+    green = "40c040", olive = "9aa04a", grey = "808080",
+}
 
 -- The reasons the route gives in a few words, said as a whole sentence. A
 -- reason not listed here is shown as the route gave it.
@@ -69,6 +86,31 @@ RL.PLAIN = {
 }
 
 local function isText(v) return type(v) == "string" and v ~= "" end
+
+local function whole(v)
+    return type(v) == "number" and v == v and v >= 1 and v < 1000 and math.floor(v) == v
+end
+
+-- Flow QL.Tier.
+function RL.Tier(level, mine)
+    if not (whole(level) and whole(mine)) then return nil end
+    local d = level - mine
+    if d >= 5 then return "red" end
+    if d >= 3 then return "orange" end
+    if d >= -2 then return "yellow" end
+    if d >= -5 then return "green" end
+    if d >= -9 then return "olive" end
+    return "grey"
+end
+
+-- Flow QL.Tag: " [16]", coloured unless colored is false or your level is
+-- not read; "" with no level.
+function RL.LevelTag(level, mine, colored)
+    if not whole(level) then return "" end
+    local tier = colored ~= false and RL.Tier(level, mine) or nil
+    if not tier then return (" [%d]"):format(level) end
+    return (" |cff%s[%d]|r"):format(RL.TIERS[tier], level)
+end
 
 function RL.Why(why)
     if not isText(why) then return "the route gave no reason." end
@@ -89,9 +131,18 @@ local function samePlace(a, b)
     return type(a) == "table" and type(b) == "table" and a.map == b.map and a.x == b.x and a.y == b.y
 end
 
--- One stop's words: text, sub, icon (a Kit.look.icon key).
-local function words(s)
+-- A stop's name, with its quest's level tag when tag gives one.
+local function named(s, tag)
     local label = isText(s.label) and s.label or "?"
+    if s.quest == nil or type(tag) ~= "function" then return label end
+    local ok, add = pcall(tag, s.quest)
+    if ok and isText(add) then return label .. add end
+    return label
+end
+
+-- One stop's words: text, sub, icon (a Kit.look.icon key).
+local function words(s, tag)
+    local label = named(s, tag)
     if s.kind == nil and s.turnIn == true then
         local to = receiver(s.detail)
         return RL.TURN_IN:format(label), to and RL.GIVE_TO:format(to) or nil, "questInLog"
@@ -107,26 +158,26 @@ end
 -- as one row; then the stops that wait (no number). left: what the route
 -- left off. Each row { n, count, text, sub, dist, icon, now, blocked, why,
 -- place }. here: { map, x, y, size = { w, h } } or nil.
-function RL.Rows(view, here)
+function RL.Rows(view, here, tag)
     if type(view) ~= "table" or type(view.stops) ~= "table" then return nil, nil end
     local walk, waiting = {}, {}
     for _, s in ipairs(view.stops) do
         if type(s) == "table" and type(s.place) == "table" then
             if s.held then
-                local text, _, _ = words(s)
+                local text, _, _ = words(s, tag)
                 waiting[#waiting + 1] = { text = text, sub = RL.WAITING:format(RL.Why(s.held)), blocked = true,
                     why = s.held, icon = "questNotForYou", place = s.place }
             else
                 local last = walk[#walk]
                 if last and last.turnIn and s.kind == nil and s.turnIn == true and samePlace(last.place, s.place) then
                     last.count = last.count + 1
-                    last.names[#last.names + 1] = isText(s.label) and s.label or "?"
+                    last.names[#last.names + 1] = named(s, tag)
                     if last.to ~= receiver(s.detail) then last.to = nil end
                 else
-                    local text, sub, icon = words(s)
+                    local text, sub, icon = words(s, tag)
                     walk[#walk + 1] = { count = 1, text = text, sub = sub, icon = icon, place = s.place,
                         turnIn = s.kind == nil and s.turnIn == true, to = receiver(s.detail),
-                        names = { isText(s.label) and s.label or "?" } }
+                        names = { named(s, tag) } }
                 end
             end
         end
@@ -240,11 +291,26 @@ function RL.Declare(k, diag)
 
     local function client() return ctx and ctx.client or k.client end
 
-    local function on()
+    local function on(key)
         local s = ctx and ctx.settings
         if type(s) ~= "table" or type(s.get) ~= "function" then return true end
-        local ok, v = pcall(s.get, s, RL.SETTING)
+        local ok, v = pcall(s.get, s, key or RL.SETTING)
         return not (ok and v == false)
+    end
+
+    -- C-13: the tag after a quest's name, from Questie's quest level; nil
+    -- with the setting off or no Questie.
+    local function levelTag()
+        if not on(RL.LEVELS) then return nil end
+        local c = client()
+        local db = ask(c, "questieModule", "QuestieDB")
+        if type(db) ~= "table" or type(db.QueryQuestSingle) ~= "function" then return nil end
+        local mine = ask(c, "level")
+        return function(quest)
+            local ok, lv = pcall(db.QueryQuestSingle, quest, "questLevel")
+            if not ok then return "" end
+            return RL.LevelTag(lv, mine, true)
+        end
     end
 
     local function view()
@@ -277,7 +343,7 @@ function RL.Declare(k, diag)
         local id = k.id or ns.id
         local T = ns.Nav and ns.Nav.TripRoute
         local how = RL.EMPTY_HOW:format(tostring(id.slash), tostring(T and T.WORD or "route"))
-        local rows, left = RL.Rows(view(), hereNow())
+        local rows, left = RL.Rows(view(), hereNow(), levelTag())
         return RL.Children(rows, left, how, api.Show)
     end
 
@@ -345,6 +411,11 @@ function RL.Declare(k, diag)
         label = "Show the route beside the quest log and on the map", group = "travel.route",
         help = "Shows the stops of your route in order beside the quest log while it is open, and numbers them on the world map with a card for the zone.",
         synonyms = { "route", "list", "quest", "log", "map", "pins", "stops", "zone" } })
+
+    k:Setting({ key = RL.LEVELS, scope = "account", type = "bool", default = true,
+        label = "Show quest levels in the route list", group = "travel.route",
+        help = "Shows each quest's level after its name in the route list, coloured: red is 5 or more levels above you, orange 3 or 4 above, yellow about your level, green a few below, olive the XP is dropping, grey next to no XP. The level comes from Questie.",
+        synonyms = { "level", "levels", "quest level", "colour", "color", "difficulty", "route", "list" } })
 
     k:Module({
         name = RL.NAME,
