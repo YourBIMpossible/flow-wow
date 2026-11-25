@@ -48,13 +48,14 @@ local SMITH = { name = "Test Smith", map = MAP, x = 0.48, y = 0.5, kinds = { rep
 local FULL, ROOM = { { bag = 0, free = 0, total = 16 } }, { { bag = 0, free = 10, total = 16 } }
 local LOW, FINE = { [5] = { cur = 5, max = 100 } }, { [5] = { cur = 100, max = 100 } }
 
--- opts: char, bags, durability
+-- opts: char, bags, durability, home (the name the game gives your home)
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, opts.char or {})
     if opts.bags then c.setBags(opts.bags) end
     if opts.durability then c.setDurability(opts.durability) end
+    if opts.home then c.setBindLocation(opts.home) end
     c.setClass("WARRIOR"); c.setFaction("Alliance"); c.setLevel(18)
     c.setZone(1, MAP); c.setPosition(MAP, 0.5, 0.5); c.setFacing(0)
     c.setMapSize(MAP, 1000, 1000); c.setMapCont(MAP, 0)
@@ -129,13 +130,20 @@ tests["town stop done: the repair stop stays until the gear is mended"] = functi
     t.eq(addon.problems:count(), base, "no new problem")
 end
 
--- Red on 55d86dac: at the inn with another home the stop is gone.
+-- Red on 55d86dac: at the inn with your home elsewhere the stop is gone.
+-- The game names a home by its place ("Old Town"), not by the innkeeper, so
+-- the stop is done by where the home stands, as Nav/HearthSeen.lua saves it
+-- when the game says the stone was bound.
 tests["town stop done: the set-hearthstone stop stays until that inn is your home"] = function(t)
-    local c, addon, base = boot({ char = services({ i = INN }) })
+    local char = services({ i = INN })
+    char.learned.places.bind = { name = "Old Town", map = MAP, x = 0.9, y = 0.5 }
+    local c, addon, base = boot({ char = char, home = "Old Town" })
     t.eq(onRoute(addon, HOME), true, "the set-hearthstone stop is on the route")
     at(c, 0.4)
-    t.eq(onRoute(addon, HOME), true, "at the inn, home not set: the stop stays")
-    c.setBindLocation("Inn Keeper")
+    t.eq(onRoute(addon, HOME), true, "at the inn, home still in Old Town: the stop stays")
+    -- The player makes this inn home: the game names the new home and says so.
+    c.setBindLocation("Inn Town")
+    c.fire("HEARTHSTONE_BOUND")
     c.advance(2, 5)
     t.eq(onRoute(addon, HOME), false, "home set there: the stop is done")
     t.eq(addon.problems:count(), base, "no new problem")
@@ -171,10 +179,15 @@ tests["town stop done: the rule, pure"] = function(t)
     t.eq(T.TownDone({ kind = "riding" }, { riding = false }), true, "riding learned")
     t.eq(T.TownDone({ kind = "riding" }, { riding = true }), false)
     t.eq(T.TownDone({ kind = "riding" }, {}), nil)
-    t.eq(T.TownDone({ kind = "hearth", inn = "Inn Keeper" }, { bind = "Inn Keeper" }), true, "that inn is home")
-    t.eq(T.TownDone({ kind = "hearth", inn = "Inn Keeper" }, { bind = "Other Inn" }), false)
-    t.eq(T.TownDone({ kind = "hearth", inn = "Inn Keeper" }, {}), nil, "home not read")
-    t.eq(T.TownDone({ kind = "hearth" }, { bind = "Inn Keeper" }), nil, "an inn with no name")
+    local inn = { kind = "hearth", place = { map = MAP, x = 0.4, y = 0.5 } }
+    local function sizeOf() return { w = 1000, h = 1000 } end
+    t.eq(T.TownDone(inn, { home = { map = MAP, x = 0.41, y = 0.5 }, sizeOf = sizeOf }), true, "home stands at that inn")
+    t.eq(T.TownDone(inn, { home = { map = MAP, x = 0.9, y = 0.5 }, sizeOf = sizeOf }), false, "home is elsewhere")
+    t.eq(T.TownDone(inn, { home = { map = MAP + 1, x = 0.4, y = 0.5 }, sizeOf = sizeOf }), false, "home on another map")
+    t.eq(T.TownDone(inn, { sizeOf = sizeOf }), nil, "where home is not known")
+    t.eq(T.TownDone(inn, { home = { map = MAP, x = 0.4, y = 0.5 } }), nil, "the map's size not known")
+    t.eq(T.TownDone({ kind = "hearth" }, { home = { map = MAP, x = 0.4, y = 0.5 }, sizeOf = sizeOf }), nil,
+        "a stop with no place")
     t.eq(T.TownDone({ kind = "pickup" }, { free = 9 }), nil, "not a town stop")
     t.eq(T.TownDone(nil, nil), nil)
 end

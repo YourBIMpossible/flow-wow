@@ -342,11 +342,8 @@ function T.Town(o)
     end
     local inn = o.inn
     if here(inn) then
-        local stop = { kind = "hearth", label = townName(inn.name) and T.HEARTH_LABEL:format(inn.name) or T.HEARTH_PLAIN,
-                       detail = T.HEARTH_DETAIL, must = true, place = { map = inn.map, x = inn.x, y = inn.y } }
-        -- The inn's own name, for T.TownDone: the stop is done when this is your home.
-        if type(inn.name) == "string" and inn.name ~= "" then stop.inn = inn.name end
-        out[#out + 1] = stop
+        out[#out + 1] = { kind = "hearth", label = townName(inn.name) and T.HEARTH_LABEL:format(inn.name) or T.HEARTH_PLAIN,
+                          detail = T.HEARTH_DETAIL, must = true, place = { map = inn.map, x = inn.x, y = inn.y } }
     end
     return out, aside
 end
@@ -374,8 +371,7 @@ function T.Plan(rows, places, here, legs, pickups, note)
     for _, p in ipairs(pickups) do
         if type(p) == "table" and type(p.place) == "table" and #stops < N.ROUTE_MAX then
             stops[#stops + 1] = { kind = p.kind or "pickup", quest = p.quest, label = tostring(p.label),
-                                  detail = p.detail, inn = p.inn,
-                                  place = { map = p.place.map, x = p.place.x, y = p.place.y } }
+                                  detail = p.detail, place = { map = p.place.map, x = p.place.x, y = p.place.y } }
             optional[#stops] = not p.must or nil
         end
     end
@@ -432,9 +428,14 @@ T.TOWN_KINDS = { sell = true, hearth = true, repair = true, riding = true }
 --   now = { free   = free bag slots, or nil when the bags are not read,
 --           repair = true while a repair is still due, false when not, nil unknown,
 --           riding = the same for the riding trainer,
---           bind   = the name of your home, or nil when not read }
+--           home   = { map, x, y }: where your home is, as saved when you
+--                    set it (Nav/HearthSeen.lua), or nil when not known,
+--           sizeOf = fn(map) -> { w, h } in yards, or nil }
 -- sell: done with more room than T.SELL_NEAR. repair, riding: done when no
--- longer due. hearth: done when your home is the stop's inn.
+-- longer due. hearth: done when your home stands at the stop's inn, within
+-- N.HearthAdvice.SAME yards (the rule H.Home has for "home already"). The
+-- game names a home by its place and an inn by its keeper, so the two
+-- names are never compared (the Checks run on GitHub, 45518104985).
 function T.TownDone(stop, now)
     if type(stop) ~= "table" or not T.TOWN_KINDS[stop.kind] then return nil end
     now = type(now) == "table" and now or {}
@@ -448,9 +449,19 @@ function T.TownDone(stop, now)
         if due == false then return true end
         return nil
     end
-    if type(stop.inn) ~= "string" or stop.inn == "" then return nil end
-    if type(now.bind) ~= "string" or now.bind == "" then return nil end
-    return now.bind == stop.inn
+    local home, p = now.home, stop.place
+    if type(home) ~= "table" or home.map == nil or not finite(home.x) or not finite(home.y) then return nil end
+    if type(p) ~= "table" or p.map == nil or not finite(p.x) or not finite(p.y) then return nil end
+    if home.map ~= p.map then return false end
+    local size
+    if type(now.sizeOf) == "function" then
+        local ok, v = pcall(now.sizeOf, p.map)
+        if ok then size = v end
+    end
+    if type(size) ~= "table" or not finite(size.w) or not finite(size.h) or size.w <= 0 or size.h <= 0 then return nil end
+    local dx, dy = (home.x - p.x) * size.w, (home.y - p.y) * size.h
+    local same = N.HearthAdvice and N.HearthAdvice.SAME or 60
+    return math.sqrt(dx * dx + dy * dy) <= same
 end
 
 -- Twin's plan, note 3 (lead sections 545 and 552): the places the inn for
@@ -618,8 +629,16 @@ function T.Declare(k, diag)
             return st ~= nil
         end
         now.repair, now.riding = due("repairStep"), due("ridingStep")
+        -- Where your home is, as townStops reads it: the place saved under
+        -- the name the game gives your home now.
         local bind = ask(c, "bindLocation")
-        if type(bind) == "string" and bind ~= "" then now.bind = bind end
+        if type(bind) == "string" and bind ~= "" and ctx then
+            local okP, place = pcall(ctx.store.get, ctx.store, "char", N.HEARTH_BIND or "learned.places.bind")
+            if okP and type(place) == "table" and place.name == bind then
+                now.home = { map = place.map, x = place.x, y = place.y }
+            end
+        end
+        now.sizeOf = function(map) return ask(c, "mapSize", map) end
         return now
     end
 
