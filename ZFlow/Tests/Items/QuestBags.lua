@@ -157,4 +157,43 @@ tests["quest bag answers: the line for each answer, and the hand-in prompt"] = f
     t.eq(Q.HandInText(nil), nil)
 end
 
+-- Parity row C-11 (lead section 603): an item an open objective still needs,
+-- seen at the auction house and not known sold by a vendor, gets a buy line
+-- (Flow Modules/Quests/QuestBuy.lua QB.Steps / QB.Line). Words only.
+-- Fails before: there is no Q.AuctionBuys or Q.AuctionText.
+local function itemOf(quest, i)
+    if quest == 1 and i == 1 then return PAW_ID end
+    if quest == 2 and i == 1 then return WOOD_ID end
+    return nil
+end
+
+tests["quest bags auction: a needed item seen at the auction house, no vendor known"] = function(t)
+    local rows = { row(1, "Paws", { { text = "Gnoll Paw: 3/8", done = false } }) }
+    local list = Q.AuctionBuys(rows, itemOf, function(id) return id == PAW_ID and 140 or nil end,
+        function() return false end)
+    t.eq(list, { { item = GNOLL, quest = "Paws", left = 5, price = 140 } })
+end
+
+tests["quest bags auction: no price, a vendor sells it, done or unknown item - nothing"] = function(t)
+    local rows = { row(1, "Paws", { { text = "Gnoll Paw: 3/8", done = false } }),
+                   row(2, "Wood", { { text = "Bundle of Wood: 0/1", done = false } }),
+                   row(3, "Odd", { { text = "Odd Thing: 0/1", done = false } }),
+                   row(4, "Done", { { text = "Gnoll Paw: 8/8", done = true } }) }
+    local function price(id) return id == WOOD_ID and 50 or nil end
+    local function vendor(id) return id == WOOD_ID end
+    t.eq(Q.AuctionBuys(rows, itemOf, price, vendor), {}, "paw: no price; wood: vendor; odd: no id")
+    t.eq(Q.AuctionBuys(nil, itemOf, price, vendor), {})
+    t.eq(Q.AuctionBuys(rows, nil, price, vendor), {})
+end
+
+tests["quest bags auction: the line names the first, counts the rest"] = function(t)
+    local coin = function(c) return c .. "c" end
+    t.eq(Q.AuctionText({ { item = GNOLL, quest = "Paws", left = 5, price = 140 } }, coin),
+        "Buy 5 Gnoll Paw at the auction house for the quest Paws: about 140c each when you last looked (700c).")
+    t.eq(Q.AuctionText({ { item = GNOLL, quest = "Paws", left = 5, price = 140 },
+                         { item = WOOD, quest = "Wood", left = 1, price = 50 } }, coin),
+        "Buy 5 Gnoll Paw at the auction house for the quest Paws: about 140c each when you last looked (700c). 1 more item too.")
+    t.eq(Q.AuctionText({}, coin), nil)
+end
+
 return tests

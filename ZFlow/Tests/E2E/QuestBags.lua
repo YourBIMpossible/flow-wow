@@ -109,4 +109,48 @@ tests["quest bags e2e: with the setting off no hand-in is said, and the answers 
     t.eq(addon.use(Q.NAME).Answers()[1].answer, "handIn")
 end
 
+-- Parity row C-11 (lead section 609; Twin's review, section 622): a quest
+-- item the player saw at the auction house, with no vendor price known, is
+-- named to buy there, through Q.Declare on the fake client: Questie's item
+-- ID, the player's own logged price (Items/AuctionLog.lua's saved shape).
+-- Nothing is bought or bid. Made-up realm.
+local NOW, REALM = 1700000000, "Realm1-Horde"
+
+local function startAuction()
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, { learned = { prices = { auctionHistory = { [REALM] = {
+        [PAW] = { h = { NOW - 60, 140 } },
+    } } } } })
+    c.setSaved(ns.id.charDB, {})
+    c.setClock(NOW)
+    c.setRealm("Realm1")
+    c.setFaction("Horde")
+    c.setItemInfo({ [PAW] = { name = "Gnoll Paw", classID = 12 } })
+    c.setBagItems({})
+    c.setQuestieModule("QuestieDB", { GetQuest = function(id)
+        if id == GNOLL_Q then return { ObjectiveData = { { Type = "item", Id = PAW } } } end
+        return nil
+    end })
+    c.setQuestLog({ row(GNOLL_Q, "Gnoll Trouble", "Gnoll Paw: 3/8") })
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(5, 20)
+    return c, addon
+end
+
+tests["quest bags e2e auction: a Questie item with a logged auction price and no vendor price: the line"] = function(t)
+    local _, addon = startAuction()
+    local Q, coin = ns.QuestBags, ns.Prices.Coin
+    t.eq(prompt(addon, Q.AUCTION_PROMPT), Q.AUCTION:format(5, "Gnoll Paw", "Gnoll Trouble", coin(140), coin(700)))
+end
+
+tests["quest bags e2e auction: with the setting off, nothing shows"] = function(t)
+    local c, addon = startAuction()
+    local Q = ns.QuestBags
+    addon.settings:set(Q.SETTING, false)
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(1, 5)
+    t.eq(prompt(addon, Q.AUCTION_PROMPT), nil)
+end
+
 return tests
