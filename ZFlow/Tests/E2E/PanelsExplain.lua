@@ -1,10 +1,9 @@
 local _, ns = ...
 -- The panels say what they are (owner's report, lead sections 561 item 6 and
--- 564 R8): the first time "Advice" and "Your buffs" show, a row under the
--- title says what the panel is. That it was said is kept for the account,
--- so it is not said again after a reload. The words are not tested (lead
--- section 559); where they show and the saved data are. Whole add-on on a
--- fake client. Not tested in game.
+-- 564 R8): whenever "Advice" and "Your buffs" show, a row under the title
+-- says what the panel is, also after a reload (lead section 578 point A:
+-- no "said once" gate). The words are not tested (lead section 559); where
+-- they show is. Whole add-on on a fake client. Not tested in game.
 local tests = {}
 
 local A, B = ns.Advisor, ns.BuffStrip
@@ -30,7 +29,8 @@ local function part(c, id, key)
     return nil
 end
 
-tests["panels explain: Advice says what it is above its prompts, once for the account"] = function(t)
+-- Red on 6f77dd79: after the reload the row is gone (it was said once).
+tests["panels explain: Advice says what it is above its prompts, every time it shows"] = function(t)
     local c, addon = start()
     addon.advisor.Add("test.one", "Repair your gear.", 10)
     c.advance(1, 2)
@@ -39,25 +39,26 @@ tests["panels explain: Advice says what it is above its prompts, once for the ac
     t.eq(about and about.kind, "section", "not one of the prompts")
     local w = c.kitWindows()[A.KIT_ID]
     t.eq(w and w.parts[1] and w.parts[1].key, "about", "above the prompts")
-    t.eq(addon.store:get("account", A.EXPLAINED), true, "kept: it was said")
+    t.eq(addon.store:get("account", "layout.explained.advisor"), nil, "nothing is kept about it")
     local c2, addon2 = start(c.saved(ns.id.accountDB))
     addon2.advisor.Add("test.one", "Repair your gear.", 10)
     c2.advance(1, 2)
     t.ok(c2.kitWindows()[A.KIT_ID] ~= nil, "the panel shows after the reload")
-    t.eq(part(c2, A.KIT_ID, "about"), nil, "and does not say it again")
+    t.ok(part(c2, A.KIT_ID, "about") ~= nil, "and says what it is again")
 end
 
-tests["panels explain: Your buffs says what it is the first time, not after a reload"] = function(t)
+-- Red on 6f77dd79: after the reload the row is gone (it was said once).
+tests["panels explain: Your buffs says what it is every time it shows"] = function(t)
     local c, addon = start()
     c.setPlayerBuffs({ ["Arcane Intellect"] = 1500 })
     c.advance(B.EVERY + 0.1, 2)
     t.ok(part(c, B.ID, "about") ~= nil, "a row says what the strip is")
-    t.eq(addon.store:get("account", B.EXPLAINED), true, "kept: it was said")
+    t.eq(addon.store:get("account", "layout.explained.buffStrip"), nil, "nothing is kept about it")
     local c2 = start(c.saved(ns.id.accountDB))
     c2.setPlayerBuffs({ ["Arcane Intellect"] = 1500 })
     c2.advance(B.EVERY + 0.1, 2)
     t.ok(c2.kitWindows()[B.ID] ~= nil, "the strip shows after the reload")
-    t.eq(part(c2, B.ID, "about"), nil, "and does not say it again")
+    t.ok(part(c2, B.ID, "about") ~= nil, "and says what it is again")
 end
 
 return tests

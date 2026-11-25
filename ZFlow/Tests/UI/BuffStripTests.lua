@@ -173,6 +173,9 @@ tests["buff strip module: closing it switches the setting off, says how to get i
     t.ok(lines[1] ~= nil and lines[1]:find(B.LABEL, 1, true) ~= nil
         and lines[1]:find(ns.id.slash .. " settings", 1, true) ~= nil, "it names the setting and the way there: "
         .. tostring(lines[1]))
+    -- Lead section 578 point A: the click path too. Red on 6f77dd79.
+    t.ok(lines[1] ~= nil and lines[1]:find("left-click the Flow button", 1, true) ~= nil,
+        "and the click path: " .. tostring(lines[1]))
     -- Kept over a reload: the saved setting is what was written.
     local c2 = ns.make.fakeClient()
     c2.setSaved(ns.id.accountDB, c.saved(ns.id.accountDB)); c2.setSaved(ns.id.charDB, {})
