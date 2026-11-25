@@ -456,6 +456,28 @@ function T.SortOf(v)
     return "distance"
 end
 
+-- FLOW-PARITY A2-16: a quest's XP from the game's own reward read first
+-- (client.questRewardXp(id): GetQuestLogRewardXP, as legacy Flow's
+-- XpValue.lua:34-38 reads it; a CLIENT NEED, used when the client has it),
+-- then the player's Questie (T.XpOf). 0, nil or a read that raises is not
+-- known. Flow's estimate by quest level (XpValue.lua:20-32) is not used:
+-- a number not read from the game or Questie is never said (section 611).
+T.XP_PART = "%d XP"
+function T.XpFrom(game, questie)
+    return function(id)
+        if id == nil then return nil end
+        if type(game) == "function" then
+            local ok, xp = pcall(game, id)
+            if ok and finite(xp) and xp > 0 then return xp end
+        end
+        if type(questie) == "function" then
+            local ok, xp = pcall(questie, id)
+            if ok and finite(xp) and xp > 0 then return xp end
+        end
+        return nil
+    end
+end
+
 function T.XpOf(mod)
     return function(id)
         if type(mod) ~= "table" or type(mod.GetQuestLogRewardXP) ~= "function" or id == nil then return nil end
@@ -725,6 +747,8 @@ function T.Lines(route, at)
         elseif s.detail ~= nil then
             parts[#parts + 1] = tostring(s.detail)
         end
+        -- A2-16: the quest's XP when the game or Questie gave it.
+        if finite(s.xp) and s.xp > 0 then parts[#parts + 1] = T.XP_PART:format(math.floor(s.xp + 0.5)) end
         parts[#parts + 1] = dist
         local secs = route.yards ~= false and (finite(s.secs) and s.secs or (finite(s.leg) and T.Seconds(s.leg))) or nil
         local time = secs and T.TimeWords(secs)
@@ -985,13 +1009,18 @@ function T.Declare(k, diag)
         -- straight-line leg again.
         local w, h, known = scale(here)
         local moved
+        -- A2-16: each quest stop's XP, the game's reward read first, then Questie.
+        local okMod, mod = pcall(c.questieModule, "QuestXP")
+        if not okMod then mod = nil end
+        local xpOf = T.XpFrom(function(id) return ask(c, "questRewardXp", id) end, T.XpOf(mod))
+        for _, s in ipairs(r.stops) do
+            if s.quest ~= nil then s.xp = xpOf(s.quest) end
+        end
         if sortBy() == "xp" then
-            local okMod, mod = pcall(c.questieModule, "QuestXP")
-            if not okMod then mod = nil end
             local nKnown
             local sizeNow
             if known then sizeNow = { w = w, h = h } end
-            moved, nKnown = T.SortXp(r.stops, T.XpOf(mod), here, sizeNow)
+            moved, nKnown = T.SortXp(r.stops, xpOf, here, sizeNow)
             if nKnown == 0 then r.note = T.SORT_NO_XP end
         elseif T.ModeFlags(mode()).hub and known then
             moved = T.HubFirst(r.stops, here, { w = w, h = h }, T.HUB_YARDS, nil)
