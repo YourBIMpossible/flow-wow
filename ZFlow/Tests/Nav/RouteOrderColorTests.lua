@@ -49,4 +49,12 @@ tests["route order colour: the mode comes from the route sort setting"] = functi
     t.eq(ROC().Mode(raising), "distance", "a read that raises")
 end
 
+-- Plexy CHANGES-1 (section 874): Settings stores the shown labels
+-- (Nav/TripRoute.lua T.SORT_LABELS), so those must read as their modes.
+tests["route order colour: the stored labels read as their modes"] = function(t)
+    t.eq(ROC().Mode(settings("Most XP first")), "xp", "Most XP first")
+    t.eq(ROC().Mode(settings("Shortest first")), "distance", "Shortest first")
+    t.eq(hex(ROC().Color(ROC().Mode(settings("Most XP first")), "standard")), "A335EE", "purple, not blue")
+end
+
 return tests
