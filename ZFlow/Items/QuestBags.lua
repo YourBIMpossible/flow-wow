@@ -9,6 +9,18 @@ local _, ns = ...
 --   buy       while a vendor window is open, an item it sells that an open
 --             objective of a quest in the log still needs: "Buy Bundle of
 --             Wood from a vendor for the quest Stormwind Errand."
+--   hand in   (parity row C-10) a quest item in the bags whose quest is in
+--             the log and complete: "Gnoll Paw is for Gnoll Trouble, which
+--             is ready to hand in."
+-- And, for another module to show (C-10, data only; a window is the
+-- drawing lane's): Answers(), for each quest item in the bags, why it is
+-- held and what to do with it. As Flow's Modules/Quests/QuestBags.lua
+-- (QG.QuestOf :55-63 and its answers): "handIn" (Flow's turnin: its quest
+-- is complete), "keep" (Flow's finish: its quest is in progress), "drop"
+-- (Flow's sell: every quest that asked for it was handed in), and
+-- "unknown" where the quest, or whether it was handed in, is not known
+-- (nothing is advised). Not here: Flow's "bank" and "stuck", which need the
+-- route's steps of a quest, and Flow's sell price.
 -- Which quest asked for which item is learned from the player's own quest
 -- log (objective text "Name: 3/8"), never from a table. An item never seen
 -- asked for, a hand-in not known, an item kind not read, a log, bag or
@@ -23,6 +35,14 @@ local _, ns = ...
 --   Q.WareName(ware, info)              a ware's item name, or nil
 --   Q.ToBuy(rows, wares)                { { item, quest }, ... }
 --   Q.BuyText(list)                     the line, or nil
+--   Q.Answers(owners, rows, bag, done)  { { item, answer, quest, questId } },
+--                                       bag order, each item once; {} when
+--                                       the log, the bags or the hand-in
+--                                       read is not there
+--   Q.AnswerLine(row)                   one answer as a line, or nil
+--   Q.HandInText(answers)               the hand-in prompt, or nil
+-- Module: ns.use("questBags").Answers() -> the answers now (not held back
+-- by the setting, which is for the prompts).
 --
 -- Reads (existing, Core/Client.lua): questLog (through ns.Nav.QuestLogRows),
 -- questDone, bagItems, itemInfo, merchantItems, watchMerchant.
@@ -38,6 +58,17 @@ Q.PATH = "learned.questItemOwners"
 Q.SETTING = "items.questBags"
 Q.LEFTOVER_PROMPT = "items.questLeftover"
 Q.BUY_PROMPT = "items.questBuy"
+Q.HANDIN_PROMPT = "items.questHandIn"
+Q.HAND_IN, Q.KEEP, Q.DROP, Q.UNKNOWN = "handIn", "keep", "drop", "unknown"
+Q.LINES = {
+    handIn = "%s: for %s, which is ready to hand in. Hand it in.",
+    keep = "%s: for %s, still in progress. Keep it.",
+    drop = "%s: left over from %s, which you handed in. You can sell or destroy it.",
+}
+Q.LINE_NO_QUEST = "%s: a quest item, but which quest it is for is not known."
+Q.LINE_NOT_KNOWN = "%s: for %s, which is not in your log; whether you handed it in is not known."
+Q.HANDIN_ONE = "%s is for %s, which is ready to hand in."
+Q.HANDIN_MANY = "Quest items ready to hand in: %s."
 Q.PRIORITY = 2
 Q.QUEST_CLASS = 12
 Q.MAX_NAMES = 3
@@ -102,6 +133,94 @@ function Q.Leftovers(owners, rows, bag, done)
     return out
 end
 
+-- C-10: for each quest item in the bags, the quest it is for and what to
+-- do with it. A complete quest in the log comes first (its hand-in frees
+-- the slot), then one in progress; with none in the log, "drop" only when
+-- every quest that asked for it is known handed in.
+function Q.Answers(owners, rows, bag, done)
+    local out = {}
+    if type(owners) ~= "table" or type(rows) ~= "table" or type(bag) ~= "table"
+        or type(done) ~= "function" then
+        return out
+    end
+    local inLog = {}
+    for _, r in ipairs(rows) do
+        if type(r) == "table" and r.id ~= nil then inLog[r.id] = r end
+    end
+    local seen = {}
+    for _, e in ipairs(bag) do
+        local name = type(e) == "table" and e.name or nil
+        if type(name) == "string" and name ~= "" and e.classID == Q.QUEST_CLASS and not seen[name] then
+            seen[name] = true
+            local quests = type(owners[name]) == "table" and owners[name] or {}
+            -- The quests in a fixed order, so the answer does not change by itself.
+            local ids = {}
+            for id in pairs(quests) do ids[#ids + 1] = id end
+            table.sort(ids, function(a, b) return tostring(a) < tostring(b) end)
+            local ready, open, left, allDone = nil, nil, nil, #ids > 0
+            for _, id in ipairs(ids) do
+                local r = inLog[id]
+                if r then
+                    allDone = false
+                    if r.complete == true and r.failed ~= true then
+                        ready = ready or id
+                    else
+                        open = open or id
+                    end
+                else
+                    left = left or id
+                    if done(id) ~= true then allDone = false end
+                end
+            end
+            local row = { item = name }
+            local id = ready or open
+            if ready then
+                row.answer = Q.HAND_IN
+            elseif open then
+                row.answer = Q.KEEP
+            elseif allDone then
+                row.answer, id = Q.DROP, left
+            else
+                row.answer, id = Q.UNKNOWN, left
+            end
+            if id ~= nil then
+                row.questId = id
+                local title = inLog[id] and inLog[id].title or quests[id]
+                if type(title) == "string" and title ~= "" then row.quest = title end
+            end
+            out[#out + 1] = row
+        end
+    end
+    return out
+end
+
+function Q.AnswerLine(row)
+    if type(row) ~= "table" or type(row.item) ~= "string" then return nil end
+    local quest = type(row.quest) == "string" and row.quest or nil
+    local line = Q.LINES[row.answer]
+    if line and quest then return line:format(row.item, quest) end
+    if quest then return Q.LINE_NOT_KNOWN:format(row.item, quest) end
+    return Q.LINE_NO_QUEST:format(row.item)
+end
+
+function Q.HandInText(answers)
+    if type(answers) ~= "table" then return nil end
+    local ready = {}
+    for _, row in ipairs(answers) do
+        if type(row) == "table" and row.answer == Q.HAND_IN and type(row.item) == "string"
+            and type(row.quest) == "string" then
+            ready[#ready + 1] = row
+        end
+    end
+    if #ready == 0 then return nil end
+    if #ready == 1 then return Q.HANDIN_ONE:format(ready[1].item, ready[1].quest) end
+    local parts = {}
+    for i = 1, math.min(#ready, Q.MAX_NAMES) do parts[i] = ready[i].item .. " (" .. ready[i].quest .. ")" end
+    local line = table.concat(parts, ", ")
+    if #ready > #parts then line = string.format("%s and %d more", line, #ready - #parts) end
+    return Q.HANDIN_MANY:format(line)
+end
+
 local function names(list)
     local shown = {}
     for i = 1, math.min(#list, Q.MAX_NAMES) do shown[i] = tostring(list[i]) end
@@ -164,16 +283,24 @@ local EVENTS = { "QUEST_LOG_UPDATE", "QUEST_TURNED_IN", "QUEST_REMOVED", "BAG_UP
 
 function Q.Declare(k)
     local api = {}
-    local refresh
+    local refresh, answersNow
+
+    -- C-10: the answers as of now, {} before the module starts.
+    function api.Answers()
+        if answersNow then return answersNow() end
+        return {}
+    end
 
     k:Module({
         name = Q.NAME,
         needs = { "client", "store", "bus", "settings", "advisor" },
+        provides = { Answers = api.Answers },
         settings = { {
             key = Q.SETTING, scope = "char", type = "bool", default = true,
             label = "Quest items in your bags",
-            help = "Names quest items left over from quests you have handed in, and items a vendor you have "
-                .. "open sells that a quest in your log needs. It only advises: nothing is sold, destroyed or bought.",
+            help = "Names quest items left over from quests you have handed in, quest items whose quest is "
+                .. "ready to hand in, and items a vendor you have open sells that a quest in your log needs. "
+                .. "It only advises: nothing is sold, destroyed, bought or handed in.",
             group = "bags",
             synonyms = { "quest", "leftover", "vendor", "buy", "bags", "sell" },
         } },
@@ -211,17 +338,28 @@ function Q.Declare(k)
                 return out
             end
 
+            local function doneOf(id) return ask(client, "questDone", id) end
+
+            answersNow = function()
+                local rows = ns.Nav.QuestLogRows(client)
+                local owners = ctx.store:table("char", Q.PATH)
+                if type(rows) == "table" and type(owners) == "table" then Q.Learn(owners, rows) end
+                return Q.Answers(owners, rows, bag(), doneOf)
+            end
+
             refresh = function()
                 local rows = ns.Nav.QuestLogRows(client)
                 local owners = ctx.store:table("char", Q.PATH)
                 if type(rows) == "table" and type(owners) == "table" then Q.Learn(owners, rows) end
-                local left, buy
+                local left, buy, handIn
                 if ctx.settings:get(Q.SETTING) ~= false and type(rows) == "table" then
+                    handIn = Q.HandInText(Q.Answers(owners, rows, bag(), doneOf))
                     left = Q.LeftoverText(Q.Leftovers(owners, rows, bag(),
                         function(id) return ask(client, "questDone", id) end))
                     if ask(client, "merchantOpen") == true then buy = Q.BuyText(Q.ToBuy(rows, wares())) end
                 end
                 show(Q.LEFTOVER_PROMPT, left)
+                show(Q.HANDIN_PROMPT, handIn)
                 show(Q.BUY_PROMPT, buy)
             end
 
@@ -232,7 +370,7 @@ function Q.Declare(k)
             refresh()
         end,
         stop = function()
-            refresh = nil
+            refresh, answersNow = nil, nil
         end,
     })
     return api

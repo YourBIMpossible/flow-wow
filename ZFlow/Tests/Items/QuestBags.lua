@@ -150,7 +150,8 @@ tests["quest bag answers: the line for each answer, and the hand-in prompt"] = f
     t.eq(Q.HandInText({ { item = GNOLL, answer = "handIn", quest = "Gnoll Trouble" },
                         { item = "Murloc Eye", answer = "keep", quest = "Eyes" } }),
         "Gnoll Paw is for Gnoll Trouble, which is ready to hand in.")
-    t.eq(Q.HandInText({ { item = GNOLL, answer = "handIn", quest = "A" }, { item = "Eye", answer = "handIn", quest = "B" } }),
+    t.eq(Q.HandInText({ { item = GNOLL, answer = "handIn", quest = "A" },
+                        { item = "Eye", answer = "handIn", quest = "B" } }),
         "Quest items ready to hand in: Gnoll Paw (A), Eye (B).")
     t.eq(Q.HandInText({ { item = GNOLL, answer = "keep", quest = "A" } }), nil)
     t.eq(Q.HandInText(nil), nil)
