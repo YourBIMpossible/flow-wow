@@ -115,6 +115,25 @@ function Keep.Run(k, rest)
     return { say(remove and "removed" or "added", name) }, true
 end
 
+-- E-13 (lead section 660; Flow Modules/Items/Vendor.lua:718-720): an item
+-- the player bought back goes on the never-sell list, so it is not sold
+-- again. Silent when it is already there, names no item, or the saved data
+-- is not loaded. -> lines, changed (as Run).
+function Keep.BoughtBack(k, item)
+    local key
+    if item ~= nil then key = ns.Items.Key(tostring(item)) end
+    if key == nil then return {}, false end
+    local list = listOf(k)
+    if not list or list[key] then return {}, false end
+    list[key] = true
+    local ok, reason = k.store:set("char", Keep.PATH, list)
+    if not ok then
+        if type(k.problems) == "table" then k.problems:add("keep", "boughtBack", tostring(reason)) end
+        return {}, false
+    end
+    return { ns.ItemPresent.KeepText("boughtBack", nameOf(k, key)) }, true
+end
+
 function Keep.Start(k, diag, sellList)
     local function run(rest)
         local lines, changed = Keep.Run(k, rest)
@@ -123,6 +142,18 @@ function Keep.Start(k, diag, sellList)
             sellList.refresh()
         end
         return changed
+    end
+    -- The buy-back read is client.onBoughtBack (CLIENT NEED); without it
+    -- the list is only the word's.
+    local c = k.client
+    if type(c) == "table" and type(c.onBoughtBack) == "function" then
+        pcall(c.onBoughtBack, function(item)
+            local lines, changed = Keep.BoughtBack(k, item)
+            for i = 1, #lines do k.client.print(k.id.title .. ": " .. lines[i]) end
+            if changed and type(sellList) == "table" and type(sellList.refresh) == "function" then
+                sellList.refresh()
+            end
+        end)
     end
     if diag and type(diag.commands) == "table" then
         diag.commands[Keep.WORD] = run

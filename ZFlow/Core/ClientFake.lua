@@ -5118,3 +5118,26 @@ do
         return c
     end
 end
+
+-- § E-13 (Items/Keep.lua, lead sections 660 and 666): STUB for a CLIENT NEED
+-- the real client lacks. c.onBoughtBack(fn) calls fn(item link) each time
+-- the player buys an item back on the merchant's Buyback tab (in game: a
+-- hooksecurefunc on BuybackItem, the link read with GetBuybackItemLink
+-- before the buy, as Flow's Modules/Items/Vendor.lua:718-720).
+-- c.fireBoughtBack(item) is that buy.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local fns = {}
+        function c.onBoughtBack(fn)
+            if type(fn) ~= "function" then return nil end
+            fns[#fns + 1] = fn
+            return true
+        end
+        function c.fireBoughtBack(item)
+            for _, fn in ipairs({ unpack(fns) }) do fn(item) end
+        end
+        return c
+    end
+end
