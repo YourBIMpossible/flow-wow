@@ -366,4 +366,89 @@ tests["plate quests mark data: a target the client cannot read is unknown, never
     t.eq(m and m.target, nil)
 end
 
+-- Parity row C-19, the data half (lead sections 720/721), as Flow's
+-- Modules/QuestMarks.lua (:24-26, a yellow "!" on a mob that drops an item
+-- that starts a quest you can take): read from the player's own Questie,
+-- each quest whose Starts.Item lists an item, that item's npcDrops, kept
+-- only for a quest you can take (Nav/RoutePickups.lua P.Candidate: not in
+-- your log, not done, for you, in reach, earlier quests done). Each such
+-- NPC gets what = "starts". The icon is the drawing lane's. Fails before:
+-- no "starts".
+local OLDBONE, BONE = 2006, 4002
+local function startsDb(extra)
+    local db = questie()
+    local get = db.GetQuest
+    local starts = {
+        [201] = { Id = 201, name = "An Old Bone", level = 10, requiredLevel = 8,
+                  Starts = { Item = { BONE } } },
+        [202] = { Id = 202, name = "Done Before", level = 10, requiredLevel = 8,
+                  Starts = { Item = { BONE } } },
+        [203] = { Id = 203, name = "Too High", level = 40, requiredLevel = 38,
+                  Starts = { Item = { BONE } } },
+    }
+    for id, q in pairs(extra or {}) do starts[id] = q end
+    db.QuestPointers = { [101] = true, [102] = true, [201] = true, [202] = true, [203] = true }
+    db.GetQuest = function(id)
+        if starts[id] then return starts[id] end
+        return get(id)
+    end
+    local item = db.GetItem
+    db.GetItem = function(id)
+        if id == BONE then return { npcDrops = { OLDBONE } } end
+        return item(id)
+    end
+    return db
+end
+local function startsCtx()
+    return { level = 10, log = { [101] = true, [102] = true }, me = {},
+             done = function(id) return id == 202 end }
+end
+
+tests["plate quests starts: a mob dropping an item that starts a quest you can take"] = function(t)
+    t.eq(type(PQ.Starts), "function")
+    if type(PQ.Starts) ~= "function" then return end
+    local got = PQ.Starts(startsDb(), startsCtx())
+    local list = got[OLDBONE]
+    t.eq(list and #list, 1, "only the quest you can take: not done, not too high")
+    t.eq(list and list[1] and { list[1].quest, list[1].what, list[1].label, list[1].from },
+        { 201, "starts", PQ.MARK, "questie" })
+    t.eq(got[VERMIN], nil, "a kill objective is not a start")
+end
+
+tests["plate quests starts: a quest in your log, no list or a failing Questie gives nothing"] = function(t)
+    if type(PQ.Starts) ~= "function" then return t.ok(false, "no Starts") end
+    local ctx = startsCtx()
+    ctx.log[201] = true
+    t.eq(PQ.Starts(startsDb(), ctx)[OLDBONE], nil, "already in your log")
+    local db = startsDb()
+    db.QuestPointers = nil
+    t.eq(PQ.Starts(db, startsCtx()), {}, "no quest list")
+    db = startsDb()
+    db.GetQuest = function() error("questie failed (test)") end
+    t.eq(PQ.Starts(db, startsCtx()), {}, "a failing Questie")
+    t.eq(PQ.Starts(nil, startsCtx()), {})
+    t.eq(PQ.Starts(startsDb(), nil), {})
+end
+
+tests["plate quests starts: the plate of such a mob is marked, its kind starts"] = function(t)
+    local c = ns.make.fakeClient()
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    local api = PQ.Declare(k, d)
+    c.setLevel(10)
+    c.setQuestLog(log())
+    c.setQuestieModule("QuestieDB", startsDb())
+    c.setQuestDone(202, true)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(1, 2)
+    mob(c, "nameplate1", OLDBONE)
+    c.advance(1, 2)
+    t.eq(markOf(c, "nameplate1") and markOf(c, "nameplate1").says, PQ.MARK)
+    local m = type(api.markOf) == "function" and api.markOf("nameplate1") or nil
+    t.eq(m and m.kinds, { "starts" })
+end
+
 return tests
