@@ -36,6 +36,11 @@ function Lookup.NotFound(text)
     return 'No known item is called "' .. tostring(text) .. '": link it, or use its item ID.'
 end
 
+-- E-42 nit (section 685): an item ID no item info answers to. Said so.
+function Lookup.NoId(text)
+    return "No known item has id " .. tostring(text) .. ": link it, or use its name."
+end
+
 -- E-42: an item name -> its item ID through the client's name read
 -- (CLIENT NEED client.itemIdByName; stubbed in Core/ClientFake.lua), or nil.
 local function idByName(client, text)
@@ -94,7 +99,10 @@ function Lookup.Run(k, rest)
     local item = text
     if ns.Items.Key(text) == nil then
         item = idByName(client, text)
-        if item == nil then return { Lookup.NotFound(text) } end
+        if item == nil then
+            if text:match("^%d+$") then return { Lookup.NoId(text) } end
+            return { Lookup.NotFound(text) }
+        end
     end
     if type(book) ~= "table" then book = nil end
     local result = Lookup.Find(item, read, book)

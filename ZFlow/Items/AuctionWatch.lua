@@ -36,17 +36,22 @@ W.PATH = "items.auctionWatch"
 W.UNNAMED = "an item not loaded yet"
 W.HELP = "<item> [price]: watch an item's auction price (amounts end in g, s or c, as 1.36g); <item> off drops it; alone: the list. It buys nothing."
 -- E-31 (lead 682): the `ah` word, the legacy add-on's words for the same list
--- (F:/flow-wow/Modules/Items/Auction.lua:459-489): ah watch, ah unwatch, ah.
+-- (Flow d78839f7 Modules/Items/Auction.lua:205-235): ah watch, ah unwatch, ah.
 -- Its "scan" sends searches, an auction-house action: not here.
 W.AH = "ah"
 W.AH_HELP = "watch <item> [price] | unwatch <item> | alone: the watch list. It buys nothing."
 W.AH_USAGE = "ah watch <item> [price] | ah unwatch <item> | ah (the list). It buys nothing."
+-- E-33: bare ah frames the list as the legacy /flow ah did (Auction.lua:479-489):
+-- a heading, each watched item with its last price ("not yet" there), an
+-- "(empty)" line when none, then the words. No age, no cap, as there.
+W.AH_HEAD = "auction watch list, last price seen:"
+W.AH_EMPTY = "nothing watched."
 
 local UNIT = { g = 10000, s = 100, c = 1 }
 
 -- E-31 (lead 681): also the short form the add-on prints ("1.36g", "5.52s",
 -- "52c", "13.6g"; Items/Prices.lua Coin), read as the legacy AH.ParseMoney
--- reads it (F:/flow-wow/Modules/Items/Auction.lua:35-46): spaces and case do
+-- reads it (Flow d78839f7 Modules/Items/Auction.lua:40-52): spaces and case do
 -- not count, a plain number is gold, amounts add up ("1g50s"). Anything
 -- else, a malformed number among it, is no mark.
 function W.Mark(text)
@@ -110,6 +115,19 @@ function W.Lines(list, priceOf, nameOf, under)
     return out
 end
 
+-- E-33: the lines bare ah says, around the list's own lines.
+function W.AhLines(lines)
+    local out = { W.AH_HEAD }
+    local any = false
+    for _, line in ipairs(type(lines) == "table" and lines or {}) do
+        out[#out + 1] = line
+        any = true
+    end
+    if not any then out[#out + 1] = W.AH_EMPTY end
+    out[#out + 1] = W.AH_USAGE
+    return out
+end
+
 -- E-31: the chat line when a watched item is seen at or under its mark.
 function W.AlertLine(name, unit, mark)
     return string.format("%s is on the auction house for %s each, at or under your %s.", name, coin(unit), coin(mark))
@@ -169,7 +187,11 @@ function W.Declare(k, diag)
         arg = type(arg) == "string" and arg:match("^%s*(.-)%s*$") or ""
         local cmd, rest = arg:match("^(%S*)%s*(.-)$")
         cmd = cmd:lower()
-        if cmd == "" then return word("") end
+        if cmd == "" then
+            if not ctx then return say("not started yet") end
+            for _, line in ipairs(W.AhLines(W.Lines(list(), priceOf, nameOf))) do say(line) end
+            return
+        end
         if cmd == "watch" then return word(rest) end
         if cmd == "unwatch" then
             if rest == "" then return say(W.AH_USAGE) end
@@ -179,7 +201,7 @@ function W.Declare(k, diag)
     end
 
     -- E-31 (lead 682): the alert, as the legacy alertIfCheap
-    -- (F:/flow-wow/Modules/Items/Auction.lua:126-132): one chat line and
+    -- (Flow d78839f7 Modules/Items/Auction.lua:80-86): one chat line and
     -- PlaySound(SOUNDKIT.RAID_WARNING), here client.playAlert (the same
     -- sound; it plays nothing, and no number is guessed, when the game names
     -- none). Once an item a visit: the legacy add-on alerted once an item a
