@@ -79,6 +79,15 @@ tests["forget: the places word with no name only counts and explains"] = functio
     t.ok(c.saved(ns.id.charDB).learned.places.services["Creature-0-1-2-3-111-0"] ~= nil, "no name: nothing wiped")
 end
 
+-- Lead section 816: the slash line reaches the word lower-cased, so the
+-- "nothing matched" reply gives each word of the name its capital back.
+tests["forget: the name shown as written"] = function(t)
+    t.eq(ns.Nav.LearnedForget.Shown("nobody here"), "Nobody Here")
+    t.eq(ns.Nav.LearnedForget.Shown("brog hamfist"), "Brog Hamfist")
+    t.eq(ns.Nav.LearnedForget.Shown("o'malley"), "O'malley")
+    t.eq(ns.Nav.LearnedForget.Shown(nil), "")
+end
+
 tests["forget: the places word forgets the one named and says so"] = function(t)
     local c = boot({ learned = { places = { npcs = { ["Brog Hamfist"] = { map = 1, x = 0.5, y = 0.5 } } } } },
         { learned = { places = { services = places() } } })

@@ -112,6 +112,15 @@ function LF.ForgetSpot(book, quest, which)
     return 1
 end
 
+-- The name as the player wrote it, as near as the slash line lets us: the
+-- slash command lower-cases the whole line before a word sees it, so each
+-- word of the name gets its first letter back (NPC names are written so).
+-- Lead section 816: the "nothing matched" reply names what was typed.
+function LF.Shown(text)
+    if type(text) ~= "string" then return "" end
+    return (text:gsub("(%a)([%w']*)", function(first, rest) return first:upper() .. rest end))
+end
+
 function LF.Declare(k, diag)
     local ctx
     local id = k.id or ns.id
@@ -133,7 +142,7 @@ function LF.Declare(k, diag)
         local s, a = copy(services), copy(npcs)
         local gone = LF.ForgetPlace(s, a, what)
         if #gone == 0 then
-            say(("no learned place called %s; nothing changed."):format(what))
+            say(("no learned place called %s; nothing changed."):format(LF.Shown(what)))
             return
         end
         if count(s) ~= count(services) and store:set("char", LF.SERVICES, s) ~= true then
