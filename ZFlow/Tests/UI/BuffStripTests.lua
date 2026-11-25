@@ -152,4 +152,43 @@ tests["buff strip module: a dragged place is kept"] = function(t)
     t.eq(addon.store:get("account", B.PATH).point, { "TOPLEFT", "BOTTOMLEFT", 300, 500 }, "saved")
 end
 
+-- Owner's report (lead section 561 item 6): the strip can be closed, and
+-- closing it is switching it off. Red on aa3dd5a8: closing wrote nothing,
+-- so the setting stayed on and the strip came back at the next look.
+tests["buff strip module: closing it switches the setting off, says how to get it back, and it stays closed"] = function(t)
+    local c, addon = start(t)
+    if not c then return end
+    c.setPlayerBuffs({ ["Arcane Intellect"] = 1500 })
+    c.advance(B.EVERY + 0.1, 2)
+    t.ok(said(c) ~= nil, "up")
+    t.eq(addon.settings:get(B.SETTING), true, "on by default")
+    local from = #c.printed
+    t.eq(c.kitClose(B.ID), true, "the player closes it")
+    t.eq(addon.settings:get(B.SETTING), false, "closing it switched the setting off")
+    c.advance(B.EVERY * 3, 6)
+    t.eq(said(c), nil, "it stays closed")
+    local lines = {}
+    for i = from + 1, #c.printed do lines[#lines + 1] = tostring(c.printed[i]) end
+    t.eq(#lines, 1, "one chat line")
+    t.ok(lines[1] ~= nil and lines[1]:find(B.LABEL, 1, true) ~= nil
+        and lines[1]:find(ns.id.slash .. " settings", 1, true) ~= nil, "it names the setting and the way there: "
+        .. tostring(lines[1]))
+    -- Lead section 578 point A: the click path too. Red on 6f77dd79.
+    t.ok(lines[1] ~= nil and lines[1]:find("left-click the minimap button", 1, true) ~= nil,
+        "and the click path: " .. tostring(lines[1]))
+    -- Kept over a reload: the saved setting is what was written.
+    local c2 = ns.make.fakeClient()
+    c2.setSaved(ns.id.accountDB, c.saved(ns.id.accountDB)); c2.setSaved(ns.id.charDB, {})
+    c2.setScreen(1024, 768); c2.setClass("MAGE")
+    local addon2 = ns.offline.addon(c2)
+    c2.fire("ADDON_LOADED", ns.id.addon); c2.fire("PLAYER_LOGIN"); c2.fire("PLAYER_ENTERING_WORLD")
+    c2.setPlayerBuffs({ ["Arcane Intellect"] = 1500 })
+    c2.advance(B.EVERY * 3, 6)
+    t.eq(addon2.settings:get(B.SETTING), false, "still off after a reload")
+    t.eq(said(c2), nil, "and not shown")
+    addon2.settings:set(B.SETTING, true)
+    c2.advance(B.EVERY + 0.1, 2)
+    t.ok(said(c2) ~= nil, "switched on in the settings: back")
+end
+
 return tests

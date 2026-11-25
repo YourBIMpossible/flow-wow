@@ -73,6 +73,11 @@ Advisor.DEFAULT_POINT = { "TOPRIGHT", "TOPRIGHT", -220, -200 }
 -- Its title is the add-on's own (lead sections 340/341): Advisor.Title(id),
 -- also the plain panel's first line. Advisor.TITLE is the words after it.
 Advisor.TITLE = "Advice"
+-- Owner's report (lead sections 561 item 6 and 564 R8): the panel says what
+-- it is in one short row under its title every time it shows (lead
+-- section 578 point A). A section row, so it is never read as one of the
+-- prompts; the plain panel the window falls back to does not carry it.
+Advisor.ABOUT = "Things worth doing now, such as a repair."
 Advisor.KIT_ID = "Advisor"
 Advisor.KIT_WIDTH = 320
 -- G32: the panel opened on purpose.
@@ -111,7 +116,8 @@ end
 -- each text, top to bottom. A line that is no text is left out, so it
 -- cannot cost the window. Nothing in it can be pressed. Escape does not
 -- close it: advice should not go with every Escape.
-function Advisor.View(lines, title)
+-- about: the one line that says what the panel is, first, or nil.
+function Advisor.View(lines, title, about)
     if type(title) ~= "string" or title == "" then title = Advisor.Title() end
     -- Lead section 408: the title stands in the title bar only (no header
     -- part repeats it), a long line wraps and is never cut, and the window
@@ -120,6 +126,9 @@ function Advisor.View(lines, title)
         width = Advisor.KIT_WIDTH, point = Advisor.DEFAULT_POINT,
         escape = false, fit = true }
     local kids = view.children
+    if type(about) == "string" and about:find("%S") then
+        kids[#kids + 1] = { kind = "section", key = "about", text = about }
+    end
     if type(lines) == "table" then
         for i = 1, #lines do
             local text = lines[i]
@@ -187,8 +196,9 @@ function Advisor.Declare(k, diag)
         -- The plain panel has no title of its own: the title is its first line.
         local title = Advisor.Title(k.id or ns.id)
         local rows = { title }
-        for i = 1, #lines do rows[i + 1] = lines[i] end
-        host.draw(Advisor.View(lines, title), rows)
+        for i = 1, #lines do rows[#rows + 1] = lines[i] end
+        -- Every time it shows it says what it is (section 578 point A).
+        host.draw(Advisor.View(lines, title, Advisor.ABOUT), rows)
         if not closed then host.show(true) end
     end
 
