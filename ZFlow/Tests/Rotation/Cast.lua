@@ -218,6 +218,28 @@ return {
         t.ok(named, "the item row is named, so the old item is cleared")
     end,
 
+    -- Parity row D-24 (lead section 711): a group buff or cure goes on its
+    -- party member; any other kind naming a party unit is refused, and the
+    -- key holds its plan. Fails before: the party unit was never taken.
+    ["attributes: a group buff or cure on a party member; nothing else on one"] = function(t)
+        local function unitOf(sug)
+            local r = ns.cast.Attributes(sug, plan(), nil, false)
+            local got = {}
+            for _, a in ipairs(r.button) do got[a.attr] = a.value end
+            return got.unit, got.spell
+        end
+        t.eq({ unitOf({ spell = "Mark of the Wild", kind = "groupBuff", unit = "party2" }) },
+            { "party2", "Mark of the Wild" })
+        t.eq({ unitOf({ spell = "Remove Curse", kind = "dispel", unit = "party1" }) }, { "party1", "Remove Curse" })
+        local u, sp = unitOf({ spell = "Moonfire", kind = "damage", unit = "party1" })
+        t.eq(sp ~= "Moonfire", true, "another kind on a party unit is refused")
+        t.eq(u ~= "party1", true)
+        local u2 = unitOf({ spell = "Mark of the Wild", kind = "groupBuff", unit = "raid7" })
+        t.eq(u2 ~= "raid7", true, "no raid units")
+        local u3 = unitOf({ spell = "Mark of the Wild", kind = "groupBuff", unit = "party1", look = true })
+        t.eq(u3 ~= "party1", true, "look-only stays off the key")
+    end,
+
     -- Section 246 (N63-E): no suggestion, plan or Alt item ever gives a
     -- button row the type "macro", or a macro text.
     ["attributes: no row is ever a macro"] = function(t)

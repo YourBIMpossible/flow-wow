@@ -465,4 +465,44 @@ tests["group: look only - nothing in it casts, targets or clicks"] = function(t)
     end
 end
 
-return tests
+-- Parity row D-24 (lead sections 704 and 711, Twin's approved plan), as
+-- Flow's Modules/Rotation/Engine.lua (:1153 GroupBuff, :1359 Dispel): out
+-- of a fight, with the lock a plain false and "Cast group buffs and cures
+-- on the key" on, the group step is no longer look-only: it goes on the
+-- key, on that party member. Fails before: always look-only.
+local function onKey(over)
+    local o = { lockdownRead = false, groupKey = true }
+    for k, v in pairs(over or {}) do o[k] = v end
+    return o
+end
+
+tests["group key: out of a fight with the lock off, a buff goes on the key, on the member"] = function(t)
+    local s = choose({ missing("party1", {}) }, onKey())
+    t.eq(s and { s.spell, s.unit, s.look, s.kind } or nil, { MOTW, "party1", nil, "groupBuff" })
+end
+
+tests["group key: a cure goes on the key as a cure"] = function(t)
+    local m = missing("party1", { [MOTW] = 600, [THORNS] = 300 })
+    m.debuffTypes = { Curse = "Curse of Weakness" }
+    local s = choose({ m }, onKey())
+    t.eq(s and { s.spell, s.unit, s.look, s.kind } or nil, { CURSE, "party1", nil, "dispel" })
+end
+
+tests["group key: a fight, a lock that is on or not read, or the setting off keeps it look-only"] = function(t)
+    for _, over in ipairs({ { lockdownRead = true }, { lockdownRead = "nil" }, { groupKey = false },
+                            { lockdownRead = false, inCombat = "nil" } }) do
+        local s = choose({ missing("party1", {}) }, onKey(over))
+        if s then
+            t.eq(s.look, true, "look-only")
+            t.eq(s.kind, "group")
+        end
+    end
+end
+
+tests["group key: no reason or note holds the member's name"] = function(t)
+    local s, trace = choose({ missing("party1", {}) }, onKey())
+    t.eq(tostring(s and s.reason):find(NAME, 1, true), nil, "the reason")
+    for _, row in ipairs(trace or {}) do
+        t.eq(tostring(row.note):find(NAME, 1, true), nil, "a note")
+    end
+end
