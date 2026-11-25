@@ -119,4 +119,22 @@ tests["banker rows: the auction house is not a way out of your bags here"] = fun
     t.eq(rows, {}, "an auction-house thing is not listed (owner boundary)")
 end
 
+-- Twin's CHANGES-1 (lead section 774), as Flow's B.TakeOutRows (:316): a
+-- thing you chose to keep in the bank (settings.banker.rules[key] = "bank",
+-- passed in as rules) is never listed to take out, whatever wants it.
+tests["banker rows: a thing you keep in the bank is never taken out"] = function(t)
+    if type(BR()) ~= "table" then return t.ok(false, "not loaded") end
+    local bank = {
+        { key = 50, name = "Dig Rat", count = 8, step = "Buy 8 Dig Rat", decision = { action = "keep" } },
+        { key = 51, name = "Gnoll Paw", count = 4, quest = "Wanted: Gnolls", decision = { action = "keep" } },
+        { key = 52, name = "Old Boot", count = 1, decision = sell("junk") },
+        { key = 53, name = "Old Hat", count = 1, decision = sell("junk") },
+    }
+    local rules = { [50] = "bank", [51] = "bank", [52] = "bank", [53] = "carry" }
+    local rows = BR().SellRows({}, bank, rules)
+    t.eq(#rows, 1, "only the one you did not choose to keep in the bank")
+    t.eq(rows[1] and rows[1].key, 53)
+    t.eq(#BR().SellRows({}, bank, nil), 4, "no rules: as before")
+end
+
 return tests
