@@ -82,8 +82,16 @@ end
 function RT.Rows(view, current, here)
     local TL = ns.Nav and ns.Nav.TrackerList
     if type(TL) ~= "table" then return nil end
+    -- Lead section 762: the view whenever it has stops or steps that can't
+    -- be placed (left); the walked route only when it has neither (Flow
+    -- listed its blocked goals with an empty plan, RouteTracker.lua:504-519).
     local src = current
-    if type(view) == "table" and type(view.stops) == "table" and #view.stops > 0 then src = view end
+    if type(view) == "table" then
+        local n = 0
+        if type(view.stops) == "table" then n = n + #view.stops end
+        if type(view.left) == "table" then n = n + #view.left end
+        if n > 0 then src = view end
+    end
     return TL.Rows(src, here, RT.MAX)
 end
 
