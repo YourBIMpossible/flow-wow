@@ -75,8 +75,8 @@ tests["dungeon chat: a run is finished ten minutes after leaving, with its minut
     minutes, rest = C().Finish(inn, 4000)
     t.eq(minutes, 40)
     t.eq(rest, nil)
-    t.eq(C().Finish({ key = "Test Mines", t = 1000 }, 9999), nil, "still inside")
-    t.eq(C().Finish(nil, 9999), nil)
+    t.eq((C().Finish({ key = "Test Mines", t = 1000 }, 9999)), nil, "still inside")
+    t.eq((C().Finish(nil, 9999)), nil)
 end
 
 tests["dungeon chat: the timing line says the usual run, or that none is timed yet"] = function(t)
