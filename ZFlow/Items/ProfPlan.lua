@@ -29,7 +29,8 @@ local _, ns = ...
 -- count } (the ore); craft adds mats (one line per material), and for a
 -- sure craft reach, after and thenText (section 388 a);
 -- kind one of learn_recipe, train_tier, make_part, take_bank, go_station, craft, in
--- that order; or the one gather_skill step of a gathering profession with
+-- that order (a vendor recipe already in the seen bank is one bank step, Items/BankFetch.lua,
+-- instead of buy_recipe); or the one gather_skill step of a gathering profession with
 -- no craft to make (P.GATHER; adds gather = the profession and, with a
 -- node seen, node and target). why (with no steps): "no reading", "no recipe" (nothing gives
 -- a point and nothing can be learned at this skill) or "no materials";
@@ -425,6 +426,20 @@ local function vendorStep(input)
         end
     end
     if not best then return nil end
+    -- FLOW-PARITY E-61 (lead section 831.3): the recipe is already in the bank
+    -- this character last saw: take it out instead of buying another
+    -- (Flow: Modules/Crafting/SkillPlan.lua:1022-1025). A bank never seen
+    -- (bankRecord nil) is not taken as empty: the buy step stays.
+    local BF = ns.BankFetch
+    if type(BF) == "table" and type(BF.Steps) == "function" and best.item ~= nil then
+        local fetch = BF.Steps({ { item = best.item, name = best.name, count = 1, recipe = true } },
+            input.bankRecord)
+        if fetch then
+            fetch.recipe = best.recipe or best.name
+            fetch.text = fetch.label
+            return fetch
+        end
+    end
     return { kind = "buy_recipe", item = best.item, recipe = best.recipe or best.name, npc = best.vendor,
         target = { map = best.map, x = best.x, y = best.y },
         text = string.format(P.BUY_RECIPE, best.name, best.vendor, reading(input)) }
@@ -955,6 +970,10 @@ function P.Input(client, store, prof, nodeSource)
     local bags = call(get(ns.HaveTip, "Counts"), ask(client, "bagItems"), keyOf)
     local bank = get(saved(store, "char", "learned.bankCounts"), "counts")
     if type(bank) ~= "table" then bank = {} end
+    -- The whole record (with when it was seen) for the bank fetch step: nil
+    -- when the bank was never seen (Items/BankFetch.lua).
+    local bankRecord = saved(store, "char", "learned.bankCounts")
+    if type(bankRecord) ~= "table" then bankRecord = nil end
     local prices = saved(store, "account", "learned.prices")
     local kind = get(get(ns.Nav, "PROF_STATION"), prof)
     local pos = ask(client, "position")
@@ -1017,7 +1036,7 @@ function P.Input(client, store, prof, nodeSource)
         book = facts.book,
         colours = saved(store, "char", "learned.recipeColors"),
         bags = bags or {},
-        bank = bank,
+        bank = bank, bankRecord = bankRecord,
         price = function(item)
             if type(prices) ~= "table" or not ns.Prices then return nil end
             for _, k in ipairs({ "auction", "vendor" }) do

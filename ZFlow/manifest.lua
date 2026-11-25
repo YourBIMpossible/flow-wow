@@ -374,6 +374,8 @@ return {
     -- FLOW-PARITY B-25 (lead section 460): save up, learn riding, then the mount (after RidingStep).
     "Nav/MountMilestone.lua",
     -- P-COACH C1 (section 382): the profession plan, steps toward the next point (after RecipeBook, HaveTip, Prices, ProfStep).
+    -- FLOW-PARITY E-61 (lead section 831.3): the plan's take-from-the-bank step (before ProfPlan; after Items/Key, HaveTip).
+    "Items/BankFetch.lua",
     "Items/ProfPlan.lua",
     -- P-COACH C3 (section 382): where the plan's short materials come from (after ProfPlan, Prices).
     "Items/ProfSources.lua",
