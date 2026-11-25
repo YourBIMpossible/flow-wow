@@ -64,4 +64,81 @@ tests["dungeon run: the mode state for the menu"] = function(t)
     t.eq(DR().ModeState(off).prep, true, "get ready is on unless turned off")
 end
 
+-- Lazy's review of 5531d93b (lead section 640): through DR.Declare and Act,
+-- with a fake store, a stub planner and a stub trip route.
+local function fakeStore()
+    local data = { char = {} }
+    return {
+        data = data,
+        get = function(_, scope, path) return data[scope][path] end,
+        set = function(_, scope, path, v) data[scope][path] = v; return true end,
+    }
+end
+
+local function declared()
+    local store = fakeStore()
+    local trip = { offs = 0 }
+    function trip.Off() trip.offs = trip.offs + 1 end
+    function trip.Current() return { stops = { {}, {}, {} } } end
+    local k = { store = store, problems = { add = function() end },
+                use = function(name) if name == "tripRoute" then return trip end end }
+    function k.Module() end
+    local api = DR().Declare(k)
+    return api, store, trip
+end
+
+tests["dungeon run e2e: turning get-ready off plans again without it"] = function(t)
+    local api, store = declared()
+    local seen = {}
+    api.SetPlanner(function(key, wing, prep)
+        seen[#seen + 1] = { key = key, prep = prep, stored = api.PrepOn() }
+        return 5
+    end)
+    api.Prepared(7, "Test Mines", nil, 8)
+    api.Act("prep")
+    t.eq(#seen, 1)
+    t.eq(seen[1].prep, false, "the planner is told get-ready is off")
+    t.eq(seen[1].stored, false, "and the saved choice already says so")
+    t.eq(store.data.char[DR().PREP_PATH], false)
+    t.eq(store.data.char[DR().PATH].total, 5)
+end
+
+tests["dungeon run e2e: leave turns the route off and keeps the run"] = function(t)
+    local api, store, trip = declared()
+    api.Prepared(7, "Test Mines", nil, 8)
+    api.Act("leave")
+    t.eq(trip.offs, 1)
+    t.eq(store.data.char[DR().PATH].key, 7)
+    t.eq(store.data.char[DR().PATH].only, false)
+end
+
+tests["dungeon run e2e: cancel clears the run"] = function(t)
+    local api, store, trip = declared()
+    api.Prepared(7, "Test Mines", nil, 8)
+    api.Act("cancel")
+    t.eq(store.data.char[DR().PATH], nil)
+    t.eq(trip.offs, 1)
+end
+
+tests["dungeon run e2e: preparing keeps an earlier get-ready off"] = function(t)
+    local api, store = declared()
+    store.data.char[DR().PREP_PATH] = false
+    api.Prepared(7, "Test Mines", nil, 8)
+    t.eq(store.data.char[DR().PREP_PATH], false)
+    t.eq(api.PrepOn(), false)
+end
+
+tests["dungeon run e2e: the menu shows the run's counts"] = function(t)
+    local api = declared()
+    api.SetCounter(function(key)
+        if key == 7 then return { on = 2, missing = 1, inside = 0 } end
+    end)
+    api.Prepared(7, "Test Mines", nil, 8)
+    local texts = {}
+    for _, it in ipairs(api.Items()) do texts[#texts + 1] = it.text end
+    local joined = table.concat(texts, "|")
+    t.ok(joined:find("You're on 2 quests", 1, true) ~= nil, "the counts are listed: " .. joined)
+    t.ok(joined:find("completed", 1, true) == nil, "no handed-in count when it is not known")
+end
+
 return tests
