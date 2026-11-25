@@ -464,15 +464,6 @@ local function buffFoodOf(client, pack, role, pole)
     return {}, false, foods
 end
 
--- Parity row D-13 (lead section 668): every Well Fed fight food in your
--- bags, { { id, name, score, gain } } in bag order, scored as the
--- suggestion is; nil when the bags could not be read. The role used is the
--- second answer. For Rotation/FoodWord.lua; the suggestion is unchanged.
-function D.Foods(client, pack, role)
-    if type(client) ~= "table" then return nil end
-    local _, _, foods = buffFoodOf(client, pack, role, false)
-    return foods, roleIn(pack, role) or "dps"
-end
 
 -- Section 229 (F-1): the food read, kept between bag changes and skipped in
 -- a fight. food: the module's table { kept, value, pack, role }; nil reads
@@ -489,6 +480,18 @@ local function poleOf(client)
     local ok, v = pcall(client.fishingPole)
     if ok and type(v) == "boolean" then return v end
     return nil
+end
+
+-- Parity row D-13 (lead section 668): every Well Fed fight food in your
+-- bags, { { id, name, score, gain } } in bag order, scored as the
+-- suggestion is; nil when the bags could not be read. The role used is the
+-- second answer. For Rotation/FoodWord.lua; the suggestion is unchanged.
+-- The third answer (Zen-3's note): the fishing pole read, as the food
+-- step has it; with it on, a Fishing food is suggested, not these.
+function D.Foods(client, pack, role)
+    if type(client) ~= "table" then return nil end
+    local _, _, foods = buffFoodOf(client, pack, role, false)
+    return foods, roleIn(pack, role) or "dps", poleOf(client)
 end
 
 -- pole: the step's one pole read (section 237 FB3-1), asked when needed.

@@ -208,6 +208,7 @@ BF.WHY_HEAD = "Well Fed food for %s (* is the one suggested: out of a fight, whe
     .. "after your other steps; not while eating, mounted or on a flight path):"
 BF.WHY_NONE = "Well Fed food: none in your bags."
 BF.WHY_FED = "You are Well Fed, so none is suggested now."
+BF.WHY_POLE = "With a fishing pole on, a Fishing food is suggested instead."
 
 local function gainText(gain)
     local parts = {}
@@ -219,7 +220,9 @@ local function gainText(gain)
     return table.concat(parts, ", ")
 end
 
-function BF.WhyText(foods, role, fed)
+-- pole (Zen-3's note): true when a fishing pole is on; then no fight food
+-- carries the star, and a line says why.
+function BF.WhyText(foods, role, fed, pole)
     local list = {}
     for _, it in ipairs(type(foods) == "table" and foods or {}) do
         if type(it) == "table" and type(it.name) == "string" then list[#list + 1] = it end
@@ -232,7 +235,8 @@ function BF.WhyText(foods, role, fed)
         if sa and a.score ~= b.score then return a.score > b.score end
         return (a.id or 0) < (b.id or 0)
     end)
-    local best = BF.Best(list)
+    local best
+    if pole ~= true then best = BF.Best(list) end
     local lines = { BF.WHY_HEAD:format(tostring(role)) }
     for _, it in ipairs(list) do
         local line = "  " .. (it == best and "* " or "") .. it.name .. ": " .. gainText(it.gain)
@@ -245,5 +249,6 @@ function BF.WhyText(foods, role, fed)
         lines[#lines + 1] = line
     end
     if fed then lines[#lines + 1] = BF.WHY_FED end
+    if pole == true then lines[#lines + 1] = BF.WHY_POLE end
     return lines
 end

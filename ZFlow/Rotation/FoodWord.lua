@@ -20,7 +20,8 @@ FW.NAME = "foodWord"
 FW.WORD = "food"
 FW.HELP = "list the Well Fed foods you carry, which one is suggested, and when"
 FW.UNREAD = "your bags could not be read, so the foods are not known."
-FW.WELL_FED = "Well Fed"
+FW.WELL_FED = ns.BuffFood.WELL_FED
+FW.OFF = "Well Fed food is switched off, so none is suggested."
 
 function FW.Declare(k, diag)
     local api = {}
@@ -46,11 +47,19 @@ function FW.Declare(k, diag)
             local ok, v = pcall(k.settings.get, k.settings, D.ROLE)
             if ok then role = v end
         end
-        local ok, foods, as = pcall(D.Foods, k.client, pack, role)
+        local ok, foods, as, pole = pcall(D.Foods, k.client, pack, role)
         if not ok or type(foods) ~= "table" then return { FW.UNREAD } end
         local buffs = ask("playerBuffs")
         local fed = type(buffs) == "table" and buffs[FW.WELL_FED] ~= nil
-        return ns.BuffFood.WhyText(foods, as, fed)
+        local lines = ns.BuffFood.WhyText(foods, as, fed, pole)
+        -- Zen-3's note: the food setting off is said (Driver's D.FOOD).
+        local off = false
+        if type(k.settings) == "table" and type(k.settings.get) == "function" and type(D.FOOD) == "string" then
+            local okF, v = pcall(k.settings.get, k.settings, D.FOOD)
+            off = okF and v == false
+        end
+        if off then lines[#lines + 1] = FW.OFF end
+        return lines
     end
 
     if type(diag) == "table" and type(diag.commands) == "table" then
