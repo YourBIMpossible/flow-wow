@@ -253,6 +253,7 @@ return {
     "UI/RotationQueue.lua",
     "Items/Banker.lua",
     "Items/BankerRows.lua",
+    "Items/TakeOutWhy.lua",
     "Items/Posting.lua",
     "Items/Trader.lua",
     "Items/TraderRows.lua",
