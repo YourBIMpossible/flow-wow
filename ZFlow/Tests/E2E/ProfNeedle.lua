@@ -193,7 +193,10 @@ tests["prof needle: the trainer when capped comes first, then a node, then a cra
     -- the craft comes first: Tests/E2E/ProfFeedRealPlan.lua.)
     -- Lead sections 416 item 2 and 419: Tailoring's own line follows. The
     -- book here holds no materials, so the plan names its known recipe.
-    textOnly(t, c3, { "Mine any ore vein you find (Mining 30 of 75)", "Make Bolt of Linen Cloth" },
+    -- No vein gathered on this map: the plain no-place line comes under the
+    -- pick's own words (Nav/ProfFeed.lua F.NoPlace).
+    textOnly(t, c3, { "Mine any ore vein you find (Mining 30 of 75)", "No Mining node place known yet",
+        "Make Bolt of Linen Cloth" },
         "no node, no materials: the vein, then Tailoring's line")
 end
 
@@ -271,7 +274,8 @@ tests["prof guide: a gatherer with no node and a capped crafter each get their l
     -- 416 item 2: the capped profession no longer waits its turn; its
     -- training follows, said short (the full line is over the label limit).
     local F = N.ProfFeed
-    textOnly(t, c, { "Pick any herb you find (Herbalism 20 of 75)",
+    -- Then the plain line that no herb node is known here (F.NoPlace).
+    textOnly(t, c, { "Pick any herb you find (Herbalism 20 of 75)", "No Herbalism node place known yet",
         F.ALSO_SHORT and F.ALSO_SHORT:format("Tailoring", F.KIND_WORDS.train_tier) },
         "Herbalism with no node known, Tailoring capped")
 end

@@ -47,8 +47,11 @@ tests["prof all lines: the pick, then one line for each other profession, a capp
     -- Herbalism's herb line is picked (as before); Alchemy, not read, says
     -- to open its window; Tailoring's training line is 54 bytes, so it is
     -- said short by its kind.
+    -- No herb node gathered on this map: a plain line says no place is
+    -- known, right under the pick's own words (Nav/ProfFeed.lua F.NoPlace).
     t.eq(p and p.lines, {
         "Pick any herb you find (Herbalism 20 of 75)",
+        "No Herbalism node place known yet",
         N.ProfFeed.OPEN:format("Alchemy"),
         (N.ProfFeed.ALSO_SHORT or "%s: %s"):format("Tailoring",
             N.ProfFeed.KIND_WORDS and N.ProfFeed.KIND_WORDS.train_tier or "?"),

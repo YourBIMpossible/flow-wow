@@ -701,6 +701,249 @@ function N.ProfNextFrom(client, store, nodeSource)
     })
 end
 
+-- Profession place (N.ProfPlace): the place a profession step in words can be
+-- pointed at, from what this add-on already has saved and nothing else. A
+-- step of the profession plan (Items/ProfPlan.lua) carries a target only
+-- where the plan itself saw one; the rest are words, and the profession
+-- arrow has nothing to point at. This part finds the nearest KNOWN place
+-- for such a step. LOOK ONLY: nothing is targeted, bought, trained or moved.
+--
+-- Unknown stays unknown: no place is shipped, authored or guessed.
+-- Every place is one a seen-table already holds; with none the answer is
+-- nil and the step stays in words.
+--
+-- "Nearest known": the nearest on the map the player is on; else, of the
+-- capital cities (N.GATE_WALLED, Nav/Gates.lua) not on another continent,
+-- the one nearest the player (by the far read; not known: the lowest map
+-- number), and in it the place nearest its middle. The lookups are the
+-- add-on's own: Errand.TrainerOf (Nav/Errand.lua) and N.NearestOf
+-- (Nav/ServiceNearest.lua), each asked once for a map.
+--
+-- By step kind (PP.KIND):
+--   learn_recipe, train_tier   a trainer of the profession: account
+--       "learned.places.npcs" entries with trains[profession] (saved by
+--       Nav/ProfSeen.lua, or imported). Only for a step that names no
+--       trainer: one that names its trainer points at that one or at none.
+--   take_bank                  a banker; buy_auction: an auctioneer. Char
+--       "learned.places.services" (Nav/ServiceSeen.lua) and the account
+--       npcs whose roles say bank or auction (imported entries).
+--   gather_skill               the nearest node of that profession the
+--       player gathered on this map (Nav/Nodes.lua). No capital step.
+--   craft, make_part, go_station   an anvil or a forge (PP.STATION_FAR) in
+--       a capital, from the stations seen (Items/CraftSpots.lua), and only
+--       when none is seen on this map (that one is the plan's own). A fire
+--       is never looked for in a capital: the player can light one.
+-- Any other kind (buy_vendor, find_material, open_window, no_point,
+-- buy_recipe, buy_tool, maybe_craft, gather): nil. The plan already gives
+-- a vendor or node step its place where one was seen.
+-- An npc saved for factions the player is not one of is left out; with the
+-- player's faction not known, or none saved on the entry, it stays in (as
+-- Errand.TrainerOf).
+--
+--   PP.Of(step, prof, known) -> { map, x, y } or nil            pure
+--     known = { here = { map, x, y, faction, size }, npcs, services,
+--               stations = { { kind, map, x, y } },
+--               nodes = { { x, y, prof } } on here.map, nearest first,
+--               capitals = { [map] = anything },
+--               contOf = function(map) -> continent or nil,
+--               far = function(place) -> a number, less is nearer, or nil }
+--   PP.From(client, store, use, kind, reads) -> known
+--     reads only what kind (a value of PP.KIND) needs. reads = { contOf,
+--     far } are the caller's (Nav/ProfFeed.lua's own). It writes nothing; a
+--     read that fails is "not known".
+-- Not tested in game.
+
+local PP = {}
+N.ProfPlace = PP
+
+PP.KIND = {
+    learn_recipe = "trainer", train_tier = "trainer",
+    take_bank = "banker", buy_auction = "auction",
+    gather_skill = "node",
+    craft = "station", make_part = "station", go_station = "station",
+}
+-- The npc role of an imported entry, by service kind.
+PP.ROLE = { banker = "bank", auction = "auction" }
+PP.STATION_FAR = { anvil = true, forge = true }
+PP.NPCS = "learned.places.npcs"
+PP.NODE_MODULE = "nodes"
+-- How many of the nearest gathered nodes are asked for.
+PP.NODES = 50
+
+local function text(v)
+    if type(v) == "string" and v ~= "" then return v end
+    return nil
+end
+
+local function placed(p)
+    return type(p) == "table" and p.map ~= nil and share(p.x) and share(p.y)
+end
+
+local function call(fn, ...)
+    if type(fn) ~= "function" then return nil end
+    local ok, v = pcall(fn, ...)
+    if not ok then return nil end
+    return v
+end
+
+local function mayUse(e, faction)
+    if faction == nil or type(e.factions) ~= "table" or next(e.factions) == nil then return true end
+    return e.factions[faction] == true
+end
+
+-- Is map known to be on another continent than the player's?
+local function away(known, map)
+    local here = known.here
+    if map == here.map then return false end
+    local mine, theirs = call(known.contOf, here.map), call(known.contOf, map)
+    return mine ~= nil and theirs ~= nil and mine ~= theirs
+end
+
+-- find(here) -> the nearest place on here.map, or nil. Asked for the map
+-- the player is on, then for each capital.
+local function nearest(known, find)
+    local here = known.here
+    local at = find(here)
+    if placed(at) then return at end
+    local maps = {}
+    if type(known.capitals) == "table" then
+        for map in pairs(known.capitals) do
+            if map ~= here.map and not away(known, map) then maps[#maps + 1] = map end
+        end
+    end
+    table.sort(maps, function(a, b) return tostring(a) < tostring(b) end)
+    local best, bestD
+    for _, map in ipairs(maps) do
+        local p = find({ map = map, x = 0.5, y = 0.5, faction = here.faction })
+        if placed(p) then
+            local d = call(known.far, p)
+            if not finite(d) then d = math.huge end
+            if best == nil or d < bestD then best, bestD = p, d end
+        end
+    end
+    return best
+end
+
+local function trainers(known, prof)
+    local list = {}
+    if type(known.npcs) == "table" then
+        for name, e in pairs(known.npcs) do
+            -- One that trains it is a trainer, whatever its roles say.
+            if type(e) == "table" and type(e.trains) == "table" and e.trains[prof] == true then
+                list[name] = { map = e.map, x = e.x, y = e.y, factions = e.factions, roles = { trainer = true } }
+            end
+        end
+    end
+    return function(here)
+        local E = ns.Errand
+        if type(E) ~= "table" then return nil end
+        return call(E.TrainerOf, list, here)
+    end
+end
+
+local function services(known, kind)
+    local places = {}
+    if type(known.services) == "table" then
+        for key, e in pairs(known.services) do places["svc:" .. tostring(key)] = e end
+    end
+    local role, faction = PP.ROLE[kind], text(known.here.faction)
+    if role and type(known.npcs) == "table" then
+        for name, e in pairs(known.npcs) do
+            if type(name) == "string" and type(e) == "table" and type(e.roles) == "table"
+                and e.roles[role] == true and mayUse(e, faction) then
+                places["npc:" .. name] = { name = name, map = e.map, x = e.x, y = e.y, kinds = { [kind] = true } }
+            end
+        end
+    end
+    return function(here)
+        return call(N.NearestOf, kind, places, here)
+    end
+end
+
+local function nodeOf(known, prof)
+    if type(known.nodes) ~= "table" or type(prof) ~= "string" then return nil end
+    for _, n in ipairs(known.nodes) do
+        if type(n) == "table" and n.prof == prof and share(n.x) and share(n.y) then
+            return { map = known.here.map, x = n.x, y = n.y }
+        end
+    end
+    return nil
+end
+
+local function stationOf(known, kind)
+    if not PP.STATION_FAR[kind] or type(known.stations) ~= "table" then return nil end
+    local serves = type(N.PROF_STATION_SPOTS) == "table" and N.PROF_STATION_SPOTS[kind] or nil
+    if type(serves) ~= "table" then serves = { [kind] = true } end
+    local capitals = type(known.capitals) == "table" and known.capitals or {}
+    local best, bestD
+    for _, s in ipairs(known.stations) do
+        if type(s) == "table" and serves[s.kind] == true and placed(s) then
+            -- One on this map is the plan's own to point at.
+            if s.map == known.here.map then return nil end
+            if capitals[s.map] ~= nil and not away(known, s.map) then
+                local d = call(known.far, s)
+                if not finite(d) then d = math.huge end
+                if best == nil or d < bestD then best, bestD = s, d end
+            end
+        end
+    end
+    return best
+end
+
+function PP.Of(step, prof, known)
+    if type(step) ~= "table" or type(known) ~= "table" then return nil end
+    local here = known.here
+    if type(here) ~= "table" or here.map == nil or not (share(here.x) and share(here.y)) then return nil end
+    local kind = PP.KIND[step.kind]
+    local to
+    if kind == "trainer" then
+        if step.npc ~= nil or type(prof) ~= "string" then return nil end
+        to = nearest(known, trainers(known, prof))
+    elseif kind == "banker" or kind == "auction" then
+        to = nearest(known, services(known, kind))
+    elseif kind == "node" then
+        local what = step.gather
+        if type(what) ~= "string" then what = prof end
+        to = nodeOf(known, what)
+    elseif kind == "station" then
+        to = stationOf(known, step.station)
+    end
+    if not placed(to) then return nil end
+    return { map = to.map, x = to.x, y = to.y }
+end
+
+function PP.From(client, store, use, kind, reads)
+    if type(reads) ~= "table" then reads = {} end
+    local known = { capitals = N.GATE_WALLED, contOf = reads.contOf, far = reads.far }
+    local at = ask(client, "position")
+    if type(at) == "table" and at.map ~= nil and share(at.x) and share(at.y) then
+        known.here = { map = at.map, x = at.x, y = at.y, faction = text(ask(client, "faction")) }
+        local size = ask(client, "mapSize", at.map)
+        if type(size) == "table" and finite(size.w) and finite(size.h) and size.w > 0 and size.h > 0 then
+            known.here.size = { w = size.w, h = size.h }
+        end
+    end
+    if kind == "trainer" or kind == "banker" or kind == "auction" then
+        known.npcs = saved(store, "account", PP.NPCS)
+    end
+    if kind == "banker" or kind == "auction" then
+        known.services = saved(store, "char", N.SERVICES or "learned.places.services")
+    end
+    if kind == "station" then known.stations = call(stationsSeen, store) end
+    if kind == "node" then
+        local mod = call(use, PP.NODE_MODULE)
+        local list
+        if type(mod) == "table" then list = call(mod.Nearest, PP.NODES) end
+        if type(list) == "table" then
+            known.nodes = {}
+            for _, r in ipairs(list) do
+                if type(r) == "table" and type(r.node) == "table" then known.nodes[#known.nodes + 1] = r.node end
+            end
+        end
+    end
+    return known
+end
+
 N.PROF_STEP = "profStep"
 N.PROF_SETTING = "nav.profArrow"
 

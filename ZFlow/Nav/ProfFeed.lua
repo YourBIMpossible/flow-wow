@@ -47,6 +47,19 @@ local _, ns = ...
 --   other profession, by name, its own current step (F.Also): the text
 --   step's lines, a place step's also (said under its label and detail by
 --   UI/Arrow.lua). The needle still points at the pick.
+-- F.PlaceFor(pick, place) -> { map, x, y } or nil: the nearest known place
+--   for a pick in words (Nav/ProfStep.lua N.ProfPlace), asked as
+--   place(step, prof).
+--   nil for a pick with a target of its own, one held back for another
+--   continent, one with no step, and when no place is known.
+-- F.Placed(step, target, cont) -> a copy of a step in words with that
+--   place: every line it had is kept, and the needle has where to point.
+--   Which step is picked, and its rank, do not change.
+-- F.NoPlace(pick) -> one plain line (F.NO_PLACE) for a pick in words whose
+--   kind has a place to go to (a trainer, a banker, an auctioneer, a node)
+--   when none is known; nil for any other pick. F.Step(result, note) says
+--   it right under the step's own words. A station step already says what
+--   to look for (the plan's look line).
 -- F.Lines(result) -> the lines of "/zflow prof plan".
 --
 -- Module F.Declare(k, diag): setting F.SETTING (account, on by default,
@@ -94,6 +107,17 @@ F.HERE = { craft = true, make_part = true }
 F.PIN_KIND = "new"
 F.PIN_ROLE = "profession"
 F.PIN_EVERY = 1
+
+-- Said under a step in words when no place is known for it; by the kind
+-- of place (Nav/ProfStep.lua N.ProfPlace.KIND). %s: the profession.
+F.NO_PLACE = {
+    trainer = "No %s trainer place known yet",
+    banker = "No bank place known yet",
+    auction = "No auction house place known yet",
+    node = "No %s node place known yet",
+}
+-- The gathering professions whose nodes are saved (Nav/Nodes.lua).
+F.NODE_PROFS = { Mining = true, Herbalism = true }
 
 F.WHY = {
     "it can be done where you stand",
@@ -268,19 +292,20 @@ end
 
 -- Lead section 414: what to look for comes right under the step's words,
 -- then the other professions' lines.
-local function textStep(text, look, also)
+local function textStep(text, look, also, note)
     local step = { still = true, lines = { text } }
     if type(look) == "string" and look ~= "" then step.lines[#step.lines + 1] = look end
+    if type(note) == "string" and note ~= "" then step.lines[#step.lines + 1] = note end
     for _, line in ipairs(also) do step.lines[#step.lines + 1] = line end
     if #text <= (N.Waypoint and N.Waypoint.LABEL_MAX or 40) then step.label = text end
     return step
 end
 
-function F.Step(result)
+function F.Step(result, note)
     local pick = type(result) == "table" and result.pick or nil
     if type(pick) ~= "table" then return nil end
     local also = F.Also(result)
-    if pick.rank ~= 2 and pick.rank ~= 3 then return textStep(pick.text, pick.look, also) end
+    if pick.rank ~= 2 and pick.rank ~= 3 then return textStep(pick.text, pick.look, also, note) end
     local to = pick.step.target
     local step = { place = { cont = pick.cont, map = to.map, x = to.x, y = to.y },
                    radius = N.PROF_NEAR or 10 }
@@ -293,6 +318,38 @@ function F.Step(result)
     end
     if #also > 0 then step.also = also end
     return step
+end
+
+function F.PlaceFor(pick, place)
+    if type(pick) ~= "table" or type(pick.step) ~= "table" or pick.held == true then return nil end
+    if placed(pick.step.target) then return nil end
+    local to = call(place, pick.step, pick.prof)
+    if not placed(to) then return nil end
+    return to
+end
+
+function F.NoPlace(pick)
+    if type(pick) ~= "table" or type(pick.step) ~= "table" or pick.held == true then return nil end
+    if placed(pick.step.target) then return nil end
+    local PP = N.ProfPlace
+    local kind
+    if type(PP) == "table" and type(PP.KIND) == "table" then kind = PP.KIND[pick.step.kind] end
+    local words
+    if kind ~= nil then words = F.NO_PLACE[kind] end
+    if type(words) ~= "string" then return nil end
+    if kind == "node" and not F.NODE_PROFS[pick.prof] then return nil end
+    return words:format(tostring(pick.prof))
+end
+
+function F.Placed(step, target, cont)
+    if type(step) ~= "table" or type(step.place) == "table" or not placed(target) then return step end
+    local out = {}
+    for key, v in pairs(step) do out[key] = v end
+    -- A step with a place is not still: it has somewhere to turn to.
+    out.still = nil
+    out.place = { cont = cont, map = target.map, x = target.x, y = target.y }
+    out.radius = N.PROF_NEAR or 10
+    return out
 end
 
 function F.Lines(result)
@@ -421,6 +478,27 @@ function F.Declare(k, diag)
         return v
     end
 
+    -- The continent of a map, or nil when the client does not say.
+    local function contOf(map)
+        local got = ask("mapCont", map)
+        if got ~= nil then return got end
+        local c = ask("mapCorners", map)
+        if type(c) == "table" then return c.cont end
+        return nil
+    end
+
+    -- The nearest known place for a step in words (Nav/ProfStep.lua,
+    -- N.ProfPlace), or nil. It reads only what the step needs.
+    local function place(step, prof)
+        local PP = N.ProfPlace
+        if not ctx or type(PP) ~= "table" or type(PP.Of) ~= "function" or type(PP.From) ~= "function" then
+            return nil
+        end
+        local kind = type(PP.KIND) == "table" and PP.KIND[step.kind] or nil
+        if kind == nil then return nil end
+        return PP.Of(step, prof, PP.From(ctx.client, ctx.store, ctx.use, kind, { contOf = contOf, far = cost }))
+    end
+
     function api.result()
         if not ctx then return nil end
         local zone = ask("zone")
@@ -436,12 +514,7 @@ function F.Declare(k, diag)
             cont = cont,
             cost = cost,
             reached = reached,
-            contOf = function(map)
-                local got = ask("mapCont", map)
-                if got ~= nil then return got end
-                local c = ask("mapCorners", map)
-                return type(c) == "table" and c.cont or nil
-            end,
+            contOf = contOf,
             contName = function(map) return ask("mapContName", map) end,
         })
     end
@@ -451,7 +524,20 @@ function F.Declare(k, diag)
     function api.step()
         if not ctx or api.off() or not planOf() then return nil end
         local result = api.result()
-        return F.Step(result), type(result) == "table" and result.pick or nil, result
+        local pick
+        if type(result) == "table" then pick = result.pick end
+        -- A pick in words with a known place: the same lines, and a place.
+        -- With none known for a kind that has one, a plain line says so.
+        local to = F.PlaceFor(pick, place)
+        -- (Only with where the player is known: else nothing was looked for.)
+        local note
+        local at = ask("position")
+        if not to and type(at) == "table" and at.map ~= nil and share(at.x) and share(at.y) then
+            note = F.NoPlace(pick)
+        end
+        local step = F.Step(result, note)
+        if to then step = F.Placed(step, to, contOf(to.map)) end
+        return step, pick, result
     end
 
     function api.lines()
