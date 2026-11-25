@@ -1437,19 +1437,6 @@ end
 -- timing mark's name: ctx.bus:emit(Diag.MARK_EVENT, "NAME").
 Diag.MARK_EVENT = "diag:mark"
 
--- How many gossip windows' raw options diag.gossip keeps (A2-27).
-Diag.GOSSIP_KEPT = 8
-
--- Pure: appends { at, lines } to diag.gossip and drops the oldest beyond
--- GOSSIP_KEPT. diag is the account's diag table.
-function Diag.KeepGossip(diag, at, lines)
-    if type(diag.gossip) ~= "table" then diag.gossip = {} end
-    local list = diag.gossip
-    list[#list + 1] = { at = at, lines = lines }
-    while #list > Diag.GOSSIP_KEPT do table.remove(list, 1) end
-    return list
-end
-
 function Diag.Start(k)
     local client, id = k.client, k.id
 
@@ -1575,24 +1562,6 @@ function Diag.Start(k)
             snapshot(why .. "-ready")
         end)
     end
-
-    -- A2-27: each NPC chat window's options, raw (c.gossipRawLines), kept
-    -- in the account's diag.gossip, the newest GOSSIP_KEPT windows, so the
-    -- option icons that say vendor, innkeeper, banker or flight master can
-    -- be read from one capture. Reads only; a client without the read
-    -- writes nothing.
-    client.listen("GOSSIP_SHOW", function()
-        if type(client.gossipRawLines) ~= "function" then return end
-        local ok, err = pcall(function()
-            local lines = client.gossipRawLines()
-            if type(lines) ~= "table" then return end
-            local d = client.saved(id.accountDB)
-            if type(d) ~= "table" then return end
-            if type(d.diag) ~= "table" then d.diag = {} end
-            Diag.KeepGossip(d.diag, client.uptime(), lines)
-        end)
-        if not ok then k.problems:add("diag", "gossip", err) end
-    end)
 
     -- A deep copy of saved data. A table met again inside itself is copied
     -- once and shared, so a loop cannot run forever.
