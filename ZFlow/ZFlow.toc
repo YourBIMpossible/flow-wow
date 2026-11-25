@@ -276,3 +276,6 @@ Gear\BagBadge.lua
 Nav\FollowAdvice.lua
 UI\RouteArea.lua
 UI\MapRouteLines.lua
+Nav\StepTip.lua
+Nav\AirLine.lua
+Nav\ZoneFilter.lua
