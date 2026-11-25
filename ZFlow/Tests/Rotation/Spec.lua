@@ -229,9 +229,11 @@ tests["spec module: reaching the talent level says talents unlocked, then the li
     local before = #c.printed
     c.fire("PLAYER_LEVEL_UP", Sp.TALENT_LEVEL)
     local want = Sp.Lines(pack(), "")
-    t.eq(#c.printed - before, #want + 1)
+    -- Talents unlocked, the lines, then where the role comes from (D-new-7).
+    t.eq(#c.printed - before, #want + 2)
     t.eq(c.printed[before + 1], line(Sp.UNLOCKED))
     for i = 1, #want do t.eq(c.printed[before + 1 + i], line(want[i])) end
+    t.eq(c.printed[before + #want + 2], line(Sp.SourceLines(pack(), "", nil)[1]))
 end
 
 tests["spec module: any other level says nothing"] = function(t)

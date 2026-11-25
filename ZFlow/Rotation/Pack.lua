@@ -5,7 +5,9 @@ local _, ns = ...
 --
 -- Row shape (docs/ZFLOW-TARGET.md, section 4):
 --   provenance   { author, date, method, facts }  who wrote the pack and how
---   roles        { dps = { name, evidence }, heal = ..., tank = ... }
+--   roles        { dps = { name, evidence, trees }, heal = ..., tank = ... }
+--                trees (optional): the game's talent tree names that make
+--                the role (GetTalentTabInfo), for the spec word's source line
 --   levelling    { role, evidence, why = { "...", ... } }  optional (G31): the
 --                role recommended while levelling alone, one of `roles`, and
 --                the reasons in words (the spec word, Rotation/Spec.lua)
