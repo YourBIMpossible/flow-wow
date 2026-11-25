@@ -47,6 +47,34 @@ tests["step tip e2e: level, objectives and XP for a quest in the log"] = functio
     t.ok(ST ~= nil)
 end
 
+-- R-07 (lead section 777): a pickup step (the quest not in the log yet) has
+-- lines too, as Flow's N:FillTooltip gives every step: the level in its
+-- colour from Questie, the XP, and Questie's own words for the quest
+-- (Modules/Nav/Nav.lua:3279-3313, questText :3244-3249, cut at 260).
+tests["step tip e2e: a pickup step has its level, XP and the quest's words"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    c.setClass("WARRIOR"); c.setLevel(10)
+    c.setZone(1, MAP); c.setPosition(MAP, 0.5, 0.5); c.setMapSize(MAP, 1000, 1000)
+    c.setQuestLog({})
+    local long = string.rep("a", 300)
+    local DESC = { [802] = "Bring me 8 boar ribs.", [803] = long }
+    c.setQuestieModule("QuestieDB", {
+        QueryQuestSingle = function(id, field) if field == "questLevel" then return ({ [802] = 9, [803] = 9 })[id] end end,
+        GetQuest = function(id) if DESC[id] then return { Description = { DESC[id] } } end end,
+    })
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(5, 20)
+    t.eq(lines(addon, 802), {
+        "|cffffff00Level 9|r: about your level: full XP",
+        "XP: about 575 (full XP)",
+        "Bring me 8 boar ribs.",
+    })
+    local cut = lines(addon, 803)
+    t.eq(cut and cut[3], long:sub(1, 257) .. "...", "long words are cut, as Flow")
+end
+
 tests["step tip e2e: a quest not in the log has no lines"] = function(t)
     local _, addon = boot(10)
     t.eq(lines(addon, 999), nil)
