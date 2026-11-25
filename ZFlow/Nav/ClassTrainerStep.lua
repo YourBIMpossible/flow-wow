@@ -9,6 +9,8 @@ local _, ns = ...
 -- Where: a class trainer this player has opened is saved (account
 -- "learned.places.npcs", roles.classTrainer = true, classes[class] = true,
 -- map, x, y) when its window lists a spell of the player's class pack.
+-- Before any is saved, the class trainers the player's own Questie places
+-- (Spells/ClassQuestList.lua L.Trainers, asked at runtime) stand in (C-54).
 -- The nearest saved one of the player's class on the map they are on gets
 -- a place; one on another map is named with no place; none saved: words
 -- that say what to do, and no made-up place.
@@ -32,6 +34,8 @@ C.KIND = "classTrainer"
 C.NPCS = "learned.places.npcs"
 C.RADIUS = 10
 C.LABEL = "Class trainer"
+C.TRIES = 6
+C.RETRY = 10
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -172,6 +176,31 @@ function C.Declare(k)
         if okSet and yes == true then npcs[tr.npc] = e end
     end
 
+    -- The class trainers of the player's own Questie, read once for the
+    -- session and class. An answer with no trainer (Questie still loading,
+    -- or a read that failed) is asked again, but no sooner than C.RETRY
+    -- seconds later and C.TRIES times in all: the arrow asks for this step
+    -- on every frame, and one ask reads every NPC Questie knows. A client
+    -- with no time answers now() as 0 (Core/Client.lua): 0, or anything that
+    -- is not a number above 0, is read as "not known", and with no time to
+    -- wait by the C.TRIES asks come in a row (lead section 493).
+    local asked, questie, tries, last = nil, nil, 0, nil
+    local function fromQuestie(class)
+        if asked == class then return questie end
+        local L = ns.ClassQuestList
+        local db = ask("questieModule", "QuestieDB")
+        if type(L) ~= "table" or type(db) ~= "table" then return nil end
+        local now = ask("now")
+        if not finite(now) or now <= 0 then now = nil end
+        if now and last and now >= last and now - last < C.RETRY then return nil end
+        local ok, found = pcall(L.Trainers, db, ask("questieModule", "ZoneDB"), class, ask("faction"))
+        if not ok or type(found) ~= "table" then found = {} end
+        tries = tries + 1
+        last = now
+        if next(found) ~= nil or tries >= C.TRIES then asked, questie = class, found end
+        return found
+    end
+
     function api.step()
         if not ctx or not on() then return nil end
         local class = ask("class")
@@ -182,7 +211,18 @@ function C.Declare(k)
             local ok, v = pcall(ctx.store.get, ctx.store, "account", C.NPCS)
             if ok then npcs = v end
         end
-        return C.Of(n, class, ask("position"), npcs)
+        local here = ask("position")
+        -- C-54: the class trainers the player's own Questie places are
+        -- added to the ones the player has opened.
+        -- A trainer the player opened wins over one of the same name.
+        local guess = fromQuestie(class)
+        if type(guess) == "table" and next(guess) ~= nil then
+            local all = {}
+            for name, e in pairs(guess) do all[name] = e end
+            for name, e in pairs(type(npcs) == "table" and npcs or {}) do all[name] = e end
+            npcs = all
+        end
+        return C.Of(n, class, here, npcs)
     end
 
     function api.lines()
