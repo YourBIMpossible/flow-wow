@@ -515,4 +515,35 @@ tests["plate quests starts pass: it waits out a fight, then marks the mob"] = fu
     t.eq(m and m.says, PQ.MARK)
 end
 
+-- C-19 (lead section 727): the pass runs again only when the quest log or
+-- your level changed; a loading screen with the same log keeps the answer.
+-- Fails before: every read started the pass again and dropped the marks.
+tests["plate quests starts pass: the same log again keeps the answer, a changed log walks again"] = function(t)
+    local c = ns.make.fakeClient()
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    PQ.Declare(k, d)
+    c.setLevel(10)
+    c.setQuestLog(log())
+    c.setQuestieModule("QuestieDB", manyDb(900))
+    c.setQuestDone(202, true)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    mob(c, "nameplate1", OLDBONE)
+    c.advance(1, 20)
+    t.eq(markOf(c, "nameplate1") and markOf(c, "nameplate1").shown, true, "done")
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(1, 1)
+    t.eq(markOf(c, "nameplate1") and markOf(c, "nameplate1").shown, true, "same log: kept, no new walk")
+    local rows = log()
+    rows[2].complete = true
+    c.setQuestLog(rows)
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(1, 2)
+    local m = markOf(c, "nameplate1")
+    t.ok(m == nil or m.shown == false, "a changed log: walked again, no mark until done")
+end
+
 return tests
