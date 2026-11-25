@@ -21,7 +21,7 @@ local _, ns = ...
 --   QS.Places(book, rows, map) -> places as N.QuestSource Q.Pick takes them
 --   QS.Merge(primary, learned) -> places: primary's spots, learned where
 --     primary has none on this map
---   QS.Lines(book, titles, mapName) -> chat lines for /zflow spots (parity
+--   QS.Lines(book, titles, mapName) -> chat lines for /zflow questspots (parity
 --     row C-08, lead section 603): one line per quest, by quest id, its
 --     objectives then the hand-in, each spot "<map> x, y" in percent;
 --     at most QS.LINES_MAX quests. Text only; a window would be Muse's.
@@ -44,7 +44,8 @@ QS.POINTS_MAX = 8
 QS.QUESTS_MAX = 300
 QS.NEAR = 0.02     -- shares of the map: closer than this is the same spot
 QS.EVERY = 1       -- seconds between looks at the quest log
-QS.WORD = "spots"
+-- Lead section 863.2: "spots" is F-new-4's (Nav/LearnedForget.lua).
+QS.WORD = "questspots"
 QS.HELP = "quest spots learned from your own play: where each objective moved on and where quests were handed in"
 QS.NONE = "No quest spots learned yet. They are learned as your quest objectives move on and quests are handed in."
 QS.LINES_MAX = 20
