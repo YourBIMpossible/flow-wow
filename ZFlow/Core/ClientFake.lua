@@ -5250,3 +5250,49 @@ do
         return c
     end
 end
+
+-- § D-04 (Rotation/KeyFrame.lua; lead sections 697 and 701): one LEAD
+-- NEED, stubbed here only. Core/Client.lua does not have it yet (a later
+-- lease). Off as made, so every other test is as it was:
+-- c.useStateHandler(true) turns it on.
+--   c.stateHandler({ name, button, state }) -> h | nil
+--     h.setAttribute(attr, value), h.driver(condition), h.snippet(text):
+--     each true, or false and "lockdown" while c.combatLockdown() is not
+--     a plain false. h.attrs, h.drivers, h.snippets keep what was given.
+--   c.stateHandlers: every handler made, in order.
+--   For the lead (Lazy, section 729): the real h.driver(condition) must
+--     UnregisterStateDriver(header, state) before RegisterStateDriver when
+--     one was registered (Flow Cast.lua :930), so an old condition never
+--     stays; KeyFrame calls it only when the condition changed.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local on = false
+        c.stateHandlers = {}
+        function c.useStateHandler(yes) on = yes == true end
+        function c.stateHandler(spec)
+            if not on then return nil end
+            local h = { spec = spec, attrs = {}, drivers = {}, snippets = {} }
+            local function free() return c.combatLockdown() == false end
+            function h.setAttribute(attr, value)
+                if not free() then return false, "lockdown" end
+                h.attrs[attr] = value
+                return true
+            end
+            function h.driver(condition)
+                if not free() then return false, "lockdown" end
+                h.drivers[#h.drivers + 1] = condition
+                return true
+            end
+            function h.snippet(text)
+                if not free() then return false, "lockdown" end
+                h.snippets[#h.snippets + 1] = text
+                return true
+            end
+            c.stateHandlers[#c.stateHandlers + 1] = h
+            return h
+        end
+        return c
+    end
+end

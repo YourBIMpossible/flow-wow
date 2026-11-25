@@ -233,6 +233,57 @@ end
 -- button = {}, header = {} } with the same two reasons as Apply.
 
 C.STATE = "castform"
+-- Parity row D-04 (lead section 697), as Flow's Modules/Rotation/Cast.lua
+-- (:877-932): the state handler's secure code, run by the game when the
+-- state driver on C.STATE changes state (a form change, in a fight too).
+-- It copies the header rows of the state entered ("key-N", "ctrl-N", ...)
+-- onto the key ("key" frame ref); "" clears a slot. Restricted code, given
+-- to the handler out of a fight only; never a macro. A first guess: the
+-- restricted calls are on warcraft.wiki.gg (SecureHandlerStateTemplate,
+-- RestrictedEnvironment), not seen in this client.
+-- D-04 CHANGES (Lazy, lead section 729), as Flow's Cast.lua (:797-815):
+-- out of a fight it does nothing (the add-on sets the key there itself);
+-- the key and each slot spell it copies are cast as a spell on your target.
+C.FORM_SNIPPET = [=[
+if not PlayerInCombat() then return end
+local key = self:GetFrameRef("key")
+if not key then return end
+local v = self:GetAttribute("key-" .. newstate)
+if v and v ~= "" then
+    key:SetAttribute("type", "spell")
+    key:SetAttribute("spell", v)
+    key:SetAttribute("unit", "target")
+    key:SetAttribute("item", nil)
+end
+v = self:GetAttribute("ctrl-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-ctrl", v)
+if v then
+    key:SetAttribute("*type-ctrl", "spell")
+    key:SetAttribute("*unit-ctrl", "target")
+end
+v = self:GetAttribute("shift-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-shift", v)
+if v then
+    key:SetAttribute("*type-shift", "spell")
+    key:SetAttribute("*unit-shift", "target")
+end
+v = self:GetAttribute("alt-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-alt", v)
+if v then
+    key:SetAttribute("*type-alt", "spell")
+    key:SetAttribute("*unit-alt", "target")
+end
+v = self:GetAttribute("more-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-more", v)
+if v then
+    key:SetAttribute("*type-more", "spell")
+    key:SetAttribute("*unit-more", "target")
+end
+]=]
 C.MODIFIERS = { "ctrl", "shift", "alt", "more" }
 C.ON_YOU = { heal = true, emergency = true, buff = true }
 -- The only units a suggestion may name for the key. Anyone else (a party or
