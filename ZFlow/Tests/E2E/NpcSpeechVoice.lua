@@ -22,7 +22,12 @@ local function boot(opts)
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
-    if opts.on then addon.settings:set(SETTING, true) end
+    -- Lead section 852: the voice needs Bonus extras on too, now it is off
+    -- by default (as Tests/E2E/NpcSpeech.lua does).
+    if opts.on then
+        addon.settings:set("general.bonus", true)
+        addon.settings:set(SETTING, true)
+    end
     return c, addon
 end
 
