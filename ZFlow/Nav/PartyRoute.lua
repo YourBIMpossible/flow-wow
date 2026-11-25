@@ -351,13 +351,15 @@ function P.ToDo(rows)
 end
 
 -- B-42 CHANGES-1 (lead section 856): the party route is quests only, as
--- Flow's PartyHelp.lua H.QuestsOnly (:406-415): every quest step and
--- turn-in, and the party route's own steps; nobody's trainers, pick-ups or
--- errands. Whose quests they are does not cut them here.
+-- Flow's PartyHelp.lua H.QuestsOnly (:406-415): every quest objective step
+-- and turn-in, and the party route's own steps. Left out: a quest's pick-up
+-- (kind "pickup", as Flow drops "pickup:<id>", :409; Focus.lua:48), and
+-- anyone's trainers or errands. Whose quests they are does not cut them.
 function P.QuestsOnly(steps)
     local out = {}
     for _, st in ipairs(type(steps) == "table" and steps or {}) do
-        if type(st) == "table" and (st.quest ~= nil or st.party == true or st.kind == "party") then
+        if type(st) == "table" and st.kind ~= "pickup"
+            and (st.quest ~= nil or st.party == true or st.kind == "party") then
             out[#out + 1] = st
         end
     end
