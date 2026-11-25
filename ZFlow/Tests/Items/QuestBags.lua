@@ -147,12 +147,15 @@ tests["quest bag answers: the line for each answer, and the hand-in prompt"] = f
     t.eq(Q.AnswerLine({ item = GNOLL, answer = "unknown", quest = "A" }),
         "Gnoll Paw: for A, which is not in your log; whether you handed it in is not known.")
     t.eq(Q.AnswerLine(nil), nil)
+    -- C-10 CHANGES-2 (lead section 734): said with the bags nearly full
+    -- (3 free or fewer), not with 4.
     t.eq(Q.HandInText({ { item = GNOLL, answer = "handIn", quest = "Gnoll Trouble" },
-                        { item = "Murloc Eye", answer = "keep", quest = "Eyes" } }),
+                        { item = "Murloc Eye", answer = "keep", quest = "Eyes" } }, 3),
         "Gnoll Paw is for Gnoll Trouble, which is ready to hand in.")
     t.eq(Q.HandInText({ { item = GNOLL, answer = "handIn", quest = "A" },
-                        { item = "Eye", answer = "handIn", quest = "B" } }),
+                        { item = "Eye", answer = "handIn", quest = "B" } }, 0),
         "Quest items ready to hand in: Gnoll Paw (A), Eye (B).")
+    t.eq(Q.HandInText({ { item = GNOLL, answer = "handIn", quest = "A" } }, 4), nil, "4 free: not said")
     t.eq(Q.HandInText({ { item = GNOLL, answer = "keep", quest = "A" } }), nil)
     t.eq(Q.HandInText(nil), nil)
 end

@@ -181,12 +181,19 @@ tests["quest bags e2e: a quest ready to hand in is said only with the bags nearl
     t.eq(prompt(addon, Q.HANDIN_PROMPT), nil, "bags not read: not said")
 end
 
-tests["quest bags: nearly full is Flow's 3 free slots, in plain bags only"] = function(t)
+-- C-10 CHANGES-2 (lead section 734; owner section 563): the free count is
+-- Flow's Export.lua X.BagsFree (:94-102): every bag 0 to 4, of any kind,
+-- a bag that cannot be read skipped; nil only when no bag reads.
+tests["quest bags: nearly full is Flow's 3 free slots, counted as Flow counts them"] = function(t)
     local Q = ns.QuestBags
     t.eq(Q.NEARLY_FULL, 3)
-    t.eq(Q.Free({ { free = 2, family = 0 }, { free = 1 }, { free = 9, family = 8 } }), 3, "a special bag is not counted")
+    t.eq(Q.Free({ { bag = 0, free = 2, family = 0 }, { bag = 1, free = 1 }, { bag = 2, free = 9, family = 8 } }), 12,
+        "a special bag's free slots count too")
+    t.eq(Q.Free({ { bag = 0, free = 2 }, { bag = 1, free = "x" }, { bag = 2, free = 1 } }), 3, "a bag not read is skipped")
+    t.eq(Q.Free({ { bag = 0, free = 2 }, { bag = 5, free = 20 }, { bag = -1, free = 28 } }), 2, "only bags 0 to 4")
+    t.eq(Q.Free({ { free = 2 }, { free = 1 } }), 3, "rows with no bag number: in order, the first five")
     t.eq(Q.Free(nil), nil)
-    t.eq(Q.Free({ { free = "x" } }), nil, "a count that is not a number: not read")
+    t.eq(Q.Free({ { bag = 0, free = "x" } }), nil, "no bag reads: not known")
     local answers = { { item = "Gnoll Paw", answer = "handIn", quest = "Gnoll Trouble" } }
     t.eq(Q.HandInText(answers, 4), nil, "4 free: not said")
     t.ok(Q.HandInText(answers, 3) ~= nil, "3 free: said")
