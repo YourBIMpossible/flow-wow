@@ -771,4 +771,34 @@ tests["form key: on the fake client's stub the handler gets the forms out of a f
     t.eq(sh.snippets, { ns.cast.FORM_SNIPPET })
 end
 
+-- D-04 CHANGES (Lazy, lead section 729), as Flow's Cast.lua (:797-815,
+-- :921-926): the secure code does nothing out of a fight (the key is set
+-- by the add-on there); a form's slot spell is cast as a spell on your
+-- target, and so is the key's; and a handler row the plan no longer gives
+-- is written "" so nothing left over is cast. Fails before: none of it.
+tests["form key CHANGES: the secure code returns out of a fight, first"] = function(t)
+    local text = ns.cast.FORM_SNIPPET
+    local guard = text:find("if not PlayerInCombat() then return end", 1, true)
+    t.ok(guard ~= nil, "the guard is there")
+    t.ok(guard ~= nil and guard < (text:find("GetFrameRef", 1, true) or 0), "before anything else")
+end
+
+tests["form key CHANGES: the key and each slot are a spell on your target"] = function(t)
+    local text = ns.cast.FORM_SNIPPET
+    t.ok(text:find('key:SetAttribute("unit", "target")', 1, true) ~= nil, "the key's unit")
+    for _, slot in ipairs({ "ctrl", "shift", "alt", "more" }) do
+        t.ok(text:find('"*type-' .. slot .. '", "spell"', 1, true) ~= nil, "*type-" .. slot)
+        t.ok(text:find('"*unit-' .. slot .. '", "target"', 1, true) ~= nil, "*unit-" .. slot)
+    end
+end
+
+tests["form key CHANGES: a handler row the plan no longer gives is cleared"] = function(t)
+    local kf, _, _, sh = make({ handler = true })
+    kf:want(formPlan())
+    t.eq(sh.attrs["key-3"], "Claw")
+    kf:want(nil)
+    t.eq(sh.attrs["key-3"], "", "no plan: the cat row is written empty")
+    t.eq(sh.attrs["key-0"], "", "and the no-form row")
+end
+
 return tests
