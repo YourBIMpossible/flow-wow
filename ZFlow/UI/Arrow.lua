@@ -629,6 +629,12 @@ function Arrow.Start(k, diag, own)
     -- place). Heading() gives a copy (lead section 169 B: Nav/Legs.lua
     -- reads it to know which step the player is going to).
     local heading = nil
+    -- family: the family of the quest arrow's step in the last source
+    -- ("waypoint" or "profession", else nil), by the ViewState rule
+    -- (Nav/ViewState.lua:89-92): qs.family, else qs.kind. Family() gives
+    -- it (R7, lead section 570: the map lines read it to colour the
+    -- first leg the same as the arrow).
+    local family = nil
     -- saying: the quest step of the last source is the why line (lead
     -- section 294 item 5): words only, no needle drawn.
     local saying = false
@@ -643,6 +649,7 @@ function Arrow.Start(k, diag, own)
         saying = false
         from = "demo"
         heading = nil
+        family = nil
         if demo then return Arrow.DemoSource(client, Arrow.Saved(k), near, Arrow.Palette(k)) end
         local playing = intro()
         local guide
@@ -845,6 +852,12 @@ function Arrow.Start(k, diag, own)
             guide = {}
         end
         heading = placeOf(guide.quest)
+        -- R7: the step's family, by the ViewState rule (qs.family, else
+        -- qs.kind), kept with the heading and cleared with it.
+        local qs = guide.quest
+        if type(qs) == "table" and type(qs.family) == "string" then family = qs.family
+        elseif type(qs) == "table" and type(qs.kind) == "string" then family = qs.kind
+        else family = nil end
         stepName = nil
         if not saying and type(guide.quest) == "table" and type(guide.quest.label) == "string" then
             stepName = guide.quest.label
@@ -1687,7 +1700,8 @@ function Arrow.Start(k, diag, own)
              heading = function()
                  if not heading then return nil end
                  return { cont = heading.cont, map = heading.map, x = heading.x, y = heading.y }
-             end }
+             end,
+             family = function() return family end }
 end
 
 -- Declares the arrows on kernel k as the module Arrow.NAME. Nothing is made
@@ -1769,11 +1783,17 @@ function Arrow.Declare(k, diag)
         if inner and inner.heading then return inner.heading() end
         return nil
     end
+    -- The family of the step the quest arrow points at now, or nil (R7).
+    function api.family()
+        if inner and inner.family then return inner.family() end
+        return nil
+    end
     k:Module({
         name = Arrow.NAME,
         needs = { "client", "store", "bus", "sched" },
         provides = { OpenMenu = function() return api.openMenu() end,
                      Heading = function() return api.heading() end,
+                     Family = function() return api.family() end,
                      -- Lead section 466: a chat-link click (Nav/PartyRoute.lua)
                      -- redraws at once, as a slash word's pass does.
                      Redraw = function() return api.relayout() end },

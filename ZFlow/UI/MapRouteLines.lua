@@ -25,15 +25,16 @@
 -- own; nav.routePanel (UI/RouteList.lua) turns it off with the list
 -- and the marks. Both must be on.
 --
---   The colour is the shared contract (Nav/RouteColor.lua, slice 1): the
---   next leg wears the next step's distance colour, later legs the same
---   colour fainter, the waypoint green, the X gold. The palette is the
---   arrow's ("arrow.palette" setting; the standard one when it is not
---   kept), and the player's one-colour setting ("arrow.byDistance", N43)
---   is passed through, so the trail keeps it when it is on: one colour,
---   the near one, instead of the distance ramp. Colour is never read
---   from the arrow's own frame: the trail asks the same function the
---   arrow does, so the two cannot disagree.
+--   The colour is the shared contract (Nav/RouteColor.lua, slice 1):
+--   the next leg wears the next step's colour from the contract — its
+--   family, when the arrow's step has one, else its distance colour;
+--   later legs the same colour fainter, the waypoint green, the X gold.
+--   The palette is the arrow's ("arrow.palette" setting; the standard
+--   one when it is not kept), and the player's one-colour setting
+--   ("arrow.byDistance", N43) is passed through, so the trail keeps it
+--   when it is on: one colour, the near one, instead of the distance
+--   ramp. Colour is never read from the arrow's own frame: the trail
+--   asks the same function the arrow does, so the two cannot disagree.
 --   The yards to the next stop are worked out here from your position, the
 --   stop's place and the map's size (MRL.Yards); when they are not known
 --   the leg is drawn as far. A next stop on another map is drawn grey
@@ -204,8 +205,9 @@ function MRL.Lines(rows, map, you, wp, cornersOf)
 end
 
 -- The colour of one line, from the shared contract (Nav/RouteColor.lua).
--- step is the next step ({ state = "away" } when it is on another map);
--- the waypoint line passes { family = "waypoint" } instead. yards is the
+-- step is the next step ({ state = "away" } when it is on another map,
+-- with the family the arrow's step carries, when it has one); the
+-- waypoint line passes { family = "waypoint" } instead. yards is the
 -- straight-line yards to the next stop, or nil when not known (drawn as
 -- far). palette is the arrow's ("standard" when not kept). byDistance is
 -- the player's one-colour setting (N43): false gives one colour, the near
@@ -305,6 +307,20 @@ function MRL.Declare(k)
             step = { state = "away" }
         elseif pos and firstPlace and pos.map ~= nil and firstPlace.map == pos.map then
             yards = MRL.Yards(pos, firstPlace, ask(c, "mapSize", pos.map))
+        end
+        -- R7: the family of the step the arrow chose, from the arrow
+        -- module (the name string "arrow", Arrow.NAME). nil means the
+        -- quest's own family. It rides on the step, so Paint asks the
+        -- contract the same way the arrow does. Not taken from the View.
+        local family = nil
+        local arrow = k.use and k.use("arrow")
+        if type(arrow) == "table" and type(arrow.Family) == "function" then
+            local okF, f = pcall(arrow.Family)
+            if okF and type(f) == "string" then family = f end
+        end
+        if family ~= nil then
+            if step == nil then step = {} end
+            step.family = family
         end
         local palette = nil
         local s = ctx.settings
