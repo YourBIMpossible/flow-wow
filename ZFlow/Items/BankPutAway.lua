@@ -119,7 +119,7 @@ function P.Count(rows, bagStacks)
     local items = {}
     for _, r in ipairs(type(rows) == "table" and rows or {}) do
         if type(r) == "table" then
-            local item = { key = r.key, id = r.key, name = r.name, count = r.count, quality = r.quality,
+            local item = { key = r.key, id = ns.Items.Id(r.key), name = r.name, count = r.count, quality = r.quality,
                            reason = r.reason }
             if read and slots[r.key] then
                 if r.count == nil or (whole(r.count) and r.count == total[r.key]) then
