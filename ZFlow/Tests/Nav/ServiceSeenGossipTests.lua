@@ -160,6 +160,42 @@ tests["service gossip: a service window after the gossip adds to the same place"
     t.eq(size(places(c)), 1)
 end
 
+-- Lead section 657 item 1: a visit that opens the gossip window and then
+-- a service window of the same npc is ONE sighting, not two. A new gossip
+-- window is a new visit; another npc's window is its own sighting.
+-- Red before: the service window after the gossip counted once more.
+tests["service gossip: gossip and then that npc's service window is one visit, counted once"] = function(t)
+    local _, c, w, held = start({ npc = KEEPER, repair = true, options = { { type = "vendor" }, { type = "binder" } } })
+    c.fire("GOSSIP_SHOW")
+    t.eq(places(c)[KEEPER.guid].n, 1, "the gossip window: one sighting")
+    c.fire("MERCHANT_SHOW")
+    local e = places(c)[KEEPER.guid]
+    t.eq(e.n, 1, "the vendor window of the same visit does not count again")
+    t.eq(e.kinds, { vendor = true, innkeeper = true, repair = true }, "what the vendor window says is still taken")
+    t.eq(w.last().ok, true, "and it is still a good report")
+    c.fire("CONFIRM_BINDER")
+    t.eq(places(c)[KEEPER.guid].n, 1, "nor does another window of that visit")
+    c.fire("GOSSIP_SHOW")
+    t.eq(places(c)[KEEPER.guid].n, 2, "the gossip window again: a new visit")
+    c.fire("MERCHANT_SHOW")
+    t.eq(places(c)[KEEPER.guid].n, 2, "and its vendor window is that same visit")
+    -- Another npc in between ends the visit.
+    local other = { guid = "Creature-0-0-0-0-777-0", name = "Other Trader" }
+    held.npc = other
+    c.fire("MERCHANT_SHOW")
+    t.eq(places(c)[other.guid].n, 1, "another npc's window is its own sighting")
+    held.npc = KEEPER
+    c.fire("MERCHANT_SHOW")
+    t.eq(places(c)[KEEPER.guid].n, 3, "back at the first npc with no gossip window: a sighting of its own")
+end
+
+tests["service gossip: a service window with no gossip before it counts as it always did"] = function(t)
+    local _, c = start({ npc = KEEPER, repair = false, options = false })
+    c.fire("MERCHANT_SHOW")
+    c.fire("MERCHANT_SHOW")
+    t.eq(places(c)[KEEPER.guid].n, 2, "two vendor windows, two sightings")
+end
+
 tests["service gossip: a client with no gossip read changes nothing"] = function(t)
     local k, c, w = start({ npc = KEEPER, options = false })
     c.fire("GOSSIP_SHOW")
