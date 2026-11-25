@@ -6920,6 +6920,81 @@ function ns.make.client(env)
     end
     -- --------------------------------------------------- end flight marks
 
+    -- ------------------------------------------- route lines (section 447 F7)
+    -- c.mapRouteLines() -> h, or nil, as c.mapPins: one plain frame over the
+    -- world map canvas, no mouse; its lines are made as needed and kept.
+    --   h.map() -> the uiMapID the world map shows, or nil
+    --   h.draw(lines)
+    --       lines = { { ax, ay, bx, by, r, g, b, a } }, shares of the shown
+    --       map (x right, y down); colour and opacity per line. Draws these
+    --       and hides any made before past their count; a line not placed
+    --       by plain numbers is skipped.
+    --   h.clear()   hides them all
+    -- The calls are the ones c.mapPins makes (and the predecessor's
+    -- MapOverlay.lua line()): CreateLine, SetThickness, SetColorTexture,
+    -- SetStartPoint, SetEndPoint. The canvas's own scale is not read, so the
+    -- thickness does not follow the map's zoom. Needs a game test.
+    function c.mapRouteLines()
+        local wm = env.WorldMapFrame
+        if wm == nil then return nil end
+        local okC, canvas = pcall(function() return wm.ScrollContainer.Child end)
+        if not okC or canvas == nil then return nil end
+        local ok, host = call(env.CreateFrame, "Frame", nil, canvas)
+        if not ok or host == nil then return nil end
+        method(host, "EnableMouse", false)
+        method(host, "SetAllPoints", canvas)
+        local made, up = {}, 0
+        local function plain(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
+        local h = {}
+        function h.map()
+            local okS, shown = method(wm, "IsShown")
+            if not okS or shown ~= true then return nil end
+            local okM, map = method(wm, "GetMapID")
+            if not okM or map == nil or hidden(map) or type(map) ~= "number" or map ~= map then return nil end
+            return map
+        end
+        function h.clear()
+            for i = 1, up do if made[i] then method(made[i], "Hide") end end
+            up = 0
+        end
+        function h.draw(lines)
+            local okW, w = method(canvas, "GetWidth")
+            local okH, ht = method(canvas, "GetHeight")
+            if not okW or not okH or w == nil or ht == nil or hidden(w) or hidden(ht)
+                or not plain(w) or not plain(ht) or w <= 0 or ht <= 0 then
+                h.clear()
+                return false
+            end
+            local m = 0
+            for _, l in ipairs(type(lines) == "table" and lines or {}) do
+                if type(l) == "table" and plain(l.ax) and plain(l.ay) and plain(l.bx) and plain(l.by) then
+                    m = m + 1
+                    local line = made[m]
+                    if line == nil then
+                        local okL, new = method(host, "CreateLine", nil, "ARTWORK")
+                        line = okL and new or false
+                        made[m] = line
+                    end
+                    if line then
+                        local r, g, b, a = 1, 1, 1, 1
+                        if plain(l.r) and plain(l.g) and plain(l.b) then r, g, b = l.r, l.g, l.b end
+                        if plain(l.a) then a = l.a end
+                        method(line, "SetThickness", 2.5)
+                        method(line, "SetColorTexture", r, g, b, a)
+                        method(line, "SetStartPoint", "TOPLEFT", canvas, l.ax * w, -l.ay * ht)
+                        method(line, "SetEndPoint", "TOPLEFT", canvas, l.bx * w, -l.by * ht)
+                        method(line, "Show")
+                    end
+                end
+            end
+            for i = m + 1, up do if made[i] then method(made[i], "Hide") end end
+            up = m
+            return true
+        end
+        return h
+    end
+    -- ---------------------------------------------------- end route lines
+
     -- ------------------------------------------------ pet state (section 197)
     -- c.pet() -> nil | { exists = false }
     --          | { exists = true, dead, inCombat, family, happiness, powerKind }
@@ -13379,6 +13454,84 @@ function ns.make.client(env)
         end
         if not pushed then return nil, "raised" end
         return true
+    end
+
+    -- KNOW lane reads (lead section 487, Zen's lease). Only reads: nothing
+    -- is cast, clicked, placed or sent. First guesses from classic's call
+    -- names; none was seen in game on 16001.
+
+    -- C-61, C-49 (Spells/Talents.lua): the talent points not spent yet, the
+    -- first answer of UnitCharacterPoints("player"). nil when the call is
+    -- absent, raises, is hidden, or answers anything but a count.
+    function c.unspentTalents()
+        local ok, n = call(env.UnitCharacterPoints, "player")
+        if not ok or hidden(n) or type(n) ~= "number" or n ~= n or n < 0 or n == math.huge then return nil end
+        return n
+    end
+
+    -- C-48, C-56 (UI/SpellsWindow.lua): which spells are on the action
+    -- bars, { [spell name] = slot } for bar slots 1 to 120 and the stance
+    -- bar (slot 0). nil when the client has no HasAction or GetActionInfo,
+    -- or a read raised or was hidden: "not known", never "on no bar".
+    function c.actionSpells()
+        if type(env.HasAction) ~= "function" or type(env.GetActionInfo) ~= "function" then return nil end
+        local out = {}
+        for slot = 1, 120 do
+            local okHas, has = call(env.HasAction, slot)
+            if not okHas or hidden(has) then return nil end
+            if has then
+                local ok, kind, id = call(env.GetActionInfo, slot)
+                if not ok or hidden(kind) or hidden(id) then return nil end
+                if kind == "spell" and type(id) == "number" then
+                    local name = spellName(id)
+                    if type(name) == "string" and out[name] == nil then out[name] = slot end
+                end
+            end
+        end
+        if type(env.GetNumShapeshiftForms) == "function" and type(env.GetShapeshiftFormInfo) == "function" then
+            local okN, n = call(env.GetNumShapeshiftForms)
+            if okN and type(n) == "number" and not hidden(n) then
+                for i = 1, n do
+                    local ok, _, _, _, id = call(env.GetShapeshiftFormInfo, i)
+                    if ok and type(id) == "number" and not hidden(id) then
+                        local name = spellName(id)
+                        if type(name) == "string" and out[name] == nil then out[name] = 0 end
+                    end
+                end
+            end
+        end
+        return out
+    end
+
+    -- C-62 (UI/TalentsWindow.lua): the talents the player has,
+    -- { [talent name] = rank }, from the classic tab calls
+    -- GetNumTalentTabs(), GetNumTalents(tab) and GetTalentInfo(tab, i) ->
+    -- name, _, tier, column, rank. nil when a call is absent, a read raised
+    -- or was hidden, or no talent was named. Legacy Flow read C_ClassTalents
+    -- and C_Traits first on this client (Modules/Talents.lua readSheet): if
+    -- the tab calls answer nothing on 16001, that reader goes here.
+    function c.talentRanks()
+        if type(env.GetNumTalentTabs) ~= "function" or type(env.GetNumTalents) ~= "function"
+            or type(env.GetTalentInfo) ~= "function" then
+            return nil
+        end
+        local okT, tabs = call(env.GetNumTalentTabs)
+        if not okT or hidden(tabs) or type(tabs) ~= "number" then return nil end
+        local out, any = {}, false
+        for tab = 1, tabs do
+            local okN, n = call(env.GetNumTalents, tab)
+            if not okN or hidden(n) or type(n) ~= "number" then return nil end
+            for i = 1, n do
+                local ok, name, _, _, _, rank = call(env.GetTalentInfo, tab, i)
+                if not ok or hidden(name) or hidden(rank) then return nil end
+                if type(name) == "string" and type(rank) == "number" then
+                    out[name] = rank
+                    any = true
+                end
+            end
+        end
+        if not any then return nil end
+        return out
     end
     return c
 end

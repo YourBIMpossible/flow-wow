@@ -32,6 +32,8 @@ local KIND = {
              "infoBar", "broker",
              -- N57: the key-capture overlay on the settings page.
              "keyCapture",
+             -- F7 (section 447 item 6): route and waypoint lines on the world map.
+             "mapRouteLines",
              -- N72 (section 248 item 4): the macro icon window; shows a list on it.
              "macroPopup",
              -- G60: NPC words read aloud on the player's own speakers, and
@@ -295,6 +297,12 @@ READS.spellCooldownLeft = false
 -- G50 (ACTING): one quest offered to the group, only on the player's own
 -- share word (Nav/QuestShare.lua). Never the capture.
 KIND.act[#KIND.act + 1] = "shareQuest"
+-- KNOW lane (lead section 487): unspent talent points (Spells/Talents.lua),
+-- the spells on the action bars (UI/SpellsWindow.lua) and the talents the
+-- player has (UI/TalentsWindow.lua). The capture does not ask them.
+READS.unspentTalents = false
+READS.actionSpells = false
+READS.talentRanks = false
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {

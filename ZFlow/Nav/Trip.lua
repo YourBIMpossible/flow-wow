@@ -20,6 +20,10 @@ local _, ns = ...
 --   P.Add(list, stop) -> true, or false and why
 --   P.Remove(list, n) -> the stop, or nil and why
 --   P.Order(list, here, legs) -> ordered copies, label
+--     here.casts = { [map] = true }: maps a known travel spell reaches
+--     (FLOW-PARITY B-31). A stop on such a map counts as one cast,
+--     N.TRAVEL_SPELL_YARDS, and goes before the first planned leg longer
+--     than that, not after every stop on this map.
 --   P.Lines(list, here) -> lines
 --   P.Run(ordered, label) -> the run Nav/TripRoute.lua Run takes
 --   P.Quest(rows, text) -> row or nil   by id or part of the title
@@ -292,10 +296,13 @@ function P.Order(list, here, legs)
     local edges = P.Edges(all)
     local ring = N.RouteCycle(#all, edges)
     if ring then return nil, P.CIRCLE_ORDER:format(ringNames(all, ring)) end
-    local same, others = {}, {}
+    local same, others, cast = {}, {}, {}
+    local casts = type(here.casts) == "table" and here.casts or {}
     for i, s in ipairs(all) do
         if here.map ~= nil and s.place.map == here.map then
             same[#same + 1] = i
+        elseif casts[s.place.map] == true then
+            cast[#cast + 1] = i
         else
             others[#others + 1] = i
         end
@@ -323,7 +330,19 @@ function P.Order(list, here, legs)
     local skipped, gone = {}, {}
     if route then
         label = route.label
-        for _, rs in ipairs(route.stops) do seq[#seq + 1] = same[rs.index] end
+        -- B-31: a cast away stops go in before the first leg longer than
+        -- the cast; a leg not known is never taken as short.
+        local castYards = N.TRAVEL_SPELL_YARDS or 120
+        local castIn = #cast == 0
+        for _, rs in ipairs(route.stops) do
+            if not castIn and not (finite(rs.leg) and rs.leg <= castYards) then
+                for _, i in ipairs(cast) do seq[#seq + 1] = i end
+                castIn = true
+            end
+            seq[#seq + 1] = same[rs.index]
+        end
+        if not castIn then for _, i in ipairs(cast) do seq[#seq + 1] = i end end
+        cast = {}
         for _, l in ipairs(route.left) do
             if l.reason == N.OFF_THE_WAY then
                 gone[same[l.index]] = true
@@ -333,6 +352,7 @@ function P.Order(list, here, legs)
     else
         for _, i in ipairs(same) do seq[#seq + 1] = i end
     end
+    for _, i in ipairs(cast) do seq[#seq + 1] = i end
     for _, i in ipairs(others) do seq[#seq + 1] = i end
     -- G42: a stable pass: the first stop of seq whose afters are all done
     -- goes next. Without afters seq is kept as it is.
@@ -709,6 +729,17 @@ function P.Declare(k, diag)
                 if type(g) == "table" and type(g.place) == "table" and g.place.map == h.map and #list < P.MAX then
                     list[#list + 1] = { kind = "flight", label = tostring(g.text), optional = true,
                                         place = { map = g.place.map, x = g.place.x, y = g.place.y } }
+                end
+            end
+        end
+        -- B-31: maps a known travel spell reaches are one cast away. Only
+        -- a spell the client says is known; the player casts it.
+        if h.map ~= nil and type(N.TravelSpellStepFrom) == "function" then
+            h.casts = {}
+            for _, s in ipairs(list) do
+                if placed(s) and s.place.map ~= h.map then
+                    local ok, step = pcall(N.TravelSpellStepFrom, { map = s.place.map, x = s.place.x, y = s.place.y }, client())
+                    if ok and type(step) == "table" and not step.learn then h.casts[s.place.map] = true end
                 end
             end
         end

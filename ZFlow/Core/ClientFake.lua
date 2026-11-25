@@ -2181,6 +2181,28 @@ function ns.make.fakeClient(opts)
         return h
     end
 
+    -- Route lines (section 447 F7), as the real client's c.mapRouteLines:
+    -- each handle made is kept in c.routeLineSets; h.lines is the last
+    -- drawn, copied.
+    c.routeLineSets = {}
+    function c.mapRouteLines()
+        if s.noFrames then return nil end
+        local h = { lines = {}, shown = false, draws = 0, clears = 0 }
+        function h.map() return s.worldMap end
+        function h.draw(lines)
+            h.lines = copyRows(type(lines) == "table" and lines or {})
+            h.shown = #h.lines > 0
+            h.draws = h.draws + 1
+            return true
+        end
+        function h.clear()
+            h.lines, h.shown = {}, false
+            h.clears = h.clears + 1
+        end
+        c.routeLineSets[#c.routeLineSets + 1] = h
+        return h
+    end
+
     -- Pet state (lead section 197), as the real client's pet(): not known
     -- (nil) until set; a copy each time.
     --   c.setPet({ exists = true or false, dead, inCombat, family, happiness, powerKind })
@@ -4916,7 +4938,58 @@ function ns.make.fakeClient(opts)
         c.sharedQuests[#c.sharedQuests + 1] = id
         return true
     end
+    -- KNOW lane (C-48, C-56): the spells on the action bars, as the real
+    -- client's c.actionSpells() answers them: { [spell name] = slot }.
+    -- c.setActionSpells(map or nil); nil (as made): the bars are not known.
+    do
+        local barSpells = nil
+        function c.setActionSpells(map) barSpells = map end
+        function c.actionSpells()
+            if type(barSpells) ~= "table" then return nil end
+            local out = {}
+            for name, slot in pairs(barSpells) do out[name] = slot end
+            return out
+        end
+    end
     return c
 end
 
 ns.client = ns.make.fakeClient()
+
+-- C-61, C-49 (Spells/Talents.lua): unspent talent points, as the real
+-- client's unspentTalents() is asked for. c.setUnspentTalents(n): a count,
+-- or nil for not known. c.setUnspentTalentsRaise(true): the read raises
+-- until set back to false.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local points, raises = nil, false
+        function c.setUnspentTalents(n) points = n end
+        function c.setUnspentTalentsRaise(on) raises = on == true end
+        function c.unspentTalents()
+            if raises then error("unspentTalents raised") end
+            return points
+        end
+        return c
+    end
+end
+
+-- C-62 (UI/TalentsWindow.lua): the talents the player has, as the real
+-- client's talentRanks() is asked for: { [talent name] = rank }.
+-- c.setTalentRanks(map or nil); nil (as made): not known.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local ranks = nil
+        function c.setTalentRanks(map) ranks = map end
+        function c.talentRanks()
+            if type(ranks) ~= "table" then return nil end
+            local out = {}
+            for name, rank in pairs(ranks) do out[name] = rank end
+            return out
+        end
+        return c
+    end
+end

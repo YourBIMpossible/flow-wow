@@ -251,8 +251,8 @@ end
 
 -- The step that stands in for the quest step while the gate is "corpse".
 -- Never the quest step: that is not where to go.
---   client.ghost a plain false (dead, not released): no place, and the one
---     line is the release label. A corpse place the client gives is not
+--   client.ghost a plain false (dead, not released): no place, and the
+--     lines are the label and the release hint. A corpse place the client gives is not
 --     pointed at. The step is still.
 --   otherwise (a ghost, or not known), by client.corpse:
 --     a place: the corpse there.
@@ -271,9 +271,9 @@ end
 local function corpseStep(client)
     local ghost = ask(client, "ghost")
     if ghost == false then
-        return { label = Arrow.RELEASE_LABEL, lines = { Arrow.RELEASE_LABEL }, still = true }
+        return { label = Arrow.RELEASE_LABEL, lines = { Arrow.CORPSE_LABEL, Arrow.RELEASE_HINT }, still = true }
     end
-    local step = { label = Arrow.CORPSE_LABEL }
+    local step = { label = Arrow.CORPSE_LABEL, corpse = true }
     local ok, at = false, nil
     if type(client.corpse) == "function" then ok, at = pcall(client.corpse) end
     if not ok then return step end
@@ -290,10 +290,16 @@ local function corpseStep(client)
     return step
 end
 
--- Player-visible words, authored here (not taken from the game or from Flow).
-Arrow.CORPSE_LABEL = "Corpse"
+-- Player-visible words. The corpse run's are Flow's (N:ShowCorpse, parity
+-- row A1-14): "Your corpse" over the release hint while not released, over
+-- the other-map line, over the yards, and CORPSE_HERE at the corpse.
+Arrow.CORPSE_LABEL = "Your corpse"
 Arrow.RELEASE_LABEL = "Release your spirit"
-Arrow.CORPSE_ELSEWHERE = "corpse is on another map"
+Arrow.RELEASE_HINT = "Release your spirit, then follow the red arrow"
+Arrow.CORPSE_ELSEWHERE = "On another map: follow the graveyard path"
+Arrow.CORPSE_HERE = "Here: resurrect"
+-- Within N.AREA_YARDS of an area step's nearest point (parity row A1-09).
+Arrow.AREA_TEXT = "You're in the area"
 -- The distance line (G40): the yards, then the compass word when there is
 -- one. Inside the arrival radius the line is HERE_TEXT and no distance.
 Arrow.DISTANCE_TEXT = "%d yd"
@@ -394,7 +400,9 @@ function Arrow.GuideSource(client, layout, guide, intro, palette)
             if type(d) == "number" then
                 local word = more[key].compass
                 if arrived then
-                    out[#out + 1] = Arrow.HERE_TEXT
+                    out[#out + 1] = step.corpse and Arrow.CORPSE_HERE or Arrow.HERE_TEXT
+                elseif step.area == true and d < N.AREA_YARDS then
+                    out[#out + 1] = Arrow.AREA_TEXT
                 else
                     local far = word ~= nil
                         and Arrow.DISTANCE_COMPASS_TEXT:format(math.floor(d + 0.5), word)
@@ -457,8 +465,23 @@ end
 -- setting off (those choices are read, never written). NO_QUEST: the quest
 -- log has no quest in it, or it is not known. NO_ROUTE: the log has quests
 -- and none gives a step (no objective left to go to and not complete).
+-- NO_DIRECTIONS over INSTALL_QUESTIE: the log has quests and Questie's
+-- QuestieDB is not there (Arrow.HasQuestie).
 Arrow.NO_QUEST = "No quest tracked"
 Arrow.NO_ROUTE = "No route known to this objective"
+-- Quests in the log and no places read for them (Questie not there or not
+-- ready): Flow's pair (parity row A1-16).
+Arrow.NO_DIRECTIONS = "No directions yet"
+Arrow.INSTALL_QUESTIE = "Install Questie + QuestieDB for quest locations"
+
+-- Whether the client gives Questie's QuestieDB module (client.questieModule).
+-- A failing or absent read is no.
+function Arrow.HasQuestie(k)
+    local c = type(k) == "table" and k.client or nil
+    if type(c) ~= "table" or type(c.questieModule) ~= "function" then return false end
+    local ok, m = pcall(c.questieModule, "QuestieDB")
+    return ok and m ~= nil
+end
 
 -- The why step for the quest arrow, or nil when the player chose not to see
 -- it. quests: the N.QuestWatch the step was asked of (nil: not loaded).
@@ -476,6 +499,9 @@ function Arrow.WhyStep(k, quests, prof)
     if type(quests) == "table" and type(quests.state) == "function" then
         local okState, st = pcall(quests.state)
         if okState and type(st) == "table" then rows = st.rows end
+    end
+    if type(rows) == "number" and rows > 0 and not Arrow.HasQuestie(k) then
+        return { still = true, lines = { Arrow.NO_DIRECTIONS, Arrow.INSTALL_QUESTIE }, why = true }
     end
     local text = (type(rows) == "number" and rows > 0) and Arrow.NO_ROUTE or Arrow.NO_QUEST
     return { still = true, lines = { text }, why = true }
@@ -690,6 +716,16 @@ function Arrow.Start(k, diag, own)
                 step = repair.Step()
                 if step then from = "a repair stop" end
             end
+            -- Then the inn to set the hearthstone at (B-34, Nav/HearthAdvice.lua),
+            -- after the planned route, errand and repair (lead section 466): a spoken-to innkeeper only. Points only.
+            local hearth = k.use and k.use("hearthAdvice")
+            if step == nil and hearth and type(hearth.Step) == "function" then
+                local okH, hs = pcall(hearth.Step)
+                if okH and type(hs) == "table" and type(hs.place) == "table" then
+                    step = hs
+                    from = "a hearthstone to set"
+                end
+            end
             -- Then the weapon master stop (G16, Nav/WeaponMasterStep.lua), only
             -- when a weapon master is saved: a words-only step has no needle.
             local weaponMaster = k.use and k.use("weaponMasterStep")
@@ -880,6 +916,14 @@ function Arrow.Start(k, diag, own)
         if refit then
             view = N.ArrowView(src.view)
             lines = Arrow.Lines(view, src.lines, src.lost)
+        end
+        -- FLOW-PARITY B-40: the party route line under the quest arrow's
+        -- lines (Nav/PartyRoute.lua). It says only; nothing is sent.
+        local party = k.use and k.use("partyRoute")
+        if type(party) == "table" and type(party.Line) == "function" and type(lines.quest) == "table"
+            and #lines.quest > 0 then
+            local okLine, line = pcall(party.Line)
+            if okLine and type(line) == "string" then lines.quest[#lines.quest + 1] = line end
         end
         for _, key in ipairs(N.ARROW_KEYS) do
             local ops, h = view[key], handles[key]
@@ -1090,13 +1134,21 @@ function Arrow.Start(k, diag, own)
                 if okFind and type(place) == "table" then nearest[n.kind] = true end
             end
         end
+        -- Parity B-30: the step's shortcut, for the walk row.
+        local travel
+        local tr = k.use and k.use("travel")
+        if type(tr) == "table" and type(tr.State) == "function" then
+            local okTravel, st = pcall(tr.State)
+            if okTravel then travel = st end
+        end
         local waypoint = false
         if W and W.Get(k.store:get(W.SCOPE, W.PATH)) then waypoint = true end
         if not waypoint and N.WaypointStep and N.WaypointStep(client) then waypoint = true end
         return { stacked = saved.mode ~= "separate", hidden = saved.hidden, text = saved.text,
                  styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback,
                  party = party, step = { name = stepName, from = from, open = drawer ~= nil },
-                 nearest = nearest, waypoint = waypoint, professions = professions }
+                 nearest = nearest, waypoint = waypoint, professions = professions,
+                 travel = travel }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.
@@ -1308,6 +1360,20 @@ function Arrow.Start(k, diag, own)
             local ok, err = pcall(k.settings.set, k.settings,
                 N.ProfFeed and N.ProfFeed.SETTING or "nav.professions", action.professions)
             if not ok then k.problems:add("arrow", "professions", err) end
+        elseif action.walk ~= nil then
+            -- Parity B-30: Walk there instead (Nav/Travel.lua).
+            run("walking", using("travel", "Walk"))
+            relayout()
+        elseif action.wayAt then
+            -- Lead section 465 (A1-42): "Waypoint at <name>".
+            local at = using("wayWords", "At")
+            if at then
+                local okW, done, line = pcall(at, action.wayAt)
+                if okW then say(tostring(line)) else k.problems:add("arrow", "wayAt", done) end
+            else
+                say("waypoints are not ready.")
+            end
+            relayout()
         elseif action.drawer then
             -- Lead section 387, R3: Open it, as a left click on the quest arrow.
             local ok, err = pcall(drawer, "quest")
@@ -1526,6 +1592,18 @@ function Arrow.Start(k, diag, own)
                 say(W.REASON.unset .. ".")
             end
         else
+            -- Lead section 465 (A1-39/41/42): zone names, place words and
+            -- party members (Nav/WayWords.lua) first; the rest as before.
+            local words = k.use and k.use("wayWords")
+            if type(words) == "table" and type(words.Take) == "function" then
+                local okW, took, line = pcall(words.Take, text)
+                if not okW then k.problems:add("arrow", "way", took) end
+                if okW and took then
+                    say(tostring(line))
+                    relayout()
+                    return
+                end
+            end
             local here = ask(client, "position")
             local okN, zoneName = pcall(function() return client.mapName(here.map) end)
             local wp, why = W.Set(W.Slot(k.store), here, text, okN and zoneName or nil)
@@ -1695,7 +1773,10 @@ function Arrow.Declare(k, diag)
         name = Arrow.NAME,
         needs = { "client", "store", "bus", "sched" },
         provides = { OpenMenu = function() return api.openMenu() end,
-                     Heading = function() return api.heading() end },
+                     Heading = function() return api.heading() end,
+                     -- Lead section 466: a chat-link click (Nav/PartyRoute.lua)
+                     -- redraws at once, as a slash word's pass does.
+                     Redraw = function() return api.relayout() end },
         start = function(ctx)
             local own = { loaded = true }
             function own.listen(event, fn) ctx.bus:on(Arrow.NAME, event, fn) end

@@ -264,7 +264,9 @@ tests["key actions: the station row off: nothing is learned"] = function(t)
     t.ok(attr(c, "spell") ~= "Smelting", "no forge learned")
 end
 
-local function gear(c)
+local function gear(c, addon, role)
+    -- §447 F1: the key equips only with a role chosen (KA.Sure).
+    if addon and role ~= false then addon.settings:set("spec.role", role or "dps") end
     c.setItem(HEAD, { kind = "INVTYPE_HEAD", stats = { [STR] = 4 }, unmet = {} })
     c.setItem(BETTER, { kind = "INVTYPE_HEAD", stats = { [STR] = 9 }, unmet = {} })
     c.setWorn(1, HEAD)
@@ -273,7 +275,7 @@ end
 
 tests["key actions: a better item in the bags: the key equips it, out of a fight only"] = function(t)
     local c, addon = start()
-    gear(c); c.advance(1, 5)
+    gear(c, addon); c.advance(1, 5)
     t.eq(attr(c, "type"), "item")
     t.eq(attr(c, "item"), "item:4321")
     set(c, addon, UPGRADE, false)
@@ -286,9 +288,56 @@ tests["key actions: a better item in the bags: the key equips it, out of a fight
     nothingWritten(t, c)
 end
 
+tests["key actions F1: no role chosen: the better item is advice only, not on the key"] = function(t)
+    local c, addon = start()
+    gear(c, addon, false); c.advance(1, 5)
+    t.ok(attr(c, "item") ~= "item:4321", "not equipped by the key")
+    local s = suggested(addon)
+    t.ok(type(s) == "table" and s.look == true and s.step == "upgradeAdvice", "shown as advice")
+    nothingWritten(t, c)
+end
+
+-- §447 F1 / Twin's Ask 1: the whole add-on, a paladin tank with Righteous
+-- Fury missing and a better item in the bags. The buff stays on the key.
+tests["key actions F1: tank, Righteous Fury missing, a better bag item: the key shows Righteous Fury, not the item"] = function(t)
+    local c, addon = start()
+    learn(c, "Righteous Fury", 25780)
+    gear(c, addon, "tank"); c.advance(1, 5)
+    local s = suggested(addon)
+    t.eq(type(s) == "table" and s.spell, "Righteous Fury", "the buff is suggested")
+    t.eq(attr(c, "type"), "spell", "the key casts")
+    t.ok(attr(c, "item") ~= "item:4321", "the better item is not on the key")
+    -- Fury up: now the item comes onto the key.
+    local up = {}
+    for k, v in pairs(SEALED) do up[k] = v end
+    up["Righteous Fury"] = 1800
+    c.setPlayerBuffs(up); c.advance(1, 5)
+    t.eq(attr(c, "item"), "item:4321", "with Fury up the item is on the key")
+    nothingWritten(t, c)
+end
+
+-- §454 (Twin's HOLD on F1): a weak-step buff, the gathering tracking, is
+-- missing and a better bag item is ready. The key shows the tracking, not
+-- the item. Red on f31dd929, where a weak step gave the key to the item.
+tests["key actions F1: Find Minerals off, a better bag item: the key shows Find Minerals, not the item"] = function(t)
+    local c, addon = start()
+    learn(c, "Find Minerals", 2580)
+    c.setProfessions({ "Mining" })
+    c.setTracking("Find Minerals", false)
+    gear(c, addon, "tank"); c.advance(1, 5)
+    local s = suggested(addon)
+    t.eq(type(s) == "table" and s.spell, "Find Minerals", "the tracking is suggested")
+    t.eq(attr(c, "type"), "spell", "the key casts")
+    t.ok(attr(c, "item") ~= "item:4321", "the better item is not on the key")
+    -- Tracking on: now the item comes onto the key.
+    c.setTracking("Find Minerals", true); c.advance(1, 5)
+    t.eq(attr(c, "item"), "item:4321", "with the tracking on the item is on the key")
+    nothingWritten(t, c)
+end
+
 tests["key actions: the key's actions row off: none of these is put on the key"] = function(t)
     local c, addon = start()
-    gear(c)
+    gear(c, addon)
     set(c, addon, ACTIONS, false)
     t.ok(attr(c, "item") ~= "item:4321", "off")
     set(c, addon, ACTIONS, true)

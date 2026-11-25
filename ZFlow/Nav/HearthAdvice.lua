@@ -14,14 +14,18 @@ local _, ns = ...
 --   H.Hearth(o) -> line or nil, reason
 --     o = { bind = { name, map, x, y }, cooldown (seconds; not a number:
 --           no stone known), here = { map, x, y }, target = { map, x, y },
---           size = { w, h } of the target's map, legs }
+--           size = { w, h } of the target's map, legs,
+--           corners = function(map) -> client.mapCorners(map) or nil }
+--     FLOW-PARITY B-35: a walk or a home on another map is measured in
+--     world yards (Flow Modules/Hearth.lua:242-277, nav:ToWorld) when both
+--     maps' corners are known and on one continent; else as below.
 --     The first of these that holds:
 --       "no target"   target not placed
---       "far unknown" the player not on the target's map, or no size
+--       "far unknown" the player's walk to the target not measurable
 --       "near"        the walk is under H.SAVES + H.CAST: no advice
 --       "no home"     no bind name: H.NO_HOME
---       "bind place unknown" / "other map": where the home is not known
---                     on this map: nothing claimed
+--       "bind place unknown" / "other map": where the home is not known,
+--                     or not measurable to the target: nothing claimed
 --       "no saving"   walk - (H.CAST + walk from the home) < H.SAVES
 --       "no stone"    cooldown not a number
 --       "on cooldown" H.READY_IN when the stone is ready before the walk
@@ -35,6 +39,12 @@ local _, ns = ...
 --     "spread" no seen inn has more than half the stops within H.NEAR
 --     yards; "home already" the best inn is within H.SAME yards of the
 --     home; else "set home" and H.SET_HOME.
+--   H.SetStep(inn, town) -> step or nil (FLOW-PARITY B-34, section 456)
+--     inn: the seen inn H.Home named (an innkeeper the player has spoken
+--     to, Nav/ServiceSeen.lua); town: the client's name of its map, or
+--     nil. step = { label = "Set hearthstone: <inn> (<town>)", place }.
+--     Never from a shipped table. The arrow chain's one call (wired by
+--     the lead at merge): ns.use("hearthAdvice").Step().
 --
 -- Module "hearthAdvice": a look every H.EVERY seconds at the next stop
 -- (ns.use("tripRoute").Current(), else ns.use("arrow").Heading()). Each
@@ -60,6 +70,9 @@ H.READY_IN = "Your hearthstone is ready in %d minutes: then hearth to %s to save
 H.NO_HOME = "Talk to an innkeeper to set your home: then your hearthstone can save you long walks."
 H.SET_HOME = "Set your home at %s's inn: most of your quests are near it."
 H.SET_HOME_PLAIN = "Set your home at the inn near most of your quests."
+H.STEP = "Set hearthstone: %s (%s)"
+H.STEP_NO_TOWN = "Set hearthstone: %s"
+H.STEP_INN = "innkeeper"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -93,19 +106,36 @@ function H.Walk(a, b, size, legs)
     return d / H.RUN
 end
 
+-- Seconds on foot from a to b: on one map as H.Walk; else in world yards
+-- through the maps' corners on one continent (Nav/Flights.lua ToWorld).
+local function walkOf(a, b, o)
+    if not (placed(a) and placed(b)) then return nil end
+    if a.map == b.map then return H.Walk(a, b, o.size, o.legs) end
+    if type(o.corners) ~= "function" or not (N.Flights and N.Flights.ToWorld) then return nil end
+    local okA, ma = pcall(o.corners, a.map)
+    local okB, mb = pcall(o.corners, b.map)
+    if not (okA and okB) then return nil end
+    local ca, ax, ay = N.Flights.ToWorld(ma, a.x, a.y)
+    local cb, bx, by = N.Flights.ToWorld(mb, b.x, b.y)
+    if ca == nil or ca ~= cb then return nil end
+    return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2) / H.RUN
+end
+
 function H.Hearth(o)
     if type(o) ~= "table" then o = {} end
     local target, here = o.target, o.here
     if not placed(target) then return nil, "no target" end
-    if not placed(here) or here.map ~= target.map or not sized(o.size) then return nil, "far unknown" end
-    local walk = H.Walk(here, target, o.size, o.legs)
+    if placed(here) and here.map == target.map and not sized(o.size) then return nil, "far unknown" end
+    local walk = walkOf(here, target, o)
+    if not walk then return nil, "far unknown" end
     if walk < H.SAVES + H.CAST then return nil, "near" end
     local bind = type(o.bind) == "table" and o.bind or {}
     local name = named(bind.name)
     if not name then return H.NO_HOME, "no home" end
     if not placed(bind) then return nil, "bind place unknown" end
-    if bind.map ~= target.map then return nil, "other map" end
-    local saves = walk - H.CAST - H.Walk(bind, target, o.size, o.legs)
+    local fromHome = walkOf(bind, target, o)
+    if not fromHome then return nil, "other map" end
+    local saves = walk - H.CAST - fromHome
     if saves < H.SAVES then return nil, "no saving" end
     local cooldown = o.cooldown
     if not finite(cooldown) then return nil, "no stone" end
@@ -165,6 +195,14 @@ function H.Home(o)
     return H.SET_HOME_PLAIN, "set home", best
 end
 
+function H.SetStep(inn, town)
+    if not placed(inn) then return nil end
+    local who = named(inn.name) or H.STEP_INN
+    local where = named(town)
+    local label = where and H.STEP:format(who, where) or H.STEP_NO_TOWN:format(who)
+    return { label = label, place = { map = inn.map, x = inn.x, y = inn.y } }
+end
+
 -- One read of the client, or nil when it has no such read or it fails.
 local function ask(client, read, ...)
     if type(client) ~= "table" or type(client[read]) ~= "function" then return nil end
@@ -185,6 +223,7 @@ function H.Declare(k)
     local ctx
     local said = {}          -- [reason] = true while that line stays said
     local lastHome = nil     -- the set-home line said last
+    local step = nil         -- the set-hearthstone step of the last look
 
     local function use(name)
         local m = k.use and k.use(name)
@@ -240,15 +279,21 @@ function H.Declare(k)
             if ok and type(fn) == "function" then legs = fn end
         end
         local line, why = H.Hearth({ bind = bind, cooldown = cooldown, here = here, target = target,
-                                     size = size, legs = legs })
+                                     size = size, legs = legs,
+                                     corners = function(map) return ask(client, "mapCorners", map) end })
         if line and not said[why] then
             said[why] = true
             say(line)
         end
 
         local services = ns.ServiceSeen and ns.ServiceSeen.PLACES or "learned.places.services"
-        local home = H.Home({ bind = bind, stops = stops, inns = H.Inns(saved(ctx.store, "char", services)),
+        local home, _, best = H.Home({ bind = bind, stops = stops, inns = H.Inns(saved(ctx.store, "char", services)),
                               size = function(map) return ask(client, "mapSize", map) end })
+        if best then
+            step = H.SetStep(best, ask(client, "mapName", best.map))
+        else
+            step = nil
+        end
         if home and home ~= lastHome then
             lastHome = home
             say(home)
@@ -258,10 +303,10 @@ function H.Declare(k)
     k:Module({
         name = H.NAME,
         needs = { "client", "store" },
-        provides = { Look = function() api.look() end },
+        provides = { Look = function() api.look() end, Step = function() return step end },
         ticks = { { every = H.EVERY, when = "always", run = function() api.look() end } },
         start = function(c) ctx = c end,
-        stop = function() said, lastHome = {}, nil end,
+        stop = function() said, lastHome, step = {}, nil, nil end,
     })
     return api
 end
