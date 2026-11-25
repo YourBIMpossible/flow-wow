@@ -35,13 +35,6 @@ local function nodes()
     }
 end
 
-local function taxiRead()
-    return { map = 1414, here = HOME_POST, nodes = {
-        { name = HOME_POST, x = 0.052, y = 0.25, state = "current" },
-        { name = FAR_POST, x = 0.548, y = 0.5, state = "reachable" },
-    } }
-end
-
 -- times: account learned.flights.times (A1-32's), or nil: guessed.
 local function start(times)
     local c = ns.make.fakeClient()
