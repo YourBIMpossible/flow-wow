@@ -21,6 +21,10 @@ local _, ns = ...
 --   QS.Places(book, rows, map) -> places as N.QuestSource Q.Pick takes them
 --   QS.Merge(primary, learned) -> places: primary's spots, learned where
 --     primary has none on this map
+--   QS.Lines(book, titles, mapName) -> chat lines for /zflow spots (parity
+--     row C-08, lead section 603): one line per quest, by quest id, its
+--     objectives then the hand-in, each spot "<map> x, y" in percent;
+--     at most QS.LINES_MAX quests. Text only; a window would be Muse's.
 -- Module "questSpots": looks at the quest log every QS.EVERY seconds while
 -- the setting QS.SETTING is on. LOOK ONLY: it reads the log and the
 -- player's position; it accepts, hands in, targets and clicks nothing.
@@ -40,6 +44,12 @@ QS.POINTS_MAX = 8
 QS.QUESTS_MAX = 300
 QS.NEAR = 0.02     -- shares of the map: closer than this is the same spot
 QS.EVERY = 1       -- seconds between looks at the quest log
+QS.WORD = "spots"
+QS.HELP = "quest spots learned from your own play: where each objective moved on and where quests were handed in"
+QS.NONE = "No quest spots learned yet. They are learned as your quest objectives move on and quests are handed in."
+QS.LINES_MAX = 20
+-- Said after the list while the setting QS.SETTING is off.
+QS.OFF = "Learning is off (setting: Learn where my quest objectives are)."
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -225,6 +235,61 @@ function QS.Merge(primary, learned)
     return out
 end
 
+local function spotText(p, mapName)
+    local ok, name = pcall(mapName, p.map)
+    name = ok and type(name) == "string" and name ~= "" and name or ("map " .. tostring(p.map))
+    local line = ("%s %.1f, %.1f"):format(name, p.x * 100, p.y * 100)
+    if finite(p.n) and p.n > 1 then line = line .. (" (%d times)"):format(p.n) end
+    return line
+end
+
+function QS.Lines(book, titles, mapName)
+    if type(mapName) ~= "function" then mapName = function() return nil end end
+    local quests, spots = {}, 0
+    for q, list in pairs(type(book) == "table" and book or {}) do
+        if type(q) == "number" and type(list) == "table" then
+            local parts = {}
+            local order = {}
+            for o in pairs(list) do
+                if type(o) == "number" and o ~= QS.TURN_IN then order[#order + 1] = o end
+            end
+            table.sort(order)
+            if list[QS.TURN_IN] ~= nil then order[#order + 1] = QS.TURN_IN end
+            for _, o in ipairs(order) do
+                local texts = {}
+                for _, p in ipairs(type(list[o]) == "table" and list[o] or {}) do
+                    if type(p) == "table" and share(p.x) and share(p.y) then
+                        texts[#texts + 1] = spotText(p, mapName)
+                    end
+                end
+                if #texts > 0 then
+                    spots = spots + #texts
+                    local what = o == QS.TURN_IN and "hand-in" or ("objective " .. o)
+                    parts[#parts + 1] = what .. " at " .. table.concat(texts, ", ")
+                end
+            end
+            if #parts > 0 then quests[#quests + 1] = { id = q, text = table.concat(parts, "; ") } end
+        end
+    end
+    if #quests == 0 then return { QS.NONE } end
+    table.sort(quests, function(a, b) return a.id < b.id end)
+    local out = { ("%d quest%s, %d learned spot%s:"):format(#quests, #quests == 1 and "" or "s",
+        spots, spots == 1 and "" or "s") }
+    for i = 1, math.min(#quests, QS.LINES_MAX) do
+        local e = quests[i]
+        local title
+        if type(titles) == "table" then title = titles[e.id] end
+        local head = "quest " .. e.id
+        if type(title) == "string" and title ~= "" then head = title .. " (" .. e.id .. ")" end
+        out[#out + 1] = head .. ": " .. e.text
+    end
+    if #quests > QS.LINES_MAX then
+        local more = #quests - QS.LINES_MAX
+        out[#out + 1] = ("and %d more quest%s."):format(more, more == 1 and "" or "s")
+    end
+    return out
+end
+
 local function ask(client, name, ...)
     if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end
     local ok, v = pcall(client[name], ...)
@@ -232,7 +297,7 @@ local function ask(client, name, ...)
     return v
 end
 
-function QS.Declare(k)
+function QS.Declare(k, diag)
     local api = {}
     local ctx, cancel
     local before = nil
@@ -294,7 +359,23 @@ function QS.Declare(k)
             cancel, before = nil, nil
         end,
     })
+
+    if type(diag) == "table" and type(diag.commands) == "table" then
+        diag.commands[QS.WORD] = function()
+            if not ctx then return end
+            local client = ctx.client
+            local titles = {}
+            for _, row in ipairs(N.QuestLogRows(client) or {}) do
+                if type(row) == "table" and row.id ~= nil then titles[row.id] = row.title end
+            end
+            local lines = QS.Lines(api.Book(), titles, function(m) return ask(client, "mapName", m) end)
+            client.print(ns.id.title .. ": " .. lines[1])
+            for i = 2, #lines do client.print(lines[i]) end
+            if not on() then client.print(QS.OFF) end
+        end
+        if type(diag.help) == "table" then diag.help[QS.WORD] = QS.HELP end
+    end
     return api
 end
 
-ns.questSpots = QS.Declare(ns)
+ns.questSpots = QS.Declare(ns, ns.diag)
