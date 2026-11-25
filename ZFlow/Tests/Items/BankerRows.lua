@@ -71,4 +71,52 @@ tests["banker rows: the to-sell note, as Flow's"] = function(t)
     t.eq(BR().SellNote({ { name = "a" } }), BR().BAGS:format(1))
 end
 
+-- Lead section 767.3c: Flow's other take-out reasons, a bank thing wanted by
+-- the route or a quest (Banker.lua B.TakeOutRows :321-326, the route first),
+-- and Flow's own-choice mark (r.mine: a sell you chose yourself, or a keep
+-- by your choice). Still look only. The auction house stays out. Fails
+-- before: a quest's or the route's bank thing was not listed; no mine.
+tests["banker rows: a bank thing the route or a quest wants is taken out, the route first"] = function(t)
+    if type(BR()) ~= "table" then return t.ok(false, "not loaded") end
+    local keep = { action = "keep", rule = "keepRule" }
+    local bank = {
+        { key = 20, name = "Gnoll Paw", count = 4, quest = "Wanted: Gnolls", decision = keep },
+        { key = 21, name = "Dig Rat", count = 8, step = "Buy 8 Dig Rat", quest = "Rats", decision = keep },
+        { key = 22, name = "Silk", count = 2, decision = keep },
+    }
+    local rows = BR().SellRows({}, bank)
+    t.eq(#rows, 2, "the kept bank thing nobody wants stays")
+    local rat, paw
+    for _, r in ipairs(rows) do
+        if r.key == 21 then rat = r end
+        if r.key == 20 then paw = r end
+    end
+    t.eq(rat and { rat.bank, rat.take, rat.reason, rat.next }, { true, "route", "Buy 8 Dig Rat", nil }, "the route wins")
+    t.eq(paw and { paw.bank, paw.take, paw.reason, paw.next }, { true, "quest", "Wanted: Gnolls", nil })
+    t.ok(BR().SellNote(rows):find("2 more in your bank", 1, true) ~= nil, BR().SellNote(rows))
+end
+
+tests["banker rows: your own choice is marked, a sell or a keep"] = function(t)
+    if type(BR()) ~= "table" then return t.ok(false, "not loaded") end
+    local mineSell = { action = "sell", count = 1, rule = "yourChoice", reason = "you chose to sell it" }
+    local mineKeep = { action = "keep", rule = "yourChoice" }
+    local rows = BR().SellRows({
+        { key = 30, name = "Old Boots", count = 1, decision = mineSell },
+        { key = 31, name = "Lucky Coin", count = 1, decision = mineKeep },
+        { key = 32, name = "Broken Fang", count = 1, decision = sell("junk") },
+    }, { { key = 33, name = "Old Hat", count = 1, decision = mineSell } })
+    local by = {}
+    for _, r in ipairs(rows) do by[r.key] = r end
+    t.eq(by[30] and by[30].mine, true, "a sell you chose")
+    t.eq(by[31] and by[31].mine, true, "a keep you chose")
+    t.eq(by[32] and by[32].mine, nil, "the rules' own sell")
+    t.eq(by[33] and by[33].mine, true, "in the bank too")
+end
+
+tests["banker rows: the auction house is not a way out of your bags here"] = function(t)
+    if type(BR()) ~= "table" then return t.ok(false, "not loaded") end
+    local rows = BR().SellRows({ { key = 40, name = "Silk", count = 5, decision = { action = "ah", count = 5 } } }, {})
+    t.eq(rows, {}, "an auction-house thing is not listed (owner boundary)")
+end
+
 return tests
