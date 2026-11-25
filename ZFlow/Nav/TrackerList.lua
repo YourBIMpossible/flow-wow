@@ -56,8 +56,9 @@ function TL.Rows(view, here, max)
     local rows, now = {}, false
     for i, s in ipairs(view.stops) do
         if i > max then break end
-        local row = { label = tostring(type(s) == "table" and s.label or "?"), kind = TL.Kind(s), count = TL.Count(s),
-                      dist = dists[i] }
+        local label = "?"
+        if type(s) == "table" and s.label ~= nil then label = s.label end
+        local row = { label = tostring(label), kind = TL.Kind(s), count = TL.Count(s), dist = dists[i] }
         if type(s) == "table" then
             row.detail = s.detail
             if s.held ~= nil then row.held = tostring(s.held) end
