@@ -63,6 +63,7 @@ local function start(opts)
     c.setMapSize(1411, 1000, 500)
     c.setMapCont(1411, 1)
     c.setProfessions({ "Cooking" })
+    if opts.combat then c.setCombat(true) end
     if opts.state then
         local db, zones = questie(opts.state)
         c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
@@ -113,6 +114,19 @@ tests["prof place: a fresh account with Questie shows the arrow from Questie's t
     c.advance(30, 120)
     t.eq(state.scans, 1, "Questie's NPCs were gone through once, not on every update")
     t.eq(c.arrows[2].lines and c.arrows[2].lines[1], LEARN.text, "and the arrow still has its step")
+end
+
+-- Lead section 564: Questie is not gone through in combat; it is picked up
+-- when combat ends.
+tests["prof place: Questie is not read in combat, and is read once combat ends"] = function(t)
+    local state = {}
+    local c = start({ state = state, combat = true })
+    c.advance(30, 120)
+    t.eq(state.scans, nil, "in combat: Questie's NPCs are not gone through")
+    c.setCombat(false)
+    c.advance(5, 20)
+    t.eq(state.scans, 1, "combat over: gone through once")
+    pointsAt(t, c, LEARN.text, 100, "Questie's trainer, after combat")
 end
 
 tests["prof place: a bank step on a fresh account points at Questie's banker"] = function(t)
