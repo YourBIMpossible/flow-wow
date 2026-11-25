@@ -702,56 +702,87 @@ function N.ProfNextFrom(client, store, nodeSource)
 end
 
 -- Profession place (N.ProfPlace): the place a profession step in words can be
--- pointed at, from what this add-on already has saved and nothing else. A
--- step of the profession plan (Items/ProfPlan.lua) carries a target only
--- where the plan itself saw one; the rest are words, and the profession
--- arrow has nothing to point at. This part finds the nearest KNOWN place
--- for such a step. LOOK ONLY: nothing is targeted, bought, trained or moved.
+-- pointed at. A step of the profession plan (Items/ProfPlan.lua) carries a
+-- target only where the plan itself saw one; the rest are words, and the
+-- profession arrow has nothing to point at. This part finds the nearest
+-- KNOWN place for such a step, as the predecessor did (its
+-- Modules/Crafting/SkillPlan.lua, Modules/Nav/Services.lua and Places.lua).
+-- LOOK ONLY: nothing is targeted, bought, trained or moved.
 --
--- Unknown stays unknown: no place is shipped, authored or guessed.
--- Every place is one a seen-table already holds; with none the answer is
+-- Unknown stays unknown: no place is shipped, authored or guessed. A place
+-- is one this account saved, or one the player's own Questie gives at run
+-- time (asked through the client, never copied). With neither the answer is
 -- nil and the step stays in words.
 --
--- "Nearest known": the nearest on the map the player is on; else, of the
--- capital cities (N.GATE_WALLED, Nav/Gates.lua) not on another continent,
--- the one nearest the player (by the far read; not known: the lowest map
--- number), and in it the place nearest its middle. The lookups are the
--- add-on's own: Errand.TrainerOf (Nav/Errand.lua) and N.NearestOf
--- (Nav/ServiceNearest.lua), each asked once for a map.
+-- Where from, in this order (PP.Of):
+--   1. saved, on the map the player is on, the nearest;
+--   2. Questie, on that map, the nearest;
+--   3. saved, on another map of the player's continent, the nearest by the
+--      far read (not known: after every one that is known);
+--   4. Questie, the same.
+-- A map counts as on the player's continent only when the client names the
+-- same continent for both. A tie goes to the lower name, then map, then x, y.
 --
 -- By step kind (PP.KIND):
---   learn_recipe, train_tier   a trainer of the profession: account
---       "learned.places.npcs" entries with trains[profession] (saved by
---       Nav/ProfSeen.lua, or imported). Only for a step that names no
+--   learn_recipe, train_tier   a trainer of the profession. Saved: account
+--       "learned.places.npcs" entries with trains[profession]
+--       (Nav/ProfSeen.lua, or imported). Questie: an NPC whose sub-name is
+--       "<Profession> Trainer" (PP.TRAINER_TITLE, the predecessor's rule)
+--       for a profession of N.PROF_NAMES. Only for a step that names no
 --       trainer: one that names its trainer points at that one or at none.
---   take_bank                  a banker; buy_auction: an auctioneer. Char
---       "learned.places.services" (Nav/ServiceSeen.lua) and the account
---       npcs whose roles say bank or auction (imported entries).
---   gather_skill               the nearest node of that profession the
---       player gathered on this map (Nav/Nodes.lua). No capital step.
---   craft, make_part, go_station   an anvil or a forge (PP.STATION_FAR) in
---       a capital, from the stations seen (Items/CraftSpots.lua), and only
---       when none is seen on this map (that one is the plan's own). A fire
---       is never looked for in a capital: the player can light one.
--- Any other kind (buy_vendor, find_material, open_window, no_point,
--- buy_recipe, buy_tool, maybe_craft, gather): nil. The plan already gives
--- a vendor or node step its place where one was seen.
--- An npc saved for factions the player is not one of is left out; with the
--- player's faction not known, or none saved on the entry, it stays in (as
--- Errand.TrainerOf).
+--   take_bank                  a banker; buy_auction: an auctioneer. Saved:
+--       char "learned.places.services" (Nav/ServiceSeen.lua) and the
+--       account npcs whose roles say bank or auction (imported entries).
+--       Questie: an NPC whose npcFlags hold the banker or auctioneer bit:
+--       Questie's own list (db.npcFlags.BANKER, .AUCTIONEER) when it has
+--       one, else PP.FLAG (256 and 4096, the first game's, as the
+--       predecessor's Services.lua).
+--   gather_skill               a node of that profession on the map the
+--       player is on: the nearest the player gathered there (Nav/Nodes.lua);
+--       else the nearest place Questie gives for an object the player has
+--       gathered before, on any map (its saved object id): a node this
+--       player can gather, never one picked by its name.
+--   craft, make_part, go_station   an anvil or a forge (PP.STATION_FAR),
+--       only when none is seen on this map (that one is the plan's own):
+--       the nearest seen on the continent (Items/CraftSpots.lua); else a
+--       Blacksmithing trainer, who works by both (the predecessor's rule,
+--       and what the plan's own "look for" line says). A fire is never
+--       looked for: the player can light one.
+-- Any other kind: nil. The plan gives a vendor or node step its own place.
+-- An npc the player's faction cannot use is left out: a saved one by its
+-- factions (none saved, or the faction not known: it stays in), Questie's
+-- by friendlyToFaction ("A", "H", "AH").
 --
 --   PP.Of(step, prof, known) -> { map, x, y } or nil            pure
 --     known = { here = { map, x, y, faction, size }, npcs, services,
 --               stations = { { kind, map, x, y } },
 --               nodes = { { x, y, prof } } on here.map, nearest first,
---               capitals = { [map] = anything },
+--               questie = function() -> PP.Scan's answer or nil,
+--               spots = function(prof) -> { { map, x, y } } or nil,
 --               contOf = function(map) -> continent or nil,
 --               far = function(place) -> a number, less is nearer, or nil }
+--   PP.Scan(db, zones) -> found, n                               pure
+--     One pass over every NPC Questie knows (db.NPCPointers), two reads
+--     each (subName, npcFlags). found = { trainer = { [profession] =
+--     { { name, map, x, y, side } } }, banker = { ... }, auction = { ... } },
+--     at most PP.SPOTS places an NPC; n = how many places in all.
+--   PP.Questie() -> reader: the cost control, kept by its one owner
+--     (Nav/ProfFeed.lua) for the session.
+--     reader.places(client) -> found or nil. One scan, and its answer is
+--       kept. An answer with no place (Questie still loading) is asked
+--       again no sooner than PP.RETRY seconds later and PP.TRIES times in
+--       all, then kept as it is. A client with no time (now() 0) has
+--       nothing to wait by: its tries come in a row and still end.
+--     reader.spots(client, ids, map) -> { { map, x, y } }: the places of
+--       those objects on that map; one read an object, kept, with the same
+--       bounds while Questie does not answer.
 --   PP.From(client, store, use, kind, reads) -> known
 --     reads only what kind (a value of PP.KIND) needs. reads = { contOf,
---     far } are the caller's (Nav/ProfFeed.lua's own). It writes nothing; a
+--     far, questie = the reader } are the caller's. It writes nothing; a
 --     read that fails is "not known".
--- Not tested in game.
+-- Not tested in game: Questie's field names (subName, npcFlags, spawns,
+-- friendlyToFaction, QueryNPCSingle, QueryObjectSingle, npcFlags) are the
+-- ones Spells/ClassQuestList.lua and the predecessor read.
 
 local PP = {}
 N.ProfPlace = PP
@@ -765,10 +796,18 @@ PP.KIND = {
 -- The npc role of an imported entry, by service kind.
 PP.ROLE = { banker = "bank", auction = "auction" }
 PP.STATION_FAR = { anvil = true, forge = true }
+PP.STATION_PROF = "Blacksmithing"
 PP.NPCS = "learned.places.npcs"
+PP.NODES_PATH = "learned.nodes"
 PP.NODE_MODULE = "nodes"
 -- How many of the nearest gathered nodes are asked for.
 PP.NODES = 50
+PP.TRAINER_TITLE = "^(.-) Trainer$"
+PP.FLAG = { banker = 256, auction = 4096 }
+PP.FLAG_NAME = { banker = "BANKER", auction = "AUCTIONEER" }
+PP.TRIES, PP.RETRY = 6, 10
+-- Places kept for one NPC, and for one object on one map.
+PP.SPOTS, PP.NODE_SPOTS = 8, 400
 
 local function text(v)
     if type(v) == "string" and v ~= "" then return v end
@@ -791,103 +830,163 @@ local function mayUse(e, faction)
     return e.factions[faction] == true
 end
 
--- Is map known to be on another continent than the player's?
-local function away(known, map)
-    local here = known.here
-    if map == here.map then return false end
-    local mine, theirs = call(known.contOf, here.map), call(known.contOf, map)
-    return mine ~= nil and theirs ~= nil and mine ~= theirs
+-- Questie's friendlyToFaction against the player's faction.
+local function friendly(side, faction)
+    local letter
+    if faction == "Alliance" then letter = "A" elseif faction == "Horde" then letter = "H" end
+    if letter and type(side) == "string" and side ~= "" and not side:find(letter, 1, true) then return false end
+    return true
 end
 
--- find(here) -> the nearest place on here.map, or nil. Asked for the map
--- the player is on, then for each capital.
-local function nearest(known, find)
+-- Is candidate a to be taken before b at the same distance?
+local function lower(a, b)
+    local an, bn = tostring(a.name), tostring(b.name)
+    if an ~= bn then return an < bn end
+    local am, bm = tostring(a.map), tostring(b.map)
+    if am ~= bm then return am < bm end
+    if a.x ~= b.x then return a.x < b.x end
+    return a.y < b.y
+end
+
+-- The nearest of list on the map the player is on, or nil.
+local function onMap(list, known)
     local here = known.here
-    local at = find(here)
-    if placed(at) then return at end
-    local maps = {}
-    if type(known.capitals) == "table" then
-        for map in pairs(known.capitals) do
-            if map ~= here.map and not away(known, map) then maps[#maps + 1] = map end
-        end
+    local w, h = 1, 1
+    if type(here.size) == "table" and finite(here.size.w) and finite(here.size.h) then
+        w, h = here.size.w, here.size.h
     end
-    table.sort(maps, function(a, b) return tostring(a) < tostring(b) end)
     local best, bestD
-    for _, map in ipairs(maps) do
-        local p = find({ map = map, x = 0.5, y = 0.5, faction = here.faction })
-        if placed(p) then
-            local d = call(known.far, p)
-            if not finite(d) then d = math.huge end
-            if best == nil or d < bestD then best, bestD = p, d end
+    for _, c in ipairs(list) do
+        if c.map == here.map then
+            local dx, dy = (c.x - here.x) * w, (c.y - here.y) * h
+            local d = dx * dx + dy * dy
+            if best == nil or d < bestD or (d == bestD and lower(c, best)) then best, bestD = c, d end
         end
     end
     return best
 end
 
-local function trainers(known, prof)
-    local list = {}
-    if type(known.npcs) == "table" then
-        for name, e in pairs(known.npcs) do
-            -- One that trains it is a trainer, whatever its roles say.
-            if type(e) == "table" and type(e.trains) == "table" and e.trains[prof] == true then
-                list[name] = { map = e.map, x = e.x, y = e.y, factions = e.factions, roles = { trainer = true } }
-            end
+-- same(map) -> is map known to be on the player's continent? Each map is
+-- asked for once.
+local function sameOf(known)
+    local mine = call(known.contOf, known.here.map)
+    local seen = {}
+    return function(map)
+        if mine == nil then return false end
+        local v = seen[map]
+        if v == nil then
+            v = call(known.contOf, map) == mine
+            seen[map] = v
         end
-    end
-    return function(here)
-        local E = ns.Errand
-        if type(E) ~= "table" then return nil end
-        return call(E.TrainerOf, list, here)
+        return v
     end
 end
 
-local function services(known, kind)
-    local places = {}
-    if type(known.services) == "table" then
-        for key, e in pairs(known.services) do places["svc:" .. tostring(key)] = e end
+-- The nearest of list on another map of the player's continent, or nil.
+local function onContinent(list, known, same)
+    local best, bestD
+    for _, c in ipairs(list) do
+        if c.map ~= known.here.map and same(c.map) then
+            local d = call(known.far, c)
+            if not finite(d) then d = math.huge end
+            if best == nil or d < bestD or (d == bestD and lower(c, best)) then best, bestD = c, d end
+        end
     end
-    local role, faction = PP.ROLE[kind], text(known.here.faction)
-    if role and type(known.npcs) == "table" then
-        for name, e in pairs(known.npcs) do
-            if type(name) == "string" and type(e) == "table" and type(e.roles) == "table"
-                and e.roles[role] == true and mayUse(e, faction) then
-                places["npc:" .. name] = { name = name, map = e.map, x = e.x, y = e.y, kinds = { [kind] = true } }
+    return best
+end
+
+-- The saved places of one kind: { { name, map, x, y } }.
+local function seenList(known, kind, prof)
+    local out, faction = {}, text(known.here.faction)
+    local function add(name, e)
+        if placed(e) then out[#out + 1] = { name = name, map = e.map, x = e.x, y = e.y } end
+    end
+    local npcs = type(known.npcs) == "table" and known.npcs or {}
+    if kind == "trainer" then
+        for name, e in pairs(npcs) do
+            if type(e) == "table" and type(e.trains) == "table" and e.trains[prof] == true and mayUse(e, faction) then
+                add(name, e)
+            end
+        end
+        return out
+    end
+    if type(known.services) == "table" then
+        for key, e in pairs(known.services) do
+            if type(e) == "table" and type(e.kinds) == "table" and e.kinds[kind] == true then
+                add(text(e.name) or tostring(key), e)
             end
         end
     end
-    return function(here)
-        return call(N.NearestOf, kind, places, here)
+    local role = PP.ROLE[kind]
+    for name, e in pairs(npcs) do
+        if role and type(e) == "table" and type(e.roles) == "table" and e.roles[role] == true and mayUse(e, faction) then
+            add(name, e)
+        end
     end
+    return out
+end
+
+-- Questie's places of one kind the player's faction can use.
+local function questieList(known, kind, prof)
+    local found = call(known.questie)
+    local list
+    if type(found) == "table" then
+        if kind ~= "trainer" then
+            list = found[kind]
+        elseif type(found.trainer) == "table" then
+            list = found.trainer[prof]
+        end
+    end
+    local out, faction = {}, text(known.here.faction)
+    if type(list) ~= "table" then return out end
+    for _, c in ipairs(list) do
+        if placed(c) and friendly(c.side, faction) then out[#out + 1] = c end
+    end
+    return out
+end
+
+local function npcPlace(known, kind, prof, same)
+    local seen = seenList(known, kind, prof)
+    local to = onMap(seen, known)
+    if to then return to end
+    -- Questie is asked only now: nothing saved is on this map.
+    local q = questieList(known, kind, prof)
+    return onMap(q, known) or onContinent(seen, known, same) or onContinent(q, known, same)
 end
 
 local function nodeOf(known, prof)
-    if type(known.nodes) ~= "table" or type(prof) ~= "string" then return nil end
-    for _, n in ipairs(known.nodes) do
-        if type(n) == "table" and n.prof == prof and share(n.x) and share(n.y) then
-            return { map = known.here.map, x = n.x, y = n.y }
-        end
-    end
-    return nil
-end
-
-local function stationOf(known, kind)
-    if not PP.STATION_FAR[kind] or type(known.stations) ~= "table" then return nil end
-    local serves = type(N.PROF_STATION_SPOTS) == "table" and N.PROF_STATION_SPOTS[kind] or nil
-    if type(serves) ~= "table" then serves = { [kind] = true } end
-    local capitals = type(known.capitals) == "table" and known.capitals or {}
-    local best, bestD
-    for _, s in ipairs(known.stations) do
-        if type(s) == "table" and serves[s.kind] == true and placed(s) then
-            -- One on this map is the plan's own to point at.
-            if s.map == known.here.map then return nil end
-            if capitals[s.map] ~= nil and not away(known, s.map) then
-                local d = call(known.far, s)
-                if not finite(d) then d = math.huge end
-                if best == nil or d < bestD then best, bestD = s, d end
+    if type(prof) ~= "string" then return nil end
+    if type(known.nodes) == "table" then
+        for _, n in ipairs(known.nodes) do
+            if type(n) == "table" and n.prof == prof and share(n.x) and share(n.y) then
+                return { map = known.here.map, x = n.x, y = n.y }
             end
         end
     end
-    return best
+    local spots = call(known.spots, prof)
+    if type(spots) ~= "table" then return nil end
+    local list = {}
+    for _, c in ipairs(spots) do
+        if placed(c) then list[#list + 1] = c end
+    end
+    return onMap(list, known)
+end
+
+local function stationOf(known, kind, same)
+    if not PP.STATION_FAR[kind] then return nil end
+    local serves = type(N.PROF_STATION_SPOTS) == "table" and N.PROF_STATION_SPOTS[kind] or nil
+    if type(serves) ~= "table" then serves = { [kind] = true } end
+    local list = {}
+    if type(known.stations) == "table" then
+        for _, s in ipairs(known.stations) do
+            if type(s) == "table" and serves[s.kind] == true and placed(s) then
+                -- One on this map is the plan's own to point at.
+                if s.map == known.here.map then return nil end
+                list[#list + 1] = { name = tostring(s.kind), map = s.map, x = s.x, y = s.y }
+            end
+        end
+    end
+    return onContinent(list, known, same) or npcPlace(known, "trainer", PP.STATION_PROF, same)
 end
 
 function PP.Of(step, prof, known)
@@ -898,23 +997,199 @@ function PP.Of(step, prof, known)
     local to
     if kind == "trainer" then
         if step.npc ~= nil or type(prof) ~= "string" then return nil end
-        to = nearest(known, trainers(known, prof))
+        to = npcPlace(known, kind, prof, sameOf(known))
     elseif kind == "banker" or kind == "auction" then
-        to = nearest(known, services(known, kind))
+        to = npcPlace(known, kind, nil, sameOf(known))
     elseif kind == "node" then
         local what = step.gather
         if type(what) ~= "string" then what = prof end
         to = nodeOf(known, what)
     elseif kind == "station" then
-        to = stationOf(known, step.station)
+        to = stationOf(known, step.station, sameOf(known))
     end
     if not placed(to) then return nil end
     return { map = to.map, x = to.x, y = to.y }
 end
 
+-- The map of one of Questie's areas, or nil. Both ways of calling it.
+local function mapOf(zones, area)
+    if type(zones) ~= "table" or type(zones.GetUiMapIdByAreaId) ~= "function" then return nil end
+    local m = call(zones.GetUiMapIdByAreaId, area)
+    if type(m) == "number" then return m end
+    m = call(zones.GetUiMapIdByAreaId, zones, area)
+    if type(m) == "number" then return m end
+    return nil
+end
+
+-- Questie's spawns ({ [area] = { { x, y }, ... } }, x and y 0..100) as
+-- places { map, x, y }, at most max of them, areas in number order. only:
+-- the one map wanted, or nil for every map. A spot with no map the client
+-- can place, or off the map, is left out.
+local function spotsOf(zones, spawns, max, only)
+    local out = {}
+    if type(spawns) ~= "table" then return out end
+    local areas = {}
+    for area in pairs(spawns) do
+        if type(area) == "number" then areas[#areas + 1] = area end
+    end
+    table.sort(areas)
+    for _, area in ipairs(areas) do
+        local map = mapOf(zones, area)
+        local pts = spawns[area]
+        if map ~= nil and (only == nil or only == map) and type(pts) == "table" then
+            for i = 1, #pts do
+                local p = pts[i]
+                if #out < max and type(p) == "table" and finite(p[1]) and finite(p[2])
+                    and share(p[1] / 100) and share(p[2] / 100) then
+                    out[#out + 1] = { map = map, x = p[1] / 100, y = p[2] / 100 }
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- Is the bit of flag (a power of two) set in mask?
+local function flagged(mask, flag)
+    return math.floor(mask / flag) % 2 == 1
+end
+
+function PP.Scan(db, zones)
+    local found = { trainer = {}, banker = {}, auction = {} }
+    local n = 0
+    if type(db) ~= "table" or type(db.NPCPointers) ~= "table" then return found, n end
+    local bits = {}
+    for kind, name in pairs(PP.FLAG_NAME) do
+        local own = type(db.npcFlags) == "table" and db.npcFlags[name] or nil
+        if finite(own) and own > 0 then bits[kind] = own else bits[kind] = PP.FLAG[kind] end
+    end
+    local ids = {}
+    for id in pairs(db.NPCPointers) do
+        if type(id) == "number" then ids[#ids + 1] = id end
+    end
+    table.sort(ids)
+    for _, id in ipairs(ids) do
+        local lists = {}
+        local sub = call(db.QueryNPCSingle, id, "subName")
+        if type(sub) == "string" then
+            local prof = sub:match(PP.TRAINER_TITLE)
+            if prof ~= nil and N.PROF_NAMES[prof] then
+                found.trainer[prof] = found.trainer[prof] or {}
+                lists[#lists + 1] = found.trainer[prof]
+            end
+        end
+        local mask = call(db.QueryNPCSingle, id, "npcFlags")
+        if finite(mask) and mask > 0 then
+            if flagged(mask, bits.banker) then lists[#lists + 1] = found.banker end
+            if flagged(mask, bits.auction) then lists[#lists + 1] = found.auction end
+        end
+        if #lists > 0 then
+            local name = call(db.QueryNPCSingle, id, "name")
+            local spots = {}
+            if type(name) == "string" and name ~= "" then
+                spots = spotsOf(zones, call(db.QueryNPCSingle, id, "spawns"), PP.SPOTS, nil)
+            end
+            local side = call(db.QueryNPCSingle, id, "friendlyToFaction")
+            for _, spot in ipairs(spots) do
+                for _, list in ipairs(lists) do
+                    list[#list + 1] = { name = name, map = spot.map, x = spot.x, y = spot.y, side = side }
+                    n = n + 1
+                end
+            end
+        end
+    end
+    return found, n
+end
+
+-- The client's time, or nil when it has none (now() answers 0).
+local function nowOf(client)
+    local now = ask(client, "now")
+    if finite(now) and now > 0 then return now end
+    return nil
+end
+
+-- May state = { tries, last } ask again at now?
+local function due(state, now)
+    if state.tries >= PP.TRIES then return false end
+    if now and state.last and now >= state.last and now - state.last < PP.RETRY then return false end
+    return true
+end
+
+function PP.Questie()
+    local reader = {}
+    local found
+    local state = { tries = 0 }
+    local objects = {}
+
+    function reader.places(client)
+        if found then return found end
+        local now = nowOf(client)
+        if not due(state, now) then return nil end
+        local db = ask(client, "questieModule", "QuestieDB")
+        if type(db) ~= "table" then return nil end
+        local got, n = PP.Scan(db, ask(client, "questieModule", "ZoneDB"))
+        state.tries = state.tries + 1
+        state.last = now
+        if n > 0 or state.tries >= PP.TRIES then found = got end
+        return got
+    end
+
+    function reader.spots(client, ids, map)
+        local out = {}
+        if type(ids) ~= "table" or map == nil then return out end
+        for _, id in ipairs(ids) do
+            local o = objects[id]
+            if not o then
+                o = { tries = 0, maps = {} }
+                objects[id] = o
+            end
+            local now = nowOf(client)
+            if o.spawns == nil and due(o, now) then
+                local db = ask(client, "questieModule", "QuestieDB")
+                if type(db) == "table" then
+                    o.tries = o.tries + 1
+                    o.last = now
+                    local spawns = call(db.QueryObjectSingle, id, "spawns")
+                    if type(spawns) == "table" then o.spawns = spawns end
+                end
+            end
+            if o.spawns ~= nil then
+                local list = o.maps[map]
+                if not list then
+                    list = spotsOf(ask(client, "questieModule", "ZoneDB"), o.spawns, PP.NODE_SPOTS, map)
+                    o.maps[map] = list
+                end
+                for i = 1, #list do out[#out + 1] = list[i] end
+            end
+        end
+        return out
+    end
+
+    return reader
+end
+
+-- The object ids of the nodes of prof this account gathered, on any map.
+local function nodeIds(store, prof)
+    local all = saved(store, "account", PP.NODES_PATH)
+    local ids, has = {}, {}
+    if type(all) ~= "table" then return ids end
+    for _, list in pairs(all) do
+        if type(list) == "table" then
+            for _, e in ipairs(list) do
+                if type(e) == "table" and e.prof == prof and finite(e.id) and not has[e.id] then
+                    has[e.id] = true
+                    ids[#ids + 1] = e.id
+                end
+            end
+        end
+    end
+    table.sort(ids)
+    return ids
+end
+
 function PP.From(client, store, use, kind, reads)
     if type(reads) ~= "table" then reads = {} end
-    local known = { capitals = N.GATE_WALLED, contOf = reads.contOf, far = reads.far }
+    local known = { contOf = reads.contOf, far = reads.far }
     local at = ask(client, "position")
     if type(at) == "table" and at.map ~= nil and share(at.x) and share(at.y) then
         known.here = { map = at.map, x = at.x, y = at.y, faction = text(ask(client, "faction")) }
@@ -923,8 +1198,10 @@ function PP.From(client, store, use, kind, reads)
             known.here.size = { w = size.w, h = size.h }
         end
     end
-    if kind == "trainer" or kind == "banker" or kind == "auction" then
+    local q = type(reads.questie) == "table" and reads.questie or nil
+    if kind == "trainer" or kind == "banker" or kind == "auction" or kind == "station" then
         known.npcs = saved(store, "account", PP.NPCS)
+        if q then known.questie = function() return call(q.places, client) end end
     end
     if kind == "banker" or kind == "auction" then
         known.services = saved(store, "char", N.SERVICES or "learned.places.services")
@@ -939,6 +1216,9 @@ function PP.From(client, store, use, kind, reads)
             for _, r in ipairs(list) do
                 if type(r) == "table" and type(r.node) == "table" then known.nodes[#known.nodes + 1] = r.node end
             end
+        end
+        if q and known.here then
+            known.spots = function(prof) return call(q.spots, client, nodeIds(store, prof), known.here.map) end
         end
     end
     return known
