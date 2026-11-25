@@ -252,7 +252,16 @@ function K.New(opts)
 
         -- D-04: the handler's rows, its code once, and its driver when the
         -- condition changed. Asked before each call, as the button's sets.
-        if #failed == 0 and handler and attrs and type(attrs.header) == "table" then
+        -- Lazy's CHANGES (lead section 737), as Flow Cast.lua :921-926: with
+        -- no plan, every row the handler holds is written "" (the header is
+        -- empty), so nothing left over is copied onto the key in a fight.
+        local header = nil
+        if attrs and type(attrs.header) == "table" then
+            header = attrs.header
+        elseif wanted == nil then
+            header = {}
+        end
+        if #failed == 0 and handler and header then
             local function call(name, ...)
                 lock = lockdown()
                 if lock ~= false then return "wait" end
@@ -264,12 +273,12 @@ function K.New(opts)
                 end
                 return true
             end
-            if not handlerCode and type(handler.snippet) == "function" then
+            if wanted ~= nil and not handlerCode and type(handler.snippet) == "function" then
                 local got = call("snippet", C.FORM_SNIPPET)
                 if got == "wait" then return waiting(true, { form = form, formRead = formRead }) end
                 if got == true then handlerCode = true else failed[#failed + 1] = { attr = "snippet", why = got } end
             end
-            for _, row in ipairs(attrs.header) do
+            for _, row in ipairs(header) do
                 if #failed == 0 and handlerHeld[row.attr] ~= row.value and type(handler.setAttribute) == "function" then
                     parts = parts + 1
                     local got = call("setAttribute", row.attr, row.value)
@@ -281,7 +290,7 @@ function K.New(opts)
             -- D-04 CHANGES (Flow Cast.lua :921-926): a row held before that
             -- this header no longer gives is written "", so nothing is left.
             local given = {}
-            for _, row in ipairs(attrs.header) do given[row.attr] = true end
+            for _, row in ipairs(header) do given[row.attr] = true end
             local stale = {}
             for attr, value in pairs(handlerHeld) do
                 if not given[attr] and value ~= "" then stale[#stale + 1] = attr end
@@ -297,7 +306,7 @@ function K.New(opts)
                 end
             end
             local cond = nil
-            if type(attrs.driver) == "table" then cond = attrs.driver.condition end
+            if attrs and type(attrs.driver) == "table" then cond = attrs.driver.condition end
             if #failed == 0 and type(cond) == "string" and cond ~= handlerCond and type(handler.driver) == "function" then
                 parts = parts + 1
                 local got = call("driver", cond)
