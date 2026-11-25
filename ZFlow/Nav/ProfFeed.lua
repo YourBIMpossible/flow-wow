@@ -68,8 +68,13 @@ local _, ns = ...
 --
 -- Module F.Declare(k, diag): setting F.SETTING (account, on by default,
 -- group "professions"; the "Professions" tick of the route menu), provides
--- { Step, Off, Lines }; Nav/ProfStep.lua's step asks it first. The word
--- "prof" ("prof plan").
+-- { Step, Off, Lines, Place }; Nav/ProfStep.lua's step asks it first. The
+-- word "prof" ("prof plan").
+--   Place(step, prof) -> { name, map, x, y }, from or nil: N.ProfPlace.Pick
+--   with this module's reads and its one Questie reader, for another
+--   module's step in words (Nav/WeaponMasterStep.lua), whatever the
+--   Professions tick says. Like every ask, it reads nothing of Questie
+--   itself: the scan is this module's tick, out of combat.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
@@ -502,8 +507,9 @@ function F.Declare(k, diag)
 
     -- The nearest known place for a step in words (Nav/ProfStep.lua,
     -- N.ProfPlace), or nil. It reads only what the step needs.
+    -- named: N.ProfPlace.Pick's answer (the name, and where from) instead.
     local questie
-    local function place(step, prof)
+    local function place(step, prof, named)
         local PP = N.ProfPlace
         if not ctx or type(PP) ~= "table" or type(PP.Of) ~= "function" or type(PP.From) ~= "function" then
             return nil
@@ -513,7 +519,10 @@ function F.Declare(k, diag)
         -- The reader of the player's Questie: one for the session, so its
         -- scan is done once and kept (N.ProfPlace.Questie).
         if questie == nil and type(PP.Questie) == "function" then questie = PP.Questie() end
-        return PP.Of(step, prof, PP.From(ctx.client, ctx.store, ctx.use, kind,
+        local of = PP.Of
+        if named then of = PP.Pick end
+        if type(of) ~= "function" then return nil end
+        return of(step, prof, PP.From(ctx.client, ctx.store, ctx.use, kind,
             { contOf = contOf, far = cost, questie = questie }))
     end
 
@@ -601,7 +610,11 @@ function F.Declare(k, diag)
     k:Module({
         name = F.NAME,
         needs = { "client", "store", "settings" },
-        provides = { Step = api.step, Off = api.off, Lines = api.lines },
+        provides = { Step = api.step, Off = api.off, Lines = api.lines,
+                     Place = function(step, prof)
+                         if type(step) ~= "table" then return nil end
+                         return place(step, prof, true)
+                     end },
         ticks = {
             { every = F.PIN_EVERY, when = "always", run = function() api.pin() end },
             -- Lead section 564: the Questie read is spread over frames and
