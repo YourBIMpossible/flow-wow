@@ -132,26 +132,39 @@ function Prices.Forget(book, key, kind)
     return true
 end
 
--- Copper as text: "1g 2s 3c", leaving out the parts that are zero ("5s",
--- "1g 3c"); "0c" for nothing, and "under 1c" for anything more than
--- nothing that is less than one copper (the price of one out of a stack):
--- never "0c" for a price that is not zero. nil when `copper` is not a count.
--- This is the one money text of the Items surfaces (A5): the price texts
--- here, the sell list, the plan and the price lookup all call it, so a
--- change to how money reads is made once. Each part is written as plain
--- digits, however large the sum: never "2e+14g".
+-- Copper as short text, about three figures in its biggest coin (E-49,
+-- lead section 674, Flow's Modules/Money.lua:17-34):
+--   52c, 5.52s, 45.5s, 1.36g, 13.6g, 124g, 1240g
+-- Rounded to the nearest; under a silver it is exact copper, past 99 gold
+-- it is whole gold, and 99s 99c and up rounds to "1g". "0c" for nothing,
+-- and "under 1c" for anything more than nothing that is less than one
+-- copper (the price of one out of a stack): never "0c" for a price that is
+-- not zero. nil when `copper` is not a count. This is the one money text
+-- of Z-Flow (A5): every surface that shows money calls it, so a change to
+-- how money reads is made once. Plain digits however large: never "2e+14g".
 function Prices.Coin(copper)
     if not isCount(copper) then return nil end
     if copper > 0 and copper < 1 then return "under 1c" end
     copper = math.floor(copper + 0.5)
-    local g = math.floor(copper / 10000)
-    local s = math.floor((copper % 10000) / 100)
-    local c = copper % 100
-    local parts = {}
-    if g > 0 then parts[#parts + 1] = string.format("%.0f", g) .. "g" end
-    if s > 0 then parts[#parts + 1] = string.format("%.0f", s) .. "s" end
-    if c > 0 or #parts == 0 then parts[#parts + 1] = string.format("%.0f", c) .. "c" end
-    return table.concat(parts, " ")
+    if copper < 100 then return string.format("%.0f", copper) .. "c" end
+    local unit, size = "s", 100
+    if copper >= 10000 then unit, size = "g", 10000 end
+    local v = copper / size
+    local places = 0
+    if v < 10 then
+        places = 2
+    elseif v < 100 then
+        places = 1
+    end
+    local scale = 10 ^ places
+    v = math.floor(v * scale + 0.5) / scale
+    if unit == "s" and v >= 100 then return "1g" end
+    local text = string.format("%." .. places .. "f", v)
+    if places > 0 then
+        text = (text:gsub("0+$", ""))
+        text = (text:gsub("%.$", ""))
+    end
+    return text .. unit
 end
 
 -- The price for the player to read.

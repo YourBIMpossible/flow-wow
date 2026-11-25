@@ -167,11 +167,11 @@ end
 tests["R2: the tooltip line says how long ago the deal was seen"] = function(t)
     local row = { kind = "resell", qty = 2, cost = 300, usual = 400, at = 1000 }
     t.eq({ T.TipLine(row, coin, 1000 + 120) },
-        { "Deal: listed at 1s 50c each, usually 4s (seen 2 min ago)", 1, 0.82, 0 })
+        { "Deal: listed at 1.5s each, usually 4s (seen 2 min ago)", 1, 0.82, 0 })
     local v = { kind = "vendor", qty = 1, cost = 100, limit = 150, at = 1000 }
-    t.eq(T.TipLine(v, coin, 1000 + 3 * 3600), "Deal: listed at 1s each, under a vendor's 1s 50c (seen 3 h ago)")
-    t.eq(T.TipLine(v, coin), "Deal: listed at 1s each, under a vendor's 1s 50c", "no time: no age")
-    t.eq(T.TipLine(v, coin, 999), "Deal: listed at 1s each, under a vendor's 1s 50c", "a time before the deal: no age")
+    t.eq(T.TipLine(v, coin, 1000 + 3 * 3600), "Deal: listed at 1s each, under a vendor's 1.5s (seen 3 h ago)")
+    t.eq(T.TipLine(v, coin), "Deal: listed at 1s each, under a vendor's 1.5s", "no time: no age")
+    t.eq(T.TipLine(v, coin, 999), "Deal: listed at 1s each, under a vendor's 1.5s", "a time before the deal: no age")
 end
 
 tests["R2: the item tooltip shows the age"] = function(t)
@@ -179,7 +179,7 @@ tests["R2: the item tooltip shows the age"] = function(t)
     c.auctionRows(2589, LINEN_ROWS)
     c.setClock(5000 + 180)
     t.eq(c.showItemTooltip(2589),
-        { { text = "Deal: listed at 1s 50c each, usually 4s (seen 3 min ago)", r = 1, g = 0.82, b = 0 } })
+        { { text = "Deal: listed at 1.5s each, usually 4s (seen 3 min ago)", r = 1, g = 0.82, b = 0 } })
 end
 
 -- ------------------------------------------------------------------ R7

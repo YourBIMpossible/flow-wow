@@ -94,7 +94,7 @@ local function advisory(t, s)
 end
 
 tests["trader: a deal's line"] = function(t)
-    t.eq(T.Line(VENDOR, coin), "3 x Silk Cloth for 3s: a vendor pays 4s 50c  |cff40ff40+1s 50c|r")
+    t.eq(T.Line(VENDOR, coin), "3 x Silk Cloth for 3s: a vendor pays 4.5s  |cff40ff40+1.5s|r")
     t.eq(T.Line(RESELL, coin), "20 x Linen Cloth for 30s: usually 4s each  |cffffd100about +46s|r")
     advisory(t, T.Line(VENDOR, coin))
     advisory(t, T.Line(RESELL, coin))
@@ -103,7 +103,7 @@ end
 
 tests["trader: a deal's tooltip text is advice, with no word of paying"] = function(t)
     local v = T.TipLines(VENDOR, coin)
-    t.eq(v, { "Listed under what a vendor pays (1s 50c each). Buy it, sell it to any vendor: the gain is certain." })
+    t.eq(v, { "Listed under what a vendor pays (1.5s each). Buy it, sell it to any vendor: the gain is certain." })
     local r = T.TipLines(RESELL, coin)
     t.eq(r, {
         "Listed at half or less of its usual price here (4s each, from your own searches). "
@@ -115,8 +115,8 @@ tests["trader: a deal's tooltip text is advice, with no word of paying"] = funct
 end
 
 tests["trader: the one line on an item's tooltip"] = function(t)
-    t.eq({ T.TipLine(VENDOR, coin) }, { "Deal: listed at 1s each, under a vendor's 1s 50c", 0.25, 1, 0.25 })
-    t.eq({ T.TipLine(RESELL, coin) }, { "Deal: listed at 1s 50c each, usually 4s", 1, 0.82, 0 })
+    t.eq({ T.TipLine(VENDOR, coin) }, { "Deal: listed at 1s each, under a vendor's 1.5s", 0.25, 1, 0.25 })
+    t.eq({ T.TipLine(RESELL, coin) }, { "Deal: listed at 1.5s each, usually 4s", 1, 0.82, 0 })
     t.eq(T.TipLine(nil, coin), nil)
     t.eq(T.TipLine({ kind = "resell", qty = 0, cost = 0 }, coin), nil, "nothing listed: no line")
 end
@@ -170,7 +170,7 @@ tests["trader module: a listing under the vendor needs no price history"] = func
     local _, c, api = start()
     local before = #c.printed
     c.auctionRows(4306, { { unit = 100, qty = 3 }, { unit = 150, qty = 9 }, { unit = 90 }, { qty = 4 } })
-    t.eq(c.printed[before + 1], "Deal: 3 x |cffffffffSilk Cloth|r for 3s: a vendor pays 4s 50c  |cff40ff40+1s 50c|r",
+    t.eq(c.printed[before + 1], "Deal: 3 x |cffffffffSilk Cloth|r for 3s: a vendor pays 4.5s  |cff40ff40+1.5s|r",
         "a row without a count or without a price is passed over")
     t.eq(api.deals()[1].kind, "vendor")
 end
@@ -210,7 +210,7 @@ tests["trader module: the word lists the session's deals and buys nothing"] = fu
     t.eq(c.printed[before + 1], title .. " Trader: 2 deal(s) from your searches this session")
     t.eq(c.printed[before + 2], RULES)
     t.eq(c.printed[before + 3], "  20 x Linen Cloth for 30s: usually 4s each  about +46s", "the larger gain first")
-    t.eq(c.printed[before + 4], "  3 x Silk Cloth for 3s: a vendor pays 4s 50c  +1s 50c")
+    t.eq(c.printed[before + 4], "  3 x Silk Cloth for 3s: a vendor pays 4.5s  +1.5s")
     t.eq(c.printed[before + 5], "Buying is yours, in the auction window: " .. title .. " buys nothing.")
     t.eq(#c.printed, before + 5)
 end
@@ -242,9 +242,9 @@ tests["trader module: an item in the session's list says so on its tooltip"] = f
     t.eq(c.showItemTooltip(2589), {}, "no deal seen: no line")
     c.auctionRows(2589, LINEN_ROWS)
     c.auctionRows(4306, { { unit = 100, qty = 3 } })
-    t.eq(c.showItemTooltip(2589), { { text = "Deal: listed at 1s 50c each, usually 4s (seen 0 min ago)", r = 1, g = 0.82, b = 0 } })
+    t.eq(c.showItemTooltip(2589), { { text = "Deal: listed at 1.5s each, usually 4s (seen 0 min ago)", r = 1, g = 0.82, b = 0 } })
     t.eq(c.showItemTooltip(4306),
-        { { text = "Deal: listed at 1s each, under a vendor's 1s 50c (seen 0 min ago)", r = 0.25, g = 1, b = 0.25 } })
+        { { text = "Deal: listed at 1s each, under a vendor's 1.5s (seen 0 min ago)", r = 0.25, g = 1, b = 0.25 } })
     t.eq(c.showItemTooltip(858), {}, "another item: no line")
     c.auctionRows(2589, { { unit = 300, qty = 5 } })
     t.eq(c.showItemTooltip(2589), {}, "no longer a deal: no line")

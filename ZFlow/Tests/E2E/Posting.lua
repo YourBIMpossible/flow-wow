@@ -11,7 +11,7 @@ local _, ns = ...
 --
 -- The numbers: one look at 50s for a grey fang the vendor pays 4c for.
 -- Ask = 50s less one silver = 49s; gain for 2 = (4900 * 0.95 - 4) * 2 =
--- 9302c = 93s 2c.
+-- 9302c = 93s.
 
 local tests = {}
 
@@ -68,7 +68,7 @@ end
 
 local FOOT = "Posting is yours, in the auction window: " .. ns.id.title .. " posts nothing."
 local FANG_ROW = "2 x Broken Fang: ask 49s each (seen 50s, 0 min ago; a vendor pays 4c;"
-    .. " about +93s 2c over vendoring, the deposit not counted)"
+    .. " about +93s over vendoring, the deposit not counted)"
 
 local function noneActs(t, c)
     t.eq(#c.soldSlots, 0, "nothing sold")
