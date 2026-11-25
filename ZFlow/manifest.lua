@@ -372,5 +372,7 @@ return {
     "UI/MapRouteLines.lua",
     -- C-30, C-31: bag upgrades as advice and the gear check word (after TooltipModule, whose gear word it keeps, and the advisor).
     "Gear/BagUpgrades.lua",
+    -- E-27: the inventory word, every bag item with its verdict (after SellList, Reservations, Diag).
+    "UI/InventoryList.lua",
     },
 }
