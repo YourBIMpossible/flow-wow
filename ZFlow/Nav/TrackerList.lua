@@ -16,7 +16,8 @@ local _, ns = ...
 --   TL.Count(stop) -> "2/8" | nil
 --   TL.Rows(view, here[, max]) -> rows, more, nLeft | nil
 --     rows: { label, kind, count, detail, dist, held (why) | nil,
---             current = true on the first step not held }, in route order,
+--             current = true on the first step not held }: the steps not
+--     held in route order, then the held ones (no distance: not walked),
 --     at most max (TL.MAX); more: how many route steps are left out.
 --     Then, in the rows left over, the steps that can't be placed
 --     (View().left): { label, kind, detail, left = why }, no distance, never
@@ -55,29 +56,45 @@ function TL.Rows(view, here, max)
     if type(left) ~= "table" then left = {} end
     if #stops == 0 and #left == 0 then return nil end
     max = tonumber(max) or TL.MAX
+    -- Lead section 770: the walked steps first, then the held ones, as
+    -- Flow's tracker lists its plan and then its blocked goals (a held step
+    -- is not in Flow's plan). The legs are the walked steps' own.
+    local walked, held = {}, {}
+    for _, s in ipairs(stops) do
+        if type(s) == "table" and s.held ~= nil then
+            held[#held + 1] = s
+        else
+            walked[#walked + 1] = s
+        end
+    end
     local dists = {}
     local T = N.Trip
-    if type(T) == "table" and type(T.TrackRows) == "function" then
-        local ok, got = pcall(T.TrackRows, view, here)
+    if #walked > 0 and type(T) == "table" and type(T.TrackRows) == "function" then
+        local ok, got = pcall(T.TrackRows, { stops = walked }, here)
         if ok and type(got) == "table" then
             for i, r in ipairs(got) do dists[i] = r.dist end
         end
     end
-    local rows, now = {}, false
-    for i, s in ipairs(stops) do
-        if i > max then break end
+    local rows = {}
+    local function add(s, dist)
         local label = "?"
         if type(s) == "table" and s.label ~= nil then label = s.label end
-        local row = { label = tostring(label), kind = TL.Kind(s), count = TL.Count(s), dist = dists[i] }
+        local row = { label = tostring(label), kind = TL.Kind(s), count = TL.Count(s), dist = dist }
         if type(s) == "table" then
             row.detail = s.detail
             if s.held ~= nil then row.held = tostring(s.held) end
         end
-        if not now and row.held == nil then
-            row.current = true
-            now = true
-        end
         rows[#rows + 1] = row
+        return row
+    end
+    for i, s in ipairs(walked) do
+        if #rows >= max then break end
+        local row = add(s, dists[i])
+        if i == 1 then row.current = true end
+    end
+    for _, s in ipairs(held) do
+        if #rows >= max then break end
+        add(s, nil)
     end
     for _, l in ipairs(left) do
         if #rows >= max then break end
