@@ -2307,29 +2307,6 @@ function ns.make.fakeClient(opts)
     c.crafts = {}
     local craftFails
     function c.setCraftFails(why) craftFails = why end
-    -- E-57 (Items/CraftProgress.lua), two CLIENT NEEDs stubbed here only;
-    -- Core/Client.lua does not have them yet.
-    --   c.ownCastSeconds() -> the length of the cast the player is making
-    --     now, in seconds, or nil; setOwnCastSeconds(n or nil) sets it.
-    --   c.onCraftStarted(fn) -> cancel: fn(id, count, name) when the game's
-    --     own craft call is made; craftStarted(id, count, name) plays one.
-    function c.setOwnCastSeconds(n) s.ownCastSeconds = n end
-    function c.ownCastSeconds() return s.ownCastSeconds end
-    local craftStartedFns = {}
-    function c.onCraftStarted(fn)
-        if type(fn) ~= "function" then return nil end
-        craftStartedFns[#craftStartedFns + 1] = fn
-        return function()
-            for i = #craftStartedFns, 1, -1 do
-                if craftStartedFns[i] == fn then table.remove(craftStartedFns, i) end
-            end
-        end
-    end
-    function c.craftStarted(id, count, name)
-        local list = {}
-        for i = 1, #craftStartedFns do list[i] = craftStartedFns[i] end
-        for i = 1, #list do list[i](id, count, name) end
-    end
     -- Section 240, the repeat runner: setCraftRepeat(seconds) makes each
     -- craft asked with a repeat count n finish n times by itself, one
     -- UNIT_SPELLCAST_SUCCEEDED ("player", a cast guid, the recipe) each
@@ -5014,6 +4991,38 @@ do
             local out = {}
             for name, rank in pairs(ranks) do out[name] = rank end
             return out
+        end
+        return c
+    end
+end
+
+-- § E-57 (Items/CraftProgress.lua; lead sections 660, 663 and 664): two
+-- CLIENT NEEDs, stubbed here only. Core/Client.lua does not have them yet.
+--   c.ownCastSeconds() -> the length of the cast the player is making now,
+--     in seconds, or nil; c.setOwnCastSeconds(n or nil) sets it.
+--   c.onCraftStarted(fn) -> cancel: fn(id, count, name) when the game's own
+--     craft call is made; c.craftStarted(id, count, name) plays one.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local castSeconds = nil
+        function c.setOwnCastSeconds(n) castSeconds = n end
+        function c.ownCastSeconds() return castSeconds end
+        local started = {}
+        function c.onCraftStarted(fn)
+            if type(fn) ~= "function" then return nil end
+            started[#started + 1] = fn
+            return function()
+                for i = #started, 1, -1 do
+                    if started[i] == fn then table.remove(started, i) end
+                end
+            end
+        end
+        function c.craftStarted(id, count, name)
+            local list = {}
+            for i = 1, #started do list[i] = started[i] end
+            for i = 1, #list do list[i](id, count, name) end
         end
         return c
     end
