@@ -197,11 +197,13 @@ function Z.Declare(k)
         if ctx and type(ctx.bus) == "table" then ctx.bus:emit(Z.EVENT, map) end
     end
 
+    -- On only on a plain true (lead section 661): a setting that is off,
+    -- not set or cannot be read is off.
     local function on()
         local s = ctx and ctx.settings
-        if type(s) ~= "table" or type(s.get) ~= "function" then return true end
+        if type(s) ~= "table" or type(s.get) ~= "function" then return false end
         local ok, v = pcall(s.get, s, Z.SETTING)
-        return not (ok and v == false)
+        return ok and v == true
     end
 
     local function saved(path)
@@ -329,7 +331,9 @@ function Z.Declare(k)
         put(Z.Build(zone, name, list, info))
     end
 
-    k:Setting({ key = Z.SETTING, scope = "account", type = "bool", default = true,
+    -- OFF as made (lead sections 659 and 661): until the bar is drawn and
+    -- seen in game the player switches it on.
+    k:Setting({ key = Z.SETTING, scope = "account", type = "bool", default = false,
         label = "Say when a zone has no quests in your level range", group = "travel.route",
         help = "After 30 seconds in a zone where Questie shows no quests in your level range and none of your quests has a step, a notice names a zone on this continent that has some. Quest chains, reputation and skill are not checked. It changes nothing.",
         synonyms = { "zone", "quests", "notice", "level" } })
