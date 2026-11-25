@@ -11,8 +11,13 @@ local _, ns = ...
 -- ctx.questName(id), ctx.spellName(id). Nothing is said from a list of
 -- Flow's.
 --
---   SN.Why(q, ctx) -> nil (not locked, or it cannot be told)
---                   | { kind = "quest" | "spell", id, text }
+--   SN.Why(q, ctx) -> why, state
+--     why:   { kind = "quest" | "spell", id, text } when locked, else nil
+--     state: SN.UNKNOWN when why is nil because a need could not be told
+--            (the game gave no answer for an earlier quest or the spell),
+--            else nil. Lead section 680: a caller only ADDS a reason when
+--            there is one; it never turns nil into "not locked" (owner
+--            section 611), and with SN.UNKNOWN it may say it cannot tell.
 --     q:   a Questie quest ({ Id, preQuestGroup, preQuestSingle, requiredSpell })
 --     ctx: { done = fn(id) -> true | false | nil (not known),
 --            log = { [id] = true }, questName = fn(id) -> name | nil,
@@ -21,7 +26,8 @@ local _, ns = ...
 --     An earlier quest is looked at before the spell. A quest or a spell the
 --     game does not answer for (nil) never holds a step: the same rule as
 --     Nav/RoutePickups.lua P.Candidate, so the two cannot disagree.
---   SN.Line(label, why) -> "label (after ...)" or the label alone
+--   SN.Line(label, why) -> "label (after ...)", the label alone, or with no
+--     label the reason alone (or "")
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 local SN = {}
@@ -32,6 +38,7 @@ SN.IN_LOG = " (in your log)"
 SN.A_QUEST = "an earlier quest"
 SN.LEARN = "after you learn %s"
 SN.A_SPELL = "a spell"
+SN.UNKNOWN = "unknown"
 
 local function list(v)
     if type(v) == "table" then return v end
@@ -54,37 +61,52 @@ end
 
 function SN.Why(q, ctx)
     if type(q) ~= "table" or type(ctx) ~= "table" then return nil end
+    local unknown = false
     for _, id in ipairs(list(q.preQuestGroup)) do
-        if call(ctx.done, id) == false then
+        local done = call(ctx.done, id)
+        if done == false then
             return { kind = "quest", id = id, text = SN.AFTER:format(questWords(ctx, id)) }
         end
+        if done == nil then unknown = true end
     end
     local single = list(q.preQuestSingle)
     if #single > 0 then
-        local any, names = false, {}
+        local met, open, names = false, false, {}
         for _, id in ipairs(single) do
-            if call(ctx.done, id) == false then
+            local done = call(ctx.done, id)
+            if done == false then
                 names[#names + 1] = questWords(ctx, id)
+            elseif done == true then
+                met = true
             else
-                any = true
+                open = true
             end
         end
-        if not any then
+        if not met and not open then
             return { kind = "quest", id = single[1], text = SN.AFTER:format(table.concat(names, " or ")) }
         end
+        if not met then unknown = true end
     end
     local spell = tonumber(q.requiredSpell)
-    if spell and spell > 0 and call(ctx.spellKnown, spell) == false then
-        local name = call(ctx.spellName, spell)
-        if type(name) ~= "string" or name == "" then name = SN.A_SPELL end
-        return { kind = "spell", id = spell, text = SN.LEARN:format(name) }
+    if spell and spell > 0 then
+        local known = call(ctx.spellKnown, spell)
+        if known == false then
+            local name = call(ctx.spellName, spell)
+            if type(name) ~= "string" or name == "" then name = SN.A_SPELL end
+            return { kind = "spell", id = spell, text = SN.LEARN:format(name) }
+        end
+        if known == nil then unknown = true end
     end
+    if unknown then return nil, SN.UNKNOWN end
     return nil
 end
 
 function SN.Line(label, why)
+    local text = ""
+    if label ~= nil then text = tostring(label) end
     if type(why) == "table" and type(why.text) == "string" then
-        return tostring(label) .. " (" .. why.text .. ")"
+        if text == "" then return why.text end
+        return text .. " (" .. why.text .. ")"
     end
-    return tostring(label)
+    return text
 end

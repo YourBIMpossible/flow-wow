@@ -22,19 +22,19 @@ local function ctx(done, known, log)
 end
 
 tests["step needs: a quest with nothing before it is not locked"] = function(t)
-    t.eq(SN().Why({ Id = 1 }, ctx({}, {})), nil)
-    t.eq(SN().Why(nil, ctx({}, {})), nil)
+    t.eq((SN().Why({ Id = 1 }, ctx({}, {}))), nil)
+    t.eq((SN().Why(nil, ctx({}, {}))), nil)
 end
 
 tests["step needs: every quest of a group must be done; the first not done is named"] = function(t)
     local q = { Id = 1, preQuestGroup = { 10, 11 } }
-    t.eq(SN().Why(q, ctx({ [10] = true, [11] = false }, {})), { kind = "quest", id = 11, text = SN().AFTER:format("First Part") })
-    t.eq(SN().Why(q, ctx({ [10] = true, [11] = true }, {})), nil)
+    t.eq((SN().Why(q, ctx({ [10] = true, [11] = false }, {}))), { kind = "quest", id = 11, text = SN().AFTER:format("First Part") })
+    t.eq((SN().Why(q, ctx({ [10] = true, [11] = true }, {}))), nil)
 end
 
 tests["step needs: one of several earlier quests is enough"] = function(t)
     local q = { Id = 1, preQuestSingle = { 11, 12 } }
-    t.eq(SN().Why(q, ctx({ [11] = false, [12] = true }, {})), nil)
+    t.eq((SN().Why(q, ctx({ [11] = false, [12] = true }, {}))), nil)
     local why = SN().Why(q, ctx({ [11] = false, [12] = false }, {}))
     t.eq(why and why.text, SN().AFTER:format("First Part or Other Part"))
 end
@@ -50,18 +50,18 @@ tests["step needs: an earlier quest with no name is still said"] = function(t)
 end
 
 tests["step needs: whether a quest is done not known: not held"] = function(t)
-    t.eq(SN().Why({ Id = 1, preQuestGroup = { 10 } }, ctx({}, {})), nil)
+    t.eq((SN().Why({ Id = 1, preQuestGroup = { 10 } }, ctx({}, {}))), nil)
 end
 
 tests["step needs: a spell you do not know is named; one you know, or not known, does not hold"] = function(t)
     local q = { Id = 1, requiredSpell = 500 }
-    t.eq(SN().Why(q, ctx({}, { [500] = false })), { kind = "spell", id = 500, text = SN().LEARN:format("Bear Form") })
-    t.eq(SN().Why(q, ctx({}, { [500] = true })), nil)
-    t.eq(SN().Why(q, ctx({}, {})), nil, "the game cannot say: not held")
+    t.eq((SN().Why(q, ctx({}, { [500] = false }))), { kind = "spell", id = 500, text = SN().LEARN:format("Bear Form") })
+    t.eq((SN().Why(q, ctx({}, { [500] = true }))), nil)
+    t.eq((SN().Why(q, ctx({}, {}))), nil, "the game cannot say: not held")
     local why = SN().Why({ Id = 1, requiredSpell = 501 }, ctx({}, { [501] = false }))
     t.eq(why and why.text, SN().LEARN:format(SN().A_SPELL))
-    t.eq(SN().Why({ Id = 1, requiredSpell = 0 }, ctx({}, {})), nil)
-    t.eq(SN().Why({ Id = 1, requiredSpell = -500 }, ctx({}, { [500] = false })), nil, "a spell you must not have is not a need")
+    t.eq((SN().Why({ Id = 1, requiredSpell = 0 }, ctx({}, {}))), nil)
+    t.eq((SN().Why({ Id = 1, requiredSpell = -500 }, ctx({}, { [500] = false }))), nil, "a spell you must not have is not a need")
 end
 
 tests["step needs: the earlier quest comes before the spell"] = function(t)
