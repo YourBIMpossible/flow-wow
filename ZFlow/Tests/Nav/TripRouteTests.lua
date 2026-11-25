@@ -141,4 +141,37 @@ tests["trip route: the route list says the need line in place of the raw count"]
     t.eq(lines[2], "> 1. Paws - You still need 4 of Gnoll Paw. - 50 yd - under a minute")
 end
 
+-- B-42 (lead section 843.2): the quest route goes through the party
+-- route's Filter, as Flow's PartyHelp.lua H.Keep (:381-399) is applied to
+-- the route. T.PartyKeep(k) is that filter, or nil when there is no party
+-- route; a filter that errors keeps every step. Fails before: no PartyKeep.
+tests["trip route B-42: the route's steps go through the party route's filter"] = function(t)
+    t.eq(type(T().PartyKeep), "function")
+    if type(T().PartyKeep) ~= "function" then return end
+    local rows = { row(1, "Boars", { "Boars: 0/4" }), row(2, "Wolves", { "Wolves: 0/4" }) }
+    local places = { [1] = { objectives = { [1] = pts({ 0.6, 0.5 }) } },
+                     [2] = { objectives = { [1] = pts({ 0.4, 0.5 }) } } }
+    local onlyOne = { use = function(name)
+        if name ~= "partyRoute" then return nil end
+        return { Filter = function(steps)
+            local out = {}
+            for _, st in ipairs(steps) do if st.quest == 1 then out[#out + 1] = st end end
+            return out
+        end }
+    end }
+    local route = T().Plan(rows, places, HERE, nil, nil, nil, T().PartyKeep(onlyOne))
+    t.ok(type(route) == "table", "planned")
+    local quests = {}
+    if type(route) == "table" then
+        for _, s in ipairs(route.stops) do quests[#quests + 1] = s.quest end
+    end
+    t.eq(quests, { 1 }, "only the covered quest's step")
+    t.eq(T().PartyKeep({ use = function() return nil end }), nil, "no party route: no filter")
+    t.eq(T().PartyKeep(nil), nil)
+    local broken = T().PartyKeep({ use = function() return { Filter = function() error("x") end } end })
+    local all = T().Plan(rows, places, HERE, nil, nil, nil, broken)
+    t.ok(type(all) == "table", "planned with a broken filter")
+    if type(all) == "table" then t.eq(#all.stops, 2, "a filter that errors keeps every step") end
+end
+
 return tests
