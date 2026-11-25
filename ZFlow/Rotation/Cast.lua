@@ -289,8 +289,11 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     if type(suggestion) == "table" and suggestion.look == true then suggestion = nil end
     -- D-24: a unit that is no one's but a group buff's or cure's party
     -- member is refused: the key holds its plan.
+    -- A heal, an emergency or your own buff that names another player is
+    -- not refused: it falls through to the player rule below (on you).
     if type(suggestion) == "table" and type(suggestion.unit) == "string" and not C.UNITS[suggestion.unit]
-        and not (C.GROUP_KINDS[suggestion.kind] and C.PARTY[suggestion.unit]) then
+        and not (C.GROUP_KINDS[suggestion.kind] and C.PARTY[suggestion.unit])
+        and not C.ON_YOU[suggestion.kind] then
         if suggestion.unit:find("^party") or suggestion.unit:find("^raid") then suggestion = nil end
     end
 

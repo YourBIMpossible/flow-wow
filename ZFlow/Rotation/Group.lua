@@ -539,6 +539,9 @@ function G.Declare(k)
                 .. "on them your spells can remove, with the spell. It casts nothing; your key is unchanged.",
             group = "party", synonyms = { "group", "party", "buffs", "blessing", "mark of the wild", "fortitude", "cure" },
         }, {
+            -- D-24: a new row, on as made (as Flow's key cast group buffs).
+            -- A default that changes behaviour: reviewed from another lane
+            -- (lead section 557).
             key = G.KEY_SETTING, scope = "account", type = "bool", default = true,
             label = "Cast group buffs and cures on the key",
             help = "Out of a fight, the buff or cure named for a party member goes on your key, cast on them when "
