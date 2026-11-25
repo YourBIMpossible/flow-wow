@@ -35,10 +35,19 @@ local LOG = {
     { id = 403, title = "Bandages", complete = true, objectives = { { text = "Linen: 4/4", done = true } } },
 }
 
+-- Saved data is kept by reference: a route kept by one test (section 564
+-- R6, on zflow) must not reach the next test through a shared table.
+local function copyOf(v)
+    if type(v) ~= "table" then return v end
+    local out = {}
+    for key, item in pairs(v) do out[key] = copyOf(item) end
+    return out
+end
+
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, opts.char or {})
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, copyOf(opts.char) or {})
     if opts.bags then c.setBags(opts.bags) end
     c.setClass("WARRIOR"); c.setFaction("Alliance"); c.setLevel(opts.level or 18)
     if opts.skills then c.setSkillRanks(opts.skills); c.setMoney(500000) end
