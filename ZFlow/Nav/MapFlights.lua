@@ -150,6 +150,44 @@ function MF.TipLines(pin, stepText, airText)
     return pin.name, lines
 end
 
+-- What a click does, in a pin's tooltip (our words, section 757).
+MF.TIP_PICK = "Click: lines to where you can fly from here."
+MF.TIP_CLEAR = "Click: take the lines away."
+
+-- A drawn pin's tooltip: its title, then its lines. picked: the pin picked
+-- (nil: none). stepText, airText: as TipLines.
+function MF.PinTip(pin, picked, stepText, airText)
+    local title, lines = MF.TipLines(pin, stepText, airText)
+    if type(picked) == "table" and picked.name ~= pin.name then
+        lines[#lines + 1] = (MF.FlightText(picked, pin))
+    end
+    if type(picked) == "table" then
+        lines[#lines + 1] = MF.TIP_CLEAR
+    else
+        lines[#lines + 1] = MF.TIP_PICK
+    end
+    return title, lines
+end
+
+-- The lines from the pin picked to every other drawn pin on its continent:
+-- { from, to, can, ax, ay, bx, by } (shares of the map). pins: as drawn.
+function MF.Links(pins, pickedName)
+    local out = {}
+    if type(pins) ~= "table" or pickedName == nil then return out end
+    local a
+    for _, p in ipairs(pins) do
+        if p.name == pickedName then a = p end
+    end
+    if not a then return out end
+    for _, b in ipairs(pins) do
+        if b.name ~= a.name and b.cont == a.cont then
+            out[#out + 1] = { from = a.name, to = b.name, can = MF.CanFly(a, b),
+                              ax = a.x, ay = a.y, bx = b.x, by = b.y }
+        end
+    end
+    return out
+end
+
 function MF.RoleLabel(role)
     if role == "from" then return "Fly from here" end
     if role == "to" then return "Land here: next step" end
@@ -228,8 +266,18 @@ end
 --     source of flight masters you have not learned), so there are no
 --     "new" pins. The map closed or the setting off: cleared.
 --     api.draw() -> pins, lines as drawn, or nil
---   Look only: the pins take no mouse (so no tooltip and no click
---   selection yet, MF.TipLines and MF.Click stay unused). Not tested in game.
+--   B-10 + B-11 (lead sections 780, 783), as Flow's flight-master pins
+--   (Modules/Nav/MapFlights.lua: OnEnter :327-349, OnClick :352-361,
+--   MF.Pick :576, MF.DrawLinks :470-500): each pin drawn carries its
+--   tooltip (title, tip = MF.PinTip: MF.TipLines, the flight from the one
+--   picked, what a click does). A left click on a pin (the handle's
+--   onClick, a CLIENT NEED in Core/Client.lua: the pin's OnClick calls
+--   fn(name, button); its OnEnter shows pin.title and pin.tip) picks it
+--   (MF.Click): lines go from it to every other pin on the map (MF.Links:
+--   can = you can fly it), the next step's flight line is not drawn while
+--   one is picked, and the next click clears. A pick no longer on the map
+--   is dropped. Look only: a click changes only what the map shows. The
+--   colours and the look are the drawing's. Not tested in game.
 MF.NAME = "mapFlights"
 MF.EVERY = 0.5          -- seconds between looks
 MF.ROW_LABEL = "Show my flight paths on the world map"
@@ -250,6 +298,8 @@ function MF.Declare(k)
     local api = {}
     local ctx, handle
     local drawn = false
+    local sel = {}          -- { from = name }: the flight master picked
+    local onMap = {}        -- [name] = true for each pin drawn last
 
     local function on()
         if not ctx then return false end
@@ -257,9 +307,12 @@ function MF.Declare(k)
         return ok and v == true
     end
 
+    -- (The map closed or the setting off: nothing is picked any more, as
+    -- Flow's MF.ClearPick.)
     local function clear()
         if handle and drawn then pcall(handle.clear) end
         drawn = false
+        sel, onMap = {}, {}
     end
 
     -- Your points (or the preview's) and the arrow's flight, or nil.
@@ -288,6 +341,9 @@ function MF.Declare(k)
         if not handle then
             handle = ask(client, "mapPins")
             if type(handle) ~= "table" then handle = nil return nil end
+            if type(handle.onClick) == "function" then
+                pcall(handle.onClick, function(name, button) api.click(name, button) end)
+            end
         end
         local okMap, map = pcall(handle.map)
         if not okMap or map == nil then clear() return nil end
@@ -300,14 +356,22 @@ function MF.Declare(k)
             if p.cont == corners.cont then
                 local x, y = Flights.ToShare(corners, p.wx, p.wy)
                 if x and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
-                    local pin = { name = p.name, kind = p.kind, role = p.role, x = x, y = y }
+                    local pin = { name = p.name, kind = p.kind, role = p.role, x = x, y = y, cont = p.cont, npc = p.npc }
                     out[#out + 1] = pin
                     at[p.name] = pin
                 end
             end
         end
-        local lines = {}
-        if air and at[air.from] and at[air.to] then
+        onMap = at
+        if sel.from ~= nil and at[sel.from] == nil then sel = {} end
+        local picked = nil
+        if sel.from ~= nil then picked = at[sel.from] end
+        for _, pin in ipairs(out) do
+            pin.title, pin.tip = MF.PinTip(pin, picked)
+            if picked == pin then pin.picked = true end
+        end
+        local lines = MF.Links(out, sel.from)
+        if not picked and air and at[air.from] and at[air.to] then
             local a, b = at[air.from], at[air.to]
             lines[1] = { from = air.from, to = air.to, ax = a.x, ay = a.y, bx = b.x, by = b.y }
         end
@@ -315,6 +379,18 @@ function MF.Declare(k)
         drawn = ok
         return out, lines
     end
+
+    -- A click on the pin named `name`: a left click picks it or clears the
+    -- pick (MF.Click), then the map is drawn again. Anything else: nothing.
+    function api.click(name, button)
+        if button ~= nil and button ~= "LeftButton" then return false end
+        if name == nil or onMap[name] == nil then return false end
+        sel = MF.Click(sel, name)
+        api.draw()
+        return true
+    end
+
+    function api.picked() return sel.from end
 
     k:Setting({ key = MF.SETTING, scope = "account", type = "bool", default = false, group = "travel.flights", synonyms = { "flight", "map", "pins", "taxi" },
         label = MF.ROW_LABEL, help = MF.ROW_HELP })
