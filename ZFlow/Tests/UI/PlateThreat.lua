@@ -376,4 +376,62 @@ tests["plate threat: look only - nothing casts, clicks, targets or writes a CVar
     t.eq(#c.secureButtons, 0, "no secure button made")
 end
 
+-- D-32 (lead sections 720 and 727), as Flow's Modules/Pulse.lua (:34, one
+-- driver for everything that pulses): where the kernel has the shared
+-- pulse (Rotation/Pulse.lua), an over-a-hundred label pulses in that one
+-- set, so one frame listener drives the rotation icon and the plates. The
+-- look is unchanged. Fails before: the plates made a set of their own.
+tests["plate threat module: the pulse is the shared one where the kernel has it"] = function(t)
+    local c = ns.make.fakeClient()
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.setGrouped(true)
+    c.advance(1, 2)
+    local shared = addon.use(ns.Pulse.NAME)
+    t.eq(type(shared and shared.count), "function", "the shared pulse is reachable")
+    if not (shared and type(shared.count) == "function") then return end
+    enemy(c, "nameplate1", 3, 120)
+    c.setCombat(true)
+    c.advance(0.5, 1)
+    t.eq(shared.count(), 1, "the label pulses in the shared set")
+    local l = labelOf(c, "nameplate1")
+    t.ok(l and type(l.alphaNow) == "number", "it pulses")
+    c.setThreat("nameplate1", 3, 80)
+    c.advance(0.5, 1)
+    t.eq(shared.count(), 0, "back under: out of the set")
+    t.eq(l and l.alphaNow, 1, "steady again")
+end
+
+-- Zen-3's D-32 note (lead section 729): a glow is taken out of the set it
+-- was put in, even when the shared pulse goes off in between.
+tests["plate threat module: a glow leaves the set it joined"] = function(t)
+    local c = ns.make.fakeClient()
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.setGrouped(true)
+    c.advance(1, 2)
+    local shared = addon.use(ns.Pulse.NAME)
+    if not (shared and type(shared.remove) == "function") then
+        t.ok(false, "the shared pulse is reachable")
+        return
+    end
+    enemy(c, "nameplate1", 3, 120)
+    c.setCombat(true)
+    c.advance(0.5, 1)
+    t.eq(shared.count(), 1, "in the shared set")
+    local removed, remove = 0, shared.remove
+    shared.remove = function(...)
+        removed = removed + 1
+        return remove(...)
+    end
+    addon:SwitchOff(ns.Pulse.NAME, "test")
+    c.setThreat("nameplate1", 3, 80)
+    c.advance(0.5, 1)
+    t.eq(removed, 1, "taken out of the shared set it joined, not a set of its own")
+end
+
 return tests
