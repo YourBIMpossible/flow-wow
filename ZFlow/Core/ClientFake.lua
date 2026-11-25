@@ -5228,7 +5228,7 @@ do
 end
 
 -- § D-26 (Rotation/Audit.lua; lead section 746): one CLIENT NEED, stubbed
--- here only. Core/Client.lua does not have it yet.
+-- here (Core/Client.lua has it since the batch-3 lead commit).
 --   c.onKeyPress(fn) -> cancel: fn() at each press of the rotation key.
 --   c.pressKey() plays one press: calls every fn not cancelled.
 do

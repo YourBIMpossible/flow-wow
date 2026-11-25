@@ -7191,6 +7191,34 @@ function ns.make.client(env)
         return ok == true
     end
 
+    -- Each press of the add-on's own rotation key (D-26, the lead's lease,
+    -- sections 746 and 753): HookScript("PreClick") on the secure button
+    -- named framePrefix .. "RotationKey", and on nothing else. The hook
+    -- calls fn under pcall and does nothing more: no SetAttribute, no Click,
+    -- no cast. A hooked script cannot be taken off, so the cancel function
+    -- returned sets a flag the hook checks. nil when there is no fn, no
+    -- button yet, or the hook could not be set. Needs a game test.
+    local keyPressFns = {}
+    local keyPressHooked = nil
+    function c.onKeyPress(fn)
+        if type(fn) ~= "function" then return nil end
+        if type(ns.id) ~= "table" or type(ns.id.framePrefix) ~= "string" then return nil end
+        local button = env[ns.id.framePrefix .. "RotationKey"]
+        if type(button) ~= "table" then return nil end
+        if keyPressHooked ~= button then
+            local hooked = method(button, "HookScript", "PreClick", function()
+                for _, e in ipairs(keyPressFns) do
+                    if not e.cancelled then pcall(e.fn) end
+                end
+            end)
+            if not hooked then return nil end
+            keyPressHooked = button
+        end
+        local entry = { fn = fn }
+        keyPressFns[#keyPressFns + 1] = entry
+        return function() entry.cancelled = true end
+    end
+
     -- How fast the player is moving, in yards a second: GetUnitSpeed(
     -- "player") (0 standing still), or nil when it cannot be read.
     function c.speed()
