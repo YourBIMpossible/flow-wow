@@ -244,6 +244,26 @@ local function needOf(stop, rows)
     return nil
 end
 
+-- A1-13 (lead section 826): "do this next" from the step card. The n-th
+-- step shown from the one the route is at (gone steps are not shown, as
+-- View) moves to the front, as PartyRoute's api.First and Flow's N:Select
+-- (Modules/Nav/Nav.lua:4224 at b657e6e5). -> true when it moved.
+function T.First(stops, at, n)
+    if type(stops) ~= "table" or type(at) ~= "number" or type(n) ~= "number" or n <= 1 then return false end
+    local seen, from = 0, nil
+    for i = at, #stops do
+        local s = stops[i]
+        if type(s) == "table" and not s.gone then
+            seen = seen + 1
+            if seen == n then from = i break end
+        end
+    end
+    if from == nil then return false end
+    local s = table.remove(stops, from)
+    table.insert(stops, at, s)
+    return true
+end
+
 function T.Stops(rows, places, here)
     local Q = N.QuestSource
     local stops, left = {}, {}
@@ -1193,6 +1213,12 @@ function T.Declare(k, diag)
         if route and route.stops[at] == nil then route, at = nil, 1 end
     end
 
+    -- A1-13: the n-th step shown goes first (T.First); the arrow follows it.
+    function api.First(n)
+        if not route then return false end
+        return T.First(route.stops, at, n)
+    end
+
     function api.Skip()
         if not route then return nil end
         at = at + 1
@@ -1628,6 +1654,7 @@ function T.Declare(k, diag)
         name = T.NAME,
         needs = { "client", "store", "settings" },
         provides = { Step = api.Step, AutoStep = api.AutoStep, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
+                     First = api.First,
                      Lines = api.Lines, Current = api.Current, View = api.View },
         ticks = { { every = T.AUTO_EVERY, when = "always", run = function()
             auto()

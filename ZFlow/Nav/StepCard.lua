@@ -18,8 +18,9 @@ local _, ns = ...
 --                           exists (none yet: a CLIENT NEED, see below)
 --            distance       distance and travel text, e.g. "120 yd"
 --            index          the step's place on the route (1 = next)
---            canFirst       true when a way to put a step first exists
---                           (none yet: a LEAD NEED, see below)
+--            canFirst       true when a way to put a step first exists:
+--                           SC.CanFirst(the tripRoute module), which
+--                           offers First(n) (Nav/TripRoute.lua, section 826)
 --   SC.Run(key, step, facts) -> call or nil (the action is off)
 --
 -- The window is a MUSE NEED. It draws this, top to bottom:
@@ -39,9 +40,9 @@ local _, ns = ...
 --                                      quest in the log (Flow:
 --                                      C_QuestLog.SetSelectedQuest, :4286)
 --   { call = "showMap", map = id }     client.showMap(map) (Core/Client.lua)
---   { call = "first", index = n }      LEAD NEED: Nav/TripRoute.lua has no
---                                      call that puts a step first (Flow:
---                                      N:Select(key), :4224)
+--   { call = "first", index = n }      tripRoute.First(n) (Nav/TripRoute.lua;
+--                                      Flow: N:Select(key), :4224)
+--   SC.CanFirst(route) -> true when route offers First
 -- Not tested in game.
 ns.Nav = ns.Nav or {}
 local SC = {}
@@ -86,6 +87,11 @@ end
 local function mapOff(step)
     if placeMap(step) == nil then return SC.WHY_NO_PLACE end
     return nil
+end
+
+-- Whether a route offers "put a step first" (Nav/TripRoute.lua api.First).
+function SC.CanFirst(route)
+    return type(route) == "table" and type(route.First) == "function"
 end
 
 local function firstOff(f)
