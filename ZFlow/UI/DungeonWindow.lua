@@ -33,7 +33,16 @@ ns.DungeonWindow = W
 W.NAME = "dungeonWindow"
 W.ID = "dungeons"
 W.WORD = "dungeons"
-W.HELP = "open the Dungeon Quests window"
+W.HELP = "open the Dungeon Quests window; with a dungeon's name, plan that run"
+-- FLOW-PARITY B-49 (lead section 496 item 2): the word with a dungeon's name
+-- plans that run from chat, by the code of the Plan the run button, and
+-- says the planned stops.
+W.NO_SUCH = "no dungeon called \"%s\"."
+W.CLOSE = "Close matches: %s"
+W.SEE_ALL = "Type %s dungeons to see them all."
+W.STOP = "%d. %s"
+W.LEFT_OFF = "Left off: %s"
+W.CLOSE_MAX = 6
 W.HEADER = "Dungeon Quests"
 W.SEARCH = "Search dungeons"
 W.TABS = { "Quests", "Bosses", "Map" }
@@ -129,6 +138,8 @@ function W.Declare(k, diag)
     -- while the gear is low (Nav/RepairStep.lua), and the nearest bank the
     -- player has seen on this map (Nav/Errand.lua). A module that is not
     -- loaded or a read that raises gives no step. Look only.
+    -- Second answer (lead section 493): words-only rows for the route's
+    -- left list, for training or a repair that is due with no place known.
     local function readySteps()
         local function stepOf(name)
             local m = k.use and k.use(name)
@@ -146,30 +157,67 @@ function W.Declare(k, diag)
             local ok, v = pcall(E.Find, "banker", client(), k.store)
             if ok then bank = v end
         end
-        if type(R.Ready) ~= "function" then return {} end
-        return R.Ready(stepOf("classTrainerStep"), stepOf("repairStep"), bank)
+        if type(R.Ready) ~= "function" then return {}, {} end
+        -- The gear is low when the repair step has lines to say, with or
+        -- without a place to go to. With the repair step switched off
+        -- (nav.repairStep) nothing is said of repairs at all: its Lines do
+        -- not look at the setting, so it is asked here (Plexy, lead
+        -- section 504 CHANGES-1).
+        local low = false
+        local repairs = k.use and k.use("repairStep")
+        local wanted = true
+        if type(k.settings) == "table" and type(k.settings.get) == "function" and ns.RepairStep then
+            local ok, v = pcall(k.settings.get, k.settings, ns.RepairStep.SETTING)
+            if ok and v == false then wanted = false end
+        end
+        if wanted and type(repairs) == "table" and type(repairs.Lines) == "function" then
+            local ok, lines = pcall(repairs.Lines)
+            low = ok and type(lines) == "table" and #lines > 0
+        end
+        local steps, left = R.Ready(stepOf("classTrainerStep"), stepOf("repairStep"), bank, low)
+        return steps, type(left) == "table" and left or {}
     end
 
-    local function planRun(d)
-        local run, why = R.Run(st, client(), d and d.key)
+    -- wing (B-57): that wing's run only. Answers true when a run is planned.
+    -- prep: false leaves out the get-ready steps; nil asks dungeonRun.
+    local function planRun(d, wing, prep)
+        local run, why = R.Run(st, client(), d and d.key, wing)
         if not run then
             view.said = why[1]
-            return
+            return false
         end
         local trip = k.use and k.use(ns.Nav.TripRoute.NAME)
         if not trip or type(trip.Run) ~= "function" then
             view.said = W.NO_ROUTE
-            return
+            return false
         end
         -- B-52: the get-ready steps go first; the player does each.
-        local ready = readySteps()
+        -- B-50: "Get ready on the way" can be turned off on the dungeon
+        -- route's menu (Nav/DungeonRun.lua); on unless it is.
+        local runs = k.use and k.use("dungeonRun")
+        local ready, words = {}, {}
+        if prep == nil and type(runs) == "table" and type(runs.PrepOn) == "function" then prep = runs.PrepOn() end
+        if prep ~= false then
+            ready, words = readySteps()
+        end
         if #ready > 0 then
             local steps = {}
             for _, s in ipairs(ready) do steps[#steps + 1] = s end
             for _, s in ipairs(run.steps) do steps[#steps + 1] = s end
             run.steps = steps
         end
+        if #words > 0 then
+            local left = {}
+            for _, row in ipairs(words) do left[#left + 1] = row end
+            for _, row in ipairs(type(run.left) == "table" and run.left or {}) do left[#left + 1] = row end
+            run.left = left
+        end
         view.said = trip.Run(run)
+        -- B-50: the run is prepared; the line under the arrow says it.
+        if type(runs) == "table" and type(runs.Prepared) == "function" then
+            pcall(runs.Prepared, d.key, d.name, wing, #run.steps)
+        end
+        return true
     end
 
     local function footer(d)
@@ -367,16 +415,114 @@ function W.Declare(k, diag)
         return handle ~= nil and handle.shown() == true
     end
 
+    -- B-49: the word with a name. Plans by planRun, the button's own code,
+    -- and says what was planned, stop by stop. Changes nothing else: the
+    -- window is not opened.
+    function api.PlanNamed(text)
+        local c = client()
+        if type(c) ~= "table" or type(c.print) ~= "function" then return false end
+        local function say(line, more)
+            if more then c.print("  " .. line) else c.print(id.title .. ": " .. line) end
+        end
+        index()
+        if type(st) ~= "table" or st.state ~= "ready" then
+            local why = R.WHY_BUILDING
+            if type(st) ~= "table" or st.state == "noquestie" then
+                why = ns.DungeonStates.WHY.noQuestie
+            elseif st.state == "failed" then
+                why = st.why or R.WHY_LIST
+            end
+            say(why[1])
+            if why[2] then say(why[2], true) end
+            return false
+        end
+        local d, wing, close = R.Find(st, text)
+        if not d then
+            say(W.NO_SUCH:format(tostring(text)))
+            if type(close) == "table" and #close > 0 then
+                local names = {}
+                for i = 1, math.min(#close, W.CLOSE_MAX) do names[i] = close[i] end
+                say(W.CLOSE:format(table.concat(names, ", ")), true)
+            else
+                say(W.SEE_ALL:format(tostring(id.slash)), true)
+            end
+            return false
+        end
+        local was = view.said
+        local planned = planRun(d, wing)
+        local said = view.said
+        -- The window's footer keeps what it said: this was asked in chat.
+        view.said = was
+        say((R.WingTitle(st, d.key, wing) or tostring(d.name)) .. ": " .. tostring(said))
+        if not planned then return false end
+        local trip = k.use and k.use(ns.Nav.TripRoute.NAME)
+        local route
+        if type(trip) == "table" and type(trip.View) == "function" then route = trip.View() end
+        for i, s in ipairs(type(route) == "table" and type(route.stops) == "table" and route.stops or {}) do
+            local line = W.STOP:format(i, tostring(s.label))
+            if s.detail then line = line .. " - " .. tostring(s.detail) end
+            say(line, true)
+        end
+        for _, l in ipairs(type(route) == "table" and type(route.left) == "table" and route.left or {}) do
+            local line = tostring(l.label)
+            if l.why then line = line .. " - " .. tostring(l.why) end
+            say(W.LEFT_OFF:format(line), true)
+        end
+        -- B-54: how your last run of it paid, when both rates are measured.
+        local visit = k.use and k.use("dungeonVisit")
+        if type(visit) == "table" and type(visit.RateLine) == "function" then
+            local ok, rate = pcall(visit.RateLine, R.WingTitle(st, d.key, wing) or tostring(d.name))
+            if ok and type(rate) == "string" then say(rate, true) end
+        end
+        return true
+    end
+
     if diag and type(diag.commands) == "table" then
-        diag.commands[W.WORD] = function() api.Open() end
+        diag.commands[W.WORD] = function(rest)
+            local text = tostring(rest or ""):match("^%s*(.-)%s*$")
+            if text ~= "" then
+                api.PlanNamed(text)
+                return
+            end
+            api.Open()
+        end
         if type(diag.help) == "table" then diag.help[W.WORD] = W.HELP end
     end
 
     k:Module({
         name = W.NAME,
         needs = { "client", "store", "sched" },
-        provides = { Open = api.Open, Close = api.Close, Shown = api.Shown },
-        start = function(c) ctx = c end,
+        provides = { Open = api.Open, Close = api.Close, Shown = api.Shown, PlanNamed = api.PlanNamed },
+        start = function(c)
+            ctx = c
+            -- B-50: "Back on the dungeon route" and "Get ready" plan the
+            -- prepared run again through this window's planner.
+            local runs = k.use and k.use("dungeonRun")
+            if type(runs) == "table" and type(runs.SetPlanner) == "function" then
+                runs.SetPlanner(function(key, wing, prep)
+                    if not (st and st.state == "ready" and type(st.byKey) == "table") then return nil end
+                    local d = st.byKey[key]
+                    if not d or not planRun(d, wing, prep) then return nil end
+                    local tr = k.use and k.use("tripRoute")
+                    local cur
+                    if tr and type(tr.Current) == "function" then cur = tr.Current() end
+                    if type(cur) == "table" and type(cur.stops) == "table" then return #cur.stops end
+                    return nil
+                end)
+            end
+            if type(runs) == "table" and type(runs.SetCounter) == "function" then
+                runs.SetCounter(function(key)
+                    if not (st and st.state == "ready") then return nil end
+                    local pane = R.Pane(st, client(), key)
+                    if type(pane) ~= "table" or pane.why then return nil end
+                    local n = { log = 0, pickup = 0, inside = 0 }
+                    for _, g in ipairs(pane.groups or {}) do
+                        if n[g.id] then n[g.id] = #g.rows end
+                    end
+                    return { on = n.log, missing = n.pickup, inside = n.inside }
+                end)
+            end
+        end,
         stop = function()
             if cancelStep then cancelStep() end
             cancelStep = nil

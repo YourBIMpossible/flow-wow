@@ -281,4 +281,43 @@ tests["flow fight: the rotation icon and the Flow button do not stand side by si
     t.ok(gap >= FB.SIZE, "a full button apart, not touching: " .. gap)
 end
 
+-- Parity row D-03 (lead section 712), as Flow's Modules/Rotation/Cast.lua
+-- (:232-236 assistantSpell, :1048-1050 at the pull): where the client has
+-- the game's one-button assistant (C_AssistedCombat.GetActionSpell, on
+-- warcraft.wiki.gg for the forever flavour from 1.60.1), the key and the
+-- Flow button hold its spell for the fight instead of the pack's fight
+-- spell. Only a plain spell name counts. Fails before: never read.
+tests["flow fight: the game's one-button assistant spell is held for the fight when the client has one"] = function(t)
+    local c = start()
+    c.setAssistantSpell("Single-Button Assistant")
+    pull(c)
+    t.eq(held(c), "Single-Button Assistant", "the assistant's spell, before the pull")
+    fightStarts(c)
+    c.advance(3, 5)
+    t.eq(held(c), "Single-Button Assistant", "kept through the fight")
+    noMacros(t, c)
+end
+
+tests["flow fight: no assistant, or an answer that is no plain name, keeps the pack's fight spell"] = function(t)
+    for _, answer in ipairs({ false, "", 42 }) do
+        local c = start()
+        if answer ~= false then c.setAssistantSpell(answer) end
+        pull(c)
+        t.eq(held(c), "Stormstrike", "the pack's fight spell: " .. tostring(answer))
+    end
+    local c = start()
+    c.assistantSpell = function() error("the client refused") end
+    pull(c)
+    t.eq(held(c), "Stormstrike", "a read that raises")
+end
+
+tests["flow fight: the assistant read, pure"] = function(t)
+    local D = ns.RotationDriver
+    t.eq(D.Assistant({ assistantSpell = function() return "Single-Button Assistant" end }), "Single-Button Assistant")
+    t.eq(D.Assistant({ assistantSpell = function() return nil end }), nil)
+    t.eq(D.Assistant({ assistantSpell = function() return "" end }), nil)
+    t.eq(D.Assistant({}), nil, "no such read")
+    t.eq(D.Assistant(nil), nil)
+end
+
 return tests

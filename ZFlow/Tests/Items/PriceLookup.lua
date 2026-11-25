@@ -137,9 +137,48 @@ end
 tests["price command: no item says how to use it, and nothing is written"] = function(t)
     local k, c = start()
     t.eq(L.Run(k, ""), { L.USAGE })
-    t.eq(L.Run(k, "fang"), { L.USAGE })
+    t.eq(L.Run(k, "fang"), { L.NotFound("fang") })
     local saved = c.saved(ns.id.accountDB)
     t.eq(type(saved.learned) == "table" and saved.learned.prices or nil, nil, "a lookup makes no price book")
+end
+
+-- E-42 (lead §674): an item by its name, through the client's name read.
+tests["price command E-42: an item name is read through the client"] = function(t)
+    local k = start()
+    t.eq(L.Run(k, "broken fang"), { "Broken Fang: a vendor pays 4c each (the item's own sell price)" })
+    t.eq(L.Run(k, "  Broken Fang "), { "Broken Fang: a vendor pays 4c each (the item's own sell price)" })
+end
+
+tests["price command E-42: an unknown name says so, with no price"] = function(t)
+    local k = start()
+    t.eq(L.Run(k, "no such thing"), { L.NotFound("no such thing") })
+    t.eq(L.NotFound("fish"), 'No known item is called "fish": link it, or use its item ID.')
+end
+
+tests["price command E-42 nit (section 685): an id with no item info says has id"] = function(t)
+    local k = start()
+    k.client.itemInfo = function() return nil end
+    t.eq(L.NoId("123"), "No known item has id 123: link it, or use its name.")
+    -- An ID that is no item key (0) took the name path and said "called".
+    t.eq(L.Run(k, "0"), { L.NoId("0") })
+    -- A real ID with no info keeps the unknown-price line.
+    t.eq(L.Run(k, "123"), { "item 123: price unknown—check vendor" })
+end
+
+tests["price command E-42: no name read in the client, a name is not found"] = function(t)
+    local k = start()
+    k.client.itemIdByName = nil
+    t.eq(L.Run(k, "broken fang"), { L.NotFound("broken fang") })
+end
+
+tests["price command E-42: a name read that raises is not found"] = function(t)
+    local k = start()
+    k.client.itemIdByName = function() error("boom") end
+    t.eq(L.Run(k, "broken fang"), { L.NotFound("broken fang") })
+end
+
+tests["price command E-42: the usage line names all three ways"] = function(t)
+    t.eq(L.USAGE, "say price <item link>, an item name or an item ID.")
 end
 
 for name, fn in pairs(tests) do

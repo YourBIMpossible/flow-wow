@@ -11,7 +11,39 @@ local _, ns = ...
 --   api       = GearRewardMark.Declare(k[, packs])
 --     api.marked()   the choice marked now, or nil
 --     api.errors()   how many times the pick could not be worked out
---   ns.use(GearRewardMark.NAME) -> { Marked = api.marked, Errors = api.errors }
+--   ns.use(GearRewardMark.NAME) -> { Marked = api.marked, Errors = api.errors,
+--                                    Board = api.board }
+--
+-- Parity row C-37, the data half (lead section 668), as Flow's
+-- Modules/Gear/QuestRewards.lua (:147-149) and SpecBadge.lua (:35, :100):
+-- for each choice, its verdict for each spec of your class, and its sell
+-- price, with the best seller. The badges and the coin are the drawing
+-- lane's; the one mark above is unchanged.
+--   board, why = GearRewardMark.Board(client, packs, role)
+--     board = { roles = { role, ... } (the specs the class pack has
+--               weights for, sorted), chosen = role or nil,
+--               choices = { { index, link, roles = { [role] = verdict },
+--                             sell = copper or nil }, ... },
+--               bestSell = index or nil }
+--     verdict: "upgrade", "same", "worse", "cannot" (you cannot use it) or
+--     "notGear"; a role left out is not known yet (the item or its verdict
+--     not read, or no finite delta): never a guess. As the tooltip says
+--     it (RM.Verdict). sell: the game's sell price
+--     (itemInfo().sellPrice). bestSell: the one choice that sells for the
+--     most; nil when any price is not read, two tie, or none sells.
+--     nil and why (GearRewardMark.WHY) when the choices are not read or
+--     fewer than two. Reads only, as Pick.
+--   api.board() -> the board now while a reward window is open, else nil
+--
+-- Parity row C-03 (lead section 704), as Flow's Modules/Quests/
+-- AutoTurnIn.lua (:190-201): at a turn-in with a choice of rewards the
+-- add-on stops and asks. Z-Flow takes no reward by itself, so the stop is
+-- the game's own window; the ask is one chat line, once a window, at the
+-- turn-in (QUEST_COMPLETE, not the offer) with two or more choices, with
+-- the mark's setting on: RM.ASK, then the best upgrade for your spec and
+-- the best to sell when the board names them. Nothing is picked.
+--   RM.AskLine(board, nameOf, role) -> the line; nameOf(index) -> the
+--     choice's name or nil. A choice whose name is not read is not named.
 --
 -- Pick: the index of the choice to mark, or nil and why (GearRewardMark.WHY).
 --   client.questChoices()  { { index, link } ... } for the open choice; nil
@@ -43,6 +75,9 @@ RM.SETTING = "gear.rewardMark"
 RM.PROBE_PATH = "diag.rewardButtons"  -- account: the G14 reward button probe
 RM.ROLE = "spec.role"           -- Rotation/Role.lua's setting
 RM.TICK = 1
+RM.ASK = "Pick your reward: the choice is yours."
+RM.ASK_BEST = "%s is the best upgrade for %s."
+RM.ASK_SELL = "%s sells for the most."
 
 RM.WHY = {
     unread = "the reward choices could not be read",
@@ -127,6 +162,114 @@ function RM.Pick(client, packs, role)
     return best
 end
 
+-- C-37 (Zen-3's review, lead section 701): a verdict result as the
+-- tooltip says it (Gear/Tooltip.lua T.Lines): an upgrade or a worse whose
+-- gain or loss is under T.SAME is "same"; with no finite delta there is no
+-- verdict (nil). Pure.
+function RM.Verdict(result)
+    if type(result) ~= "table" then return nil end
+    local v, delta = result.verdict, result.delta
+    if not (v == "upgrade" or v == "same" or v == "worse") or not finite(delta) then return nil end
+    if (v == "upgrade" or v == "worse") and math.abs(delta) < ns.GearTooltip.SAME then return "same" end
+    return v
+end
+
+-- C-37: one choice's verdict for one role, as Pick reads it: "upgrade",
+-- "same", "worse", "cannot", "notGear", or nil when not known yet.
+local function verdictOf(gear, pack, role, level, skills)
+    local lines, detail = ns.GearVerdict.Lines(gear, { pack = pack, role = role, level = level, skills = skills })
+    if lines == nil then
+        if finite(gear.classID) then return "notGear" end
+        return nil
+    end
+    local can
+    if type(detail) == "table" and type(detail.use) == "table" then can = detail.use.can end
+    if can == false then return "cannot" end
+    if can ~= true then return nil end
+    return RM.Verdict(detail.result)
+end
+
+function RM.Board(client, packs, role)
+    local rows = ask(client, "questChoices")
+    if type(rows) ~= "table" then return nil, RM.WHY.unread end
+    if #rows < 2 then return nil, RM.WHY.single end
+    local class = ask(client, "class")
+    local pack
+    if type(packs) == "table" and class ~= nil then pack = packs[class] end
+    local roles = rolesFor(pack, nil)
+    local chosen
+    if type(role) == "string" and type(pack) == "table" and type(pack.weights) == "table"
+        and type(pack.weights[role]) == "table" then
+        chosen = role
+    end
+    local level = ask(client, "level")
+    local skills
+    local okSkills, readSkills = pcall(ask, client, "weaponSkills")
+    if okSkills and type(readSkills) == "table" then skills = readSkills end
+    local board = { roles = roles, chosen = chosen, choices = {} }
+    local best, bestPrice, tie, allPrices = nil, 0, false, true
+    for i = 1, #rows do
+        local row = type(rows[i]) == "table" and rows[i] or {}
+        local index = i
+        if finite(row.index) then index = row.index end
+        local entry = { index = index, roles = {} }
+        local link = row.link
+        if type(link) == "string" and link ~= "" then
+            entry.link = link
+            local gear = ask(client, "gear", link)
+            if type(gear) == "table" then
+                for r = 1, #roles do
+                    entry.roles[roles[r]] = verdictOf(gear, pack, roles[r], level, skills)
+                end
+            end
+            local info = ask(client, "itemInfo", link)
+            local price = type(info) == "table" and info.sellPrice or nil
+            if finite(price) and price >= 0 then entry.sell = price end
+        end
+        if entry.sell == nil then
+            allPrices = false
+        elseif entry.sell > bestPrice then
+            best, bestPrice, tie = index, entry.sell, false
+        elseif entry.sell == bestPrice and entry.sell > 0 then
+            tie = true
+        end
+        board.choices[#board.choices + 1] = entry
+    end
+    if allPrices and not tie then board.bestSell = best end
+    return board
+end
+
+function RM.AskLine(board, nameOf, role)
+    local line = RM.ASK
+    if type(board) ~= "table" or type(board.choices) ~= "table" or type(nameOf) ~= "function" then return line end
+    local who = board.chosen
+    if who == nil then who = role end
+    local best, tie
+    if type(who) == "string" then
+        for _, ch in ipairs(board.choices) do
+            if type(ch) == "table" and type(ch.roles) == "table" and ch.roles[who] == "upgrade" then
+                if best then tie = true else best = ch.index end
+            end
+        end
+    end
+    if best and not tie then
+        local ok, name = pcall(nameOf, best)
+        -- C-03 follow-up (lead section 720): the role's word (Rotation/
+        -- Role.lua Ro.WORDS), never its key; a role with no word: no line.
+        local Ro = ns.RotationRole
+        local word
+        if type(Ro) == "table" and type(Ro.WORDS) == "table" then word = Ro.WORDS[who] end
+        if ok and type(name) == "string" and name ~= "" and type(word) == "string" then
+            line = line .. " " .. RM.ASK_BEST:format(name, word)
+        end
+    end
+    if board.bestSell ~= nil then
+        local ok, name = pcall(nameOf, board.bestSell)
+        if ok and type(name) == "string" and name ~= "" then line = line .. " " .. RM.ASK_SELL:format(name) end
+    end
+    return line
+end
+
 -- G14 coin (section 393): when no choice is an upgrade, the choice that
 -- sells for the most, to take and sell. nil when the choices or any price
 -- are not read, two prices tie, or nothing sells.
@@ -155,6 +298,14 @@ function RM.Declare(k, packs)
     local seen = {}
     function api.marked() return marked end
     function api.errors() return errors end
+    -- C-37: the board while a reward window is open. A read that raises
+    -- gives nil, as no board.
+    function api.board()
+        if not open or not ctx then return nil end
+        local ok, b = pcall(RM.Board, ctx.client, packs or ns.Packs, ctx.settings:get(RM.ROLE))
+        if ok and type(b) == "table" then return b end
+        return nil
+    end
 
     local function show(index, kind)
         marked = nil
@@ -173,12 +324,36 @@ function RM.Declare(k, packs)
         if index ~= nil and done == true then marked = index end
     end
 
+    -- C-03: asked once a turn-in window, once two or more choices are read.
+    local turnIn, askedNow = false, false
+    local function askOnce()
+        if not turnIn or askedNow or type(ctx.client.print) ~= "function" then return end
+        local okB, b = pcall(RM.Board, ctx.client, packs or ns.Packs, ctx.settings:get(RM.ROLE))
+        if not okB or type(b) ~= "table" then return end
+        askedNow = true
+        local links = {}
+        for _, ch in ipairs(b.choices) do links[ch.index] = ch.link end
+        local function nameOf(index)
+            local link = links[index]
+            if link == nil or type(ctx.client.itemInfo) ~= "function" then return nil end
+            local info = ctx.client.itemInfo(link)
+            if type(info) == "table" then return info.name end
+            return nil
+        end
+        local line = RM.AskLine(b, nameOf, ctx.settings:get(RM.ROLE))
+        local id = k.id
+        if type(id) ~= "table" then id = ns.id end
+        if type(id) == "table" and type(id.title) == "string" and id.title ~= "" then line = id.title .. ": " .. line end
+        pcall(ctx.client.print, line)
+    end
+
     local function update()
         if not open then return end
         if ctx.settings:get(RM.SETTING) ~= true then
             show(nil)
             return
         end
+        askOnce()
         local ok, pick, why = pcall(RM.Pick, ctx.client, packs or ns.Packs, ctx.settings:get(RM.ROLE))
         if not ok then
             errors = errors + 1
@@ -228,6 +403,7 @@ function RM.Declare(k, packs)
 
     local function close()
         open = false
+        turnIn, askedNow = false, false
         if tick then tick() end
         tick = nil
         if ctx then show(nil) end
@@ -244,7 +420,7 @@ function RM.Declare(k, packs)
                 .. " You pick; it takes nothing.",
             group = "gear", synonyms = { "reward", "quest", "choice", "mark", "upgrade" },
         } },
-        provides = { Marked = api.marked, Errors = api.errors },
+        provides = { Marked = api.marked, Errors = api.errors, Board = api.board },
         start = function(c)
             ctx = c
             -- The repeat starts once 2 or more choices are read (LF-1): a
@@ -263,7 +439,10 @@ function RM.Declare(k, packs)
                 update()
                 repeatIfMany()
             end
-            c.bus:on(RM.NAME, "QUEST_COMPLETE", opened)
+            c.bus:on(RM.NAME, "QUEST_COMPLETE", function()
+                turnIn, askedNow = true, false
+                opened()
+            end)
             c.bus:on(RM.NAME, "QUEST_DETAIL", opened)
             c.bus:on(RM.NAME, "GET_ITEM_INFO_RECEIVED", function()
                 if not open or tick then return end

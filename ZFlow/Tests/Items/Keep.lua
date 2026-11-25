@@ -238,4 +238,59 @@ for name, fn in pairs(tests) do
     end
 end
 
+
+-- E-13 (lead section 660; Flow Modules/Items/Vendor.lua:718-720): an item
+-- the player buys back is put on the never-sell list, so it is not sold
+-- again. The buy-back read is client.onBoughtBack (CLIENT NEED, stubbed in
+-- the fake: c.fireBoughtBack(item) is the player's buy-back).
+tests["keep: an item bought back goes on the never-sell list and says so"] = function(t)
+    local k, c = start()
+    local lines, changed = K.BoughtBack(k, LINK)
+    t.eq(changed, true)
+    t.eq(never(c)[97], true, "saved for this character")
+    t.eq(#lines, 1)
+    t.eq(plain(lines[1]), "Broken Fang bought back, so it is now on your never-sell list.")
+end
+
+tests["keep: an item bought back that is already kept changes nothing and says nothing"] = function(t)
+    local k, c = start()
+    K.Run(k, LINK)
+    local lines, changed = K.BoughtBack(k, LINK)
+    t.eq(changed, false)
+    t.eq(#lines, 0)
+    t.eq(never(c)[97], true)
+end
+
+tests["keep: a buy-back that names no item, or before the saved data loads, writes nothing"] = function(t)
+    local k, c = start()
+    local lines, changed = K.BoughtBack(k, nil)
+    t.eq(changed, false); t.eq(#lines, 0)
+    lines, changed = K.BoughtBack(k, "not an item")
+    t.eq(changed, false); t.eq(#lines, 0)
+    t.eq(next(never(c)), nil)
+    local k2 = start({ char = false, beforeLoad = true })
+    lines, changed = K.BoughtBack(k2, LINK)
+    t.eq(changed, false); t.eq(#lines, 0)
+end
+
+tests["keep: the player's buy-back through the client puts it on the list and tells them"] = function(t)
+    local _, c = start()
+    t.eq(type(c.fireBoughtBack), "function", "the fake has the buy-back")
+    if type(c.fireBoughtBack) ~= "function" then return end
+    c.fireBoughtBack(LINK)
+    t.eq(never(c)[97], true)
+    t.ok(said(c, "Broken Fang bought back, so it is now on your never-sell list."))
+end
+
+tests["keep: a client with no buy-back read still starts"] = function(t)
+    local c = ns.make.fakeClient()
+    c.onBoughtBack = nil
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    local k = ns.Kernel({}, c)
+    local diag = ns.Diag.Start(k)
+    ns.Reservations.Declare(k)
+    local keep = K.Start(k, diag, ns.SellList.Declare(k))
+    t.eq(type(keep.run), "function")
+end
+
 return tests

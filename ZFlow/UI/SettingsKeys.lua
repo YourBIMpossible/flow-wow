@@ -89,6 +89,16 @@ SK.OTHER = "Pick another"
 SK.NOT_SET = "Not Bound"
 SK.NOT_KNOWN = "not known"
 SK.SESSION = " (until you reload)"
+-- Lead section 624 Step 5 (CLAUDE-TO-MUSE-BUTTON-LAYOUT.md section 7 item
+-- 8): in the Combined button layout the self button is not made and its
+-- key is not moved to the Flow button; Set key says why instead.
+SK.LAYOUT_SETTING = "flowButton.layout"
+SK.COMBINED_WHY = "Combined layout: the Flow button's key casts your buffs too."
+-- Pure: the refusal for a slot's button in a layout, or nil.
+function SK.CombinedWhy(needs, layout)
+    if needs == "selfButton" and layout == "combined" then return SK.COMBINED_WHY end
+    return nil
+end
 SK.LOCKED = "Keys can't change in combat."
 SK.LOCK_UNKNOWN = "The game won't say whether you are in combat, so no key is changed."
 SK.UNREAD = "The game won't say which keys are bound, so no key is changed."
@@ -164,6 +174,18 @@ function SK.New(k)
             if type(k.settings) == "table" then okOn, on = pcall(k.settings.get, k.settings, setting) end
             if not okOn or on ~= true then
                 return "Switch on \"" .. tostring(label) .. "\" first: the button is made only then."
+            end
+            -- Step 5: the layout row is Step 1's (Rotation/FlowButton.lua);
+            -- read only once it is declared, so this works before it lands.
+            if type(k.settings) == "table" and type(k.settings.row) == "function" then
+                local okRow, row = pcall(k.settings.row, k.settings, SK.LAYOUT_SETTING)
+                if okRow and row then
+                    local okLayout, layout = pcall(k.settings.get, k.settings, SK.LAYOUT_SETTING)
+                    if okLayout then
+                        local why = SK.CombinedWhy(slot.needs, layout)
+                        if why then return why end
+                    end
+                end
             end
             local fbApi, fbMade = k.flowButton, false
             if type(fbApi) == "table" and type(fbApi[ask]) == "function" then

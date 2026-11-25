@@ -110,14 +110,14 @@ tests["posting: the lines say the ask, the seen price and its age, the vendor an
     local lines = Po.Lines(rows, 1000 + HOUR, "T")
     t.eq(lines, {
         "T Auctions: 3 thing(s) worth the auction house (from prices in your own searches)",
-        "20 x Linen Cloth: ask 2s each (seen 3s, 1 h ago; a vendor pays 13c; about +35s 40c over vendoring, the deposit not counted)",
-        "5 x Silk Cloth: ask 3s each (seen 4s, 43 min ago; a vendor pays 1s 50c; about +6s 75c over vendoring, the deposit not counted)",
-        "10 x Light Leather: ask 1s each (seen 1s 20c, 1 h ago; a vendor pays 15c; about +8s over vendoring, the deposit not counted)",
+        "20 x Linen Cloth: ask 2s each (seen 3s, 1 h ago; a vendor pays 13c; about +35.4s over vendoring, the deposit not counted)",
+        "5 x Silk Cloth: ask 3s each (seen 4s, 43 min ago; a vendor pays 1.5s; about +6.75s over vendoring, the deposit not counted)",
+        "10 x Light Leather: ask 1s each (seen 1.2s, 1 h ago; a vendor pays 15c; about +8s over vendoring, the deposit not counted)",
         "Posting is yours, in the auction window: T posts nothing.",
     })
     t.eq(Po.Lines({}, 1000, "T"), { "T Auctions: 0 thing(s) to post", "Posting is yours, in the auction window: T posts nothing." })
     local one = Po.Lines({ { id = 1, count = 1, each = 100, seen = 120, vendor = 90, gain = -5 } }, nil, "T", 1)
-    t.eq(one[2], "1 x item 1: ask 1s each (seen 1s 20c; a vendor pays 90c; about -5c over vendoring, the deposit not counted)")
+    t.eq(one[2], "1 x item 1: ask 1s each (seen 1.2s; a vendor pays 90c; about -5c over vendoring, the deposit not counted)")
     local cut = Po.Lines(rows, 1000, "T", 1)
     t.eq(cut[3], "and 2 more.")
 end
@@ -167,7 +167,7 @@ tests["posting word: lists from the prices of your own searches"] = function(t)
     local title = ns.id.title
     t.eq(c.printed[before + 1], title .. " Auctions: 1 thing(s) worth the auction house (from prices in your own searches)")
     t.eq(c.printed[before + 2], "20 x Linen Cloth: ask 2s each (seen 3s, 1 h ago; a vendor pays 13c; "
-        .. "about +35s 40c over vendoring, the deposit not counted)", "the latest look is the one undercut")
+        .. "about +35.4s over vendoring, the deposit not counted)", "the latest look is the one undercut")
     t.eq(c.printed[before + 3], "Posting is yours, in the auction window: " .. title .. " posts nothing.")
     t.eq(#c.printed, before + 3)
     t.eq(api.runs(), 1)

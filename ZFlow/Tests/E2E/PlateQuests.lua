@@ -200,4 +200,84 @@ tests["plate quests: the setting row is on by default and filed under nameplates
     end
 end
 
+-- Parity row C-22 (lead section 600): with enemy nameplates off there is
+-- nothing to put a mark on, so the player is told once a session, when a
+-- quest of theirs has a creature to mark (Flow Modules/QuestMarks.lua
+-- platesNote). Fails before: nothing reads the setting.
+local function platesTold(c)
+    local n = 0
+    for _, line in ipairs(c.printed) do
+        if line:find("enemy nameplates are off", 1, true) then n = n + 1 end
+    end
+    return n
+end
+
+local function platesOff(v)
+    return function(c) c.putGameSetting("nameplateShowEnemies", v) end
+end
+
+tests["plate quests: enemy nameplates off - told once, not again on the next log update"] = function(t)
+    local c = boot({ before = platesOff("0") })
+    t.eq(platesTold(c), 1, "told at boot")
+    logChanged(c)
+    t.eq(platesTold(c), 1, "once a session")
+end
+
+tests["plate quests: enemy nameplates on or unknown - not told"] = function(t)
+    t.eq(platesTold(boot({ before = platesOff("1") })), 0, "on")
+    t.eq(platesTold(boot()), 0, "the setting not read")
+end
+
+tests["plate quests: enemy nameplates off but nothing to mark - not told"] = function(t)
+    t.eq(platesTold(boot({ before = platesOff("0"), noLog = true })), 0, "no quest log")
+    t.eq(platesTold(boot({ before = platesOff("0"), noQuestie = true })), 0, "no Questie: no marks at all")
+    local c, addon = boot({ before = platesOff("1") })
+    addon.settings:set(ns.PlateQuests.OFF, true)
+    c.putGameSetting("nameplateShowEnemies", "0")
+    logChanged(c)
+    t.eq(platesTold(c), 0, "quest marks switched off")
+end
+
+-- Parity row C-21 (lead section 603): hovering a quest mob, the game's
+-- tooltip gets a line naming the quest and the count left (Flow
+-- Modules/QuestMarks.lua TipLine, there for profession drops), from the
+-- same data the plate mark uses. The hovered creature comes from
+-- client.unitCreature (a CLIENT NEED; the fake has it).
+-- Fails before: nothing listens to the unit tooltip.
+local function tipLines(c, unit)
+    local out = {}
+    for _, l in ipairs(c.showUnitTooltip(unit)) do out[#out + 1] = l.text end
+    return out
+end
+
+tests["plate quests: hovering a quest mob - the tooltip names the quest and the count"] = function(t)
+    local c = boot()
+    c.setUnitCreature("mouseover", VERMIN)
+    t.eq(tipLines(c, "mouseover"), { ns.id.title .. ": Camp 3/8" })
+    c.setUnitCreature("mouseover", GNOLL)
+    t.eq(tipLines(c, "mouseover"), { ns.id.title .. ": Camp 0/5" }, "the mob that drops the item")
+end
+
+tests["plate quests: hovering - no line for other mobs, finished objectives or marks off"] = function(t)
+    local c, addon = boot()
+    c.setUnitCreature("mouseover", 9999)
+    t.eq(tipLines(c, "mouseover"), {}, "not a quest mob")
+    c.setUnitCreature("mouseover", nil)
+    t.eq(tipLines(c, "mouseover"), {}, "creature not known")
+    c.setUnitCreature("mouseover", VERMIN)
+    c.setQuestLog(log("8/8", true))
+    logChanged(c)
+    t.eq(tipLines(c, "mouseover"), {}, "objective done")
+    c.setQuestLog(log("3/8"))
+    logChanged(c)
+    addon.settings:set(ns.PlateQuests.OFF, true)
+    t.eq(tipLines(c, "mouseover"), {}, "quest marks switched off")
+end
+
+tests["plate quests: hovering a plate unit uses the plate's creature"] = function(t)
+    local c = boot()
+    mob(c, "nameplate1", VERMIN)
+    t.eq(tipLines(c, "nameplate1"), { ns.id.title .. ": Camp 3/8" })
+end
+
 return tests

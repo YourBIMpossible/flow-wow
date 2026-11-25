@@ -45,13 +45,13 @@ end
 
 tests["price chart: the tooltip's lines"] = function(t)
     t.eq(PC.TipLines({}, 1000), {}, "no looks, no line")
-    t.eq(PC.TipLines({ { at = 1000, price = 12345 } }, 1000 + 2 * HOUR), { "Auction: 1g 23s 45c each, 2 h ago" })
+    t.eq(PC.TipLines({ { at = 1000, price = 12345 } }, 1000 + 2 * HOUR), { "Auction: 1.23g each, 2 h ago" })
     local pts = { { at = 0, price = 100 }, { at = 3 * DAY, price = 125 } }
     t.eq(PC.TipLines(pts, 3 * DAY + 600), {
-        "Auction: 1s 25c each, 10 min ago",
-        "Low 1s, high 1s 25c, average 1s 13c: 2 looks over 3 days, up 25%",
+        "Auction: 1.25s each, 10 min ago",
+        "Low 1s, high 1.25s, average 1.13s: 2 looks over 3 days, up 25%",
     })
-    t.eq(PC.TipLines(pts, nil)[1], "Auction: 1s 25c each", "no clock: no age, never guessed")
+    t.eq(PC.TipLines(pts, nil)[1], "Auction: 1.25s each", "no clock: no age, never guessed")
 end
 
 -- Parity row E-41, the data half (lead section 787): the chart window's

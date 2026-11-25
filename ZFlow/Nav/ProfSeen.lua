@@ -21,7 +21,9 @@ local _, ns = ...
 -- shape of the entries imported from the predecessor, so both merge.
 --
 -- Visits. On the same trainer show, when the saved reading of that
--- profession is at its cap (skill >= max), its visitedAtCap = max.
+-- profession is at its cap (skill >= max), or the next rank is ready before
+-- the cap (Nav.ProfNextRankReady on char "learned.facts.tierSeen" and
+-- client.level, A2-09), its visitedAtCap = max.
 --
 -- A show with no trainer answer, no profession or no position writes
 -- nothing at all. A store that refuses a write is left as it was.
@@ -52,6 +54,7 @@ ProfSeen.RECIPES_EVENT = "TRADE_SKILL_LIST_UPDATE"
 ProfSeen.TRAINER_EVENT = "TRAINER_SHOW"
 ProfSeen.READINGS = "learned.facts.profSkill"
 ProfSeen.NPCS = "learned.places.npcs"
+ProfSeen.TIER_SEEN = "learned.facts.tierSeen"
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -132,6 +135,11 @@ function ProfSeen.Reading(client, store)
     if not usable then return refuse(report, "the readings cannot be saved") end
     local e = entryOf(cur and cur[r.name])
     e.line = finite(r.profession) and r.profession or nil
+    -- C-50 (lead section 700): when this max was first read, so a trainer
+    -- list saved before it can be told stale (UI/ProfCard.lua). A max that
+    -- is new, or not read before, starts its time now; the same max keeps
+    -- its time. A reading with no time leaves it unknown.
+    if e.max ~= r.max or not finite(e.maxAt) then e.maxAt = now end
     e.skill, e.max, e.at = r.skill, r.max, now
     if not put(store, "char", ProfSeen.READINGS, r.name, e) then
         return refuse(report, "the readings cannot be saved")
@@ -176,7 +184,18 @@ function ProfSeen.Trainer(client, store)
 
     local readings = tableAt(store, "char", ProfSeen.READINGS)
     local r = readings and readings[tr.profession]
-    if type(r) == "table" and finite(r.skill) and finite(r.max) and r.skill >= r.max and r.visitedAtCap ~= r.max then
+    local ready = false
+    if type(r) == "table" and finite(r.skill) and finite(r.max) then
+        ready = r.skill >= r.max
+        local N = ns.Nav
+        if not ready and N and type(N.ProfNextRankReady) == "function" then
+            local seen = tableAt(store, "char", ProfSeen.TIER_SEEN)
+            local said
+            if type(seen) == "table" then said = seen[tr.profession] end
+            ready = N.ProfNextRankReady(r, said, ask(client, "level"))
+        end
+    end
+    if ready and r.visitedAtCap ~= r.max then
         local visit = entryOf(r)
         visit.visitedAtCap = r.max
         report.visited = put(store, "char", ProfSeen.READINGS, tr.profession, visit)

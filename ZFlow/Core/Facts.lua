@@ -27,6 +27,8 @@ local _, ns = ...
 --     rows: client.trainer().services ({ name, rank, state, cost, level });
 --     a row whose state is "known" is a spell this character knows.
 --   Facts.Lines(facts) -> lines for /zflow facts
+--   Facts.ResetFirst(facts) -> how many first levels were dropped
+--     ("facts reset", F-new-4: first and firstAt only)
 --   Facts.Declare(k, diag) -> api   (api.read() -> the last TrainerRead count)
 --
 -- Only a class trainer is read: a trainer window whose profession the
@@ -38,7 +40,8 @@ ns.Facts = F
 F.NAME = "facts"
 F.WORD = "facts"
 F.PATH = "learned.facts"
-F.HELP = "what " .. ns.id.title .. " has learned from class trainers on this game"
+F.HELP = "what " .. ns.id.title .. " has learned from class trainers on this game; "
+    .. "facts reset drops the first levels learned, if one is wrong"
 
 local function whole(v)
     return type(v) == "number" and v == v and v >= 0 and v ~= math.huge and v == math.floor(v)
@@ -130,6 +133,22 @@ function F.Lines(facts)
     return out
 end
 
+-- Drops every first level (and when each was seen), the part of the facts
+-- a wrong trainer read can spoil. -> how many first levels there were.
+function F.ResetFirst(facts)
+    local n = 0
+    if type(facts) ~= "table" then return n end
+    if type(facts.first) == "table" then
+        for _, list in pairs(facts.first) do
+            if type(list) == "table" then
+                for _ in pairs(list) do n = n + 1 end
+            end
+        end
+    end
+    facts.first, facts.firstAt = {}, {}
+    return n
+end
+
 function F.Declare(k, diag)
     local api = {}
     local ctx, last = nil, nil
@@ -141,7 +160,23 @@ function F.Declare(k, diag)
     end
 
     if diag and type(diag.commands) == "table" then
-        diag.commands[F.WORD] = function()
+        diag.commands[F.WORD] = function(rest)
+            if rest == "reset" then
+                -- A wrong first level (a trainer read on an odd character)
+                -- can be dropped; what trainers teach and the imported
+                -- facts stay. A refused save leaves everything as it was.
+                local copy = {}
+                for key, v in pairs(facts()) do copy[key] = v end
+                local n = F.ResetFirst(copy)
+                local said = "could not save; nothing was reset."
+                if not ctx then
+                    said = "not started yet; nothing was reset."
+                elseif ctx.store:set("account", F.PATH, copy) == true then
+                    said = ("dropped %d first level(s) learned from class trainers; the next trainer visit learns them again."):format(n)
+                end
+                k.client.print(k.id.title .. ": " .. said)
+                return
+            end
             for _, line in ipairs(F.Lines(facts())) do k.client.print(k.id.title .. ": " .. line) end
         end
         if type(diag.help) == "table" then diag.help[F.WORD] = F.HELP end

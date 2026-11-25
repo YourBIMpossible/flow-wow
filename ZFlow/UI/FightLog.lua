@@ -172,6 +172,8 @@ function L.Start(k, diag)
         fights = function() return rec:list() end,
         feed = function() return feed end,
         death = function() return rec:death() end,
+        -- C-64: the deaths of the session, newest first (Rotation/Fights.lua).
+        deaths = function() return rec:deaths() end,
         recorder = rec,
     }
 end

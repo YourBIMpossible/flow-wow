@@ -11,6 +11,14 @@ local _, ns = ...
 --                      quest not known to be shareable is never named.
 --                      The line ends with the word that offers one
 --                      (Nav/QuestShare.lua, the player's own word).
+--   install Questie   parity row C-24 (lead section 600): with a quest in
+--                      the log and no Questie, one prompt says to install
+--                      it, as Flow Modules/Advisor/Builtins.lua
+--                      missedQuests. "No Questie" is the same test as
+--                      UI/Arrow.lua Arrow.HasQuestie: client.questieModule
+--                      ("QuestieDB") gives nothing. Flow shows it whatever
+--                      the log holds; here an empty log (a new character,
+--                      or a log not read) says nothing.
 -- TEXT ONLY. Nothing here accepts, shares, hands in or abandons a quest,
 -- picks a reward or talks to anyone: the player does all of that. Sharing
 -- is in Nav/QuestShare.lua, on the player's own word only.
@@ -34,6 +42,7 @@ local _, ns = ...
 --                          order, each title once
 --   A.Shareable(rows, can) the titles of those rows
 --   A.ShareText(rows, can, grouped)  the share line, or nil
+--   A.QuestieText(rows, hasQuestie)  the install line, or nil
 --
 -- Reads: client.questLog() through ns.Nav.QuestLogRows, client.grouped(),
 -- client.questShareable(id) (a first guess, Core/Client.lua). Writes: none.
@@ -51,6 +60,9 @@ A.TURN_IN_PROMPT = "quest.turnIn"
 A.SHARE_SETTING = "general.questShare"
 A.SHARE_PROMPT = "quest.share"
 A.PRIORITY = 1
+A.QUESTIE_PROMPT = "quest.installQuestie"
+-- Flow's words, with this add-on's name.
+A.INSTALL_QUESTIE = "Install Questie + QuestieDB so %s can spot quests you skipped."
 -- No more titles than this are named in one line.
 A.MAX_NAMES = 3
 
@@ -179,6 +191,12 @@ local EVENTS = {
     "GROUP_ROSTER_UPDATE",
 }
 
+function A.QuestieText(rows, hasQuestie)
+    if hasQuestie or type(rows) ~= "table" or #rows == 0 then return nil end
+    local id = ns.id or {}
+    return A.INSTALL_QUESTIE:format(tostring(id.title or "this add-on"))
+end
+
 function A.Declare(k)
     local api = {}
     local cancels = {}
@@ -245,6 +263,7 @@ function A.Declare(k)
                 end
                 show(A.TURN_IN_PROMPT, turnIn)
                 show(A.SHARE_PROMPT, share)
+                show(A.QUESTIE_PROMPT, A.QuestieText(last, ask(client, "questieModule", "QuestieDB") ~= nil))
             end
 
             for _, ev in ipairs(EVENTS) do

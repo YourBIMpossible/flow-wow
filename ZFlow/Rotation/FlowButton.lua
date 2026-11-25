@@ -61,6 +61,10 @@ FB.NAME = "flowButton"
 FB.SETTING = K.SETTING               -- rotation.keyFrame: the Flow button
 FB.LABEL = K.LABEL
 FB.SELF_SETTING = "buffButton.enabled"
+-- D-12 (lead section 704): the self button also holds a buff item (a stone
+-- or oil on your weapon, an elixir, scroll or flask) when no self buff
+-- spell is due: Rotation/BuffItemPick.lua. On as made, as legacy Flow.
+FB.ITEMS = "buffButton.items"
 -- Lead section 305 item 4: the imported legacy buffButton.key, key2 and
 -- always (Import/FromFlow.lua, kept under settings.buffButton) are not
 -- applied. The add-on binds a key only when the player presses Set key on
@@ -147,13 +151,15 @@ function FB.FlowPick(view)
     return plan.key
 end
 
--- The rows for one button. e: { spell [, unit] } or { item } or nil (shown,
--- holding nothing).
+-- The rows for one button. e: { spell [, unit] } or { item [, targetSlot] }
+-- or nil (shown, holding nothing). targetSlot (D-12): 16 or 17, the weapon
+-- hand a stone or oil goes on (the secure item type's target-slot).
 function FB.Rows(e)
-    local kind, spell, unit, item
+    local kind, spell, unit, item, slot
     if type(e) == "table" then
         if type(e.item) == "string" then
             kind, item = "item", e.item
+            if e.targetSlot == 16 or e.targetSlot == 17 then slot = e.targetSlot end
         elseif type(e.spell) == "string" then
             kind, spell = "spell", e.spell
             if type(e.unit) == "string" then unit = e.unit end
@@ -164,6 +170,7 @@ function FB.Rows(e)
         { attr = "1:spell", value = spell },
         { attr = "1:unit", value = unit },
         { attr = "1:item", value = item },
+        { attr = "1:target-slot", value = slot },
         { attr = "1:shown", value = true },
         { attr = "0:shown", value = true },
     }
@@ -182,6 +189,20 @@ end
 
 -- Where the docked self button stands: under the Flow button at point,
 -- centred, DOCK_GAP below its bottom edge, in the same anchor.
+-- Parity row D-11 (lead section 712), as Flow's BuffButton.lua (:580-607)
+-- and MoveHandle.lua (:10-19, ns.ClampScale): one step of a tenth a notch
+-- (delta 1 or -1), kept between 0.5 and 2 to the nearest twentieth
+-- (Import/Stored.lua's own SCALE_MIN, SCALE_MAX and SCALE_GRAIN). Pure.
+FB.SCALE_STEP = 0.1
+function FB.ScaleStep(now, delta)
+    local St = ns.Import.Stored
+    if type(now) ~= "number" or now ~= now then now = St.SCALE_DEFAULT end
+    if type(delta) ~= "number" or delta ~= delta then delta = 0 end
+    local s = now + delta * FB.SCALE_STEP
+    s = math.floor(s / St.SCALE_GRAIN + 0.5) * St.SCALE_GRAIN
+    return math.max(St.SCALE_MIN, math.min(St.SCALE_MAX, s))
+end
+
 function FB.DockPoint(point, flowSize, selfSize)
     if type(point) ~= "table" or type(point[1]) ~= "string" then return nil end
     local x, y = point[3], point[4]
@@ -526,6 +547,26 @@ function FB.Declare(k)
     units.flow = unit("flow", FB.FRAME, flowSize, flowPoint, FB.LAYOUT)
     units.self = unit("self", FB.SELF_FRAME, selfSize, selfPoint, FB.SELF_LAYOUT)
 
+    -- D-11: the self button's size, one step (delta 1 or -1), saved where
+    -- the Flow import keeps it: layout.buffButton.dockScale while docked,
+    -- else layout.buffButton.scale. Out of a fight only: true when saved.
+    function api.resizeSelf(delta)
+        if lockdown() ~= false or not store then return false end
+        local layout = raw("layout")
+        local now
+        if docked() then
+            now = St.DockScale(layout, St.RotationScale(layout))
+        else
+            now = St.BuffButtonLayout(layout).scale
+        end
+        local field = "scale"
+        if docked() then field = "dockScale" end
+        local ok, done = pcall(store.set, store, "account", "layout.buffButton." .. field, FB.ScaleStep(now, delta))
+        if not ok or done ~= true then return false end
+        if units.self then units.self.place() end
+        return true
+    end
+
     function api.made() return units.flow.made() end
     function api.selfMade() return units.self.made() end
     function api.status() return { flow = units.flow.status(), self = units.self.status() } end
@@ -581,6 +622,15 @@ function FB.Declare(k)
                 local okTrack, track = pcall(ns.Gather.Self, view.snapshot, shown)
                 if okTrack then selfHold = track end
             end
+            -- D-12: no self buff spell and no tracking: a buff item from the
+            -- bags (Rotation/BuffItemPick.lua), with the setting not off.
+            if selfHold == nil and setting(FB.ITEMS) ~= false and type(ns.BuffItemPick) == "table" then
+                local okRead, items, ctx = pcall(ns.BuffItemPick.Read, client)
+                if okRead and type(items) == "table" then
+                    local okItem, item = pcall(ns.BuffItemPick.Pick, items, ctx)
+                    if okItem and type(item) == "table" then selfHold = item end
+                end
+            end
             selfWhy = "Nothing to cast now: every self buff you know is up or on the Flow button (seals, shouts and forms stay there)."
         end
         units.flow.want(setting(FB.SETTING) == true, flowHold, flowWhy)
@@ -613,6 +663,11 @@ function FB.Declare(k)
             label = FB.SELF_LABEL, group = "combat",
             synonyms = { "buff", "self", "button", "buff button", "self buff" },
             help = "A button that holds a buff you are missing, cast on you when you click it. Seals, shouts and forms stay on the Flow button. Set outside fights only. It binds no key and presses nothing for you.",
+        }, {
+            key = FB.ITEMS, scope = "account", type = "bool", default = true,
+            label = "Buff items on the self button", group = "combat",
+            synonyms = { "stone", "oil", "elixir", "scroll", "flask", "buff button", "self" },
+            help = "When no buff spell is due, the self button holds a sharpening stone, weightstone or oil for your weapon, or an elixir, scroll or flask whose buff is not on you, from your bags. Out of fights only; you click it. Nothing is bought.",
         }, {
             key = FB.DOCK, scope = "account", type = "bool", default = true,
             label = FB.DOCK_LABEL, group = "combat",

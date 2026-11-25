@@ -294,4 +294,293 @@ tests["plate quests module (PM-3): switching off by the setting hides the marks 
     t.eq(m and m.shown, true, "on again: back")
 end
 
+-- Parity rows C-17 and C-18, the data half (lead section 715), as Flow's
+-- Modules/QuestMarks.lua (:1-20: skull to kill, diamond for a drop, a mark
+-- on the unit your step is about): which kind each marked mob is (kill,
+-- loot or use), read from the player's own Questie objective data, and
+-- whether it is the player's current target. "use": a creature objective
+-- of a quest that hands you an item (Questie's sourceItemId) whose log
+-- line does not say "slain". The icons are the drawing lane's. Fails
+-- before: one "kill" or "drop" kind, no "use", no target.
+local USEMOB, TOOL = 2005, 4001
+local function useQuestie()
+    local db = questie()
+    local get = db.GetQuest
+    db.GetQuest = function(id)
+        if id == 103 then
+            return { sourceItemId = TOOL, ObjectiveData = { { Type = "monster", Id = USEMOB } } }
+        end
+        return get(id)
+    end
+    return db
+end
+local function useLog()
+    local rows = log()
+    rows[#rows + 1] = { id = 103, title = "Testing", complete = false, failed = false, objectives = {
+        { text = "Tested Silithid: 1/5", done = false },
+    } }
+    return rows
+end
+
+tests["plate quests kinds: kill, loot and use, from Questie's objective data"] = function(t)
+    local index = PQ.Index(useLog(), useQuestie(), nil)
+    t.eq(index[VERMIN] and index[VERMIN][1].what, "kill")
+    t.eq(index[GNOLL] and index[GNOLL][1].what, "loot")
+    t.eq(index[USEMOB] and index[USEMOB][1].what, "use")
+    t.eq(type(PQ.Kinds), "function")
+    if type(PQ.Kinds) ~= "function" then return end
+    t.eq(PQ.Kinds({ { what = "loot" }, { what = "kill" }, { what = "loot" } }), { "kill", "loot" },
+        "each once, in a fixed order")
+    t.eq(PQ.Kinds(nil), {})
+end
+
+tests["plate quests kinds: a slain line of a quest that hands an item stays kill"] = function(t)
+    local rows = useLog()
+    rows[3].objectives[1].text = "Silithid slain: 1/5"
+    local index = PQ.Index(rows, useQuestie(), nil)
+    t.eq(index[USEMOB] and index[USEMOB][1].what, "kill")
+end
+
+tests["plate quests mark data: the kinds on a plate, and whether it is your target"] = function(t)
+    local _, c, api = start()
+    t.eq(type(api.markOf), "function")
+    if type(api.markOf) ~= "function" then return end
+    mob(c, "nameplate1", VERMIN)
+    mob(c, "nameplate2", GNOLL)
+    c.setPlateIsTarget("nameplate2", true)
+    c.advance(1, 2)
+    local a, b = api.markOf("nameplate1"), api.markOf("nameplate2")
+    t.eq(a and { a.kinds, a.label, a.target }, { { "kill" }, "3/8", false })
+    t.eq(b and { b.kinds, b.target }, { { "loot" }, true })
+    t.eq(api.markOf("nameplate3"), nil, "no plate, no mark")
+    t.eq(api.markOf("target"), nil, "only nameplate units")
+end
+
+tests["plate quests mark data: a target the client cannot read is unknown, never no"] = function(t)
+    local _, c, api = start()
+    if type(api.markOf) ~= "function" then return t.ok(false, "no markOf") end
+    mob(c, "nameplate1", VERMIN)
+    c.plateIsTarget = function() error("refused (test)") end
+    c.advance(1, 2)
+    local m = api.markOf("nameplate1")
+    t.eq(m and m.target, nil)
+end
+
+-- Parity row C-19, the data half (lead sections 720/721), as Flow's
+-- Modules/QuestMarks.lua (:24-26, a yellow "!" on a mob that drops an item
+-- that starts a quest you can take): read from the player's own Questie,
+-- each quest whose Starts.Item lists an item, that item's npcDrops, kept
+-- only for a quest you can take (Nav/RoutePickups.lua P.Candidate: not in
+-- your log, not done, for you, in reach, earlier quests done). Each such
+-- NPC gets what = "starts". The icon is the drawing lane's. Fails before:
+-- no "starts".
+local OLDBONE, BONE = 2006, 4002
+local function startsDb(extra)
+    local db = questie()
+    local get = db.GetQuest
+    local starts = {
+        [201] = { Id = 201, name = "An Old Bone", level = 10, requiredLevel = 8,
+                  Starts = { Item = { BONE } } },
+        [202] = { Id = 202, name = "Done Before", level = 10, requiredLevel = 8,
+                  Starts = { Item = { BONE } } },
+        [203] = { Id = 203, name = "Too High", level = 40, requiredLevel = 38,
+                  Starts = { Item = { BONE } } },
+    }
+    for id, q in pairs(extra or {}) do starts[id] = q end
+    db.QuestPointers = { [101] = true, [102] = true, [201] = true, [202] = true, [203] = true }
+    db.GetQuest = function(id)
+        if starts[id] then return starts[id] end
+        return get(id)
+    end
+    local item = db.GetItem
+    db.GetItem = function(id)
+        if id == BONE then return { npcDrops = { OLDBONE } } end
+        return item(id)
+    end
+    return db
+end
+local function startsCtx()
+    return { level = 10, log = { [101] = true, [102] = true }, me = {},
+             done = function(id) return id == 202 end }
+end
+
+tests["plate quests starts: a mob dropping an item that starts a quest you can take"] = function(t)
+    t.eq(type(PQ.Starts), "function")
+    if type(PQ.Starts) ~= "function" then return end
+    local got = PQ.Starts(startsDb(), startsCtx())
+    local list = got[OLDBONE]
+    t.eq(list and #list, 1, "only the quest you can take: not done, not too high")
+    t.eq(list and list[1] and { list[1].quest, list[1].what, list[1].label, list[1].from },
+        { 201, "starts", PQ.MARK, "questie" })
+    t.eq(got[VERMIN], nil, "a kill objective is not a start")
+end
+
+tests["plate quests starts: a quest in your log, no list or a failing Questie gives nothing"] = function(t)
+    if type(PQ.Starts) ~= "function" then return t.ok(false, "no Starts") end
+    local ctx = startsCtx()
+    ctx.log[201] = true
+    t.eq(PQ.Starts(startsDb(), ctx)[OLDBONE], nil, "already in your log")
+    local db = startsDb()
+    db.QuestPointers = nil
+    t.eq(PQ.Starts(db, startsCtx()), {}, "no quest list")
+    db = startsDb()
+    db.GetQuest = function() error("questie failed (test)") end
+    t.eq(PQ.Starts(db, startsCtx()), {}, "a failing Questie")
+    t.eq(PQ.Starts(nil, startsCtx()), {})
+    t.eq(PQ.Starts(startsDb(), nil), {})
+end
+
+tests["plate quests starts: the plate of such a mob is marked, its kind starts"] = function(t)
+    local c = ns.make.fakeClient()
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    local api = PQ.Declare(k, d)
+    c.setLevel(10)
+    c.setQuestLog(log())
+    c.setQuestieModule("QuestieDB", startsDb())
+    c.setQuestDone(202, true)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(1, 2)
+    mob(c, "nameplate1", OLDBONE)
+    c.advance(1, 2)
+    t.eq(markOf(c, "nameplate1") and markOf(c, "nameplate1").says, PQ.MARK)
+    local m = type(api.markOf) == "function" and api.markOf("nameplate1") or nil
+    t.eq(m and m.kinds, { "starts" })
+end
+
+-- C-19 (lead section 723): walking every Questie quest is a large pass, so
+-- it is sliced as Nav/DungeonRead.lua's R.Step: at most PQ.SLICE quests a
+-- frame, out of a fight only, never in one frame; "starts" is not known
+-- (no mark) until the pass is done. Fails before: one pass in one call.
+local function manyDb(n)
+    local db = startsDb()
+    for i = 1, n do db.QuestPointers[1000 + i] = true end
+    return db
+end
+
+tests["plate quests starts pass: at most PQ.SLICE quests a step, the answer only when done"] = function(t)
+    t.eq(PQ.SLICE, 200)
+    t.eq(type(PQ.StartsPass), "function")
+    t.eq(type(PQ.StartsStep), "function")
+    if type(PQ.StartsPass) ~= "function" or type(PQ.StartsStep) ~= "function" then return end
+    local db, ctx = manyDb(450), startsCtx()
+    local st = PQ.StartsPass(db, ctx)
+    t.eq(st.state, "building")
+    t.eq(PQ.StartsResult(st), nil, "not known before the pass")
+    PQ.StartsStep(st, db, ctx)
+    t.eq(st.at, PQ.SLICE, "one slice")
+    t.eq(st.state, "building")
+    t.eq(PQ.StartsResult(st), nil, "not known halfway")
+    local steps = 1
+    while st.state == "building" and steps < 10 do
+        PQ.StartsStep(st, db, ctx)
+        steps = steps + 1
+    end
+    t.eq(steps, 3, "455 quests: three slices")
+    t.eq(st.state, "ready")
+    local got = PQ.StartsResult(st)
+    t.eq(got and got[OLDBONE] and got[OLDBONE][1].quest, 201)
+    t.eq(PQ.Starts(db, ctx)[OLDBONE][1].quest, 201, "the whole pass at once gives the same")
+    t.eq(PQ.StartsPass(nil, ctx).state, "none", "no Questie: nothing to walk")
+end
+
+tests["plate quests starts pass: it waits out a fight, then marks the mob"] = function(t)
+    local c = ns.make.fakeClient()
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    PQ.Declare(k, d)
+    c.setLevel(10)
+    c.setQuestLog(log())
+    c.setQuestieModule("QuestieDB", manyDb(900))
+    c.setQuestDone(202, true)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.setCombat(true)
+    c.fire("PLAYER_ENTERING_WORLD")
+    mob(c, "nameplate1", OLDBONE)
+    c.advance(5, 20)
+    local m = markOf(c, "nameplate1")
+    t.ok(m == nil or m.shown == false, "in a fight the pass does not move: no mark yet")
+    c.setCombat(false)
+    c.advance(1, 1)
+    m = markOf(c, "nameplate1")
+    t.ok(m == nil or m.shown == false, "one frame is one slice: not done")
+    c.advance(1, 10)
+    m = markOf(c, "nameplate1")
+    t.eq(m and m.shown, true, "done: the mob is marked")
+    t.eq(m and m.says, PQ.MARK)
+end
+
+-- C-19 (lead section 727): the pass runs again only when the quest log or
+-- your level changed; a loading screen with the same log keeps the answer.
+-- Fails before: every read started the pass again and dropped the marks.
+tests["plate quests starts pass: the same log again keeps the answer, a changed log walks again"] = function(t)
+    local c = ns.make.fakeClient()
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    PQ.Declare(k, d)
+    c.setLevel(10)
+    c.setQuestLog(log())
+    c.setQuestieModule("QuestieDB", manyDb(900))
+    c.setQuestDone(202, true)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    mob(c, "nameplate1", OLDBONE)
+    c.advance(1, 20)
+    t.eq(markOf(c, "nameplate1") and markOf(c, "nameplate1").shown, true, "done")
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(1, 1)
+    t.eq(markOf(c, "nameplate1") and markOf(c, "nameplate1").shown, true, "same log: kept, no new walk")
+    local rows = log()
+    rows[2].complete = true
+    c.setQuestLog(rows)
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(1, 2)
+    local m = markOf(c, "nameplate1")
+    t.ok(m == nil or m.shown == false, "a changed log: walked again, no mark until done")
+end
+
+-- C-19, Zen-3 CHANGES-1 (lead section 727): a read builds its index with no
+-- starts of the old pass: a quest you just took does not keep its drop
+-- marked while the new pass runs. A pass that failed answers nothing ({}),
+-- never its part-filled list.
+tests["plate quests starts pass: a quest just taken drops its mark at once"] = function(t)
+    local c = ns.make.fakeClient()
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    PQ.Declare(k, d)
+    c.setLevel(10)
+    c.setQuestLog(log())
+    c.setQuestieModule("QuestieDB", manyDb(900))
+    c.setQuestDone(202, true)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    mob(c, "nameplate1", OLDBONE)
+    c.advance(1, 20)
+    t.eq(markOf(c, "nameplate1") and markOf(c, "nameplate1").shown, true, "the old pass marked it")
+    local rows = log()
+    rows[#rows + 1] = { id = 201, title = "An Old Bone", complete = false, failed = false, objectives = {} }
+    c.setQuestLog(rows)
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(PQ.WAIT + 0.1, 1)
+    local m = markOf(c, "nameplate1")
+    t.ok(m == nil or m.shown == false, "taken: no mark while the new pass runs")
+    c.advance(1, 20)
+    m = markOf(c, "nameplate1")
+    t.ok(m == nil or m.shown == false, "taken: no mark after it either")
+end
+
+tests["plate quests starts pass: a failed pass answers nothing"] = function(t)
+    t.eq(PQ.StartsResult({ state = "failed", out = { [1] = { { what = "starts" } } } }), {})
+    t.eq(PQ.StartsResult({ state = "none", out = {} }), {})
+end
+
 return tests

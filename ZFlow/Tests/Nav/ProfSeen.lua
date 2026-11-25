@@ -75,7 +75,7 @@ tests["prof seen R1: a recipes answer writes the reading"] = function(t)
     local _, c, w = start()
     login(c)
     recipesSeen(c, smithing(60, 75))
-    t.eq(readings(c), { Blacksmithing = { line = 164, skill = 60, max = 75, at = 5000 } })
+    t.eq(readings(c), { Blacksmithing = { line = 164, skill = 60, max = 75, at = 5000, maxAt = 5000 } })
     t.eq(w.last().ok, true, tostring(w.last().reason))
     t.eq(npcs(c), nil, "a reading wrote a trainer")
 end
@@ -86,7 +86,22 @@ tests["prof seen R1: a later reading replaces the numbers and keeps the visit"] 
     login(c)
     c.setClock(7000)
     recipesSeen(c, smithing(80, 150))
-    t.eq(readings(c), { Blacksmithing = { line = 164, skill = 80, max = 150, at = 7000, visitedAtCap = 75 } })
+    t.eq(readings(c), { Blacksmithing = { line = 164, skill = 80, max = 150, at = 7000, maxAt = 7000,
+        visitedAtCap = 75 } })
+end
+
+-- C-50 (lead section 700): when the max was first read is kept, so a
+-- trainer list saved before it can be told stale. Fails before: no maxAt.
+tests["prof seen R1: a max read again keeps the time it was first read; a new max starts its own"] = function(t)
+    local _, c = start({ char = { learned = { facts = { profSkill = {
+        Blacksmithing = { line = 164, skill = 60, max = 75, at = 100, maxAt = 90 } } } } } })
+    login(c)
+    c.setClock(7000)
+    recipesSeen(c, smithing(70, 75))
+    t.eq(readings(c).Blacksmithing.maxAt, 90, "the same max: its first time")
+    c.setClock(8000)
+    recipesSeen(c, smithing(80, 150))
+    t.eq(readings(c).Blacksmithing.maxAt, 8000, "the max rose: now")
 end
 
 tests["prof seen R1: with no clock the reading is written with no date"] = function(t)
@@ -101,7 +116,7 @@ tests["prof seen R1: a name with a dot in it is one key"] = function(t)
     local _, c = start()
     login(c)
     recipesSeen(c, { profession = 7, name = "A.B", skill = 1, max = 75, recipes = {} })
-    t.eq(readings(c), { ["A.B"] = { line = 7, skill = 1, max = 75, at = 5000 } })
+    t.eq(readings(c), { ["A.B"] = { line = 7, skill = 1, max = 75, at = 5000, maxAt = 5000 } })
 end
 
 tests["prof seen R1: no answer, or no name, writes nothing"] = function(t)
@@ -426,7 +441,7 @@ tests["prof seen: one reading and one show, without the kernel"] = function(t)
     local report = S.Trainer(client, store)
     t.eq(report.ok, true, tostring(report.reason))
     t.eq(report.visited, true)
-    t.eq(saved.char[S.READINGS].Blacksmithing, { line = 164, skill = 75, max = 75, at = 42, visitedAtCap = 75 })
+    t.eq(saved.char[S.READINGS].Blacksmithing, { line = 164, skill = 75, max = 75, at = 42, maxAt = 42, visitedAtCap = 75 })
     t.eq(saved.account[S.NPCS]["Saru Steelfury"].factions, { Horde = true })
     t.eq(S.Reading(nil, store).ok, false)
     t.eq(S.Trainer(client, nil).ok, false)

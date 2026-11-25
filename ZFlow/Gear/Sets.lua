@@ -15,7 +15,9 @@ local _, ns = ...
 -- LOOK ONLY. Nothing is equipped, moved, sold or clicked; equipping a set is
 -- not here. It writes only the character's own saved data.
 --
---   facts = GearSets.Facts(store)   { [item key] = { set name, ... } }, or
+--   facts = GearSets.Facts(store[, client])   client: whose equipment sets
+--                                   to read (else the one this store's module
+--                                   started with) -> { [item key] = { set name, ... } }, or
 --                                   nil when no set is saved: what
 --                                   Disposition's inSet rule reads
 --   sets  = GearSets.Saved(store)   { { name, items = { key ... },
@@ -55,6 +57,43 @@ Sets.NOTHING_WORN = "You wear nothing to save, so no set was saved."
 Sets.FAILED = "That could not be saved, so nothing was changed."
 Sets.TOO_MANY = "You have " .. Sets.MAX_SETS .. " sets; forget one first. Nothing was saved."
 Sets.BAD_NAME = "A set name is up to " .. Sets.MAX_NAME .. " letters, with no bars or control characters."
+-- Parity row C-42, read only (lead section 789): the game's own equipment
+-- sets (the Equipment Manager), read through client.equipmentSets() (a
+-- CLIENT NEED: C_EquipmentSet GetEquipmentSetIDs, GetEquipmentSetInfo,
+-- GetItemIDs, on warcraft.wiki.gg for forever 1.60.1; research at
+-- from-zen/zflow-equipment-manager.md), listed by the set word beside your
+-- own, each with a role you give it, as Flow's sets per role (Modules/Gear/
+-- KeepSets.lua :277-311). Nothing creates, saves or equips a game set; the
+-- role is Z-Flow's own saved data (char ROLES_PATH = { [set name] = role }).
+--   rows = GearSets.Game(list, roles)   { { name, pieces, worn, role } } by
+--                                       name; nil when the sets are not read
+--   <slash> set role <set name> <dps|heal|tank|none>
+Sets.ROLES_PATH = "state.gearSetRoles"
+Sets.ROLES = { dps = true, heal = true, tank = true }
+Sets.GAME_HEAD = "Your game sets: "
+Sets.NO_GAME = "The game's equipment sets can't be read right now."
+Sets.NO_SUCH = "You have no game set named %s."
+Sets.ROLE_USAGE = "Say %s set role <game set name> <dps, heal, tank or none>."
+
+function Sets.Game(list, roles)
+    if type(list) ~= "table" then return nil end
+    local out = {}
+    for _, e in ipairs(list) do
+        if type(e) == "table" and type(e.name) == "string" and e.name ~= "" then
+            local n = 0
+            if type(e.items) == "table" then
+                for _, id in pairs(e.items) do
+                    if type(id) == "number" and id > 0 then n = n + 1 end
+                end
+            end
+            local row = { name = e.name, pieces = n, worn = e.worn == true }
+            if type(roles) == "table" and Sets.ROLES[roles[e.name]] then row.role = roles[e.name] end
+            out[#out + 1] = row
+        end
+    end
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return out
+end
 
 local function trim(text)
     return (tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -124,7 +163,15 @@ function Sets.Saved(store)
     return out
 end
 
-function Sets.Facts(store)
+-- C-42-keep (lead section 791): the client each store's module started
+-- with, so Facts can read the game's own equipment sets for every caller
+-- (the sell list, the bank list, the loot note, the tooltip) as it is.
+-- A caller that holds the client passes it instead (CHANGES-1, section
+-- 804): a lookup by store finds nothing for a store this copy of the
+-- module did not start with.
+local clientOf = setmetatable({}, { __mode = "k" })
+
+function Sets.Facts(store, client)
     local facts, any = {}, false
     for _, s in ipairs(Sets.Saved(store)) do
         for _, key in ipairs(s.items) do
@@ -138,7 +185,42 @@ function Sets.Facts(store)
             any = true
         end
     end
-    return any and facts or nil
+    -- C-42-keep (lead section 791): as Flow's sets, the pieces of the game's
+    -- own equipment sets are held too, matched by item ID (the game gives a
+    -- set's items as IDs; an item with a random suffix is keyed by more than
+    -- its ID, so such a piece is not matched). Read only.
+    local c = client
+    if type(c) ~= "table" and type(store) == "table" then c = clientOf[store] end
+    local list = nil
+    if type(c) == "table" and type(c.equipmentSets) == "function" then
+        local ok, got = pcall(c.equipmentSets)
+        if ok and type(got) == "table" then list = got end
+    end
+    if list then
+        for _, g in ipairs(list) do
+            if type(g) == "table" and type(g.name) == "string" and g.name ~= "" and type(g.items) == "table" then
+                local ids = {}
+                for _, id in pairs(g.items) do
+                    if type(id) == "number" and id > 0 then ids[#ids + 1] = id end
+                end
+                table.sort(ids)
+                for _, id in ipairs(ids) do
+                    local key = ns.Items.Key(id)
+                    if key ~= nil then
+                        local names = facts[key]
+                        if not names then
+                            names = {}
+                            facts[key] = names
+                        end
+                        if names[#names] ~= g.name then names[#names + 1] = g.name end
+                        any = true
+                    end
+                end
+            end
+        end
+    end
+    if not any then return nil end
+    return facts
 end
 
 -- The imported sets: { { name, pieces } } sorted by name.
@@ -156,6 +238,15 @@ local function imported(store)
     end
     table.sort(out, function(a, b) return a.name < b.name end)
     return out
+end
+
+-- C-42: the game's equipment sets, as the client reads them, or nil.
+local function gameList(k)
+    local c = k.client
+    if type(c) ~= "table" or type(c.equipmentSets) ~= "function" then return nil end
+    local ok, list = pcall(c.equipmentSets)
+    if ok and type(list) == "table" then return list end
+    return nil
 end
 
 -- Is the character's saved data there and the store open? (saved() makes
@@ -235,6 +326,18 @@ function Sets.Run(k, rest)
             for i, s in ipairs(mine) do parts[i] = s.name .. " (" .. plural(#s.items, "piece", "pieces") .. ")" end
             lines[1] = "Your sets: " .. table.concat(parts, ", ")
         end
+        -- C-42: the game's own sets, when the client reads them.
+        local game = Sets.Game(gameList(k), get(k.store, "char", Sets.ROLES_PATH))
+        if type(game) == "table" and #game > 0 then
+            local parts = {}
+            for i, g in ipairs(game) do
+                local bits = { plural(g.pieces, "piece", "pieces") }
+                if g.worn then bits[#bits + 1] = "worn" end
+                if g.role then bits[#bits + 1] = g.role end
+                parts[i] = g.name .. " (" .. table.concat(bits, ", ") .. ")"
+            end
+            lines[#lines + 1] = Sets.GAME_HEAD .. table.concat(parts, ", ")
+        end
         local theirs = imported(k.store)
         if #theirs > 0 then
             local parts = {}
@@ -246,6 +349,31 @@ function Sets.Run(k, rest)
         return lines, false
     end
 
+    -- C-42: a role for one of the game's sets (Z-Flow's own data only).
+    if word == "role" then
+        local name, role = more:match("^(.-)%s+(%S+)$")
+        if not name or name == "" or not (Sets.ROLES[role] or role == "none") then
+            return { Sets.ROLE_USAGE:format(tostring(slash or "")) }, false
+        end
+        if not loaded(k) then return { Sets.NOT_LOADED }, false end
+        local game = Sets.Game(gameList(k), nil)
+        if game == nil then return { Sets.NO_GAME }, false end
+        local found = false
+        for _, g in ipairs(game) do
+            if g.name == name then found = true end
+        end
+        if not found then return { Sets.NO_SUCH:format(name) }, false end
+        local roles = {}
+        local was = get(k.store, "char", Sets.ROLES_PATH)
+        if type(was) == "table" then
+            for key, v in pairs(was) do roles[key] = v end
+        end
+        if role == "none" then roles[name] = nil else roles[name] = role end
+        local ok, done = pcall(k.store.set, k.store, "char", Sets.ROLES_PATH, roles)
+        if not ok or done ~= true then return { Sets.FAILED }, false end
+        if role == "none" then return { "Game set " .. name .. ": no role." }, true end
+        return { "Game set " .. name .. ": " .. role .. "." }, true
+    end
     if word ~= "save" and word ~= "forget" then return { usage(slash) }, false end
     if more == "" then return { usage(slash) }, false end
     if not goodName(more) then return { Sets.BAD_NAME }, false end
@@ -324,6 +452,8 @@ function Sets.Declare(k, diag)
         needs = { "client", "store" },
         provides = { Hooked = api.hooked, Errors = api.errors },
         start = function(ctx)
+            -- C-42-keep: Facts reads the game's sets through this client.
+            if type(ctx.store) == "table" then clientOf[ctx.store] = ctx.client end
             if type(ctx.client.onItemTooltip) ~= "function" then return end
             local got = ctx.client.onItemTooltip(function(link, add)
                 if type(add) ~= "function" then return end

@@ -37,7 +37,7 @@ tests["repair cost: at a merchant that repairs, the cost, your money and the but
     local c, addon, before = boot()
     t.eq(#lines(c), 0, "nothing before a merchant")
     at(c, true, 1240, 10500)
-    t.eq(lines(c), { ns.id.title .. ": Repairing everything here costs 12s 40c; you have 1g 5s. "
+    t.eq(lines(c), { ns.id.title .. ": Repairing everything here costs 12.4s; you have 1.05g. "
         .. "Press the merchant's Repair All button." })
     t.eq(addon.repairCost.said(), 1)
     t.eq(addon.problems:count(), before)
@@ -47,7 +47,7 @@ tests["repair cost: too little money says so and what to do"] = function(t)
     local c, addon, before = boot()
     at(c, true, 1240, 500)
     local l = lines(c)[1] or ""
-    t.ok(l:find("costs 12s 40c; you have 5s. That is not enough for all of it", 1, true) ~= nil, l)
+    t.ok(l:find("costs 12.4s; you have 5s. That is not enough for all of it", 1, true) ~= nil, l)
     t.ok(l:find("Repair All", 1, true) == nil, "the button it can't pay for is not named")
     t.eq(addon.problems:count(), before)
 end

@@ -20,6 +20,14 @@ local function questie()
                   Starts = { NPC = { 9201 } } },
         [605] = { Id = 605, name = "Second Part", level = 18, requiredLevel = 12, preQuestSingle = { 699 },
                   Starts = { NPC = { 9201 } } },
+        [607] = { Id = 607, name = "Old Oath", level = 10, requiredLevel = 10, requiredClasses = 1,
+                  Starts = { NPC = { 9201 } } },
+        [608] = { Id = 608, name = "Holy Oath", level = 10, requiredLevel = 10, requiredClasses = 2,
+                  Starts = { NPC = { 9201 } } },
+        [609] = { Id = 609, name = "Later Oath", level = 10, requiredLevel = 10, requiredClasses = 1,
+                  preQuestSingle = { 699 }, Starts = { NPC = { 9201 } } },
+        [610] = { Id = 610, name = "Gulch Duty", level = 18, requiredLevel = 12, zoneOrSort = 3277,
+                  Starts = { NPC = { 9203 } } },
         [606] = { Id = 606, name = "Too High", level = 26, requiredLevel = 25, Starts = { NPC = { 9201 } } },
     }
     local npcs = {
@@ -27,6 +35,7 @@ local function questie()
         [9102] = { name = "Herb Thing", spawns = { [40] = { { 20, 50 } } } },
         [9103] = { name = "Smith", spawns = { [40] = { { 55, 50 } } } },
         [9201] = { name = "Marshal", friendlyToFaction = "AH", spawns = { [40] = { { 40, 52 } } } },
+        [9203] = { name = "Herald", friendlyToFaction = "AH", spawns = { [40] = { { 45, 50 } } } },
         [9202] = { name = "Hermit", friendlyToFaction = "AH", spawns = { [40] = { { 50, 95 } } } },
     }
     local db = { QuestPointers = {} }
@@ -81,7 +90,8 @@ tests["route pickups: a giver on the way is a stop, one far off is listed as ski
     c.advance(1, 5)
     t.ok(said(c, "1. Bandages") ~= nil, "the quest stops come first as before")
     local kept = said(c, ". Pick up: Lost Pages (Marshal)")
-    t.ok(kept ~= nil and kept:find("3. ", 1, true) ~= nil, tostring(kept))
+    -- Section 645.5: hub-first (the default) brings the close pick-up (102 yd) up behind the turn-in.
+    t.ok(kept ~= nil and kept:find("2. ", 1, true) ~= nil, tostring(kept))
     local skipped = said(c, "Pick up: Hermit Tea (Hermit)")
     t.ok(skipped ~= nil and skipped:find(ns.Nav.RoutePickups.SKIPPED, 1, true) ~= nil, tostring(skipped))
     t.ok(said(c, "Wrong Race") == nil, "another race's quest is not offered")
@@ -92,7 +102,8 @@ end
 tests["route pickups: a pick-up stop drops out once the quest is in the log"] = function(t)
     local c = boot()
     c.slashes[ns.id.slash]("route")
-    for _ = 1, 2 do c.slashes[ns.id.slash]("route skip") end
+    -- Section 645.5: hub-first makes the pick-up the second stop, so one skip reaches it.
+    c.slashes[ns.id.slash]("route skip")
     c.advance(1, 5)
     t.eq(first(c), "Pick up: Lost Pages (Marshal)")
     c.setQuestLog({ LOG[1], LOG[2], LOG[3],
@@ -123,6 +134,50 @@ tests["route pickups: the setting row is there"] = function(t)
     local row = addon.settings:row(ns.Nav.TripRoute.PICKUP_SETTING)
     t.eq(row and row.group, "travel.route")
     t.eq(row and row.default, true)
+end
+
+tests["route pickups: the player's class quest below the window is offered, others' are not"] = function(t)
+    local c = boot()
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    t.ok(said(c, "Pick up your class quest: Old Oath (Marshal)") ~= nil, "the class quest")
+    t.ok(said(c, "Holy Oath") == nil, "another class's quest is not offered")
+    t.ok(said(c, "Later Oath") == nil, "a class quest waiting on an earlier quest is not offered")
+end
+
+tests["route pickups: battleground quests stay off until the setting is on"] = function(t)
+    local c, addon = boot()
+    local row = addon.settings:row(ns.Nav.BattlegroundQuests.SETTING)
+    t.eq(row and row.group, "travel.route")
+    t.eq(row and row.default, false)
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    t.ok(said(c, "Pick up: Lost Pages (Marshal)") ~= nil, "the ordinary pick-up")
+    t.ok(said(c, "Gulch Duty") == nil, "the battleground quest is left out")
+    addon.settings:set(ns.Nav.BattlegroundQuests.SETTING, true)
+    c.slashes[ns.id.slash]("route new")
+    c.advance(1, 5)
+    t.ok(said(c, "Pick up: Gulch Duty (Herald)") ~= nil, "on: the battleground quest is offered")
+end
+
+-- Row A2-03 (lead section 667): after /route, the pick-ups the route left
+-- off are offered as candidate next steps for the arrow, nearest first.
+tests["route pickups: pick-ups off the planned route become next steps"] = function(t)
+    local c, addon = boot()
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    local view = addon.use(ns.Nav.TripRoute.NAME).View()
+    t.ok(view ~= nil, "a route is planned")
+    local here = { map = MAP, x = 0.5, y = 0.5, size = { w = 1000, h = 1000 } }
+    local log = {}
+    for _, row in ipairs(LOG) do log[row.id] = true end
+    local RP = ns.Nav.RoutePickups
+    local steps = RP.NextSteps(view, RP.Read(c, here, log), here)
+    local labels = {}
+    for _, s in ipairs(steps) do labels[s.label] = true end
+    t.ok(labels["Pick up: Hermit Tea (Hermit)"] == true, "the skipped giver is a next step")
+    t.ok(labels["Pick up: Lost Pages (Marshal)"] == nil, "a pick-up on the route is not repeated")
+    t.eq(steps[1] and steps[1].kind, "next")
 end
 
 return tests

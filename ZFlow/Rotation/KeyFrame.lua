@@ -8,7 +8,24 @@ local _, ns = ...
 --
 -- It presses nothing. A secure button acts only on a hardware click of the
 -- player; this file binds no key to it, shows it nowhere and never clicks
--- it. No state handler, no state driver, no binding is made here.
+-- it. No binding is made here.
+--
+-- D-04 (lead section 697), as Flow's Modules/Rotation/Cast.lua (:877-932):
+-- with a state handler from the client, out of a fight only, the handler
+-- is given each form's row (Cast.Attributes' header), its secure code
+-- (Cast.FORM_SNIPPET) and a state driver on the forms (Cast.Attributes'
+-- driver). In a fight the game runs that code on a form change and the key
+-- follows the form. The handler is a LEAD NEED that Core/Client.lua does
+-- not have yet; without it the button is set as before and the key keeps
+-- the pull's row in a fight (FightLock, unchanged):
+--   client.stateHandler({ name, button, state }) -> h | nil
+--     a SecureHandlerStateTemplate frame with the frame ref "key" to the
+--     button's frame
+--     h.setAttribute(attr, value) -> true, or false and why ("lockdown")
+--     h.driver(condition) -> true, or false and why: RegisterStateDriver
+--       on state with the condition
+--     h.snippet(text) -> true, or false and why: its "_onstate-<state>"
+--   each refuses by itself while the lock is not a plain false.
 --
 -- It holds the key PLAN, not the live suggestion: ns.cast.Attributes is
 -- asked with no suggestion, so the button holds the row of the form you
@@ -122,6 +139,10 @@ end
 function K.New(opts)
     opts = type(opts) == "table" and opts or {}
     local button = type(opts.button) == "table" and opts.button or nil
+    -- D-04: the state handler, or nil.
+    local handler = nil
+    if type(opts.handler) == "table" then handler = opts.handler end
+    local handlerHeld, handlerCond, handlerCode = {}, nil, false
     local lockdown = type(opts.lockdown) == "function" and opts.lockdown or function() return nil end
     local formOf = type(opts.form) == "function" and opts.form or nil
     -- S12 care key (P-KEYS slice A): a button with rows of its own.
@@ -226,6 +247,71 @@ function K.New(opts)
                 else
                     failed[#failed + 1] = { attr = row.attr, why = why }
                 end
+            end
+        end
+
+        -- D-04: the handler's rows, its code once, and its driver when the
+        -- condition changed. Asked before each call, as the button's sets.
+        -- Lazy's CHANGES (lead section 737), as Flow Cast.lua :921-926: with
+        -- no plan, every row the handler holds is written "" (the header is
+        -- empty), so nothing left over is copied onto the key in a fight.
+        local header = nil
+        if attrs and type(attrs.header) == "table" then
+            header = attrs.header
+        elseif wanted == nil then
+            header = {}
+        end
+        if #failed == 0 and handler and header then
+            local function call(name, ...)
+                lock = lockdown()
+                if lock ~= false then return "wait" end
+                local called, ok, why = pcall(handler[name], ...)
+                if not called then return "refused" end
+                if ok ~= true then
+                    if why == "lockdown" then return "wait" end
+                    return type(why) == "string" and why or "refused"
+                end
+                return true
+            end
+            if wanted ~= nil and not handlerCode and type(handler.snippet) == "function" then
+                local got = call("snippet", C.FORM_SNIPPET)
+                if got == "wait" then return waiting(true, { form = form, formRead = formRead }) end
+                if got == true then handlerCode = true else failed[#failed + 1] = { attr = "snippet", why = got } end
+            end
+            for _, row in ipairs(header) do
+                if #failed == 0 and handlerHeld[row.attr] ~= row.value and type(handler.setAttribute) == "function" then
+                    parts = parts + 1
+                    local got = call("setAttribute", row.attr, row.value)
+                    if got == "wait" then return waiting(true, { form = form, formRead = formRead }) end
+                    if got == true then handlerHeld[row.attr] = row.value
+                    else failed[#failed + 1] = { attr = "handler:" .. tostring(row.attr), why = got } end
+                end
+            end
+            -- D-04 CHANGES (Flow Cast.lua :921-926): a row held before that
+            -- this header no longer gives is written "", so nothing is left.
+            local given = {}
+            for _, row in ipairs(header) do given[row.attr] = true end
+            local stale = {}
+            for attr, value in pairs(handlerHeld) do
+                if not given[attr] and value ~= "" then stale[#stale + 1] = attr end
+            end
+            table.sort(stale)
+            for _, attr in ipairs(stale) do
+                if #failed == 0 and type(handler.setAttribute) == "function" then
+                    parts = parts + 1
+                    local got = call("setAttribute", attr, "")
+                    if got == "wait" then return waiting(true, { form = form, formRead = formRead }) end
+                    if got == true then handlerHeld[attr] = ""
+                    else failed[#failed + 1] = { attr = "handler:" .. tostring(attr), why = got } end
+                end
+            end
+            local cond = nil
+            if attrs and type(attrs.driver) == "table" then cond = attrs.driver.condition end
+            if #failed == 0 and type(cond) == "string" and cond ~= handlerCond and type(handler.driver) == "function" then
+                parts = parts + 1
+                local got = call("driver", cond)
+                if got == "wait" then return waiting(true, { form = form, formRead = formRead }) end
+                if got == true then handlerCond = cond else failed[#failed + 1] = { attr = "driver", why = got } end
             end
         end
 
@@ -370,8 +456,16 @@ function K.Declare(k, diag)
             k.problems:add(K.NAME, "frame", "the client made no secure button; " .. SUBJECT .. " is not set")
             return nil
         end
+        -- D-04: the state handler, a LEAD NEED; nil without it.
+        local handler
+        if type(client.stateHandler) == "function" then
+            local ok, h = pcall(client.stateHandler, { name = ns.id.framePrefix .. "RotationForms",
+                button = button, state = C.STATE })
+            if ok and type(h) == "table" then handler = h end
+        end
         kf = K.New({
             button = button,
+            handler = handler,
             lockdown = client.combatLockdown,
             form = type(client.form) == "function" and client.form or nil,
         })

@@ -13,7 +13,8 @@ local _, ns = ...
 -- Warrior weights (ZFlow/Classes/Warrior.lua): dps Strength 1.0, Stamina
 -- 0.35; tank Stamina 1.0, Strength 0.6. So the worn helm (2 Stamina,
 -- 2 Strength) scores 2.7 for dps and 3.2 for a tank; the strength helm
--- (10 Strength) 10 and 6.
+-- (10 Strength) 10 and 6. C-26: the vs line is the gain or loss on what is
+-- worn (+7.3 and +2.8), not the worn item's score.
 local tests = {}
 
 local STA, STR = "ITEM_MOD_STAMINA_SHORT", "ITEM_MOD_STRENGTH_SHORT"
@@ -42,7 +43,7 @@ local function sword(stats)
 end
 
 -- opts: role (spec.role saved for the character), score (gear.tooltipScore,
--- default on here), prepare(c) before the add-on is built.
+-- on unless false), prepare(c) before the add-on is built.
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -65,7 +66,7 @@ local function boot(opts)
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
-    if opts.score ~= false then addon.settings:set("gear.tooltipScore", true) end
+    addon.settings:set("gear.tooltipScore", opts.score ~= false)
     return c, addon
 end
 
@@ -99,7 +100,7 @@ tests["gear tooltip score: a score per role, the chosen role first, then vs the 
     t.eq(lines[1], "Upgrade for your head piece (+2.8, tank)", "the chosen role's verdict is the first line")
     t.eq(at(lines, "Upgrade for your head piece (+7.3, dps)"), nil, "G31: no verdict for a role not chosen")
     local score = at(lines, "Score 6 (tank), 10 (dps)")
-    local vs = at(lines, "vs your head piece: 3.2 (tank), 2.7 (dps)")
+    local vs = at(lines, "vs your head piece: +2.8 (tank), +7.3 (dps)")
     t.ok(score ~= nil, "no score line: " .. table.concat(lines, " | "))
     t.ok(vs ~= nil, "no vs line: " .. table.concat(lines, " | "))
     local verdict = at(lines, "Upgrade for your head piece (+2.8, tank)")
@@ -114,16 +115,16 @@ tests["gear tooltip score: the worn item says you are wearing it, with no vs lin
     t.eq(lines[1], "Same as your head piece (dps)")
     t.ok(at(lines, "Score 2.7 (dps), 3.2 (tank)") ~= nil, "score: " .. table.concat(lines, " | "))
     t.ok(at(lines, "You're wearing this.") ~= nil, "worn: " .. table.concat(lines, " | "))
-    t.eq(at(lines, "vs your head piece: 2.7 (dps), 3.2 (tank)"), nil, "no vs line for the worn item")
+    t.eq(at(lines, "vs your head piece: 0 (dps), 0 (tank)"), nil, "no vs line for the worn item")
 end
 
 tests["gear tooltip score: off, the tooltip has the verdict and no score lines"] = function(t)
     local c, addon = boot({ role = "dps", score = false })
-    t.eq(addon.settings:get("gear.tooltipScore"), false, "off by default")
+    t.eq(addon.settings:get("gear.tooltipScore"), false, "switched off")
     local lines = hover(c, STRONG)
     t.eq(lines[1], "Upgrade for your head piece (+7.3, dps)")
     t.eq(at(lines, "Score 10 (dps), 6 (tank)"), nil)
-    t.eq(at(lines, "vs your head piece: 2.7 (dps), 3.2 (tank)"), nil)
+    t.eq(at(lines, "vs your head piece: +7.3 (dps), +2.8 (tank)"), nil)
 end
 
 tests["gear tooltip score: item data late - the lines appear once it is read"] = function(t)
@@ -133,7 +134,7 @@ tests["gear tooltip score: item data late - the lines appear once it is read"] =
     c.setItem(LATE, helm({ [STR] = 10 }))
     lines = hover(c, LATE)
     t.ok(at(lines, "Score 10 (dps), 6 (tank)") ~= nil, "score once loaded: " .. table.concat(lines, " | "))
-    t.ok(at(lines, "vs your head piece: 2.7 (dps), 3.2 (tank)") ~= nil, "vs once loaded")
+    t.ok(at(lines, "vs your head piece: +7.3 (dps), +2.8 (tank)") ~= nil, "vs once loaded")
 end
 
 tests["gear tooltip score: the worn read late - wearing is said once it is read"] = function(t)
@@ -168,7 +169,7 @@ tests["gear tooltip score: the role changes - the score line follows it"] = func
     local lines = hover(c, STRONG)
     t.eq(lines[1], "Upgrade for your head piece (+2.8, tank)", "G31: the verdict follows the role too")
     t.ok(at(lines, "Score 6 (tank), 10 (dps)") ~= nil, "tank first: " .. table.concat(lines, " | "))
-    t.ok(at(lines, "vs your head piece: 3.2 (tank), 2.7 (dps)") ~= nil, "vs, tank first")
+    t.ok(at(lines, "vs your head piece: +2.8 (tank), +7.3 (dps)") ~= nil, "vs, tank first")
 end
 
 -- Regression (G15): any "none" line made the roll hint "Unknown". The new
@@ -178,7 +179,7 @@ tests["gear tooltip score: the roll hint still says No upgrade with the new line
     local lines = hover(c, SMALL)
     t.eq(lines[1], "Not an upgrade for your main hand (-15, dps)")
     t.ok(at(lines, "Score 5 (dps), 3 (tank)") ~= nil, "score: " .. table.concat(lines, " | "))
-    t.ok(at(lines, "vs your main hand: 20 (dps), 12 (tank)") ~= nil, "vs: " .. table.concat(lines, " | "))
+    t.ok(at(lines, "vs your main hand: -15 (dps), -9 (tank)") ~= nil, "vs: " .. table.concat(lines, " | "))
     local shown = c.offerRoll(7, SMALL)
     t.eq(#shown, 1, "one hint")
     t.eq(shown[1] and shown[1].text, "No upgrade")
@@ -244,11 +245,11 @@ tests["gear tooltip score: an empty slot says nothing worn"] = function(t)
     local lines = hover(c, STRONG)
     t.eq(lines[1], "Upgrade for your head piece (+10, dps)")
     t.ok(at(lines, "vs your head piece: nothing worn") ~= nil, "empty: " .. table.concat(lines, " | "))
-    t.eq(at(lines, "vs your head piece: 0 (dps), 0 (tank)"), nil, "no score of 0 for an empty slot")
+    t.eq(at(lines, "vs your head piece: +10 (dps), +6 (tank)"), nil, "no gain on a worn score of 0")
 end
 
 -- GT2-2: a ring is held up to both ring slots; the one it gains most on is
--- named (dps: 6 vs 4 and 2; tank: 3.6 vs 2.4 and 1.2).
+-- named (dps: 6 vs 4 and 2; tank: 3.6 vs 2.4 and 1.2), with the gain on it.
 tests["gear tooltip score: a ring, vs the ring it beats most"] = function(t)
     local c = boot({ role = "dps", prepare = function(c)
         c.setItem(RING_A, ring({ [STR] = 4 }))
@@ -260,7 +261,7 @@ tests["gear tooltip score: a ring, vs the ring it beats most"] = function(t)
     local lines = hover(c, RING_NEW)
     t.eq(lines[1], "Upgrade for your second ring (+4, dps)")
     t.ok(at(lines, "Score 6 (dps), 3.6 (tank)") ~= nil, "score: " .. table.concat(lines, " | "))
-    t.ok(at(lines, "vs your second ring: 2 (dps), 1.2 (tank)") ~= nil, "vs: " .. table.concat(lines, " | "))
+    t.ok(at(lines, "vs your second ring: +4 (dps), +2.4 (tank)") ~= nil, "vs: " .. table.concat(lines, " | "))
 end
 
 -- GT2-2: a two-hander is held up to the main hand and the off hand together
@@ -273,7 +274,7 @@ tests["gear tooltip score: a two-hander, vs your main hand and off hand"] = func
     local lines = hover(c, GREAT)
     t.eq(lines[1], "Upgrade for your main hand and off hand (+10, dps)")
     t.ok(at(lines, "Score 30 (dps), 18 (tank)") ~= nil, "score: " .. table.concat(lines, " | "))
-    t.ok(at(lines, "vs your main hand and off hand: 20 (dps), 12 (tank)") ~= nil,
+    t.ok(at(lines, "vs your main hand and off hand: +10 (dps), +6 (tank)") ~= nil,
          "vs: " .. table.concat(lines, " | "))
 end
 

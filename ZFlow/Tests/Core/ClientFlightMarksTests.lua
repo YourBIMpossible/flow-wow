@@ -81,7 +81,10 @@ local function fault(env)
     end
     for _, f in ipairs(env.frames) do
         if f.template ~= nil then return "a frame with a template: " .. tostring(f.template) end
-        if f.mouse ~= false then return "a frame that may take the mouse" end
+        -- B-10: a map-pin dot is a Button on the pins host (on the canvas)
+        -- and takes clicks; it is still no template and no secure frame.
+        local dot = f.kind == "Button" and f.parent ~= nil and f.parent.parent == env.canvas
+        if f.mouse ~= false and not dot then return "a frame that may take the mouse" end
     end
     return nil
 end
@@ -170,8 +173,12 @@ tests["client mapPins: draw puts dots and lines at the shares of the canvas; ext
     h.draw({ { name = "A", kind = "have", role = "from", x = 0.5, y = 0.5 }, { name = "B", kind = "new", x = 0.1, y = 0.2 } },
         { { from = "A", to = "B", ax = 0.5, ay = 0.5, bx = 0.1, by = 0.2 } })
     local dots, lines = {}, {}
+    -- Each dot is a Button on the host (B-10: it takes clicks).
+    for _, f in ipairs(env.frames) do
+        if f.kind == "Button" and f.parent == host then dots[#dots + 1] = f end
+    end
     for _, r in ipairs(host.made) do
-        if r.kind == "Texture" then dots[#dots + 1] = r elseif r.kind == "Line" then lines[#lines + 1] = r end
+        if r.kind == "Line" then lines[#lines + 1] = r end
     end
     t.eq(#dots, 2)
     t.eq(#lines, 1)

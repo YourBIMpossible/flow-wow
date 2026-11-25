@@ -454,4 +454,74 @@ T["from the client and the store: nothing to read gives no step"] = function(t)
     t.eq(store.writes, 0)
 end
 
+-- A2-09 (lead section 667): the next rank, before the cap. What the trainer
+-- said for this cap (char learned.facts.tierSeen: cap, skill, level, as the
+-- trainer window showed them) decides; with none, only the cap does.
+local function said(over)
+    return { Cooking = with({ cap = 75, skill = 50, level = 10, category = "available" }, over) }
+end
+
+T["A2-09 near the cap, the trainer said the skill and level are met: the step"] = function(t)
+    local npcs = { Aska = trainer(1411, 0.6, 0.25) }
+    local step, why = N.ProfStep({ Cooking = capped({ skill = 55 }) }, npcs, said(), here({ level = 20 }))
+    t.eq(step, cooking({ cont = 1, map = 1411, x = 0.6, y = 0.25 }))
+    t.eq(why, nil)
+end
+
+T["A2-09 near the cap: below the skill the trainer named, no step"] = function(t)
+    local npcs = { Aska = trainer(1411, 0.6, 0.25) }
+    local step, why = N.ProfStep({ Cooking = capped({ skill = 49 }) }, npcs, said(), here({ level = 20 }))
+    t.eq(step, nil)
+    t.eq(why, "not capped")
+end
+
+T["A2-09 near the cap: the player's level is below the trainer's, or not known: no step"] = function(t)
+    local npcs = { Aska = trainer(1411, 0.6, 0.25) }
+    local step, why = N.ProfStep({ Cooking = capped({ skill = 55 }) }, npcs, said(), here({ level = 9 }))
+    t.eq(step, nil)
+    t.eq(why, "not capped")
+    step, why = N.ProfStep({ Cooking = capped({ skill = 55 }) }, npcs, said(), here())
+    t.eq(step, nil, "level not known")
+    t.eq(why, "not capped")
+end
+
+T["A2-09 near the cap: what the trainer said for another cap, or nothing, does not count"] = function(t)
+    local npcs = { Aska = trainer(1411, 0.6, 0.25) }
+    local step = N.ProfStep({ Cooking = capped({ skill = 55 }) }, npcs, said({ cap = 150 }), here({ level = 20 }))
+    t.eq(step, nil, "another cap")
+    step = N.ProfStep({ Cooking = capped({ skill = 55 }) }, npcs, said({ skill = NONE }), here({ level = 20 }))
+    t.eq(step, nil, "no skill said")
+    step = N.ProfStep({ Cooking = capped({ skill = 55 }) }, npcs, said({ level = NONE }), here({ level = 20 }))
+    t.eq(step, nil, "no level said")
+    step = N.ProfStep({ Cooking = capped({ skill = 55 }) }, npcs, said({ category = "unavailable" }), here({ level = 20 }))
+    t.eq(step, nil, "red at the trainer")
+end
+
+T["A2-09 capped, the trainer named a level above the player's: no step, reason level"] = function(t)
+    local npcs = { Aska = trainer(1411, 0.6, 0.25) }
+    local step, why = N.ProfStep({ Cooking = capped() }, npcs, said({ level = 30 }), here({ level = 20 }))
+    t.eq(step, nil)
+    t.eq(why, "level")
+    step = N.ProfStep({ Cooking = capped() }, npcs, said({ level = 30 }), here())
+    t.eq(type(step), "table", "level not known: the cap alone still sends the player")
+end
+
+T["A2-09 ProfNextRankReady: pure"] = function(t)
+    t.eq(type(N.ProfNextRankReady), "function")
+    if type(N.ProfNextRankReady) ~= "function" then return end
+    t.eq(N.ProfNextRankReady({ skill = 55, max = 75 }, said().Cooking, 20), true)
+    t.eq(N.ProfNextRankReady({ skill = 55, max = 75 }, said().Cooking, 9), false)
+    t.eq(N.ProfNextRankReady({ skill = 55, max = 75 }, nil, 20), false)
+    t.eq(N.ProfNextRankReady({ skill = 75, max = 75 }, nil, 20), false, "the cap alone is not this rule")
+end
+
+T["A2-09 from the client: client.level is read"] = function(t)
+    local store = savedStore({
+        ["learned.facts.profSkill"] = { Cooking = capped({ skill = 55 }) },
+        ["learned.facts.tierSeen"] = said(),
+    }, { ["learned.places.npcs"] = { Aska = trainer(1411, 0.7, 0.5) } })
+    local step = N.ProfStepFrom(standing({ level = function() return 20 end }), store)
+    t.eq(step, cooking({ cont = 1, map = 1411, x = 0.7, y = 0.5 }))
+end
+
 return T

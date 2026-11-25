@@ -11,6 +11,8 @@ local _, ns = ...
 --   W.Lines(goals) -> the word's lines
 --     goals  as FlightPaths.Goals gives them (nearest on your map first)
 -- Module "flightWord" provides Lines. The word: `<slash> flights`.
+-- After the paths to learn, the flight times flown (Nav/FlightTimes.lua,
+-- parity row A1-32); a path never flown is not listed.
 -- Not tested in game.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -85,17 +87,27 @@ function W.Declare(k, diag)
     end
 
     function api.Lines()
-        if off() then return { W.OFF } end
         local goals
         local FP = ns.FlightPaths
-        if ctx and FP then
+        if ctx and FP and not off() then
             local ok, flights = pcall(ctx.use, FP.NAME)
             if ok and type(flights) == "table" and type(flights.Goals) == "function" then
                 local fine, got = pcall(flights.Goals)
                 if fine then goals = got end
             end
         end
-        return W.Lines(goals)
+        local lines = off() and { W.OFF } or W.Lines(goals)
+        local T = N.FlightTimes
+        if ctx and T then
+            local ok, times = pcall(ctx.use, T.NAME)
+            local known
+            if ok and type(times) == "table" and type(times.Known) == "function" then
+                local fine, got = pcall(times.Known)
+                if fine then known = got end
+            end
+            for _, line in ipairs(T.Lines(known)) do lines[#lines + 1] = line end
+        end
+        return lines
     end
 
     if diag and type(diag.commands) == "table" then

@@ -10,6 +10,9 @@ local _, ns = ...
 --   <slash> watch <item> off              drops it
 -- When the auction window closes (AUCTION_HOUSE_CLOSED), one chat line for
 -- each watched item whose last price is at or under its mark.
+--   <slash> ah watch <item> [1.36g] | ah unwatch <item> | ah   (E-31)
+-- E-31: a search result for a watched item at or under its mark says one
+-- line and plays the alert sound, once an item a visit.
 --
 --   copper = AuctionWatch.Mark(text)      nil when text is no coin amount
 --   lines  = AuctionWatch.Lines(list, priceOf, nameOf[, under])
@@ -31,20 +34,43 @@ W.WORD = "watch"
 W.SETTING = "items.auctionWatch"
 W.PATH = "items.auctionWatch"
 W.UNNAMED = "an item not loaded yet"
-W.HELP = "<item> [price]: watch an item's auction price (amounts end in g, s or c); <item> off drops it; alone: the list. It buys nothing."
+W.HELP = "<item> [price]: watch an item's auction price (amounts end in g, s or c, as 1.36g); <item> off drops it; alone: the list. It buys nothing."
+-- E-31 (lead 682): the `ah` word, the legacy add-on's words for the same list
+-- (Flow d78839f7 Modules/Items/Auction.lua:205-235): ah watch, ah unwatch, ah.
+-- Its "scan" sends searches, an auction-house action: not here.
+W.AH = "ah"
+W.AH_HELP = "watch <item> [price] | unwatch <item> | alone: the watch list. It buys nothing."
+W.AH_USAGE = "ah watch <item> [price] | ah unwatch <item> | ah (the list). It buys nothing."
+-- E-33: bare ah frames the list as the legacy /flow ah did (Auction.lua:479-489):
+-- a heading, each watched item with its last price ("not yet" there), an
+-- "(empty)" line when none, then the words. No age, no cap, as there.
+W.AH_HEAD = "auction watch list, last price seen:"
+W.AH_EMPTY = "nothing watched."
 
 local UNIT = { g = 10000, s = 100, c = 1 }
 
+-- E-31 (lead 681): also the short form the add-on prints ("1.36g", "5.52s",
+-- "52c", "13.6g"; Items/Prices.lua Coin), read as the legacy AH.ParseMoney
+-- reads it (Flow d78839f7 Modules/Items/Auction.lua:40-52): spaces and case do
+-- not count, a plain number is gold, amounts add up ("1g50s"). Anything
+-- else, a malformed number among it, is no mark.
 function W.Mark(text)
     if type(text) ~= "string" then return nil end
-    local total, any = 0, false
-    for word in text:gmatch("%S+") do
-        local n, unit = word:match("^(%d+)([gsc])$")
-        if not n then return nil end
-        total, any = total + tonumber(n) * UNIT[unit], true
+    text = text:lower():gsub("%s", "")
+    if text == "" then return nil end
+    if text:match("^[%d%.]+$") then
+        local gold = tonumber(text)
+        if gold == nil then return nil end
+        return math.floor(gold * UNIT.g + 0.5)
     end
-    if not any then return nil end
-    return total
+    if text:gsub("[%d%.]+[gsc]", "") ~= "" then return nil end
+    local total = 0
+    for num, unit in text:gmatch("([%d%.]+)([gsc])") do
+        local n = tonumber(num)
+        if n == nil then return nil end
+        total = total + n * UNIT[unit]
+    end
+    return math.floor(total + 0.5)
 end
 
 local function coin(copper) return ns.Prices.Coin(copper) or ns.Prices.UnknownText("auction") end
@@ -87,6 +113,24 @@ function W.Lines(list, priceOf, nameOf, under)
         end
     end
     return out
+end
+
+-- E-33: the lines bare ah says, around the list's own lines.
+function W.AhLines(lines)
+    local out = { W.AH_HEAD }
+    local any = false
+    for _, line in ipairs(type(lines) == "table" and lines or {}) do
+        out[#out + 1] = line
+        any = true
+    end
+    if not any then out[#out + 1] = W.AH_EMPTY end
+    out[#out + 1] = W.AH_USAGE
+    return out
+end
+
+-- E-31: the chat line when a watched item is seen at or under its mark.
+function W.AlertLine(name, unit, mark)
+    return string.format("%s is on the auction house for %s each, at or under your %s.", name, coin(unit), coin(mark))
 end
 
 function W.Declare(k, diag)
@@ -139,9 +183,49 @@ function W.Declare(k, diag)
         say(name .. ".")
     end
 
+    local function ah(arg)
+        arg = type(arg) == "string" and arg:match("^%s*(.-)%s*$") or ""
+        local cmd, rest = arg:match("^(%S*)%s*(.-)$")
+        cmd = cmd:lower()
+        if cmd == "" then
+            if not ctx then return say("not started yet") end
+            for _, line in ipairs(W.AhLines(W.Lines(list(), priceOf, nameOf))) do say(line) end
+            return
+        end
+        if cmd == "watch" then return word(rest) end
+        if cmd == "unwatch" then
+            if rest == "" then return say(W.AH_USAGE) end
+            return word(rest .. " off")
+        end
+        say(W.AH_USAGE)
+    end
+
+    -- E-31 (lead 682): the alert, as the legacy alertIfCheap
+    -- (Flow d78839f7 Modules/Items/Auction.lua:80-86): one chat line and
+    -- PlaySound(SOUNDKIT.RAID_WARNING), here client.playAlert (the same
+    -- sound; it plays nothing, and no number is guessed, when the game names
+    -- none). Once an item a visit: the legacy add-on alerted once an item a
+    -- page read (:140-154); results here come row by row, so a visit to the
+    -- auction house is the scan, and closing the window starts the next one.
+    local alerted = {}
+    local function seen(id, row)
+        if not ctx or type(id) ~= "number" or alerted[id] then return end
+        local mark = list()[id]
+        if type(mark) ~= "number" then return end
+        local unit = ns.AuctionLog.UnitFrom(row)
+        if type(unit) ~= "number" or unit > mark then return end
+        alerted[id] = true
+        say(W.AlertLine(nameOr(nameOf, id), unit, mark))
+        if type(ctx.client.playAlert) == "function" then pcall(ctx.client.playAlert) end
+    end
+
     if diag and type(diag.commands) == "table" then
         diag.commands[W.WORD] = word
         if type(diag.help) == "table" then diag.help[W.WORD] = W.HELP end
+        if diag.commands[W.AH] == nil then
+            diag.commands[W.AH] = ah
+            if type(diag.help) == "table" then diag.help[W.AH] = W.AH_HELP end
+        end
     end
 
     k:Module({
@@ -156,7 +240,10 @@ function W.Declare(k, diag)
         } },
         start = function(c)
             ctx = c
+            alerted = {}
+            if type(c.client.watchAuctionResults) == "function" then c.client.watchAuctionResults(seen) end
             c.bus:on(W.NAME, "AUCTION_HOUSE_CLOSED", function()
+                alerted = {}
                 if c.settings:get(W.SETTING) ~= true then return end
                 for _, line in ipairs(W.Lines(list(), priceOf, nameOf, true)) do say(line) end
             end)

@@ -57,7 +57,7 @@ tests["buyback: each item sold is listed with its price, then where to click"] =
     t.eq(out, {
         ns.id.title .. ": 3 items are on this merchant's Buyback tab:",
         "1. Rough Stone x5: 40c to buy back",
-        "2. Bent Sword: 12s 50c to buy back",
+        "2. Bent Sword: 12.5s to buy back",
         "3. Rough Stone: its price was not read",
         ns.Buyback.HOW,
     })

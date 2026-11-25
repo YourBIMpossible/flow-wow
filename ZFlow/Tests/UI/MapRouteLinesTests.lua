@@ -334,4 +334,19 @@ tests["module: the map closed or the setting off clears the lines"] = function(t
     t.eq(set.shown, true)
 end
 
+tests["paint: without the contract, the route blue follows the palette (F-23)"] = function(t)
+    local saved = ns.RouteColor
+    ns.RouteColor = nil
+    local ok, err = pcall(function()
+        local r, g, b, a = MRL().Paint("first", nil, 600, "standard")
+        t.eq({ r, g, b }, { 0, 0x70 / 255, 0xDD / 255 }, "standard: today's blue")
+        t.eq(a, MRL().FIRST_ALPHA)
+        local cr, cg, cb, ca = MRL().Paint("rest", nil, 600, "colourBlind")
+        t.eq({ cr, cg, cb }, { 0, 0x72 / 255, 0xB2 / 255 }, "colour-blind: Flow's blue")
+        t.eq(ca, MRL().REST_ALPHA)
+    end)
+    ns.RouteColor = saved
+    t.ok(ok, tostring(err))
+end
+
 return tests
