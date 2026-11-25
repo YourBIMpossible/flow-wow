@@ -31,6 +31,7 @@ return {
         "Core/Kernel.lua",
         "Core/Diag.lua",
         "Items/Drops.lua",
+        "Items/LootLeft.lua",
         "UI/Perf.lua",
         "Core/Sound.lua",
         "UI/MoveGuides.lua",

@@ -5078,3 +5078,17 @@ do
         return c
     end
 end
+
+-- § E-45 CLIENT NEED: client.onLootLeft(fn) calls fn(items) when the loot
+-- window closes, items = what was left in it, each { item, count, quality }.
+-- c.fireLootLeft(items) is that close.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local fns = {}
+        function c.onLootLeft(fn) if type(fn) ~= "function" then return nil end fns[#fns+1]=fn return true end
+        function c.fireLootLeft(items) for _, fn in ipairs({ unpack(fns) }) do fn(items) end end
+        return c
+    end
+end
