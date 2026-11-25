@@ -7,7 +7,12 @@ local _, ns = ...
 --          numbers, read once). The player's own zone stays N.Waypoint's.
 --   A1-41  "repair", "vendor", "flight", "inn", "bank", "auction", "mail":
 --          a waypoint at the nearest one this character has seen
---          (N.Errand.Find, saved places only).
+--          (N.Errand.Find, saved places only). Flow's other words for
+--          them are taken too (WW.ALIAS, its ALIAS table: sell, taxi, fly,
+--          flightmaster, innkeeper, hearth, banker, ah, auctioneer,
+--          mailbox). With none known the line names the kind and says how
+--          one comes to be known (WW.NONE; Flow: "it learns each one you
+--          use").
 --   A1-42  a party member's name: a waypoint where they stand now. It
 --          stays where it was set; "follow" is the word that keeps pointing
 --          at them. The arrow menu's row "Waypoint at <name>" does the same.
@@ -21,6 +26,8 @@ local _, ns = ...
 --     api.Take(text) -> true, line when the text was one of these words
 --                       (set or turned down), false when it is not
 --     api.At(which)  -> true, line or nil, line: which is a party unit or name
+--   WW.Word(word) -> the place word it means ("sell" -> "vendor"), any
+--     case, or nil for a word that is no place.                       pure
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
@@ -32,6 +39,23 @@ WW.MAP_MAX = 2500      -- map numbers read for a zone's name, as Flow does
 -- The word typed -> N.Errand's kind.
 WW.ERRANDS = { repair = "repair", vendor = "vendor", flight = "flight", inn = "inn",
     bank = "bank", auction = "auction", mail = "mail" }
+-- Flow's other words for the same places (Modules/Nav/Waypoint.lua, ALIAS).
+WW.ALIAS = { sell = "vendor", taxi = "flight", fly = "flight", flightmaster = "flight",
+    innkeeper = "inn", hearth = "inn", banker = "bank", ah = "auction", auctioneer = "auction",
+    mailbox = "mail" }
+-- What each place is called in a line (Flow's Services.lua LABEL).
+WW.NAMES = { repair = "repair vendor", vendor = "vendor", flight = "flight master", inn = "innkeeper",
+    bank = "banker", auction = "auctioneer", mail = "mailbox" }
+-- No place of that kind known: which kind, and how one comes to be known.
+WW.NONE = "no %s is known yet: each one is learned when you use it, so visit one and try again; nothing changed."
+
+function WW.Word(word)
+    if type(word) ~= "string" then return nil end
+    local w = word:lower()
+    w = WW.ALIAS[w] or w
+    if WW.ERRANDS[w] then return w end
+    return nil
+end
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -112,7 +136,7 @@ function WW.Declare(k, diag)
         if not kind or type(E.Find) ~= "function" then return true, "nearest places are not loaded." end
         local ok, place = pcall(E.Find, kind, client(), ctx and ctx.store or k.store)
         if not ok or type(place) ~= "table" or place.map == nil then
-            return true, "no " .. word .. " seen on this map yet; nothing changed."
+            return true, WW.NONE:format(WW.NAMES[word] or word)
         end
         local step
         if type(E.Step) == "function" then step = E.Step(place) end
@@ -124,8 +148,8 @@ function WW.Declare(k, diag)
         local body = text:match("^%s*(.-)%s*$")
         local head, rest = body:match("^(%S+)%s*(.*)$")
         if head and (head:lower() == "way" or head:lower() == "/way") then body = rest end
-        local word = body:lower()
-        if WW.ERRANDS[word] then return errand(word) end
+        local word = WW.Word(body)
+        if word then return errand(word) end
         if not body:find("%d") and body:find("^%S+$") then
             if member(body) then
                 local _, line = api.At(body)
