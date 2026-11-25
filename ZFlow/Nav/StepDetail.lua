@@ -3,17 +3,20 @@ local _, ns = ...
 -- Parity row A1-10, the data half (lead section 749): what the arrow's
 -- details drawer says, as Flow's Modules/Nav/Nav.lua showPanel (:4169-
 -- 4232). Pure: no client read, nothing drawn. From Nav/TripRoute.lua
--- View() ({ stops = { { label, title, detail, details, held, place } } }),
--- whose first step is the one the arrow points at.
+-- View() ({ stops = { { label, title, detail, details, held, place } } }).
+-- View keeps held steps; the arrow walks the first one not held (Flow's
+-- drawer reads current.goal, Nav.lua:4177; Zen-3, lead section 753), so
+-- that one is the drawer's step; with every step held, the first.
 --   SD.Rows(view[, opts]) -> rows, top to bottom, each { kind, text }:
 --     "title"     the step's title, when it differs from its label
---     "blocked"   "Blocked: <why>" (the step's held reason; Flow's
---                 g.blockedBy)
+--     "blocked"   "Blocked: <why>", only when the drawer's own step is held
+--                 (Flow's g.blockedBy)
 --     "detail"    its detail lines, but not "Quest: ..." or "Objective:
 --                 ..." (as Flow)
---     "then"      "Then (N steps)": the steps after it (Flow also gave the
+--     "then"      "Then (N steps)": the other steps (Flow also gave the
 --                 yards; View() carries none)
---     "stop"      "  2. <label>" for the 2nd to the 10th step
+--     "stop"      "  i. <label>" by route place, up to the 10th, a held one
+--                 with its reason: "  1. <label> (<why>)"
 --     "more"      "  ..." when there are more
 --     "along"     "Along the way", then "alongItem" rows: opts.along, the
 --                 things to pick up as you go (Flow's N.alongGoals; Z-Flow
@@ -47,7 +50,14 @@ function SD.Rows(view, opts)
     if type(view) == "table" and type(view.stops) == "table" then list = view.stops end
     if not list or #list == 0 then return rows end
     local function add(kind, words) rows[#rows + 1] = { kind = kind, text = words } end
-    local s = list[1]
+    local at = 1
+    for i, st in ipairs(list) do
+        if type(st) == "table" and (st.held == nil or st.held == false) then
+            at = i
+            break
+        end
+    end
+    local s = list[at]
     if type(s) == "table" then
         local title = text(s.title)
         if title and title ~= s.label then add("title", title) end
@@ -63,14 +73,21 @@ function SD.Rows(view, opts)
     end
     if #list > 1 then
         add("then", SD.THEN:format(#list - 1))
-        for i = 2, #list do
+        for i = 1, #list do
             if i > SD.LAST then
                 add("more", SD.MORE)
                 break
             end
-            local label = "?"
-            if type(list[i]) == "table" and text(list[i].label) then label = list[i].label end
-            add("stop", "  " .. i .. ". " .. label)
+            if i ~= at then
+                local st = list[i]
+                local label = "?"
+                if type(st) == "table" and text(st.label) then label = st.label end
+                local line = "  " .. i .. ". " .. label
+                if type(st) == "table" and st.held ~= nil and st.held ~= false then
+                    line = line .. " (" .. tostring(st.held) .. ")"
+                end
+                add("stop", line)
+            end
         end
     end
     local along = nil
