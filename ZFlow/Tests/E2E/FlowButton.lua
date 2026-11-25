@@ -559,4 +559,37 @@ tests["flow and self buttons: the lock not known waits, then sets"] = function(t
     t.eq(h and h.shown, true)
 end
 
-return tests
+-- Parity row D-11 (lead section 712), as Flow's Modules/Rotation/
+-- BuffButton.lua (:580-607 scale, ns.ClampScale in MoveHandle.lua:10-19):
+-- the self button's size, one step of a tenth a notch, kept between 0.5
+-- and 2 to the nearest twentieth, saved where the Flow import keeps it
+-- (layout.buffButton.scale, or dockScale while docked). Out of a fight
+-- only. The wheel and the drawing are the drawing lane's. Fails before:
+-- the size could only come from the import.
+tests["self button size: a step, kept in range, saved docked or apart"] = function(t)
+    local FB = ns.FlowButton
+    t.eq(FB.ScaleStep(1, 1), 1.1)
+    t.eq(FB.ScaleStep(1, -1), 0.9)
+    t.eq(FB.ScaleStep(2, 1), 2, "no more than 2")
+    t.eq(FB.ScaleStep(0.5, -1), 0.5, "no less than 0.5")
+    t.eq(FB.ScaleStep(nil, 1), 1.1, "no size yet: from 1")
+    t.eq(FB.ScaleStep(1.03, 0), 1.05, "to the nearest twentieth")
+end
+
+tests["self button size: the resize is saved and refused in a fight"] = function(t)
+    local c, addon = start()
+    local api = addon.flowButton
+    t.eq(type(api.resizeSelf), "function")
+    if type(api.resizeSelf) ~= "function" then return end
+    t.eq(api.resizeSelf(1), true, "docked as made")
+    local layout = addon.store:get("account", "layout")
+    t.eq(layout and layout.buffButton and layout.buffButton.dockScale, 1.1, "the docked size")
+    addon.settings:set(ns.FlowButton.DOCK, false)
+    c.advance(1, 2)
+    t.eq(api.resizeSelf(-1), true, "apart")
+    layout = addon.store:get("account", "layout")
+    t.eq(layout.buffButton.scale, 0.9, "its own size")
+    c.setLockdown(true)
+    t.eq(api.resizeSelf(1), false, "in a fight: refused")
+    t.eq(addon.store:get("account", "layout").buffButton.scale, 0.9, "unchanged")
+end
