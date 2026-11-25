@@ -9,6 +9,7 @@ local _, ns = ...
 --   buttons.merchant   bool, account, off: a button on the merchant window
 --   buttons.profession bool, account, on: a button on the profession window
 --   buttons.bank       bool, account, on: a button on the bank window
+--   buttons.talents    bool, account, on: a button on the talent window (F-29)
 --
 --   UIRows.Declare(k) -> how many rows the kernel took. A row it refuses
 --   is a problem of kind "setting" there (Core/Settings.lua).
@@ -37,6 +38,12 @@ function R.Declare(k)
     if k:Setting({ key = "buttons.bank", scope = "account", type = "bool", default = true,
         label = "Button on the bank window", group = R.GROUP, synonyms = { "button", "bank", "window" },
         help = "A button on the bank window that says Bank list and shows the list of what to store and take out." }) then
+        made = made + 1
+    end
+    -- F-29 (lead section 817): the talent window's button.
+    if k:Setting({ key = "buttons.talents", scope = "account", type = "bool", default = true,
+        label = "Button on the talent window", group = R.GROUP, synonyms = { "button", "talents", "talent", "window" },
+        help = "A button on the game's talent window that says Talents and opens your talents and the build to take." }) then
         made = made + 1
     end
     return made

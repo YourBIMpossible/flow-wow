@@ -40,7 +40,7 @@ end
 return {
     ["rows: five rows, each with a label, a help line and the group"] = function(t)
         local k = kernel()
-        t.eq(R.Declare(k), 5)
+        t.eq(R.Declare(k), 6)
         for _, key in ipairs({ "ui.intro", "buttons.worldMap", "buttons.merchant", "buttons.profession",
             "buttons.bank" }) do
             local row = k.settings:row(key)
@@ -103,7 +103,8 @@ return {
             if b.frame == "MerchantFrame" then merchant = b end
         end
         t.eq(merchant and merchant.shown, true, "the merchant window has its button")
-        t.eq(buttons.state(), { worldMap = "shown", merchant = "shown", profession = "not made", bank = "not made" },
+        t.eq(buttons.state(), { worldMap = "shown", merchant = "shown", profession = "not made", bank = "not made",
+            talents = "not made" },
             "the two windows not there yet wait for theirs")
         if merchant then merchant.click() end
         t.eq(shown, 1, "the click shows the sell list")
@@ -114,18 +115,18 @@ return {
         local keys = {}
         for _, win in ipairs(ns.WindowButtons.WINDOWS) do keys[win.setting] = true end
         t.eq(keys, { ["buttons.worldMap"] = true, ["buttons.merchant"] = true, ["buttons.profession"] = true,
-            ["buttons.bank"] = true })
+            ["buttons.bank"] = true, ["buttons.talents"] = true })
     end,
 
     ["rows: a second declaration is refused"] = function(t)
         local k = kernel()
-        t.eq(R.Declare(k), 5)
+        t.eq(R.Declare(k), 6)
         t.eq(R.Declare(k), 0)
         t.eq(k.settings:row("ui.intro").default, true, "the first one stands")
     end,
 
     ["rows: the addon's own kernel has them"] = function(t)
-        t.eq(R.made, 5)
+        t.eq(R.made, 6, "five buttons rows (F-29: the talent window) and the intro")
         t.ok(ns.settings:row("ui.intro") ~= nil, "ui.intro")
         t.ok(ns.settings:row("buttons.worldMap") ~= nil, "buttons.worldMap")
         t.ok(ns.settings:row("buttons.merchant") ~= nil, "buttons.merchant")
