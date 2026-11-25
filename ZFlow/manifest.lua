@@ -213,6 +213,7 @@ return {
         "UI/Rows.lua",
         "UI/Intro.lua",
         "UI/WindowButtons.lua",
+        "Nav/ArrowMenuRows.lua",
         "UI/ArrowMenu.lua",
         "UI/Feedback.lua",
         "UI/MacroIcons.lua",
