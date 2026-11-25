@@ -238,11 +238,15 @@ function Fights.New(keep)
         local pets = pet ~= nil and src == pet
         local onMe = me ~= nil and dst == me
         if kind == "damage" and onMe then
+            -- C-51 (Twin's review): your own damage to yourself names
+            -- nobody, so you are never said to have killed yourself.
+            local from
+            if src ~= me then from = named(srcName) end
             recent[#recent + 1] = {
                 at = (type(at) == "number" and at == at) and at or nil,
                 name = name,
                 amount = (type(amount) == "number" and amount == amount) and amount or nil,
-                from = named(srcName),
+                from = from,
             }
             while #recent > Fights.RECENT do table.remove(recent, 1) end
         end
@@ -289,6 +293,9 @@ function Fights.New(keep)
             end
         end
         lastDeath = d
+        -- C-51 (Twin's review): the hits before this death are not hits
+        -- before the next one.
+        recent = {}
         return copyDeath(d)
     end
 
