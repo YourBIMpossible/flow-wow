@@ -203,16 +203,38 @@ end
 -- item's npcDrops. ctx is P.Candidate's: { level, log, me, done }.
 -- -> { [npc id] = { { quest, label = PQ.MARK, kind = "start", from =
 -- "questie", what = "starts" } } }. Anything missing or failing: {}.
-function PQ.Starts(db, ctx)
-    local out = {}
+-- Walking every quest is a large pass (lead section 723), sliced as
+-- Nav/DungeonRead.lua's R.Step: PQ.StartsPass makes the state, each
+-- PQ.StartsStep files the next n (PQ.SLICE) quests, PQ.StartsResult is
+-- nil until it is done. The module steps it once a frame, out of a fight
+-- only. PQ.Starts(db, ctx) walks the whole pass at once (tests, pure use).
+PQ.SLICE = 200
+
+function PQ.StartsPass(db, ctx)
     local P = ns.Nav and ns.Nav.RoutePickups
     if type(db) ~= "table" or type(ctx) ~= "table" or type(db.QuestPointers) ~= "table"
         or type(db.GetQuest) ~= "function" or type(P) ~= "table" or type(P.Candidate) ~= "function" then
-        return out
+        return { state = "none", out = {} }
     end
+    local list = {}
     for id in pairs(db.QuestPointers) do
-        local q
-        if type(id) == "number" then q = dbCall(db, "GetQuest", id) end
+        if type(id) == "number" then list[#list + 1] = id end
+    end
+    table.sort(list)
+    return { state = "building", ids = list, at = 0, out = {} }
+end
+
+function PQ.StartsStep(st, db, ctx, n)
+    if type(st) ~= "table" or st.state ~= "building" then return end
+    local P = ns.Nav and ns.Nav.RoutePickups
+    if type(db) ~= "table" or type(P) ~= "table" or type(P.Candidate) ~= "function" then
+        st.state = "none"
+        return
+    end
+    local stop = math.min(#st.ids, st.at + (tonumber(n) or PQ.SLICE))
+    for i = st.at + 1, stop do
+        local id = st.ids[i]
+        local q = dbCall(db, "GetQuest", id)
         local items
         if type(q) == "table" and type(q.Starts) == "table" then items = q.Starts.Item end
         if type(items) == "table" and #items > 0 then
@@ -228,10 +250,10 @@ function PQ.Starts(db, ctx)
                     local item = dbCall(db, "GetItem", itemId)
                     if type(item) == "table" then
                         for _, npc in ipairs(ids(item.npcDrops)) do
-                            local list = out[npc]
+                            local list = st.out[npc]
                             if list == nil then
                                 list = {}
-                                out[npc] = list
+                                st.out[npc] = list
                             end
                             list[#list + 1] = { quest = id, label = PQ.MARK, kind = "start", from = "questie",
                                                 what = "starts" }
@@ -241,7 +263,22 @@ function PQ.Starts(db, ctx)
             end
         end
     end
-    return out
+    st.at = stop
+    if st.at >= #st.ids then st.state = "ready" end
+end
+
+-- The pass's answer once it is done ("ready", or "none": nothing to walk),
+-- else nil: not known yet.
+function PQ.StartsResult(st)
+    if type(st) ~= "table" then return nil end
+    if st.state == "ready" or st.state == "none" then return st.out end
+    return nil
+end
+
+function PQ.Starts(db, ctx)
+    local st = PQ.StartsPass(db, ctx)
+    while st.state == "building" do PQ.StartsStep(st, db, ctx) end
+    return PQ.StartsResult(st) or {}
 end
 
 function PQ.Index(rows, db, book)
@@ -389,6 +426,77 @@ function PQ.Declare(k, diag)
         for unit in pairs(inView) do drawOne(unit) end
     end
 
+    -- C-19: the log's own index, the starts pass and its answer.
+    local logIndex, pass, passDb, passCtx, cancelPass, startsGot
+
+    local function merged()
+        local out = {}
+        for npc, list in pairs(logIndex or {}) do
+            local copy = {}
+            for i, e in ipairs(list) do copy[i] = e end
+            out[npc] = copy
+        end
+        for npc, list in pairs(startsGot or {}) do
+            local into = out[npc]
+            if into == nil then
+                into = {}
+                out[npc] = into
+            end
+            for _, e in ipairs(list) do into[#into + 1] = e end
+        end
+        return out
+    end
+
+    local function stopPass()
+        if cancelPass then pcall(cancelPass) end
+        cancelPass = nil
+    end
+
+    -- One slice a frame, only while the client says plainly you are out of
+    -- a fight; in one (or not known) the pass waits.
+    local function stepPass()
+        if not ctx or type(pass) ~= "table" then return stopPass() end
+        if ask(ctx.client, "inCombat") ~= false then return end
+        local ok = pcall(PQ.StartsStep, pass, passDb, passCtx)
+        if not ok then pass.state = "none" end
+        local got = PQ.StartsResult(pass)
+        if got ~= nil then
+            stopPass()
+            startsGot = got
+            pass = nil
+            if type(logIndex) == "table" then
+                index = merged()
+                drawAll()
+            end
+        end
+    end
+
+    local function startPass(db, client, rows)
+        stopPass()
+        startsGot, pass = nil, nil
+        local level = tonumber(ask(client, "level"))
+        if not level then return end
+        local inLog = {}
+        for _, row in ipairs(rows) do
+            if type(row) == "table" and row.id ~= nil then inLog[row.id] = true end
+        end
+        local S = ns.DungeonStates
+        local class = ask(client, "class")
+        local classId
+        if class and type(S) == "table" and type(S.CLASS_ID) == "table" then classId = S.CLASS_ID[class] end
+        passDb = db
+        passCtx = { level = level, log = inLog,
+            me = { raceId = ask(client, "raceId"), classId = classId, faction = ask(client, "faction") },
+            done = function(id) return ask(client, "questDone", id) end }
+        local ok, st = pcall(PQ.StartsPass, db, passCtx)
+        if not ok or type(st) ~= "table" or st.state ~= "building" then return end
+        pass = st
+        if type(client.onFrame) == "function" then
+            local okF, cancel = pcall(client.onFrame, stepPass)
+            if okF and type(cancel) == "function" then cancelPass = cancel end
+        end
+    end
+
     local function read()
         local client = ctx.client
         local N = ns.Nav
@@ -404,34 +512,13 @@ function PQ.Declare(k, diag)
             return
         end
         local ok, got = pcall(PQ.Index, rows, db, ctx.store:get("char", PQ.DROPS))
-        -- C-19: the mobs that drop an item starting a quest you can take.
+        -- C-19: the mobs that drop an item starting a quest you can take,
+        -- read by a sliced pass (stepPass, a slice a frame, out of a fight);
+        -- not known, so not marked, until it is done.
         if ok and type(got) == "table" then
-            local inLog = {}
-            for _, row in ipairs(rows) do
-                if type(row) == "table" and row.id ~= nil then inLog[row.id] = true end
-            end
-            local S = ns.DungeonStates
-            local class = ask(client, "class")
-            local classId
-            if class and type(S) == "table" and type(S.CLASS_ID) == "table" then classId = S.CLASS_ID[class] end
-            local level = tonumber(ask(client, "level"))
-            if level then
-                local okS, starts = pcall(PQ.Starts, db, {
-                    level = level, log = inLog,
-                    me = { raceId = ask(client, "raceId"), classId = classId, faction = ask(client, "faction") },
-                    done = function(id) return ask(client, "questDone", id) end,
-                })
-                if okS and type(starts) == "table" then
-                    for npc, list in pairs(starts) do
-                        local into = got[npc]
-                        if into == nil then
-                            into = {}
-                            got[npc] = into
-                        end
-                        for _, e in ipairs(list) do into[#into + 1] = e end
-                    end
-                end
-            end
+            logIndex = got
+            got = merged()
+            startPass(db, client, rows)
         end
         if ok and type(got) == "table" then
             index, source = got, "questie"
