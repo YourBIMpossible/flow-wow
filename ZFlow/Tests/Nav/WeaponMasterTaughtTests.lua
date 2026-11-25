@@ -344,4 +344,50 @@ T["weapon master taught module: no Questie leaves the step words only"] = functi
     t.eq(k.problems:count(), before, "no problem raised")
 end
 
+-- Zen's review of e71c26a6 (lead section 616): a weapon master the player
+-- has visited on this map is not pointed at when the table has that name
+-- without the wanted kind; the step then has no place of its own and
+-- Elsewhere picks the one who teaches it. Names as the table has them
+-- (Bixi Wobblebonk: no axes; Buliwyf Stonehand: axes); the places are made
+-- up. Red before: WM.Of points at the visited master whatever they teach.
+T["weapon master taught: a visited master listed without the kind is passed over for the one who teaches it"] = function(t)
+    if not names(t) then return end
+    local S = WM()
+    local AXES, DAGGERS = 0, 15
+    local BIXI, BULIWYF = "Bixi Wobblebonk", "Buliwyf Stonehand"
+    local list = N.WeaponMasterNames
+    local fits = type(list[BIXI]) == "table" and type(list[BULIWYF]) == "table"
+        and list[BIXI].skills[AXES] ~= true and list[BIXI].skills[DAGGERS] == true
+        and list[BULIWYF].skills[AXES] == true
+    t.ok(fits, "the table has Bixi without axes and with daggers, and Buliwyf with axes")
+    if not fits then return end
+    local here = { map = HERE_MAP, x = 0.5, y = 0.5 }
+    local visited = { [BIXI] = { map = HERE_MAP, x = 0.51, y = 0.5, roles = { weaponMaster = true } } }
+    local step = S.Of({ subclassID = AXES, skill = "Axes" }, here, visited)
+    t.ok(type(step) == "table", "a step for axes")
+    if type(step) ~= "table" then return end
+    t.eq(step.place, nil, "the visited master who does not teach axes is not pointed at")
+    t.eq(step.name, nil, "nor named")
+    local function place(ask)
+        if type(ask) == "table" and type(ask.only) == "table" and ask.only[BULIWYF] == true
+            and ask.only[BIXI] ~= true then
+            return { name = BULIWYF, map = HERE_MAP, x = 0.6, y = 0.5 }, PP().QUESTIE
+        end
+        return nil
+    end
+    step = S.Elsewhere(step, place)
+    t.eq(step.name, BULIWYF, "Elsewhere picks the one who teaches axes")
+    t.eq(step.place, { map = HERE_MAP, x = 0.6, y = 0.5 })
+    -- The same visited master still wins for a kind the table has them with.
+    local daggers = S.Of({ subclassID = DAGGERS, skill = "Daggers" }, here, visited)
+    t.eq(daggers and daggers.name, BIXI, "wanted daggers: the visited master is pointed at")
+    -- One the table does not name stays allowed, whatever is wanted.
+    local own = S.Of({ subclassID = AXES, skill = "Axes" }, here,
+        { [UNLISTED] = { map = HERE_MAP, x = 0.52, y = 0.5, roles = { weaponMaster = true } } })
+    t.eq(own and own.name, UNLISTED, "a visited master the table does not name is still pointed at")
+    -- With no kind read, nothing is left out.
+    local any = S.Of({ skill = "Axes" }, here, visited)
+    t.eq(any and any.name, BIXI, "no kind known: as before")
+end
+
 return T
