@@ -3,9 +3,10 @@ local _, ns = ...
 -- The player picks one (the word, or the arrow menu's row); the quest
 -- arrow points at them until the player stops it or they leave the group.
 -- Where they are comes only from the game's own read of a party unit's
--- position (client.unitPosition); nothing is sent, shared or asked of
--- another add-on. When that position is not known (another map, an
--- instance) it is said once and the arrow shows its normal step.
+-- position (client.unitPosition). When the game has none (another map, an
+-- instance), the spot the member sent through Nav/PartyFollow.lua is used
+-- (A1-49; only with that setting on); with neither, it is said once and
+-- the arrow shows its normal step.
 --
 -- LOOK ONLY. Nothing follows, targets, moves, invites or speaks for the
 -- player: the arrow only points.
@@ -69,6 +70,19 @@ function F.Declare(k, diag)
 
     local function nameOf(m) return m.name or m.unit end
 
+    -- A1-49: the spot the member sent (Nav/PartyFollow.lua, when the player
+    -- turned sharing on), for when the game gives none (another map, an
+    -- instance). Asking for it is what makes them send it.
+    local function shared(name)
+        if type(name) ~= "string" or type(k.use) ~= "function" then return nil end
+        local pf = k.use("partyFollow")
+        if type(pf) ~= "table" or type(pf.Want) ~= "function" or type(pf.Where) ~= "function" then return nil end
+        pcall(pf.Want, name)
+        local ok, w = pcall(pf.Where, name)
+        if not ok or type(w) ~= "table" or w.map == nil or not finite(w.x) or not finite(w.y) then return nil end
+        return w
+    end
+
     function api.Pick(which)
         local members = api.Members()
         if not members or #members == 0 then return nil, "you are not in a group." end
@@ -120,6 +134,9 @@ function F.Declare(k, diag)
         chosen.unit = now.unit
         local at = ask("unitPosition", now.unit)
         if type(at) ~= "table" or at.map == nil or not finite(at.x) or not finite(at.y) then
+            at = shared(now.name)
+        end
+        if at == nil then
             if not unknownSaid then
                 unknownSaid = true
                 say("where " .. nameOf(now) .. " is is not known (another map or an instance); the arrow shows your own step.")

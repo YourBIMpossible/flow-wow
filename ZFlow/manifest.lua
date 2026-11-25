@@ -335,6 +335,8 @@ return {
     "Nav/PartyRoute.lua",
     -- B-41: party members exchange quest progress as add-on data (after PartyRoute).
     "Nav/PartyProgress.lua",
+    -- A1-49: share your spot with the party member who follows you (after PartyProgress).
+    "Nav/PartyFollow.lua",
     -- P-EVIDENCE+ (sections 252, 262): look-only capture fields saved under diag (after Diag).
     "Core/AutoEvidence.lua",
     -- P-TRIP slice 1: the trip list of stops for the route (after TripRoute, Errand, DungeonRead).
