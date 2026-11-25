@@ -350,6 +350,20 @@ function P.ToDo(rows)
     return n
 end
 
+-- B-42 CHANGES-1 (lead section 856): the party route is quests only, as
+-- Flow's PartyHelp.lua H.QuestsOnly (:406-415): every quest step and
+-- turn-in, and the party route's own steps; nobody's trainers, pick-ups or
+-- errands. Whose quests they are does not cut them here.
+function P.QuestsOnly(steps)
+    local out = {}
+    for _, st in ipairs(type(steps) == "table" and steps or {}) do
+        if type(st) == "table" and (st.quest ~= nil or st.party == true or st.kind == "party") then
+            out[#out + 1] = st
+        end
+    end
+    return out
+end
+
 function P.Covered(scope, who, progress, joined)
     if type(progress) ~= "table" then return nil end
     if scope == "theirs" then
@@ -718,8 +732,13 @@ function P.Declare(k, diag)
     function api.Scope() return scope, focus end
 
     -- B-42: the trip route's steps cut to the covered members' quests.
+    -- As Flow's H:FilterGoals (PartyHelp.lua :411-415): the party route is
+    -- quests only; just one member's quests keeps by theirs; your own route
+    -- is as made.
     function api.Filter(steps)
-        return P.KeepFor(steps, P.Covered(scope, focus, progress, joined))
+        if scope == "combined" then return P.QuestsOnly(steps) end
+        if scope == "theirs" then return P.KeepFor(steps, P.Covered(scope, focus, progress, joined)) end
+        return steps
     end
 
     -- B-44: a member's quest progress (B-41 feeds it); asks once whether to
