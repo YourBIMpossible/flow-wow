@@ -864,8 +864,28 @@ function D.PullPick(snapshot, pack, prefs, bias)
     return pick
 end
 
-function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
-    local pick = D.PullPick(snapshot, pack, prefs, bias)
+-- Parity row D-03 (lead section 712), as Flow's Modules/Rotation/Cast.lua
+-- (:232-236, :1048-1050): the spell of the game's one-button assistant, a
+-- non-empty name from client.assistantSpell() (a CLIENT NEED: Core/
+-- Client.lua does not have it yet; C_AssistedCombat.GetActionSpell on
+-- warcraft.wiki.gg, the forever flavour from 1.60.1), or nil. Where there
+-- is one, the key and the Flow button hold it for the fight in place of
+-- the pack's fight spell, as Flow did. Anything else, or a read that
+-- raises: nil, and the pack's fight spell as before.
+function D.Assistant(client)
+    if type(client) ~= "table" or type(client.assistantSpell) ~= "function" then return nil end
+    local ok, name = pcall(client.assistantSpell)
+    if ok and type(name) == "string" and name ~= "" then return name end
+    return nil
+end
+
+function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown, helper)
+    local pick
+    if type(helper) == "string" then
+        pick = { spell = helper }
+    else
+        pick = D.PullPick(snapshot, pack, prefs, bias)
+    end
     if pick == nil then return nil end
     local fightPlan = plan
     if type(plan) == "table" and plan.action ~= nil then
@@ -966,8 +986,15 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     -- coming on early changes nothing; with no pick, nothing is added (as
     -- Flow's setAction(nil)). The suggestion, and so the icon, still says
     -- to start the attack.
+    -- D-03: the game's one-button assistant, where the client has one.
+    local helper = D.Assistant(client)
     if type(onKey) == "table" and ns.cast.ATTACK[onKey.spell] then
-        local pull = D.PullPick(snapshot, pack, prefs, bias)
+        local pull
+        if helper then
+            pull = { spell = helper }
+        else
+            pull = D.PullPick(snapshot, pack, prefs, bias)
+        end
         if type(pull) == "table" and pull.look == true then pull = nil end
         onKey = pull
         if type(plan) == "table" and type(plan.action) == "table" and ns.cast.ATTACK[plan.action.spell] then
@@ -987,7 +1014,7 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     -- fight starts (D.FightAttrs).
     local fight = nil
     if type(onKey) == "table" and ns.cast.ATTACK[onKey.spell] then
-        fight = D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
+        fight = D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown, helper)
     end
 
     -- Not read: no id, or no row came back for it.
