@@ -800,6 +800,12 @@ end
 --     on another map of the player's continent. known as for PP.Of
 --     (here, questie, contOf, far). For N.Nearest
 --     (Nav/ServiceNearest.lua), asked through the feed's Service.
+--   PP.List(kind, found, faction) -> { { name, map, x, y } } or nil   pure
+--     Every NPC of a service kind in the pass's kept answer (found) the
+--     faction can use, on any map, in the order of the pass; copies. nil
+--     with no answer yet (found is nil) or a kind that is no service; an
+--     empty list when the pass met none. For Nav/FlightUnknown.lua, asked
+--     through the feed's List: the same one pass, nothing read again.
 --   PP.Want(name): asks the pass to keep the places of the NPC of that
 --     name (PP.NAMES). Called when a names file loads, before any pass.
 --   PP.ScanStart(db) -> pass or nil; PP.ScanStep(pass, zones, count) ->
@@ -863,6 +869,7 @@ PP.NODES = 50
 PP.TRAINER_TITLE = "^(.-) Trainer$"
 -- The first game's npcFlags bits, as the predecessor's Services.lua
 -- (S.CLASSIC_FLAGS), and their names in Questie's own list.
+-- Source of the numbers: QuestieDB constants.byExpansion.Classic.npcFlags; cmangos-classic Unit.h.
 PP.FLAG = { banker = 256, auction = 4096, vendor = 4, repair = 16384, flight = 8, innkeeper = 128 }
 PP.FLAG_NAME = { banker = "BANKER", auction = "AUCTIONEER", vendor = "VENDOR", repair = "REPAIR",
                  flight = "FLIGHT_MASTER", innkeeper = "INNKEEPER" }
@@ -1135,6 +1142,23 @@ function PP.Service(kind, known)
     local to = onMap(q, known) or onContinent(q, known, sameOf(known))
     if not placed(to) then return nil end
     return { name = to.name, map = to.map, x = to.x, y = to.y }
+end
+
+-- Every NPC of a service kind (PP.SERVICES) in the pass's kept answer the
+-- faction can use, on any map: copies, in the order of the pass. nil with
+-- no answer (found is nil) or a kind that is no service.
+function PP.List(kind, found, faction)
+    if PP.SERVICES[kind] ~= true or type(found) ~= "table" then return nil end
+    local out = {}
+    local list = found[kind]
+    if type(list) ~= "table" then return out end
+    local side = text(faction)
+    for _, c in ipairs(list) do
+        if placed(c) and friendly(c.side, side) then
+            out[#out + 1] = { name = c.name, map = c.map, x = c.x, y = c.y }
+        end
+    end
+    return out
 end
 
 -- The map of one of Questie's areas, or nil. Both ways of calling it.
