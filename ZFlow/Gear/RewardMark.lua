@@ -27,7 +27,8 @@ local _, ns = ...
 --               bestSell = index or nil }
 --     verdict: "upgrade", "same", "worse", "cannot" (you cannot use it) or
 --     "notGear"; a role left out is not known yet (the item or its verdict
---     not read): never a guess. sell: the game's sell price
+--     not read, or no finite delta): never a guess. As the tooltip says
+--     it (RM.Verdict). sell: the game's sell price
 --     (itemInfo().sellPrice). bestSell: the one choice that sells for the
 --     most; nil when any price is not read, two tie, or none sells.
 --     nil and why (GearRewardMark.WHY) when the choices are not read or
@@ -148,6 +149,18 @@ function RM.Pick(client, packs, role)
     return best
 end
 
+-- C-37 (Zen-3's review, lead section 701): a verdict result as the
+-- tooltip says it (Gear/Tooltip.lua T.Lines): an upgrade or a worse whose
+-- gain or loss is under T.SAME is "same"; with no finite delta there is no
+-- verdict (nil). Pure.
+function RM.Verdict(result)
+    if type(result) ~= "table" then return nil end
+    local v, delta = result.verdict, result.delta
+    if not (v == "upgrade" or v == "same" or v == "worse") or not finite(delta) then return nil end
+    if (v == "upgrade" or v == "worse") and math.abs(delta) < ns.GearTooltip.SAME then return "same" end
+    return v
+end
+
 -- C-37: one choice's verdict for one role, as Pick reads it: "upgrade",
 -- "same", "worse", "cannot", "notGear", or nil when not known yet.
 local function verdictOf(gear, pack, role, level, skills)
@@ -160,14 +173,7 @@ local function verdictOf(gear, pack, role, level, skills)
     if type(detail) == "table" and type(detail.use) == "table" then can = detail.use.can end
     if can == false then return "cannot" end
     if can ~= true then return nil end
-    local res = type(detail.result) == "table" and detail.result or {}
-    local v = res.verdict
-    if v == "upgrade" then
-        if finite(res.delta) and res.delta >= ns.GearTooltip.SAME then return "upgrade" end
-        return "same"
-    end
-    if v == "same" or v == "worse" then return v end
-    return nil
+    return RM.Verdict(detail.result)
 end
 
 function RM.Board(client, packs, role)
