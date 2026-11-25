@@ -384,4 +384,35 @@ T["service questie: a stop from a saved place has no line about Questie"] = func
     t.eq(api.Step() and api.Step().detail, nil)
 end
 
+-- Lead section 626: Questie's places go only to a caller that asks for
+-- them, by handing in the module lookup (the repair stop, the stop and the
+-- arrow menu rows, the way words). A caller that hands in none (the
+-- dungeon bank step, a trip stop) gets what it got before: a place this
+-- character used, or none. It does not start the read of Questie either.
+-- Red before: with no lookup handed in, the add-on's own was used.
+T["service questie: a caller that does not ask gets no Questie place, and starts no read"] = function(t)
+    local state = {}
+    local c, addon = boot({ state = state, rows = {
+        [1] = { name = SMITH, flags = VENDOR + REPAIR + 256, side = "H", x = 60 },
+    } })
+    local N = parts(t, addon)
+    if not N then return end
+    local E = addon.Errand
+    t.ok(type(E) == "table" and type(E.Find) == "function", "Errand.Find is there")
+    if type(E) ~= "table" or type(E.Find) ~= "function" then return end
+    local plain, why = N.Nearest("repair", c, addon.store)
+    t.eq(plain, nil, "not asked for: none, as before")
+    t.eq(why, nil, "and it is not told to wait")
+    t.eq(E.Find("banker", c, addon.store), nil, "the same through Errand.Find")
+    c.advance(1, 20)
+    t.eq(state.scans, nil, "Questie is not gone through for a caller that does not ask")
+    local asked = nearest(c, addon, "repair")
+    t.eq(asked and asked.name, SMITH, "a caller that asks gets Questie's place")
+    t.eq(state.scans, 1, "and that is what starts the one read")
+    t.eq(N.Nearest("repair", c, addon.store), nil, "the list is read by now: still none for one that does not ask")
+    t.eq(E.Find("banker", c, addon.store), nil, "nor through Errand.Find")
+    local bank = E.Find("banker", c, addon.store, addon.use)
+    t.eq(bank and bank.name, SMITH, "while Errand.Find with the lookup handed in gets it")
+end
+
 return T
