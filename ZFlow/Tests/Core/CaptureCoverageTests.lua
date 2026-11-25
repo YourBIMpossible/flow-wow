@@ -21,6 +21,8 @@ local KIND = {
                "watchAuctionResults", "onUnitTooltip", "watchAuctionRows", "onSystemMessage",
                -- G4: the bag window's redraw (Items/BagMarks.lua).
                "onBagRedraw",
+               -- R4: Bagnon/BagBrother loaded after Z-Flow (its ADDON_LOADED).
+               "bagAddonLoaded",
                -- N60a: the chat filter and the link click (UI/Chat.lua).
                "chatFilter", "onLinkClick" },
     show = { "print", "panel", "minimapPin", "copyBox", "icon", "arrow", "windowButton", "secureButton",

@@ -11,6 +11,9 @@
 return {
     interface = 16001,
     version = "0.1.0",
+    -- Bag add-ons whose item buttons get the bag marks and badges when they
+    -- are loaded (Core/Client.lua, bag replacements); never required.
+    optionalDeps = { "Bagnon", "BagBrother" },
     files = {
         -- Kernel
         "Core/Identity.lua",

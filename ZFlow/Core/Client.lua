@@ -9605,6 +9605,74 @@ function ns.make.client(env)
         end
     end
 
+    -- Workflow R4: bag replacement add-ons (optional, never required). The
+    -- bag marks (c.markBagKinds) and the badge letters (c.markBagSlots)
+    -- drew on Blizzard's bag frames only; with Bagnon or BagBrother the
+    -- player's bags are that add-on's own buttons, so neither reached them.
+    -- First guess, not seen in game: the add-on's global table (Bagnon,
+    -- else BagBrother) holds its item button class as Item (older releases:
+    -- ItemSlot, or ContainerItem); each button answers GetBag() (else a bag field) with its
+    -- bag and GetID() with its slot, and the class's Update runs whenever a
+    -- button is drawn. Update is followed with hooksecurefunc on the class
+    -- (a post-hook: the add-on's own code runs unchanged); each button it
+    -- draws is remembered (weakly) and painted from the marks last asked. A
+    -- button showing another character's cached bags (info.cached) is
+    -- passed over. Nothing of the add-on is called or written beyond that.
+    -- One local (make.client is near Lua 5.1's 200 locals).
+    local bagExt = { buttons = setmetatable({}, { __mode = "k" }), hooked = {}, painters = {} }
+    bagExt.NAMES = { "Bagnon", "BagBrother" }
+    -- bag, slot of a replacement button, or nil.
+    function bagExt.where(b)
+        local okC, cached
+        if type(b.IsCached) == "function" then
+            okC, cached = method(b, "IsCached")
+        else
+            okC, cached = pcall(function() return type(b.info) == "table" and b.info.cached end)
+        end
+        if okC and cached then return nil end
+        local okB, bag = method(b, "GetBag")
+        if not okB or type(bag) ~= "number" then
+            local okF, field = pcall(function() return b.bag end)
+            bag = okF and field or nil
+        end
+        local okS, slot = method(b, "GetID")
+        if type(bag) ~= "number" or not okS or type(slot) ~= "number" then return nil end
+        return bag, slot
+    end
+    function bagExt.drawn(b)
+        if type(b) ~= "table" then return end
+        bagExt.buttons[b] = true
+        for _, paint in ipairs(bagExt.painters) do pcall(paint, b) end
+    end
+    -- Follows every bag add-on loaded now; true when one is followed.
+    function bagExt.hook()
+        if type(env.hooksecurefunc) ~= "function" then return bagExt.any end
+        for _, name in ipairs(bagExt.NAMES) do
+            local okA, addon = pcall(function() return env[name] end)
+            if okA and type(addon) == "table" then
+                for _, field in ipairs({ "Item", "ItemSlot", "ContainerItem" }) do
+                    local okK, class = pcall(function() return addon[field] end)
+                    local okU, upd = pcall(function() return type(class) == "table" and class.Update end)
+                    if okK and type(class) == "table" and not bagExt.hooked[class]
+                        and okU and type(upd) == "function"
+                        and pcall(env.hooksecurefunc, class, "Update", bagExt.drawn) then
+                        bagExt.hooked[class] = true
+                        bagExt.any = true
+                    end
+                end
+            end
+        end
+        return bagExt.any
+    end
+    -- A bag add-on loaded after Z-Flow (its ADDON_LOADED): follow it. True
+    -- when one is followed, nil for any other name.
+    function c.bagAddonLoaded(name)
+        for _, n in ipairs(bagExt.NAMES) do
+            if name == n then return bagExt.hook() and true or nil end
+        end
+        return nil
+    end
+
     -- G14 bag badge (section 393): a few letters on bag slots (the role an
     -- upgrade is for). First guess, not seen in game on 16001: the bag
     -- windows are ContainerFrame1..NUM_CONTAINER_FRAMES (13 when not given),
@@ -9632,7 +9700,27 @@ function ns.make.client(env)
             bagLetters[button] = fs
             return fs
         end
+        -- One button's letter: text shown, or ours hidden; 1 when shown.
+        local function bagLetterPaint(button, text)
+            local fs = (text or bagLetters[button]) and bagLetter(button) or nil
+            if not fs then return 0 end
+            if text then
+                method(fs, "SetText", text)
+                method(fs, "Show")
+                return 1
+            end
+            method(fs, "Hide")
+            return 0
+        end
+        -- A bag replacement's button (bagExt above): its bag and slot from
+        -- the button itself.
+        local function bagLetterExt(button)
+            local bag, slot = bagExt.where(button)
+            return bagLetterPaint(button, bag and bagWanted[bag] and bagWanted[bag][slot] or nil)
+        end
+        bagExt.painters[#bagExt.painters + 1] = bagLetterExt
         local function bagDraw()
+            bagExt.hook()
             local okN, frames = pcall(function() return env.NUM_CONTAINER_FRAMES end)
             if not okN or type(frames) ~= "number" then frames = 13 end
             local shown = 0
@@ -9650,20 +9738,13 @@ function ns.make.client(env)
                         local okI, button = pcall(function() return env[name .. "Item" .. i] end)
                         if okI and type(button) == "table" then
                             local okS, slot = method(button, "GetID")
-                            local text = row and okS and row[slot] or nil
-                            local fs = (text or bagLetters[button]) and bagLetter(button) or nil
-                            if fs then
-                                if text then
-                                    method(fs, "SetText", text)
-                                    method(fs, "Show")
-                                    shown = shown + 1
-                                else
-                                    method(fs, "Hide")
-                                end
-                            end
+                            shown = shown + bagLetterPaint(button, row and okS and row[slot] or nil)
                         end
                     end
                 end
+            end
+            for button in pairs(bagExt.buttons) do
+                shown = shown + bagLetterExt(button)
             end
             return shown
         end
@@ -13298,8 +13379,28 @@ function ns.make.client(env)
         end
         return out
     end
+    local bagKindsWanted = {}
+    -- A bag replacement's button (bagExt): shows the mark asked for its
+    -- bag and slot, hides ours otherwise; 1 when a mark shows.
+    local function bagKindExt(b)
+        local bag, slot = bagExt.where(b)
+        local path = bag and type(bagKindsWanted[bag]) == "table" and bagKindsWanted[bag][slot] or nil
+        if type(path) ~= "string" then
+            local t = bagMarkTex[b]
+            if t then method(t, "Hide") end
+            return 0
+        end
+        local t = bagMarkOn(b)
+        if not t then return 0 end
+        method(t, "SetTexture", path)
+        method(t, "Show")
+        return 1
+    end
+    bagExt.painters[#bagExt.painters + 1] = bagKindExt
     function c.markBagKinds(marks)
         marks = type(marks) == "table" and marks or {}
+        bagKindsWanted = marks
+        bagExt.hook()
         for _, t in pairs(bagMarkTex) do
             if t then method(t, "Hide") end
         end
@@ -13340,6 +13441,12 @@ function ns.make.client(env)
                 end
             end
         end
+        for b in pairs(bagExt.buttons) do
+            if not done[b] then
+                done[b] = true
+                n = n + bagKindExt(b)
+            end
+        end
         return n
     end
     local bagRedraw, bagFollowed = {}, false
@@ -13349,8 +13456,17 @@ function ns.make.client(env)
     function c.onBagRedraw(fn)
         if type(fn) ~= "function" then return nil end
         bagRedraw[#bagRedraw + 1] = fn
+        if not bagExt.listening then
+            -- A bag add-on loaded after Z-Flow (load on demand, or a load
+            -- order the TOC's OptionalDeps did not settle).
+            bagExt.listening = true
+            pcall(c.listen, "ADDON_LOADED", function(name) pcall(c.bagAddonLoaded, name) end)
+        end
+        -- The bag add-on hook goes beside the Blizzard ones, never instead:
+        -- Blizzard's bank and bags can still show with Bagnon on.
+        local ext = bagExt.hook()
         if bagFollowed then return true end
-        if type(env.hooksecurefunc) ~= "function" then return nil end
+        if type(env.hooksecurefunc) ~= "function" then return ext and true or nil end
         if type(env.ContainerFrame_Update) == "function"
             and pcall(env.hooksecurefunc, "ContainerFrame_Update", bagRedrawAll) then
             bagFollowed = true
@@ -13361,7 +13477,7 @@ function ns.make.client(env)
             and pcall(env.hooksecurefunc, combined, "UpdateItems", bagRedrawAll) then
             bagFollowed = true
         end
-        return bagFollowed or nil
+        return (bagFollowed or ext) and true or nil
     end
 
     -- Lead section 303 (d), the in-dungeon tracker: the name of the instance
