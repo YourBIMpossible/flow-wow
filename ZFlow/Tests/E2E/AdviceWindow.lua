@@ -95,8 +95,13 @@ tests["advice window: the window is as tall as its lines"] = function(t)
     local c, addon = start({ log = { row(1, "Test wolves", true) }, who = { [1] = "Test Keeper" } })
     local w = window(c)
     if type(w) ~= "table" then t.ok(false, "no window") return end
+    -- Lead section 564 R8: the first time it shows, a row under the title
+    -- says what the panel is (a section part); it counts one row.
     local rows = 0
     for _, p in ipairs(lineParts(w)) do rows = rows + (p.rows or 1) end
+    for _, p in ipairs(w.parts) do
+        if p.kind == "section" then rows = rows + 1 end
+    end
     t.eq(#lineParts(w), 1, "one line")
     t.eq(w.height, fitted(rows), "one line: no empty space under it")
     addon.advisor.Add("test.other", "Repair your gear.", 0)

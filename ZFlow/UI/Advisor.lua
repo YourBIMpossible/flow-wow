@@ -73,10 +73,12 @@ Advisor.DEFAULT_POINT = { "TOPRIGHT", "TOPRIGHT", -220, -200 }
 -- Its title is the add-on's own (lead sections 340/341): Advisor.Title(id),
 -- also the plain panel's first line. Advisor.TITLE is the words after it.
 Advisor.TITLE = "Advice"
--- Owner's report (lead section 561 item 6): the panel says what it is in
--- one line the first time it shows (this session only; Advisor.EXPLAINED
--- keeps that it was said).
-Advisor.ABOUT = "Tips for right now, such as gear to repair or a spell to learn. It shows only when there is one."
+-- Owner's report (lead sections 561 item 6 and 564 R8): the panel says what
+-- it is in one short row under its title the first time it shows
+-- (Advisor.EXPLAINED keeps for the account that it was said). A section
+-- row, so it is never read as one of the prompts; the plain panel the
+-- window falls back to does not carry it.
+Advisor.ABOUT = "Things worth doing now, such as a repair."
 Advisor.EXPLAINED = "layout.explained.advisor"
 Advisor.KIT_ID = "Advisor"
 Advisor.KIT_WIDTH = 320
@@ -127,7 +129,7 @@ function Advisor.View(lines, title, about)
         escape = false, fit = true }
     local kids = view.children
     if type(about) == "string" and about:find("%S") then
-        kids[#kids + 1] = { kind = "line", key = "about", text = about, wrap = true }
+        kids[#kids + 1] = { kind = "section", key = "about", text = about }
     end
     if type(lines) == "table" then
         for i = 1, #lines do
@@ -208,7 +210,6 @@ function Advisor.Declare(k, diag)
             end
         end
         local rows = { title }
-        if about then rows[#rows + 1] = about end
         for i = 1, #lines do rows[#rows + 1] = lines[i] end
         host.draw(Advisor.View(lines, title, about or nil), rows)
         if not closed then host.show(true) end
