@@ -167,7 +167,11 @@ tests["repair step: with the route walked, repair first, then the route's stop"]
     c.setDurability(FINE)
     c.fire("UPDATE_INVENTORY_DURABILITY")
     c.advance(10, 40)
-    t.eq(lines(c)[1], view and view.stops[1] and view.stops[1].label, "repaired: the route's stop")
+    -- With town stops on zflow the route planned while worn has a repair
+    -- stop first; repaired, it is gone and the next stop is walked.
+    local step = trip and trip.AutoStep()
+    t.ok(type(step) == "table" and step.label ~= "Repair: " .. SMITH, "repaired: no repair stop left")
+    t.eq(lines(c)[1], step and step.label, "repaired: the route's stop")
 end
 
 return tests

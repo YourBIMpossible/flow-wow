@@ -1265,6 +1265,13 @@ function T.Declare(k, diag)
                     if reached(s, here) then
                         town = town or townNow(c)
                         if T.TownDone(s, town) == false then s.seen = true else s.gone = true end
+                    elseif route.auto and (s.kind == "repair" or s.kind == "riding") then
+                        -- Planned by itself, the route is walked in the quest
+                        -- arrow's slot behind the repair and riding steps
+                        -- (A1-24): a stop for one no longer due is gone, so
+                        -- the quest comes back once you repaired or trained.
+                        town = town or townNow(c)
+                        if T.TownDone(s, town) == true then s.gone = true end
                     elseif s.seen then
                         s.gone = true
                     end
