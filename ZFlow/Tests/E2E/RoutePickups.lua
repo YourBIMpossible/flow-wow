@@ -81,7 +81,8 @@ tests["route pickups: a giver on the way is a stop, one far off is listed as ski
     c.advance(1, 5)
     t.ok(said(c, "1. Bandages") ~= nil, "the quest stops come first as before")
     local kept = said(c, ". Pick up: Lost Pages (Marshal)")
-    t.ok(kept ~= nil and kept:find("3. ", 1, true) ~= nil, tostring(kept))
+    -- Section 645.5: hub-first (the default) brings the close pick-up (102 yd) up behind the turn-in.
+    t.ok(kept ~= nil and kept:find("2. ", 1, true) ~= nil, tostring(kept))
     local skipped = said(c, "Pick up: Hermit Tea (Hermit)")
     t.ok(skipped ~= nil and skipped:find(ns.Nav.RoutePickups.SKIPPED, 1, true) ~= nil, tostring(skipped))
     t.ok(said(c, "Wrong Race") == nil, "another race's quest is not offered")
@@ -92,7 +93,8 @@ end
 tests["route pickups: a pick-up stop drops out once the quest is in the log"] = function(t)
     local c = boot()
     c.slashes[ns.id.slash]("route")
-    for _ = 1, 2 do c.slashes[ns.id.slash]("route skip") end
+    -- Section 645.5: hub-first makes the pick-up the second stop, so one skip reaches it.
+    c.slashes[ns.id.slash]("route skip")
     c.advance(1, 5)
     t.eq(first(c), "Pick up: Lost Pages (Marshal)")
     c.setQuestLog({ LOG[1], LOG[2], LOG[3],

@@ -374,8 +374,11 @@ end
 -- to pick up within radius yards of the player come first, nearest first;
 -- pick-ups only as many as the quest log has room for (free free slots,
 -- plus one for each turn-in, which frees one; nil: room not known, every
--- close pick-up). Objectives, town stops and cast stops are never hub
--- business; the rest keep their planned order.
+-- close pick-up). Close town stops (T.TOWN_KINDS) count with the turn-ins.
+-- Objectives and cast stops are never hub business; the rest keep their
+-- planned order.
+-- A tuning choice, not a game fact: legacy Flow's HUB_RADIUS (Nav.lua:3125),
+-- how close counts as "this hub's business".
 T.HUB_YARDS = 250
 local function yardsTo(s, here, size)
     if s.cast or type(s.place) ~= "table" or not finite(s.place.x) or not finite(s.place.y) then return nil end
@@ -395,7 +398,10 @@ function T.HubFirst(stops, here, size, radius, free)
     for i, s in ipairs(out) do
         local d = yardsTo(s, here, size)
         if d and d <= radius then
-            if s.turnIn == true then turnins[#turnins + 1] = { i = i, d = d }
+            -- Town stops (sell, repair, riding, hearth) are the hub's business
+            -- too, as in Flow, so a near vendor is not put behind a turn-in
+            -- (lead section 655; Tests/E2E/TripRouteTownDone.lua).
+            if s.turnIn == true or T.TOWN_KINDS[s.kind] then turnins[#turnins + 1] = { i = i, d = d }
             elseif s.kind == "pickup" then pickups[#pickups + 1] = { i = i, d = d } end
         end
     end
@@ -1176,6 +1182,14 @@ function T.Declare(k, diag)
         for _, line in ipairs(lines) do tell(line) end
     end
 
+    -- The words' saved choices (account); nothing is saved without a store.
+    local function keep(path, value)
+        local st = ctx and ctx.store
+        if type(st) ~= "table" or type(st.set) ~= "function" then return false end
+        local ok = pcall(st.set, st, "account", path, value)
+        return ok
+    end
+
     function api.Word(rest)
         local word = tostring(rest or ""):lower():match("^%s*(%S*)")
         if word == "off" or word == "clear" then
@@ -1194,7 +1208,7 @@ function T.Declare(k, diag)
                 say({ T.MODE_SAID[mode()], T.MODE_HOW })
                 return
             end
-            if ctx then pcall(ctx.store.set, ctx.store, "account", T.MODE_PATH, arg) end
+            keep(T.MODE_PATH, arg)
             say({ T.MODE_SAID[arg] })
             api.Plan()
             say(api.Lines() or { T.DONE })
@@ -1205,7 +1219,7 @@ function T.Declare(k, diag)
                 say({ T.SORT_SAID[sortBy()], T.SORT_HOW })
                 return
             end
-            if ctx then pcall(ctx.store.set, ctx.store, "account", T.SORT_PATH, arg) end
+            keep(T.SORT_PATH, arg)
             say({ T.SORT_SAID[arg] })
             local r = api.Plan()
             if r and r.note == T.SORT_NO_XP then say({ T.SORT_NO_XP }) end
@@ -1214,12 +1228,10 @@ function T.Declare(k, diag)
         end
         if word == "steps" then
             local n = tonumber(arg)
-            if ctx then
-                if n and n >= 1 then
-                    pcall(ctx.store.set, ctx.store, "account", T.SHOWN_PATH, math.floor(n))
-                else
-                    pcall(ctx.store.set, ctx.store, "account", T.SHOWN_PATH, nil)
-                end
+            if n and n >= 1 then
+                keep(T.SHOWN_PATH, math.floor(n))
+            else
+                keep(T.SHOWN_PATH, nil)
             end
             say(api.Lines() or { T.DONE })
             return

@@ -357,4 +357,71 @@ tests["trip route: the town stops row names all four stops it switches"] = funct
     t.eq(has.repair, nil, "repair is already a bags topic word")
 end
 
+-- Lead section 655 (Lazy's 06:35 review, section 243): the route words
+-- mode, steps and sort through the whole add-on (T.Declare's word), with a
+-- made-up QuestXP module standing in for the player's Questie.
+local function xpModule(values)
+    local mod = {}
+    function mod.GetQuestLogRewardXP(self, id)
+        if self ~= mod then error("called without self") end
+        return values[id]
+    end
+    return mod
+end
+
+tests["trip route words: mode quests leaves out pick-ups and town stops, and is kept"] = function(t)
+    local c, addon = boot({ char = TOWN, bags = { { bag = 0, free = 0, total = 16 } } })
+    c.slashes[ns.id.slash]("route mode quests")
+    c.advance(1, 5)
+    t.ok(said(c, ns.Nav.TripRoute.MODE_SAID.quests) ~= nil, "the mode is said")
+    t.eq(addon.store:get("account", ns.Nav.TripRoute.MODE_PATH), "quests", "and kept")
+    t.eq(said(c, "sell at"), nil, "no town stop on quests only")
+    c.slashes[ns.id.slash]("route mode optimal")
+    c.advance(1, 5)
+    t.eq(addon.store:get("account", ns.Nav.TripRoute.MODE_PATH), "optimal")
+    t.ok(said(c, "Bags full: sell at Bread Seller") ~= nil, "optimal: the sell stop again")
+end
+
+tests["trip route words: a mode or sort that is not one says the choice and keeps nothing"] = function(t)
+    local c, addon = boot()
+    c.slashes[ns.id.slash]("route mode fly")
+    t.ok(said(c, ns.Nav.TripRoute.MODE_HOW) ~= nil, "how to pick a mode")
+    t.eq(addon.store:get("account", ns.Nav.TripRoute.MODE_PATH), nil, "nothing kept")
+    c.slashes[ns.id.slash]("route sort gold")
+    t.ok(said(c, ns.Nav.TripRoute.SORT_HOW) ~= nil, "how to pick a sort")
+    t.eq(addon.store:get("account", ns.Nav.TripRoute.SORT_PATH), nil, "nothing kept")
+end
+
+tests["trip route words: steps cuts the list and says how many more; all clears it"] = function(t)
+    local c, addon = boot()
+    c.slashes[ns.id.slash]("route")
+    c.slashes[ns.id.slash]("route steps 1")
+    t.eq(addon.store:get("account", ns.Nav.TripRoute.SHOWN_PATH), 1)
+    t.ok(said(c, "more stops.") ~= nil, "the rest are counted")
+    c.printed = {}
+    c.slashes[ns.id.slash]("route steps all")
+    t.eq(addon.store:get("account", ns.Nav.TripRoute.SHOWN_PATH), nil, "all: nothing kept")
+    t.eq(said(c, "more stops."), nil, "every stop listed")
+end
+
+tests["trip route words: sort xp puts the quest worth the most XP first, from Questie"] = function(t)
+    local c, addon = boot()
+    c.setQuestieModule("QuestXP", xpModule({ [401] = 100, [402] = 900 }))
+    c.slashes[ns.id.slash]("route sort xp")
+    c.advance(1, 5)
+    t.eq(addon.store:get("account", ns.Nav.TripRoute.SORT_PATH), "xp")
+    t.eq(first(c), "Herbs", "900 XP first, though it is the farthest")
+    c.slashes[ns.id.slash]("route sort distance")
+    c.advance(1, 5)
+    t.ok(first(c) ~= "Herbs", "shortest first again: " .. tostring(first(c)))
+end
+
+tests["trip route words: sort xp with no XP from Questie says so and stays shortest first"] = function(t)
+    local c = boot()
+    c.slashes[ns.id.slash]("route sort xp")
+    c.advance(1, 5)
+    t.ok(said(c, ns.Nav.TripRoute.SORT_NO_XP) ~= nil, "no QuestXP module: said")
+    t.ok(first(c) ~= "Herbs", "the order is the shortest walk: " .. tostring(first(c)))
+end
+
 return tests
