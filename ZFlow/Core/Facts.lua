@@ -40,7 +40,8 @@ ns.Facts = F
 F.NAME = "facts"
 F.WORD = "facts"
 F.PATH = "learned.facts"
-F.HELP = "what " .. ns.id.title .. " has learned from class trainers on this game"
+F.HELP = "what " .. ns.id.title .. " has learned from class trainers on this game; "
+    .. "facts reset drops the first levels learned, if one is wrong"
 
 local function whole(v)
     return type(v) == "number" and v == v and v >= 0 and v ~= math.huge and v == math.floor(v)
@@ -137,9 +138,11 @@ end
 function F.ResetFirst(facts)
     local n = 0
     if type(facts) ~= "table" then return n end
-    for _, list in pairs(type(facts.first) == "table" and facts.first or {}) do
-        if type(list) == "table" then
-            for _ in pairs(list) do n = n + 1 end
+    if type(facts.first) == "table" then
+        for _, list in pairs(facts.first) do
+            if type(list) == "table" then
+                for _ in pairs(list) do n = n + 1 end
+            end
         end
     end
     facts.first, facts.firstAt = {}, {}
@@ -175,7 +178,6 @@ function F.Declare(k, diag)
                 return
             end
             for _, line in ipairs(F.Lines(facts())) do k.client.print(k.id.title .. ": " .. line) end
-            k.client.print(k.id.title .. ": " .. ("  a first level wrong? %s %s reset drops them all."):format(k.id.slash, F.WORD))
         end
         if type(diag.help) == "table" then diag.help[F.WORD] = F.HELP end
     end
