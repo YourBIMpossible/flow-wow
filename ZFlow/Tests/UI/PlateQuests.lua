@@ -546,4 +546,41 @@ tests["plate quests starts pass: the same log again keeps the answer, a changed 
     t.ok(m == nil or m.shown == false, "a changed log: walked again, no mark until done")
 end
 
+-- C-19, Zen-3 CHANGES-1 (lead section 727): a read builds its index with no
+-- starts of the old pass: a quest you just took does not keep its drop
+-- marked while the new pass runs. A pass that failed answers nothing ({}),
+-- never its part-filled list.
+tests["plate quests starts pass: a quest just taken drops its mark at once"] = function(t)
+    local c = ns.make.fakeClient()
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    PQ.Declare(k, d)
+    c.setLevel(10)
+    c.setQuestLog(log())
+    c.setQuestieModule("QuestieDB", manyDb(900))
+    c.setQuestDone(202, true)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    mob(c, "nameplate1", OLDBONE)
+    c.advance(1, 20)
+    t.eq(markOf(c, "nameplate1") and markOf(c, "nameplate1").shown, true, "the old pass marked it")
+    local rows = log()
+    rows[#rows + 1] = { id = 201, title = "An Old Bone", complete = false, failed = false, objectives = {} }
+    c.setQuestLog(rows)
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(PQ.WAIT + 0.1, 1)
+    local m = markOf(c, "nameplate1")
+    t.ok(m == nil or m.shown == false, "taken: no mark while the new pass runs")
+    c.advance(1, 20)
+    m = markOf(c, "nameplate1")
+    t.ok(m == nil or m.shown == false, "taken: no mark after it either")
+end
+
+tests["plate quests starts pass: a failed pass answers nothing"] = function(t)
+    t.eq(PQ.StartsResult({ state = "failed", out = { [1] = { { what = "starts" } } } }), {})
+    t.eq(PQ.StartsResult({ state = "none", out = {} }), {})
+end
+
 return tests
