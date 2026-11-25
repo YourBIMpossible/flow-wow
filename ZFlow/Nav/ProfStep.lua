@@ -1391,8 +1391,9 @@ function N.ProfStepDeclare(k)
     end
 
     k:Setting({ key = N.PROF_SETTING, scope = "account", type = "bool", default = true,
-        label = "Profession trainer arrow", group = "travel.arrow",
-        synonyms = { "profession", "trainer", "arrow", "needle", "skill cap" } })
+        label = "Profession arrow", group = "travel.arrow",
+        help = "Shows a second, purple arrow for your profession steps: gathering in an area, smelting or crafting at a station, learning at a trainer, or buying from a vendor.",
+        synonyms = { "profession", "trainer", "arrow", "gather", "craft", "buy", "smelt", "skill cap" } })
 
     k:Module({
         name = N.PROF_STEP,
