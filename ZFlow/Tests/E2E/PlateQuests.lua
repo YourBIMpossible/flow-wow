@@ -200,4 +200,42 @@ tests["plate quests: the setting row is on by default and filed under nameplates
     end
 end
 
+-- Parity row C-22 (lead section 600): with enemy nameplates off there is
+-- nothing to put a mark on, so the player is told once a session, when a
+-- quest of theirs has a creature to mark (Flow Modules/QuestMarks.lua
+-- platesNote). Fails before: nothing reads the setting.
+local function platesTold(c)
+    local n = 0
+    for _, line in ipairs(c.printed) do
+        if line:find("enemy nameplates are off", 1, true) then n = n + 1 end
+    end
+    return n
+end
+
+local function platesOff(v)
+    return function(c) c.putGameSetting("nameplateShowEnemies", v) end
+end
+
+tests["plate quests: enemy nameplates off - told once, not again on the next log update"] = function(t)
+    local c = boot({ before = platesOff("0") })
+    t.eq(platesTold(c), 1, "told at boot")
+    logChanged(c)
+    t.eq(platesTold(c), 1, "once a session")
+end
+
+tests["plate quests: enemy nameplates on or unknown - not told"] = function(t)
+    t.eq(platesTold(boot({ before = platesOff("1") })), 0, "on")
+    t.eq(platesTold(boot()), 0, "the setting not read")
+end
+
+tests["plate quests: enemy nameplates off but nothing to mark - not told"] = function(t)
+    t.eq(platesTold(boot({ before = platesOff("0"), noLog = true })), 0, "no quest log")
+    t.eq(platesTold(boot({ before = platesOff("0"), noQuestie = true })), 0, "no Questie: no marks at all")
+    local c, addon = boot({ before = platesOff("1") })
+    addon.settings:set(ns.PlateQuests.OFF, true)
+    c.putGameSetting("nameplateShowEnemies", "0")
+    logChanged(c)
+    t.eq(platesTold(c), 0, "quest marks switched off")
+end
+
 return tests
