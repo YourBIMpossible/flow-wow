@@ -168,4 +168,53 @@ tests["map: no route, no marks and no card"] = function(t)
     t.eq(h.c.mapCards[1].shown, false)
 end
 
+-- B-19 (lead section 780): a click on a step's mark opens that step, as
+-- Flow's map marks do (Modules/Nav/MapOverlay.lua:193-208, a left click:
+-- ns.nav:OpenStop -> N:ShowStop, Nav.lua:4325-4328: the step's own card,
+-- and a second click on the same step closes it). Here the step's card is
+-- the map's card (client.mapCard) showing that step; a second click gives
+-- the zone back. Fails before: no MR.StepCard, and a click does nothing.
+tests["click: the step's card, pure"] = function(t)
+    t.eq(type(MR().StepCard), "function", "MR.StepCard")
+    if type(MR().StepCard) ~= "function" then return end
+    local r = rows()
+    -- Lead section 841: the lines as StepCard builds them, the sub then the
+    -- distance when each is text (Trip.TrackRows gives both).
+    local want = {}
+    for _, v in ipairs({ r[1].sub, r[1].dist }) do
+        if type(v) == "string" and v ~= "" then want[#want + 1] = v end
+    end
+    t.eq(MR().StepCard(r[1]), { title = MR().PIN:format(1, tostring(r[1].text)), lines = want })
+    t.eq(MR().StepCard({ n = 3, text = "X", sub = "Y", dist = "40 yd" }),
+        { title = MR().PIN:format(3, "X"), lines = { "Y", "40 yd" } })
+    t.eq(MR().StepCard(nil), nil)
+end
+
+tests["click: a mark opens its step on the map's card; again gives the zone back"] = function(t)
+    local h = start({ view = view() })
+    h.c.setMapInfo(1, { name = "Elwynn Forest", low = 1, high = 10 })
+    h.c.setWorldMap(1)
+    h.api.Refresh()
+    local pins, card = h.c.routePinSets[1], h.c.mapCards[1]
+    t.eq(type(pins.click), "function", "the fake can click")
+    if type(pins.click) ~= "function" then return end
+    pins.click(3)
+    t.eq(card.card.title, MR().PIN:format(3, tostring(rows()[3].text)), "the step's card")
+    t.eq(h.api.Opened(), 3)
+    h.api.Refresh()
+    t.eq(card.card.title, MR().PIN:format(3, tostring(rows()[3].text)), "it stays open")
+    pins.click(3)
+    t.eq(card.card.title, "Elwynn Forest", "a second click: the zone again")
+    t.eq(h.api.Opened(), nil)
+    pins.click(1, "RightButton")
+    t.eq(h.api.Opened(), nil, "a right click opens nothing")
+    pins.click(1)
+    h.c.setWorldMap(2)
+    h.api.Refresh()
+    t.eq(h.api.Opened(), nil, "another map: the step is not on it, the zone's card")
+    t.eq(card.card.title, MR().NO_NAME)
+    pins.click(99)
+    t.eq(h.api.Opened(), nil, "a number with no mark opens nothing")
+end
+
 return tests
