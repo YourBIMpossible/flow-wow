@@ -30,19 +30,36 @@ tests["tracker list: the count is the log's own, never made up"] = function(t)
     t.eq(TL().Count({}), nil)
 end
 
-tests["tracker list: rows in route order, the first not held is now, held ones say why"] = function(t)
-    local rows = TL().Rows(view({
+-- Lead section 770: the route's steps first, then the held ones, then those
+-- that can't be placed, as Flow's tracker lists its plan and then its
+-- blocked goals (Modules/Nav/RouteTracker.lua:504-519; a held step is not
+-- in Flow's plan). The distances are the walked steps' own legs.
+tests["tracker list: the route's steps first, then held ones with why, the first is now"] = function(t)
+    local v = view({
         { label = "Bandages", quest = 3, turnIn = true, held = "not complete yet", place = { map = 1, x = 0.55, y = 0.5 } },
         { label = "Boars", quest = 1, objective = 1, detail = "Boars slain: 2/8", place = { map = 1, x = 0.6, y = 0.5 } },
         { label = "Pick up: Lost Pages", quest = 9, kind = "pickup", place = { map = 1, x = 0.7, y = 0.5 } },
-    }), HERE)
-    t.eq(#rows, 3)
-    t.eq(rows[1].held, "not complete yet")
-    t.eq(rows[1].current, nil, "a held step is not now")
-    t.eq(rows[2].current, true, "the first not held")
-    t.eq(rows[2].kind, "objective"); t.eq(rows[2].count, "2/8")
-    t.eq(rows[3].kind, "pickup")
-    t.ok(type(rows[2].dist) == "string", "with its distance")
+    })
+    v.left = { { quest = 5, label = "Find Kurl", why = "no place known" } }
+    local rows, more, nLeft = TL().Rows(v, HERE)
+    t.eq(#rows, 4)
+    t.eq(more, 0)
+    t.eq(nLeft, 1)
+    t.eq(rows[1].label, "Boars")
+    t.eq(rows[1].current, true, "the first not held")
+    t.eq(rows[1].kind, "objective"); t.eq(rows[1].count, "2/8")
+    t.eq(rows[1].dist, "100 yd", "from where you stand, not from the held step")
+    t.eq(rows[2].kind, "pickup")
+    t.eq(rows[2].dist, "100 yd")
+    t.eq(rows[3].label, "Bandages")
+    t.eq(rows[3].held, "not complete yet")
+    t.eq(rows[3].current, nil, "a held step is not now")
+    t.eq(rows[3].dist, nil, "a held step is not walked")
+    t.eq(rows[4].left, "no place known")
+    local r2, m2 = TL().Rows(v, HERE, 2)
+    t.eq(#r2, 2, "the route's steps fill the list first")
+    t.eq(r2[2].held, nil)
+    t.eq(m2, 1, "the held step left out is counted")
 end
 
 tests["tracker list: at most max, then how many more; no route, nothing"] = function(t)
