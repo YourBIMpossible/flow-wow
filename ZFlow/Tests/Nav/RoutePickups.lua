@@ -107,4 +107,28 @@ tests["route pickups: a class quest is kept past the most plain ones"] = functio
     t.eq(P.CLASS_LABEL:format("Lost Pages", "Marshal"), "Pick up your class quest: Lost Pages (Marshal)")
 end
 
+-- Battleground quests (row A2-06; Questie's zoneOrSort): off the route
+-- unless the setting is on.
+tests["route pickups: a battleground quest is known by its zone or sort"] = function(t)
+    local B = N.BattlegroundQuests
+    t.eq(B.Is(q({ zoneOrSort = 3277 })), true)
+    t.eq(B.Is(q({ zoneOrSort = 2597 })), true)
+    t.eq(B.Is(q({ zoneOrSort = 3358 })), true)
+    t.eq(B.Is(q({ zoneOrSort = -25 })), true)
+    t.eq(B.Is(q({ zoneOrSort = 17 })), false)
+    t.eq(B.Is(q()), false)
+    t.eq(B.Is(nil), false)
+end
+
+tests["route pickups: a battleground quest is a candidate only with the setting on"] = function(t)
+    local P = N.RoutePickups
+    local bg = q({ zoneOrSort = 3277 })
+    local ok, why = P.Candidate(bg, ctx())
+    t.eq(ok, false)
+    t.eq(why, P.WHY_BATTLEGROUND)
+    t.eq((P.Candidate(bg, ctx({ battlegrounds = false }))), false)
+    t.eq((P.Candidate(bg, ctx({ battlegrounds = true }))), true)
+    t.eq((P.Candidate(q({ zoneOrSort = 17 }), ctx())), true)
+end
+
 return tests
