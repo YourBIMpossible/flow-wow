@@ -87,13 +87,21 @@ tests["price e2e: unknown data stays unknown"] = function(t)
     -- An item the client cannot read and nobody priced: no figure, no 0.
     t.eq(say(c, "price " .. ODD), { T("item " .. ODD .. ": price unknown—check vendor") })
     -- Not an item at all: the usage line.
-    t.eq(say(c, "price"), { T("say price <item link> (or an item ID).") })
-    t.eq(say(c, "price fish"), { T("say price <item link> (or an item ID).") })
+    t.eq(say(c, "price"), { T("say price <item link>, an item name or an item ID.") })
+    -- A name no item has: said so, no price.
+    t.eq(say(c, "price fish"), { T('No known item is called "fish": link it, or use its item ID.') })
     -- A lookup writes no price.
     local account = c.saved(ns.id.accountDB)
     local prices = account.learned and account.learned.prices or nil
     t.ok(type(prices) ~= "table" or type(prices.vendor) ~= "table" or prices.vendor[ODD] == nil,
         "nothing saved for the unknown item")
+    noneActs(t, c)
+end
+
+tests["price e2e E-42: an item by its name, as the slash command hands it"] = function(t)
+    local c = boot()
+    t.eq(say(c, "price linen cloth"), { T("|cffffffffLinen Cloth|r: a vendor pays 13c each (the item's own sell price)") })
+    t.eq(say(c, "price Coarse Thread"), { T("|cffffffffCoarse Thread|r: a vendor pays 2c each (the item's own sell price)") })
     noneActs(t, c)
 end
 
