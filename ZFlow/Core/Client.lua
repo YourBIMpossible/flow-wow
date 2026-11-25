@@ -8817,6 +8817,24 @@ function ns.make.client(env)
             end
             return true
         end
+        -- F2 (Lazy, lead section 551): a new side in pixels for every
+        -- button, laid out as at creation. The only way the row is sized:
+        -- no SetScale, so the anchor and the screen clamp stay true.
+        function h.resize(newSize)
+            if type(newSize) ~= "number" or newSize <= 0 then return false, "refused" end
+            if not unlocked() then return false, "lockdown" end
+            size = newSize
+            method(holder, "SetSize", count * size + (count - 1) * gap, size)
+            for i = 1, count do
+                local b = buttons[i]
+                if b then
+                    method(b, "SetSize", size, size)
+                    method(b, "ClearAllPoints")
+                    method(b, "SetPoint", "LEFT", holder, "LEFT", (i - 1) * (size + gap), 0)
+                end
+            end
+            return true
+        end
         return h
     end
 
@@ -9084,8 +9102,8 @@ function ns.make.client(env)
         method(grip, "SetScript", "OnDragStop", onStop)
         -- F2 (lead section 447 item 3): Ctrl + mouse wheel over the button
         -- itself resizes it, same as Flow's move handle (Modules/MoveHandle.lua).
-        -- Reports the raw wheel delta; the add-on clamps, applies SetScale
-        -- and saves (Rotation/FlowButton.lua), same split as onMoved above.
+        -- Reports the raw wheel delta; the add-on clamps, saves and resizes
+        -- the row (clickRow h.resize) (Rotation/FlowButton.lua), same split as onMoved above.
         if type(spec.onResized) == "function" then
             local function ctrl()
                 local okC, down = call(env.IsControlKeyDown)
@@ -9104,12 +9122,6 @@ function ns.make.client(env)
             local called
             if on == true then called = method(grip, "Show") else called = method(grip, "Hide") end
             if not called then return false, "refused" end
-            return true
-        end
-        function h.scale(factor)
-            if not unlocked() then return false, "lockdown" end
-            if type(factor) ~= "number" or factor <= 0 then return false, "refused" end
-            if not method(target, "SetScale", factor) then return false, "refused" end
             return true
         end
         return h

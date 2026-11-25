@@ -3287,21 +3287,13 @@ function ns.make.fakeClient(opts)
     end
     function c.moveHandle(spec)
         if type(spec) ~= "table" or type(spec.target) ~= "string" then return nil end
-        local found = nil
+        local found = false
         for _, row in ipairs(c.clickRows) do
-            if row.spec.name == spec.target then found = row end
+            if row.spec.name == spec.target then found = true end
         end
-        if found == nil then return nil end
+        if not found then return nil end
         c.moveHandles[spec.target] = spec
-        return {
-            show = function() return true end,
-            scale = function(factor)
-                if c.combatLockdown() ~= false then return false, "lockdown" end
-                if type(factor) ~= "number" or factor <= 0 then return false, "refused" end
-                found.scale = factor
-                return true
-            end,
-        }
+        return { show = function() return true end }
     end
     function c.dragHandle(target, point)
         local spec = c.moveHandles[target]

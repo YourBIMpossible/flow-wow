@@ -266,30 +266,31 @@ tests["flow button: Ctrl + wheel resizes it out of a fight only, half to double,
 
     c.setCombat(true); c.advance(1, 5)
     t.eq(c.wheelHandle(FLOW, 1), false, "no resize in a fight")
-    t.eq(h.scale, nil, "nothing applied")
+    t.eq(h.size, FB.SIZE, "nothing applied")
     c.setCombat(false); c.advance(1, 5)
 
     t.eq(c.wheelHandle(FLOW, 1, false), false, "no Ctrl: refused")
-    t.eq(h.scale, nil, "nothing applied without Ctrl")
+    t.eq(h.size, FB.SIZE, "nothing applied without Ctrl")
 
     t.eq(c.wheelHandle(FLOW, 1), true, "Ctrl + wheel up, out of a fight: resized")
-    t.eq(h.scale, 1.1, "a tenth bigger")
+    t.eq(h.size, math.floor(FB.SIZE * 1.1 + 0.5), "a tenth bigger")
     t.eq(addon.settings:get(FB.SCALE), 1.1, "kept in the add-on's settings")
 
     for _ = 1, 12 do c.wheelHandle(FLOW, 1) end
-    t.eq(h.scale, 2, "wheeling up past double: clamped to double size")
+    t.eq(h.size, FB.SIZE * 2, "wheeling up past double: clamped to double size")
     t.eq(addon.settings:get(FB.SCALE), 2, "the clamp is what was saved")
 
     for _ = 1, 20 do c.wheelHandle(FLOW, -1) end
-    t.eq(h.scale, 0.5, "wheeling down past half: clamped to half size")
+    t.eq(h.size, FB.SIZE / 2, "wheeling down past half: clamped to half size")
     t.eq(addon.settings:get(FB.SCALE), 0.5, "the clamp is what was saved")
 
     -- The self button accepts the same gesture (the client cannot tell the
     -- two apart) but is not wired to a size setting, same as Flow: nothing
     -- happens to it.
-    c.wheelHandle(SELF, 1)
     local hs = rowOf(c, SELF)
-    if hs then t.eq(hs.scale, nil, "the self button is not resized") end
+    local before = hs and hs.size
+    c.wheelHandle(SELF, 1)
+    if hs then t.eq(hs.size, before, "the self button is not resized") end
     noBindsNoMacros(t, c)
 end
 
@@ -305,7 +306,7 @@ tests["flow button: the wheel sets the size on screen once, no scale on top"] = 
     t.eq(c.wheelHandle(FLOW, 1), true)
     t.eq(addon.settings:get(FB.SCALE), 1.6)
     t.eq(h.size, math.floor(FB.SIZE * 1.6 + 0.5), "the row is the new size on screen")
-    t.eq(h.scale, nil, "no SetScale on top of the size")
+    t.eq(h.scale, nil, "no scale on top of the size")
 end
 
 tests["flow button: a reload keeps the size the player chose"] = function(t)

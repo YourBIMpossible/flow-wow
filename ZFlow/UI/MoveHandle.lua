@@ -18,8 +18,8 @@ MH.GRIP = 10 -- pixels: the width of the grip
 -- name), width, height (the frame, to keep it on the screen), place(point),
 -- save(point), resized(delta) (F2, lead section 447 item 3: the raw wheel
 -- delta from a Ctrl+wheel over the target; the caller clamps it to its own
--- scale range and persists it, then calls handle.scale to apply it — this
--- grip reports the gesture, it does not judge the size), quiet (lead
+-- scale range, persists it and resizes the frame itself — this grip
+-- reports the gesture, it does not judge the size), quiet (lead
 -- section 409: the bar drawn only on hover) }. nil when the client has no
 -- grip or no such frame.
 function MH.Attach(k, client, spec)

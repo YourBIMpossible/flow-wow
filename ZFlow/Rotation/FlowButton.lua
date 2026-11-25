@@ -344,7 +344,7 @@ function FB.Declare(k)
     -- sizeOf() is the rounded pixel size already used for layout.
     local function unit(which, frame, sizeOf, pointOf, layoutKey, scaleKey, scaleOf)
         local u = { which = which, why = "", hold = nil, wanted = nil, lastTex = nil }
-        local row, kf, face, iconSig, grip
+        local row, kf, face, iconSig
         local name = ns.id.framePrefix .. frame
         local madeSaid = false
 
@@ -445,21 +445,23 @@ function FB.Declare(k)
             if which == "flow" and units.self then units.self.place() end
         end
 
-        -- F2: Ctrl + wheel over the button. grip is the handle MoveHandle
-        -- gave us; delta is the raw wheel step from the client (positive:
-        -- away from the player, Flow's own "bigger" direction). Clamped to
-        -- St's own half-to-double range, rounded to its own 5% grain —
-        -- the same sanitizing an imported size already gets.
+        -- F2: Ctrl + wheel over the button. delta is the raw wheel step
+        -- from the client (positive: away from the player, Flow's own
+        -- "bigger" direction). Clamped to St's own half-to-double range,
+        -- rounded to its own 5% grain — the same sanitizing an imported
+        -- size already gets. One way to size (Lazy F2, lead section 551):
+        -- the row is resized to the rounded pixel size, as it was made;
+        -- nothing scales it on top, so the anchor and the clamp stay true.
         local function resized(delta)
-            if not scaleKey or not grip or type(grip.scale) ~= "function" then return end
+            if not scaleKey or not row or type(row.resize) ~= "function" then return end
             if type(delta) ~= "number" or delta == 0 then return end
             local step = delta > 0 and FB.SCALE_STEP or -FB.SCALE_STEP
             local new = St.Scale(scaleOf() + step)
             if not new then return end
             local ok = k.settings:set(scaleKey, new)
             if not ok then return end
-            local applied = grip.scale(new)
-            if applied then u.place() end
+            local okSize, applied = pcall(row.resize, roundSize(new))
+            if okSize and applied then u.place() end
         end
 
         local function ensure()
@@ -487,7 +489,7 @@ function FB.Declare(k)
             local size = sizeOf()
             -- Lead section 409 item 3: the grip's yellow bar is drawn only
             -- while the mouse is over it or the button (quiet).
-            grip = ns.MoveHandle.Attach(k, client, {
+            ns.MoveHandle.Attach(k, client, {
                 target = name, width = size, height = size, save = moved,
                 resized = resized, quiet = true,
             })
