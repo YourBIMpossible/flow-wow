@@ -234,15 +234,24 @@ end
 -- C-10 CHANGES-1 (Twin, lead section 730; owner section 563): as Flow's
 -- Modules/Quests/QuestBags.lua (:221, ns.BagsNearlyFull, Core.lua
 -- :103-106), the hand-in is said only when your bags are nearly full: this
--- many free slots or fewer, in plain bags (family 0 or not given).
+-- many free slots or fewer. Counted as Flow's Export.lua X.BagsFree
+-- (:94-102, lead section 734): every bag 0 to 4, of any kind; a bag that
+-- cannot be read is skipped; nil only when no bag reads. bags is
+-- client.bags()'s list ({ bag, free, total, family }); a row with no bag
+-- number counts by its place (the first five).
 Q.NEARLY_FULL = 3
 function Q.Free(bags)
     if type(bags) ~= "table" then return nil end
-    local n = 0
-    for _, b in ipairs(bags) do
-        if type(b) ~= "table" or type(b.free) ~= "number" or b.free ~= b.free then return nil end
-        if b.family == nil or b.family == 0 then n = n + b.free end
+    local n, read = 0, false
+    for i, b in ipairs(bags) do
+        local bag = i - 1
+        if type(b) == "table" and type(b.bag) == "number" then bag = b.bag end
+        if bag >= 0 and bag <= 4 and type(b) == "table" and type(b.free) == "number" and b.free == b.free then
+            n = n + b.free
+            read = true
+        end
     end
+    if not read then return nil end
     return n
 end
 
