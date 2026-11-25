@@ -75,6 +75,11 @@ local _, ns = ...
 --   module's step in words (Nav/WeaponMasterStep.lua), whatever the
 --   Professions tick says. Like every ask, it reads nothing of Questie
 --   itself: the scan is this module's tick, out of combat.
+--   Service(kind, client) -> { name, map, x, y, yards }, or nil and true
+--   while Questie's list is still being gone through: Questie's nearest
+--   vendor, repair vendor, flight master, innkeeper, banker or auctioneer
+--   (N.ProfPlace.Service) from the same one reader and pass, for N.Nearest
+--   (Nav/ServiceNearest.lua, parity rows A2-10 and A1-41).
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
@@ -400,6 +405,18 @@ function F.Lines(result)
     return out
 end
 
+-- The straight yards in the world from me (client.worldPosition) to
+-- target = { map, x, y } on the map with corners c (client.mapCorners), or
+-- nil when either is not known or they are on different continents.
+local function worldYards(me, c, target)
+    if type(me) ~= "table" or type(c) ~= "table" or me.cont ~= c.cont then return nil end
+    local wx = c.ox + target.x * (c.ex - c.ox) + target.y * (c.sx - c.ox)
+    local wy = c.oy + target.x * (c.ey - c.oy) + target.y * (c.sy - c.oy)
+    local d = math.sqrt((wx - me.wx) ^ 2 + (wy - me.wy) ^ 2)
+    if not finite(d) then return nil end
+    return d
+end
+
 -- The planner's live read (Items/ProfPlan.lua's declared module), or nil.
 local function planOf()
     local P = ns.profPlan
@@ -445,14 +462,25 @@ function F.Declare(k, diag)
             end
             return yards / F.RUN
         end
-        local me = ask("worldPosition")
-        local c = ask("mapCorners", target.map)
-        if type(me) ~= "table" or type(c) ~= "table" or me.cont ~= c.cont then return nil end
-        local wx = c.ox + target.x * (c.ex - c.ox) + target.y * (c.sx - c.ox)
-        local wy = c.oy + target.x * (c.ey - c.oy) + target.y * (c.sy - c.oy)
-        local d = math.sqrt((wx - me.wx) ^ 2 + (wy - me.wy) ^ 2)
-        if not finite(d) then return nil end
+        local d = worldYards(ask("worldPosition"), ask("mapCorners", target.map), target)
+        if not d then return nil end
         return d / F.RUN
+    end
+
+    -- far(place) -> the straight yards in the world to a place on another
+    -- map, or nil: for many places in one ask (Questie's vendors), so where
+    -- the player is and each map's corners are read once, not once a place.
+    local function farOf()
+        local me, asked, corners = nil, false, {}
+        return function(target)
+            if not asked then me, asked = ask("worldPosition"), true end
+            local c = corners[target.map]
+            if c == nil then
+                c = ask("mapCorners", target.map) or false
+                corners[target.map] = c
+            end
+            return worldYards(me, c, target)
+        end
     end
 
     -- Is the player standing at target (within the needle's own radius)?
@@ -524,6 +552,27 @@ function F.Declare(k, diag)
         if type(of) ~= "function" then return nil end
         return of(step, prof, PP.From(ctx.client, ctx.store, ctx.use, kind,
             { contOf = contOf, far = cost, questie = questie }))
+    end
+
+    -- Questie's nearest NPC of a service kind (N.ProfPlace.Service), for
+    -- N.Nearest (Nav/ServiceNearest.lua): { name, map, x, y, yards (on
+    -- another map, when the world says how far) } or nil, and true while
+    -- the answer is still on its way. client: the asker's; another client
+    -- than this module's is not answered. The ask reads nothing of Questie.
+    local function service(kind, client)
+        local PP = N.ProfPlace
+        if not ctx or (client ~= nil and client ~= ctx.client) then return nil end
+        if type(PP) ~= "table" or type(PP.Service) ~= "function" or type(PP.From) ~= "function" then return nil end
+        if type(PP.SERVICES) ~= "table" or PP.SERVICES[kind] ~= true then return nil end
+        if questie == nil and type(PP.Questie) == "function" then questie = PP.Questie() end
+        local far = farOf()
+        local known = PP.From(ctx.client, ctx.store, ctx.use, "service", { contOf = contOf, far = far, questie = questie })
+        local to = PP.Service(kind, known)
+        if not to then
+            return nil, type(questie) == "table" and call(questie.waiting, ctx.client) == true or nil
+        end
+        if type(known.here) ~= "table" or to.map ~= known.here.map then to.yards = far(to) end
+        return to
     end
 
     function api.result()
@@ -614,7 +663,8 @@ function F.Declare(k, diag)
                      Place = function(step, prof)
                          if type(step) ~= "table" then return nil end
                          return place(step, prof, true)
-                     end },
+                     end,
+                     Service = service },
         ticks = {
             { every = F.PIN_EVERY, when = "always", run = function() api.pin() end },
             -- Lead section 564: the Questie read is spread over frames and

@@ -788,6 +788,18 @@ end
 --     is read in the same pass (one read more for such an NPC not kept
 --     for another reason; none for an NPC with no flags, which is no
 --     trainer or vendor; none at all while no name is wanted).
+--     And vendor, repair, flight, innkeeper = { ... } once an NPC with
+--     that npcFlags bit is met (PP.SERVICE; parity rows A2-10 and A1-41):
+--     Questie's own list first (db.npcFlags.VENDOR, .REPAIR,
+--     .FLIGHT_MASTER, .INNKEEPER), else PP.FLAG (4, 16384, 8, 128, the
+--     first game's, as the predecessor's S.CLASSIC_FLAGS). The same
+--     npcFlags read; an NPC in two lists has one place table in both.
+--   PP.Service(kind, known) -> { name, map, x, y } or nil          pure
+--     Questie's nearest NPC of a service kind (PP.SERVICES: those four,
+--     banker and auction) the player's faction can use: on here.map, else
+--     on another map of the player's continent. known as for PP.Of
+--     (here, questie, contOf, far). For N.Nearest
+--     (Nav/ServiceNearest.lua), asked through the feed's Service.
 --   PP.Want(name): asks the pass to keep the places of the NPC of that
 --     name (PP.NAMES). Called when a names file loads, before any pass.
 --   PP.ScanStart(db) -> pass or nil; PP.ScanStep(pass, zones, count) ->
@@ -807,6 +819,8 @@ end
 --       seconds later and PP.TRIES times in all, then kept as it is. A
 --       client with no time (now() 0) has nothing to wait by: its tries
 --       come in a row and still end.
+--     reader.waiting(client) -> true while an answer asked for is still on
+--       its way (a pass runs, or one is due and Questie has its NPCs).
 --     reader.ids(client, prof, read) -> read()'s list, kept PP.RETRY
 --       seconds, so the saved nodes are not gone through on every update.
 --     reader.spots(client, ids, map) -> { { map, x, y } }: the places of
@@ -847,8 +861,16 @@ PP.NODE_MODULE = "nodes"
 -- How many of the nearest gathered nodes are asked for.
 PP.NODES = 50
 PP.TRAINER_TITLE = "^(.-) Trainer$"
-PP.FLAG = { banker = 256, auction = 4096 }
-PP.FLAG_NAME = { banker = "BANKER", auction = "AUCTIONEER" }
+-- The first game's npcFlags bits, as the predecessor's Services.lua
+-- (S.CLASSIC_FLAGS), and their names in Questie's own list.
+PP.FLAG = { banker = 256, auction = 4096, vendor = 4, repair = 16384, flight = 8, innkeeper = 128 }
+PP.FLAG_NAME = { banker = "BANKER", auction = "AUCTIONEER", vendor = "VENDOR", repair = "REPAIR",
+                 flight = "FLIGHT_MASTER", innkeeper = "INNKEEPER" }
+-- The kinds kept by flag whose list is made once one is met (banker and
+-- auction have theirs from the start), and every kind PP.Service answers:
+-- the kinds of N.SERVICE_KINDS that are an NPC.
+PP.SERVICE = { "vendor", "repair", "flight", "innkeeper" }
+PP.SERVICES = { vendor = true, repair = true, flight = true, innkeeper = true, banker = true, auction = true }
 PP.TRIES, PP.RETRY = 6, 10
 -- NPCs gone through in one call of reader.work (one frame).
 PP.STEP = 300
@@ -1101,6 +1123,20 @@ function PP.Of(step, prof, known)
     return { map = to.map, x = to.x, y = to.y }
 end
 
+-- Questie's nearest NPC of a service kind (PP.SERVICES) the player's
+-- faction can use: on the map the player is on, else on another map of
+-- the player's continent (by known.far). Saved places are not looked at
+-- here: N.Nearest (Nav/ServiceNearest.lua) sets this beside them.
+function PP.Service(kind, known)
+    if PP.SERVICES[kind] ~= true or type(known) ~= "table" then return nil end
+    local here = known.here
+    if type(here) ~= "table" or here.map == nil or not (share(here.x) and share(here.y)) then return nil end
+    local q = questieList(known, kind)
+    local to = onMap(q, known) or onContinent(q, known, sameOf(known))
+    if not placed(to) then return nil end
+    return { name = to.name, map = to.map, x = to.x, y = to.y }
+end
+
 -- The map of one of Questie's areas, or nil. Both ways of calling it.
 local function mapOf(zones, area)
     if type(zones) ~= "table" or type(zones.GetUiMapIdByAreaId) ~= "function" then return nil end
@@ -1188,6 +1224,14 @@ function PP.ScanStep(pass, zones, count)
         if finite(mask) and mask > 0 then
             if flagged(mask, bits.banker) then lists[#lists + 1] = found.banker end
             if flagged(mask, bits.auction) then lists[#lists + 1] = found.auction end
+            -- The other services (PP.Service): the same read, no read more.
+            for i = 1, #PP.SERVICE do
+                local kind = PP.SERVICE[i]
+                if flagged(mask, bits[kind]) then
+                    found[kind] = found[kind] or {}
+                    lists[#lists + 1] = found[kind]
+                end
+            end
             -- An NPC asked for by its name (PP.Want): the name is read of
             -- an NPC with any flag only (a trainer or a vendor has one).
             if pass.names then
@@ -1206,9 +1250,12 @@ function PP.ScanStep(pass, zones, count)
                 spots = spotsOf(zones, call(db.QueryNPCSingle, id, "spawns"), PP.SPOTS, nil)
             end
             local side = call(db.QueryNPCSingle, id, "friendlyToFaction")
+            -- One table a place, in every list the NPC is in (a repair
+            -- vendor is a vendor too): vendors are many.
             for _, spot in ipairs(spots) do
+                local place = { name = name, map = spot.map, x = spot.x, y = spot.y, side = side }
                 for _, list in ipairs(lists) do
-                    list[#list + 1] = { name = name, map = spot.map, x = spot.x, y = spot.y, side = side }
+                    list[#list + 1] = place
                     pass.n = pass.n + 1
                 end
             end
@@ -1268,6 +1315,16 @@ function PP.Questie()
         if pass.n > 0 or state.tries >= PP.TRIES then found = pass.found end
         pass = nil
         return false
+    end
+
+    -- Is an answer asked for still on its way? True while a pass runs, or
+    -- one is due and Questie has its list of NPCs. It reads nothing more.
+    function reader.waiting(client)
+        if found or not wanted then return false end
+        if pass then return true end
+        if state.tries >= PP.TRIES then return false end
+        local db = ask(client, "questieModule", "QuestieDB")
+        return type(db) == "table" and type(db.NPCPointers) == "table"
     end
 
     -- read() -> the object ids of a profession, asked again no sooner than
@@ -1352,7 +1409,9 @@ function PP.From(client, store, use, kind, reads)
         known.npcs = saved(store, "account", PP.NPCS)
         if q then known.questie = function() return call(q.places, client) end end
     end
-    if kind == "named" and q then known.questie = function() return call(q.places, client) end end
+    if (kind == "named" or kind == "service") and q then
+        known.questie = function() return call(q.places, client) end
+    end
     if kind == "banker" or kind == "auction" then
         known.services = saved(store, "char", N.SERVICES or "learned.places.services")
     end
