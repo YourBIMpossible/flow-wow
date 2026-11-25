@@ -181,4 +181,15 @@ tests["next steps: at most max, ties by quest id"] = function(t)
     t.eq(out[2].quest, 843)
 end
 
+-- Row A1-25b (lead section 820.2): the Everything route turns battleground
+-- quests on as if their row were ticked; other routes follow the row.
+tests["route pickups: the Everything route offers battleground quests, other routes follow the row"] = function(t)
+    local P = N.RoutePickups
+    t.eq(P.BattlegroundsOn({ battleground = true }), true, "Everything: on whatever the row says")
+    local B = N.BattlegroundQuests
+    local row = B.On()
+    t.eq(P.BattlegroundsOn({ battleground = false }), row == true, "other routes: the row")
+    t.eq(P.BattlegroundsOn(nil), row == true, "no route flags: the row")
+end
+
 return tests
