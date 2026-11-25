@@ -1,11 +1,11 @@
 local _, ns = ...
 
 -- Parity row F-28 (lead sections 738 and 740): a group invite from a
--- friend is accepted for you. As Flow's Modules/Invites.lua (:1-3,
--- on by default; :78-87: on PARTY_INVITE_REQUEST, not when already in a
--- group, only someone you count as a friend, then AcceptGroup and one line
--- in chat). Friends only, as Flow (the WoW friends list and Battle.net;
--- lead section 740: not guild members). Z-Flow adds three guards the row
+-- friend is accepted for you. The rules follow Flow's Modules/Invites.lua
+-- (its switch is on as made; its invite handler at :78-87 skips you when
+-- you are already grouped, takes only someone on your friends list, then
+-- joins and says so once in chat). Friends only (lead section 740: not
+-- guild members). Z-Flow adds three guards the row
 -- asks for:
 -- never in a fight, never while queued, and never on an answer that is not
 -- known (a fight, a queue, a group or a friend not read is never yes).
@@ -32,7 +32,7 @@ IA.NAME = "inviteAccept"
 IA.SETTING = "invites.accept"
 IA.WORD = "invites"
 IA.HELP = "accept group invites from friends for you: invites on|off"
-IA.JOINED = "joined %s's group (a friend's invite, accepted for you; %s %s off to stop)."
+IA.JOINED = "In %s's group now: their invite was taken for you. %s %s off stops this."
 
 function IA.Decide(r)
     if type(r) ~= "table" or r.on ~= true then return "off" end
@@ -75,7 +75,7 @@ function IA.Declare(k, diag)
         if type(client.acceptGroup) ~= "function" then return "noAction" end
         local ok = pcall(client.acceptGroup)
         if not ok then return "refused" end
-        local who = "your friend"
+        local who = "a friend"
         if type(name) == "string" and name ~= "" then who = name end
         say(IA.JOINED:format(who, ns.id.slash, IA.WORD))
         return "accept"
