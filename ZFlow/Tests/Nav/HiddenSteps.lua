@@ -77,6 +77,15 @@ tests["hidden steps: the word lists and unhides"] = function(t)
     said(" show all")
     t.eq(HS().List(addon.store), {}, "show all")
     t.ok(said(""):find(HS().NONE, 1, true) ~= nil, "none hidden says so")
+    -- Lead section 819: show <n> says it is back only when the save took.
+    HS().Hide(addon.store, "q:7:2", "Wolves")
+    local set = addon.store.set
+    addon.store.set = function() return false end
+    local reply = said(" show 1")
+    addon.store.set = set
+    t.ok(reply:find(HS().NOT_BACK:format("Wolves"), 1, true) ~= nil, "a refused save says it is still hidden: " .. reply)
+    t.ok(reply:find("Back on your route", 1, true) == nil, "not that it is back")
+    t.eq(HS().IsHidden(addon.store, "q:7:2"), true, "still hidden")
 end
 
 return tests

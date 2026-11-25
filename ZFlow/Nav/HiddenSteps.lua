@@ -2,7 +2,7 @@ local _, ns = ...
 
 -- Parity row A1-28, the data half (lead section 794): hide a quest step,
 -- list the hidden ones and unhide them, as Flow's Modules/Nav/Nav.lua
--- (N:Hide and N:Unhide :1308-1318; the route leaving hidden steps out :628;
+-- (at origin/craft-repeat: N:Hide and N:Unhide :1228-1237; the route leaving hidden steps out :609;
 -- "Unhide all steps (N)" in its menu). Saved per character at PATH as
 -- { [step key] = label }: Z-Flow's own data; nothing in the game changes.
 --   key  = HS.KeyOf(step)            "q:<quest>:<objective>" or
@@ -30,6 +30,7 @@ HS.HEAD = "Hidden steps (%d):"
 HS.BACK = "Back on your route: %s."
 HS.ALL_BACK = "%d step(s) back on your route."
 HS.NO_SUCH = "There is no hidden step %s."
+HS.NOT_BACK = "Could not save the change: %s is still hidden."
 
 function HS.KeyOf(step)
     if type(step) ~= "table" or step.quest == nil then return nil end
@@ -132,8 +133,12 @@ function HS.Declare(k, diag)
                 local e = nil
                 if n then e = list[n] end
                 if not e then say(HS.NO_SUCH:format(arg)) return end
-                HS.Unhide(ctx.store, e.key)
-                say(HS.BACK:format(e.label))
+                -- A refused save brings nothing back, and says so.
+                if HS.Unhide(ctx.store, e.key) then
+                    say(HS.BACK:format(e.label))
+                else
+                    say(HS.NOT_BACK:format(e.label))
+                end
                 return
             end
             if #list == 0 then say(HS.NONE) return end
