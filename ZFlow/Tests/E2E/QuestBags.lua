@@ -84,6 +84,8 @@ tests["quest bags e2e: a quest ready to hand in says so for its item, and the an
     t.eq(answers, { { item = "Gnoll Paw", answer = "keep", quest = "Gnoll Trouble", questId = GNOLL_Q } })
     local ready = row(GNOLL_Q, "Gnoll Trouble", "Gnoll Paw: 8/8", true)
     ready.complete = true
+    -- C-10 CHANGES-1: said only with the bags nearly full (Flow's rule).
+    c.setBags({ { bag = 0, free = 2, total = 16, family = 0 } })
     c.setQuestLog({ ready })
     c.fire("QUEST_LOG_UPDATE")
     c.advance(1, 5)
@@ -151,6 +153,44 @@ tests["quest bags e2e auction: with the setting off, nothing shows"] = function(
     c.fire("QUEST_LOG_UPDATE")
     c.advance(1, 5)
     t.eq(prompt(addon, Q.AUCTION_PROMPT), nil)
+end
+
+-- C-10 CHANGES-1 (Twin, lead section 730; owner section 563, "Flow does
+-- this perfectly"): as Flow's Modules/Quests/QuestBags.lua (:221, through
+-- ns.BagsNearlyFull, Core.lua :103-106: 3 free slots or fewer), the
+-- hand-in is said only when the bags are nearly full. With room, or bags
+-- not read, nothing. The answers stay as built. Fails before: said always.
+tests["quest bags e2e: a quest ready to hand in is said only with the bags nearly full"] = function(t)
+    local c, addon = start()
+    local Q = ns.QuestBags
+    local ready = row(GNOLL_Q, "Gnoll Trouble", "Gnoll Paw: 8/8", true)
+    ready.complete = true
+    c.setBags({ { bag = 0, free = 4, total = 16, family = 0 }, { bag = 1, free = 6, total = 16, family = 0 } })
+    c.setQuestLog({ ready })
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(1, 5)
+    t.eq(prompt(addon, Q.HANDIN_PROMPT), nil, "room to spare: not said")
+    t.eq(addon.use(Q.NAME).Answers()[1].answer, "handIn", "the answer is still there to ask")
+    c.setBags({ { bag = 0, free = 1, total = 16, family = 0 }, { bag = 1, free = 2, total = 16, family = 0 } })
+    c.fire("BAG_UPDATE")
+    c.advance(1, 5)
+    t.eq(prompt(addon, Q.HANDIN_PROMPT), "Gnoll Paw is for Gnoll Trouble, which is ready to hand in.", "3 free: said")
+    c.setBags(nil)
+    c.fire("BAG_UPDATE")
+    c.advance(1, 5)
+    t.eq(prompt(addon, Q.HANDIN_PROMPT), nil, "bags not read: not said")
+end
+
+tests["quest bags: nearly full is Flow's 3 free slots, in plain bags only"] = function(t)
+    local Q = ns.QuestBags
+    t.eq(Q.NEARLY_FULL, 3)
+    t.eq(Q.Free({ { free = 2, family = 0 }, { free = 1 }, { free = 9, family = 8 } }), 3, "a special bag is not counted")
+    t.eq(Q.Free(nil), nil)
+    t.eq(Q.Free({ { free = "x" } }), nil, "a count that is not a number: not read")
+    local answers = { { item = "Gnoll Paw", answer = "handIn", quest = "Gnoll Trouble" } }
+    t.eq(Q.HandInText(answers, 4), nil, "4 free: not said")
+    t.ok(Q.HandInText(answers, 3) ~= nil, "3 free: said")
+    t.eq(Q.HandInText(answers, nil), nil, "not read: not said")
 end
 
 return tests
