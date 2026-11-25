@@ -163,10 +163,30 @@ function PT.Declare(k, diag)
         return PT.Tanking(role, ask(ctx.client, "unitBuff", "player", PT.BEAR))
     end
 
+    -- D-32 (lead section 727): the shared pulse of Rotation/Pulse.lua when
+    -- this kernel has it started, so one frame listener drives everything
+    -- that pulses (as Flow's Modules/Pulse.lua:34); else a set of its own,
+    -- made at the first use (a kernel with no rotation). The look is the
+    -- same: both work the brightness out from the clock alone.
+    local function pulseSet()
+        local P = ns.Pulse
+        if type(P) == "table" and k:ModuleState(P.NAME) == "started" then
+            local shared = k.use(P.NAME)
+            if type(shared) == "table" and type(shared.add) == "function" and type(shared.remove) == "function" then
+                return shared
+            end
+        end
+        if not pulse and ctx and type(P) == "table" and type(P.New) == "function" then
+            pulse = P.New({ onFrame = ctx.client.onFrame, now = ctx.client.now })
+        end
+        return pulse
+    end
+
     local function unglow(unit)
         local g = glows[unit]
         glows[unit] = nil
-        if g and pulse then pulse.remove(g, 1) end
+        local set = g and pulseSet()
+        if set then set.remove(g, 1) end
     end
 
     local function glow(unit, h, flash)
@@ -174,9 +194,10 @@ function PT.Declare(k, diag)
             unglow(unit)
             return
         end
-        if glows[unit] or not pulse then return end
+        local set = pulseSet()
+        if glows[unit] or not set then return end
         local g = { setAlpha = function(a) h.alpha(a) end }
-        if pulse.add(g) then glows[unit] = g end
+        if set.add(g) then glows[unit] = g end
     end
 
     local function hideOne(unit)
@@ -296,10 +317,6 @@ function PT.Declare(k, diag)
         start = function(c)
             ctx = c
             local client = c.client
-            local P = ns.Pulse
-            if type(P) == "table" and type(P.New) == "function" then
-                pulse = P.New({ onFrame = client.onFrame, now = client.now })
-            end
             cancelPlates = ask(client, "plates", onPlate)
             c.bus:on(PT.NAME, "PLAYER_REGEN_DISABLED", startFight)
             c.bus:on(PT.NAME, "PLAYER_REGEN_ENABLED", endFight)

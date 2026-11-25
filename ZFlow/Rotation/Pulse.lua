@@ -163,6 +163,9 @@ function P.Declare(k, iconOf)
     k:Module({
         name = P.NAME,
         needs = { "client", "bus", D.NAME },
+        -- D-32: the one set, for every other thing that pulses (as Flow's
+        -- one driver, Modules/Pulse.lua:34): add, remove, has, count, lit.
+        provides = { add = api.add, remove = api.remove, has = api.has, count = api.count, lit = api.lit },
         start = function(ctx)
             local client = ctx.client
             pulse = P.New({ onFrame = client.onFrame, now = client.now })
