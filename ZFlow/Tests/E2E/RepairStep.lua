@@ -134,8 +134,12 @@ tests["repair step: a planned route takes the repair vendor as a stop"] = functi
     c.slashes[ns.id.slash]("route"); c.advance(1, 5)
     t.ok(said(c, "Repair: " .. SMITH), "the repair stop is listed in the route")
     t.eq(lines(c)[1], "Repair: " .. SMITH, "the route walks to the smith first")
+    -- Twin's plan note 1 (lead section 552): the stop stays until the gear is
+    -- mended; walking on without repairing lets it go.
     c.setPosition(MAP, 0.2, 0.5); c.advance(2, 5)
-    t.ok(lines(c)[1] ~= "Repair: " .. SMITH, "at the smith the route stop is done: the quest is next")
+    t.eq(lines(c)[1], "Repair: " .. SMITH, "at the smith with worn gear the stop stays")
+    c.setPosition(MAP, 0.5, 0.5); c.advance(2, 5)
+    t.ok(lines(c)[1] ~= "Repair: " .. SMITH, "walked on: the route goes to the quest")
 end
 
 tests["repair step: gear fine, no repair stop in the route"] = function(t)

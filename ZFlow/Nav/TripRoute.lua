@@ -342,8 +342,11 @@ function T.Town(o)
     end
     local inn = o.inn
     if here(inn) then
-        out[#out + 1] = { kind = "hearth", label = townName(inn.name) and T.HEARTH_LABEL:format(inn.name) or T.HEARTH_PLAIN,
-                          detail = T.HEARTH_DETAIL, must = true, place = { map = inn.map, x = inn.x, y = inn.y } }
+        local stop = { kind = "hearth", label = townName(inn.name) and T.HEARTH_LABEL:format(inn.name) or T.HEARTH_PLAIN,
+                       detail = T.HEARTH_DETAIL, must = true, place = { map = inn.map, x = inn.x, y = inn.y } }
+        -- The inn's own name, for T.TownDone: the stop is done when this is your home.
+        if type(inn.name) == "string" and inn.name ~= "" then stop.inn = inn.name end
+        out[#out + 1] = stop
     end
     return out, aside
 end
@@ -371,7 +374,8 @@ function T.Plan(rows, places, here, legs, pickups, note)
     for _, p in ipairs(pickups) do
         if type(p) == "table" and type(p.place) == "table" and #stops < N.ROUTE_MAX then
             stops[#stops + 1] = { kind = p.kind or "pickup", quest = p.quest, label = tostring(p.label),
-                                  detail = p.detail, place = { map = p.place.map, x = p.place.x, y = p.place.y } }
+                                  detail = p.detail, inn = p.inn,
+                                  place = { map = p.place.map, x = p.place.x, y = p.place.y } }
             optional[#stops] = not p.must or nil
         end
     end
@@ -420,6 +424,35 @@ function T.Plan(rows, places, here, legs, pickups, note)
     return { kind = "quests", stops = ordered, yards = yards, label = route.label, left = left, note = note }
 end
 
+-- Twin's plan, note 1 (lead sections 545 and 552): a town stop is done when
+-- the thing is done, not when you stand at it.
+T.TOWN_KINDS = { sell = true, hearth = true, repair = true, riding = true }
+
+-- Pure: is this town stop done? true, false, or nil when it cannot be told.
+--   now = { free   = free bag slots, or nil when the bags are not read,
+--           repair = true while a repair is still due, false when not, nil unknown,
+--           riding = the same for the riding trainer,
+--           bind   = the name of your home, or nil when not read }
+-- sell: done with more room than T.SELL_NEAR. repair, riding: done when no
+-- longer due. hearth: done when your home is the stop's inn.
+function T.TownDone(stop, now)
+    if type(stop) ~= "table" or not T.TOWN_KINDS[stop.kind] then return nil end
+    now = type(now) == "table" and now or {}
+    if stop.kind == "sell" then
+        if not finite(now.free) then return nil end
+        return now.free > T.SELL_NEAR
+    end
+    if stop.kind == "repair" or stop.kind == "riding" then
+        local due = now[stop.kind]
+        if due == true then return false end
+        if due == false then return true end
+        return nil
+    end
+    if type(stop.inn) ~= "string" or stop.inn == "" then return nil end
+    if type(now.bind) ~= "string" or now.bind == "" then return nil end
+    return now.bind == stop.inn
+end
+
 function T.Live(stop, rows)
     if type(stop) ~= "table" then return false end
     if stop.kind == "pickup" then
@@ -429,7 +462,7 @@ function T.Live(stop, rows)
         end
         return true
     end
-    if stop.quest == nil or stop.kind ~= nil then return true end -- a town stop: gone when reached
+    if stop.quest == nil or stop.kind ~= nil then return true end -- a town stop: gone when done (api.Step)
     for _, row in ipairs(type(rows) == "table" and rows or {}) do
         if type(row) == "table" and row.id == stop.quest then
             if row.failed == true then return false end
@@ -555,6 +588,23 @@ function T.Declare(k, diag)
         if type(s) ~= "table" or type(s.get) ~= "function" then return true end
         local ok, v = pcall(s.get, s, T.TOWN_SETTING)
         return not (ok and v == false)
+    end
+
+    -- Note 1: what T.TownDone asks, read as townStops reads it. A module
+    -- that is not there or a read that raises leaves its part not known.
+    local function townNow(c)
+        local now = { free = T.FreeSlots(ask(c, "bags")) }
+        local function due(name)
+            local m = k.use and k.use(name)
+            if type(m) ~= "table" or type(m.Step) ~= "function" then return nil end
+            local ok, st = pcall(m.Step)
+            if not ok then return nil end
+            return st ~= nil
+        end
+        now.repair, now.riding = due("repairStep"), due("ridingStep")
+        local bind = ask(c, "bindLocation")
+        if type(bind) == "string" and bind ~= "" then now.bind = bind end
+        return now
     end
 
     -- A2-11: the town stops for this plan, read once. stops are the
@@ -780,8 +830,20 @@ function T.Declare(k, diag)
         end
         if route.kind == "quests" then
             local here = hereNow()
+            -- Note 1: a town stop reached is gone when it is done, or when it
+            -- cannot be told (as before). Reached and not done, it stays
+            -- first (s.seen); walking away from it then lets it go, so no
+            -- stop sticks for ever.
+            local now
             for _, s in ipairs(route.stops) do
-                if (s.kind == "sell" or s.kind == "hearth" or s.kind == "repair" or s.kind == "riding") and not s.gone and reached(s, here) then s.gone = true end
+                if T.TOWN_KINDS[s.kind] and not s.gone then
+                    if reached(s, here) then
+                        now = now or townNow(c)
+                        if T.TownDone(s, now) == false then s.seen = true else s.gone = true end
+                    elseif s.seen then
+                        s.gone = true
+                    end
+                end
             end
             if rows then
                 for _, s in ipairs(route.stops) do

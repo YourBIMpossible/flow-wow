@@ -275,8 +275,12 @@ tests["trip route: full bags and a seen inn add sell and hearthstone stops the p
     t.ok(said(c, "Bags full: sell at Bread Seller") ~= nil, "the sell stop is in the route")
     t.ok(said(c, "Set hearthstone: Inn Keeper") ~= nil, "the hearthstone stop is in the route")
     t.eq(first(c), "Bags full: sell at Bread Seller", "the nearest stop: the vendor")
+    -- Twin's plan note 1 (lead section 552): the stop stays until the bags have
+    -- room (Tests/E2E/TripRouteTownDone.lua); selling is the player's.
     c.setPosition(MAP, 0.52, 0.5); c.advance(2, 5)
-    t.ok(first(c) ~= "Bags full: sell at Bread Seller", "at the vendor the stop is done; selling is the player's")
+    t.eq(first(c), "Bags full: sell at Bread Seller", "at the vendor with full bags the stop stays")
+    c.setBags({ { bag = 0, free = 10, total = 16 } }); c.advance(2, 5)
+    t.ok(first(c) ~= "Bags full: sell at Bread Seller", "sold: the stop is done")
 end
 
 tests["trip route: room in the bags, or town stops off: no sell stop"] = function(t)
