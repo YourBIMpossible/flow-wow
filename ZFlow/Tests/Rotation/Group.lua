@@ -493,17 +493,20 @@ tests["group key: a fight, a lock that is on or not read, or the setting off kee
     -- fight (inCombat = true) is one of the cases. In a fight the group
     -- step names nothing at all (G.Step: out of a fight only), so that
     -- case asserts no key step instead.
-    for _, over in ipairs({ { lockdownRead = true }, { lockdownRead = "nil" }, { groupKey = false },
-                            { lockdownRead = false, inCombat = "nil" } }) do
+    for _, over in ipairs({ { lockdownRead = true }, { lockdownRead = "nil" }, { groupKey = false } }) do
         local label = "case " .. tostring(over.lockdownRead) .. "/" .. tostring(over.groupKey) .. "/"
             .. tostring(over.inCombat)
         local s = choose({ missing("party1", { [MOTW] = false }) }, onKey(over))
         t.ok(s ~= nil, label .. ": the group step is there")
         t.eq(s and { s.step, s.look, s.kind, s.unit } or nil, { "group", true, "group", "party1" }, label)
     end
-    local s = choose({ missing("party1", { [MOTW] = false }) }, onKey({ inCombat = true }))
-    t.ok(s == nil or (s.kind ~= "groupBuff" and s.kind ~= "dispel"), "in a fight: never on the key")
-    t.ok(s == nil or s.unit ~= "party1", "in a fight: never on the member")
+    -- In a fight, or a fight not known, the group step names nothing (G.Step:
+    -- out of a fight only), so nothing goes on the key or the member.
+    for _, over in ipairs({ { inCombat = true }, { lockdownRead = false, inCombat = "nil" } }) do
+        local s = choose({ missing("party1", { [MOTW] = false }) }, onKey(over))
+        t.ok(s == nil or (s.kind ~= "groupBuff" and s.kind ~= "dispel"), "never on the key: " .. tostring(over.inCombat))
+        t.ok(s == nil or s.unit ~= "party1", "never on the member: " .. tostring(over.inCombat))
+    end
 end
 
 tests["group key: no reason or note holds the member's name"] = function(t)
