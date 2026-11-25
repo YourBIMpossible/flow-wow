@@ -876,6 +876,19 @@ function D.FightAttrs(snapshot, pack, prefs, bias, plan, applied, lockdown)
     return ns.cast.Attributes(pick, fightPlan, applied, lockdown, nil)
 end
 
+-- D-24 (Twin's low note, lead section 742): the plan's action for a group
+-- buff or cure on a party member, or nil. Only when the snapshot says
+-- plainly out of a fight (inCombat == false) with the key setting on
+-- (groupKey == true), the lock a plain false, the plan holding no action,
+-- and the suggestion not look-only. Pure.
+function D.GroupAction(suggestion, snapshot, plan, lockdown)
+    if type(suggestion) ~= "table" or type(snapshot) ~= "table" or type(plan) ~= "table" then return nil end
+    if snapshot.inCombat ~= false or snapshot.groupKey ~= true or lockdown ~= false then return nil end
+    if plan.action ~= nil or suggestion.look == true or type(suggestion.spell) ~= "string" then return nil end
+    if not ns.cast.GROUP_KINDS[suggestion.kind] or not ns.cast.PARTY[suggestion.unit] then return nil end
+    return { spell = suggestion.spell, unit = suggestion.unit }
+end
+
 function D.Step(client, pack, prefs, bias, applied, role, extra)
     if type(pack) ~= "table" then
         return { pack = false, trace = {}, why = { pack = false } }
@@ -949,11 +962,8 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     -- D-24: the key frame holds the plan, so a group buff or cure for a
     -- party member (Rotation/Group.lua, on the key only out of a fight with
     -- the lock off and the setting on) goes on it as its action.
-    if type(suggestion) == "table" and ns.cast.GROUP_KINDS[suggestion.kind] and ns.cast.PARTY[suggestion.unit]
-        and suggestion.look ~= true and type(suggestion.spell) == "string"
-        and type(plan) == "table" and plan.action == nil and lockdown == false then
-        plan.action = { spell = suggestion.spell, unit = suggestion.unit }
-    end
+    local groupAction = D.GroupAction(suggestion, snapshot, plan, lockdown)
+    if groupAction then plan.action = groupAction end
     -- N39 (P-KEYS slice E): the engage step's Attack goes on the plan, a
     -- spell (never a macro), out of combat lockdown only. SE-1: the key
     -- frame takes it off again as the fight starts (Rotation/KeyFrame.lua).
