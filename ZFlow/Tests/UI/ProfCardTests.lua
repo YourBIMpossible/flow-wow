@@ -121,9 +121,10 @@ return {
     -- The level and skill a rank needs are the trainer window's own numbers.
     -- Fails before: only the cap is said.
     ["next rank: can be learned before the cap, named with its trainer and cost"] = function(t)
-        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", rows = {
+        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", seen = 200, rows = {
             { name = "Mining", rank = "Journeyman", state = "available", cost = 500, level = 10, skill = 50 } } } }
         local r = readings()
+        r.Mining.maxAt = 100
         r.Mining.skill = 55
         local p = ns.ProfCard.Prompts(r, npcs(), "Alliance", lists, 12)
         local mining
@@ -134,9 +135,11 @@ return {
     end,
 
     ["next rank: your level has reached it, your skill has not"] = function(t)
-        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", rows = {
+        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", seen = 200, rows = {
             { name = "Mining", rank = "Journeyman", state = "unavailable", cost = 500, level = 10, skill = 50 } } } }
-        local p = ns.ProfCard.Prompts(readings(), npcs(), "Alliance", lists, 14)
+        local r = readings()
+        r.Mining.maxAt = 100
+        local p = ns.ProfCard.Prompts(r, npcs(), "Alliance", lists, 14)
         local mining
         for _, x in ipairs(p) do if x.id == "aps.prof.Mining" then mining = x end end
         t.eq(mining and mining.text,
@@ -145,9 +148,11 @@ return {
 
     ["next rank: below its level, or no level or skill read, nothing is said"] = function(t)
         local row = { name = "Mining", rank = "Journeyman", state = "unavailable", cost = 500, level = 10, skill = 50 }
-        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", rows = { row } } }
+        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", seen = 200, rows = { row } } }
         local function mining(level)
-            for _, x in ipairs(ns.ProfCard.Prompts(readings(), npcs(), "Alliance", lists, level)) do
+            local r = readings()
+            r.Mining.maxAt = 100
+            for _, x in ipairs(ns.ProfCard.Prompts(r, npcs(), "Alliance", lists, level)) do
                 if x.id == "aps.prof.Mining" then return x end
             end
             return nil
@@ -171,10 +176,37 @@ return {
     end,
 
     ["next rank: one prompt for each profession, and a known rank is no next rank"] = function(t)
-        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", rows = {
+        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", seen = 200, rows = {
             { name = "Mining", rank = "Journeyman", state = "known", cost = 500, level = 10, skill = 50 } } } }
         local r = readings()
+        r.Mining.maxAt = 100
         r.Mining.skill = 55
         t.eq(#ns.ProfCard.Prompts(r, npcs(), "Alliance", lists, 12), 1, "only Cooking, at its cap")
+    end,
+
+    -- Zen-3's review of C-50, lead section 700 answer (a): a trainer list
+    -- saved before this profession's max was first read at its value is
+    -- stale (the rank may be learned since): no "ready", no "behind" from
+    -- it. Either time not known: none. Fails before: the stale Journeyman
+    -- row gives "you can learn Journeyman Mining now" at 80/150.
+    ["next rank: a list saved before the max rose is stale and says nothing"] = function(t)
+        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", seen = 100, rows = {
+            { name = "Mining", rank = "Journeyman", state = "available", cost = 500, level = 10, skill = 50 } } } }
+        local function mining(r)
+            for _, x in ipairs(ns.ProfCard.Prompts(r, npcs(), "Alliance", lists, 20)) do
+                if x.id == "aps.prof.Mining" then return x end
+            end
+            return nil
+        end
+        local r = readings()
+        r.Mining.skill, r.Mining.max, r.Mining.maxAt = 80, 150, 300
+        t.eq(mining(r), nil, "saved at 100, the 150 max first read at 300: stale")
+        lists.k.seen = 400
+        t.ok(mining(r) ~= nil, "a list saved after the max rose still gives the prompt")
+        r.Mining.maxAt = nil
+        t.eq(mining(r), nil, "the max's time not known: no prompt")
+        r.Mining.maxAt = 300
+        lists.k.seen = nil
+        t.eq(mining(r), nil, "the list's time not known: no prompt")
     end,
 }
