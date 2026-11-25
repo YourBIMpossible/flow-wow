@@ -517,4 +517,25 @@ tests["group key: no reason or note holds the member's name"] = function(t)
     end
 end
 
+-- D-24, Twin's low note (lead section 742): the driver puts a group buff or
+-- cure on the key's plan only when the snapshot says plainly out of a fight
+-- (inCombat == false) and the key setting on (groupKey == true), even if a
+-- suggestion naming a party unit reached it some other way.
+tests["group key: a dispel naming party1 in a fight does not reach the key"] = function(t)
+    local D = ns.RotationDriver
+    t.eq(type(D.GroupAction), "function")
+    if type(D.GroupAction) ~= "function" then return end
+    local cure = { spell = CURSE, kind = "dispel", unit = "party1" }
+    local out = { inCombat = false, groupKey = true }
+    t.eq(D.GroupAction(cure, out, {}, false), { spell = CURSE, unit = "party1" }, "out of a fight: on the plan")
+    t.eq(D.GroupAction(cure, { inCombat = true, groupKey = true }, {}, false), nil, "in a fight")
+    t.eq(D.GroupAction(cure, { groupKey = true }, {}, false), nil, "a fight not known")
+    t.eq(D.GroupAction(cure, { inCombat = false, groupKey = false }, {}, false), nil, "the setting off")
+    t.eq(D.GroupAction(cure, out, {}, true), nil, "the lock on")
+    t.eq(D.GroupAction(cure, out, { action = { spell = "X" } }, false), nil, "the plan holds an action already")
+    t.eq(D.GroupAction({ spell = CURSE, kind = "dispel", unit = "raid2" }, out, {}, false), nil, "no raid unit")
+    t.eq(D.GroupAction({ spell = CURSE, kind = "dispel", unit = "party1", look = true }, out, {}, false), nil,
+        "look-only")
+end
+
 return tests
