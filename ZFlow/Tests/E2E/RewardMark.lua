@@ -249,6 +249,24 @@ tests["reward board: each choice's verdict for each spec, and its sell price"] =
     t.eq(newProblems(addon), 0)
 end
 
+-- Zen-3's review of C-37 (lead section 701): a choice's verdict follows the
+-- tooltip's rule (Gear/Tooltip.lua T.Lines): an upgrade or a worse that
+-- would print as 0.0 is "same"; with no finite delta there is no verdict,
+-- and the spec is left out. Fails before: a tiny worse stayed "worse".
+tests["reward board: the verdict follows the tooltip's rule"] = function(t)
+    local V = ns.GearRewardMark.Verdict
+    local same = ns.GearTooltip.SAME
+    t.eq(V({ verdict = "worse", delta = -0.01 }), "same", "a tiny worse")
+    t.eq(V({ verdict = "upgrade", delta = 0.01 }), "same", "a tiny upgrade")
+    t.eq(V({ verdict = "upgrade", delta = same }), "upgrade")
+    t.eq(V({ verdict = "worse", delta = -same }), "worse")
+    t.eq(V({ verdict = "same", delta = 0 }), "same")
+    t.eq(V({ verdict = "upgrade" }), nil, "no delta: no verdict")
+    t.eq(V({ verdict = "worse", delta = 0 / 0 }), nil, "not a number: no verdict")
+    t.eq(V({ verdict = "none", delta = 1 }), nil)
+    t.eq(V(nil), nil)
+end
+
 tests["reward board: a price not read, or two the same, marks no best seller"] = function(t)
     local c, addon = boot({ role = "dps" })
     c.setItemInfo({ [23] = { sellPrice = 90 } })
