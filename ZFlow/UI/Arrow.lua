@@ -580,6 +580,12 @@ function Arrow.Start(k, diag, own)
     -- there is no waypoint. Read-only; nil when that file is not loaded.
     local quests = N.QuestWatch and N.QuestSource
         and N.QuestWatch(client, { zoneFirst = function() return Arrow.ZoneFirstOn(k) end,
+            -- A1-24: the route planned by itself, from this kernel's own
+            -- trip route module (lead item 28), not a file-wide one.
+            trip = function()
+                if not k.use then return nil end
+                return k.use("tripRoute")
+            end,
             -- S43: the spots this player learned, where Questie gives none.
             learned = function()
                 local QS = N.QuestSpots
@@ -795,6 +801,12 @@ function Arrow.Start(k, diag, own)
             if step ~= nil and from == "your quests" and questItems and type(questItems.With) == "function" then
                 local ok, with = pcall(questItems.With, step)
                 if ok and type(with) == "table" then step = with end
+            end
+            -- A2-25 (Nav/MobHopStep.lua): a kill step points at the mob group being worked, then the next.
+            local mobHop = k.use and k.use("mobHopStep")
+            if step ~= nil and from == "your quests" and mobHop and type(mobHop.Refine) == "function" then
+                local okHop, hopped = pcall(mobHop.Refine, step)
+                if okHop and type(hopped) == "table" then step = hopped end
             end
             -- A target past a path the player walked into a cave (G38,
             -- Nav/Trails.lua) is pointed at along that path, one point at a
@@ -1137,13 +1149,15 @@ function Arrow.Start(k, diag, own)
         local professions
         local okProf, profOn = pcall(k.settings.get, k.settings, N.ProfFeed and N.ProfFeed.SETTING or "nav.professions")
         if okProf then professions = profOn end
-        -- Lead section 387, R3: the step, the kinds with a place already
-        -- seen (Nav/Errand.lua E.Find: saved data only), and the waypoint.
+        -- Lead section 387, R3: the step, the kinds with a place known
+        -- (Nav/Errand.lua E.Find), and the waypoint. Lead section 628: asked
+        -- with the module lookup, as the errand click asks, so a live row is
+        -- one the click can follow and a greyed row one it could not.
         local nearest = {}
         local E = ns.Errand
         if type(E) == "table" and type(E.Find) == "function" and type(M.NEAREST_KINDS) == "table" then
             for _, n in ipairs(M.NEAREST_KINDS) do
-                local okFind, place = pcall(E.Find, n.kind, client, k.store)
+                local okFind, place = pcall(E.Find, n.kind, client, k.store, k.use)
                 if okFind and type(place) == "table" then nearest[n.kind] = true end
             end
         end

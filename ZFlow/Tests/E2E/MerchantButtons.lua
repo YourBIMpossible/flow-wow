@@ -113,7 +113,7 @@ tests["vendor marks: the advisor line gives the price, and says when it is more 
     c.setMerchantOpen(true)
     local lines = prompts(addon)
     t.eq(lines[1], "2 upgrades on sale here")
-    t.eq(lines[2]:find("25s 40c, more than you have", 1, true) ~= nil, true, lines[2])
+    t.eq(lines[2]:find("25.4s, more than you have", 1, true) ~= nil, true, lines[2])
     t.eq(lines[3]:find("; 1s", 1, true) ~= nil, true, lines[3])
     t.eq(lines[3]:find("more than you have", 1, true), nil, "the cheap one you can pay")
     c.setMerchantOpen(false)
@@ -126,7 +126,7 @@ tests["vendor marks: money not read - the price, no 'more than you have', no err
     local c, addon = boot({ role = "dps", prepare = function(cl) cl.setMoney(nil) end })
     c.setMerchantOpen(true)
     local line = prompts(addon)[2]
-    t.eq(line:find("25s 40c", 1, true) ~= nil, true, line)
+    t.eq(line:find("25.4s", 1, true) ~= nil, true, line)
     t.eq(line:find("more than you have", 1, true), nil)
     t.eq(newProblems(addon), 0, "no problem listed")
 end
@@ -136,7 +136,7 @@ tests["vendor marks: the money read raising, then recovering"] = function(t)
     c.setMoneyFails(true)
     c.setMerchantOpen(true)
     local line = prompts(addon)[2]
-    t.eq(line:find("25s 40c", 1, true) ~= nil, true, "the price still said: " .. line)
+    t.eq(line:find("25.4s", 1, true) ~= nil, true, "the price still said: " .. line)
     t.eq(line:find("more than you have", 1, true), nil, "nothing claimed while the read raises")
     t.eq(c.merchantButtons()[2].up, true, "the marks are not held up")
     c.setMerchantOpen(false)

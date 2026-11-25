@@ -23,7 +23,14 @@
 -- LOOK ONLY: nothing is moved, targeted, cast, clicked or sent. The skip
 -- button skips the route's stop (Nav/TripRoute.lua Skip), nothing else.
 --
---   RT.Children(rows[, item]) -> the window's parts (pure)
+-- What it lists is Nav/TrackerList.lua's (A2-18): TL.Rows of the route's
+-- View (Nav/TripRoute.lua: held steps too, each with its reason), or of the
+-- walked route (Current) when there is no View (a trip, a dungeon run). The
+-- current step is the first one not held; a held one says why (RT.HELD).
+--
+--   RT.Rows(view, current, here) -> rows, more | nil   (pure)
+--   RT.Children(rows[, item[, more]]) -> the window's parts (pure)
+--     more  how many steps TL.Rows left out (the "more" line)
 --     item  the current stop's quest item, or nil:
 --           { id, name, count, quality, icon }; any may be absent, but not
 --           both id and name
@@ -46,6 +53,7 @@ RT.HEADER = "Route"
 RT.EMPTY = { "No route planned.", "Plan one with the trip or route word." }
 RT.SKIP = "Skip this stop"
 RT.MORE = "and %d more"
+RT.HELD = "Held: %s"
 RT.MAX = 8
 RT.EVERY = 1
 RT.TONE_NOW = "good"
@@ -71,26 +79,65 @@ function RT.ItemLine(item)
     return line
 end
 
-function RT.Children(rows, item)
+function RT.Rows(view, current, here)
+    local TL = ns.Nav and ns.Nav.TrackerList
+    if type(TL) ~= "table" then return nil end
+    -- Lead section 762: the view whenever it has stops or steps that can't
+    -- be placed (left); the walked route only when it has neither (Flow
+    -- listed its blocked goals with an empty plan, RouteTracker.lua:504-519).
+    local src = current
+    if type(view) == "table" then
+        local n = 0
+        if type(view.stops) == "table" then n = n + #view.stops end
+        if type(view.left) == "table" then n = n + #view.left end
+        if n > 0 then src = view end
+    end
+    return TL.Rows(src, here, RT.MAX)
+end
+
+-- The row that is the current step: the one TL.Rows marked; rows that
+-- carry no mark and hold nothing (Nav/Trip.lua P.TrackRows) start with it.
+local function currentIndex(rows)
+    local marked = false
+    for i, r in ipairs(rows) do
+        if r.current == true then return i end
+        -- Lazy (lead section 773): a step that cannot be placed (r.left) is
+        -- marked too, so a route of those only has no current step.
+        if r.current ~= nil or r.held ~= nil or r.left ~= nil then marked = true end
+    end
+    if marked then return nil end
+    return 1
+end
+
+function RT.Children(rows, item, more)
     local kids = { { kind = "header", key = "header", title = RT.HEADER } }
     if type(rows) ~= "table" or #rows == 0 then
         kids[#kids + 1] = { kind = "empty", key = "empty", text = RT.EMPTY[1], how = RT.EMPTY[2] }
         return kids
     end
+    local now = currentIndex(rows)
+    local cut = false
     for i, r in ipairs(rows) do
         if i > RT.MAX then
             kids[#kids + 1] = { kind = "line", key = "more", text = RT.MORE:format(#rows - RT.MAX) }
+            cut = true
             break
         end
         local line = { kind = "line", text = tostring(r.label), sub = r.detail, right = r.dist }
-        if i == 1 then
+        if i == now then
             line.key = "current"
             line.tone = RT.TONE_NOW
+        elseif r.held ~= nil then
+            line.key = "held" .. i
+            line.sub = RT.HELD:format(tostring(r.held))
         else
             line.key = "next" .. (i - 1)
         end
         kids[#kids + 1] = line
-        if i == 1 then kids[#kids + 1] = RT.ItemLine(item) end
+        if i == now then kids[#kids + 1] = RT.ItemLine(item) end
+    end
+    if not cut and whole(more) and more > 0 then
+        kids[#kids + 1] = { kind = "line", key = "more", text = RT.MORE:format(more) }
     end
     kids[#kids + 1] = { kind = "footer", key = "footer", text = "",
         buttons = { { kind = "button", key = "skip", text = RT.SKIP, onClick = function() end } } }
@@ -156,10 +203,19 @@ function RT.Declare(k, diag)
             icon = ask(client(), "itemTexture", item.id) }
     end
 
+    local function view()
+        local r = route()
+        if not (r and type(r.View) == "function") then return nil end
+        local ok, v = pcall(r.View)
+        if ok and type(v) == "table" then return v end
+        return nil
+    end
+
     local function tree(cur)
-        local T = ns.Nav and ns.Nav.Trip
-        local rows = T and T.TrackRows(cur, hereNow()) or nil
-        local kids = RT.Children(rows, rows and itemOf(cur) or nil)
+        local rows, more = RT.Rows(view(), cur, hereNow())
+        local item
+        if rows then item = itemOf(cur) end
+        local kids = RT.Children(rows, item, more)
         local foot = kids[#kids]
         if foot.kind == "footer" then
             foot.buttons[1].onClick = function()

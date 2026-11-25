@@ -30,11 +30,11 @@ tests["info bar: the chosen metrics in the order given, unknown words and repeat
 end
 
 tests["info bar: gold in gold, silver and copper"] = function(t)
-    t.eq(call("Short", "gold", 12345), "1g 23s 45c")
-    t.eq(call("Short", "gold", 2305), "23s 5c")
+    t.eq(call("Short", "gold", 12345), "1.23g")
+    t.eq(call("Short", "gold", 2305), "23.1s")
     t.eq(call("Short", "gold", 7), "7c")
     t.eq(call("Short", "gold", 0), "0c", "none is zero: the client said so")
-    t.eq(call("Detail", "gold", 12345), "Gold: 1g 23s 45c")
+    t.eq(call("Detail", "gold", 12345), "Gold: 1.23g")
 end
 
 tests["info bar: free bag slots count only the bags any item goes in"] = function(t)

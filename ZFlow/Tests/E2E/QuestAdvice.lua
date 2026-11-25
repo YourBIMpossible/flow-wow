@@ -75,4 +75,46 @@ tests["quest advice: the setting turns the prompt off and on"] = function(t)
     t.eq(prompt(addon), "Ready to hand in: Test wolves. Look for the yellow ? over who takes it.", "on again")
 end
 
+-- Parity row C-24 (lead section 600): without Questie, one prompt says to
+-- install it, as Flow Modules/Advisor/Builtins.lua missedQuests. The same
+-- test as Arrow.HasQuestie: client.questieModule("QuestieDB"). Red before:
+-- no A.QUESTIE_PROMPT.
+local function questiePrompt(addon)
+    local A = ns.QuestAdvice or {}
+    for _, p in ipairs(addon.advisor.List()) do
+        if A.QUESTIE_PROMPT ~= nil and p.id == A.QUESTIE_PROMPT then return p.text end
+    end
+    return nil
+end
+
+tests["quest advice: without Questie, a quest in the log brings the install line"] = function(t)
+    local _, addon = start({ row(2, "Test boars") })
+    t.eq(questiePrompt(addon), "Install Questie + QuestieDB so " .. ns.id.title .. " can spot quests you skipped.")
+end
+
+tests["quest advice: with Questie, or no quest in the log, no install line"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, {})
+    c.setClass("MAGE")
+    c.setLevel(20)
+    c.setQuestLog({ row(2, "Test boars") })
+    c.setQuestieModule("QuestieDB", {})
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(5, 20)
+    t.eq(questiePrompt(addon), nil, "Questie there")
+    local _, a2 = start({})
+    t.eq(questiePrompt(a2), nil, "an empty log")
+end
+
+tests["quest advice: Questie loading later takes the install line away"] = function(t)
+    local c, addon = start({ row(2, "Test boars") })
+    t.ok(questiePrompt(addon) ~= nil, "no Questie yet")
+    c.setQuestieModule("QuestieDB", {})
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(1, 5)
+    t.eq(questiePrompt(addon), nil, "Questie there now")
+end
+
 return tests

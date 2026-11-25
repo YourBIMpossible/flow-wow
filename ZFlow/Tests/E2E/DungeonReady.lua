@@ -35,7 +35,8 @@ local function questie()
     return db, zones
 end
 
--- opts: char, account (saved ahead), train (true: class spells to learn)
+-- opts: char, account (saved ahead), train (true: class spells to learn),
+-- durability (the gear's readings; nil: not read)
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -44,6 +45,7 @@ local function boot(opts)
     c.setQuestDone(101, false)
     c.setZone(1, MAP); c.setPosition(MAP, 0.5, 0.5); c.setFacing(0)
     c.setMapSize(MAP, 1000, 1000); c.setMapCont(MAP, 0)
+    if opts.durability then c.setDurability(opts.durability) end
     if opts.train then
         for i, name in ipairs(NEW) do
             c.setSpellId(name, 100 + i)
@@ -169,6 +171,84 @@ tests["dungeon ready: reached from the arrow menu, no dungeons word"] = function
     t.ok(plan(c), "the window is open and Plan the run is live")
     t.eq(first(c), "Get ready: Bank", "the bank first")
     t.eq(addon.problems:count(), base, "no new problem")
+end
+
+-- Lead section 493: due, but no place known: a words-only row in the
+-- route's left list, not nothing.
+local function leftRow(addon, label)
+    local trip = addon.use(ns.Nav.TripRoute.NAME)
+    local view = type(trip) == "table" and type(trip.View) == "function" and trip.View() or {}
+    for _, row in ipairs(type(view.left) == "table" and view.left or {}) do
+        if row.label == label then return row end
+    end
+    return nil
+end
+
+-- Red on bc68d9fa: R.Ready gives no second answer (left is nil).
+tests["dungeon ready: due with no place known gives words-only rows, pure"] = function(t)
+    local R = ns.DungeonRead
+    local steps, left = R.Ready({ label = "Class trainer", count = 2 }, nil, nil, true)
+    t.eq(#steps, 0, "no place: no step for the arrow")
+    t.eq(left, { { label = "Get ready: Train", why = R.READY_NO_TRAINER },
+                 { label = "Get ready: Sell and repair", why = R.READY_NO_REPAIR } })
+    local steps2, left2 = R.Ready({ label = "Class trainer: Ander", place = { map = MAP, x = 0.1, y = 0.2 } },
+        { label = "Repair: Smith", place = { map = MAP, x = 0.3, y = 0.4 } }, nil, true)
+    t.eq(#steps2, 2)
+    t.eq(left2, {}, "a place known: a step, no words-only row")
+    local _, left3 = R.Ready(nil, nil, nil, false)
+    t.eq(left3, {}, "nothing due: nothing said")
+end
+
+-- Red on bc68d9fa: the left list has no such row (leftRow is nil).
+tests["dungeon ready: training due with no trainer place is a words-only row in the left list"] = function(t)
+    local c, addon, base = boot({ train = true })
+    t.ok(plan(c), "the button is there and live")
+    local row = leftRow(addon, "Get ready: Train")
+    t.ok(row ~= nil, "the row is in the left list")
+    t.eq(row and row.why, ns.DungeonRead.READY_NO_TRAINER)
+    local line = first(c)
+    t.ok(line ~= nil and line:find("Red Silk", 1, true) ~= nil, "the arrow starts at the run: " .. tostring(line))
+    t.eq(leftRow(addon, "Get ready: Sell and repair"), nil, "the gear is fine: no repair row")
+    t.eq(addon.problems:count(), base, "no new problem")
+end
+
+-- Red on bc68d9fa: the left list has no such row.
+tests["dungeon ready: low gear with no repair place is a words-only row; a seen one is a step"] = function(t)
+    local low = { [5] = { cur = 5, max = 100 } }
+    local c, addon, base = boot({ durability = low })
+    t.ok(plan(c), "the button is there and live")
+    local row = leftRow(addon, "Get ready: Sell and repair")
+    t.ok(row ~= nil, "the row is in the left list")
+    t.eq(row and row.why, ns.DungeonRead.READY_NO_REPAIR)
+    t.eq(addon.problems:count(), base, "no new problem")
+    -- With a repairer seen (a reload later, say) it is a step, not a row.
+    local smith = { name = "Smith", map = MAP, x = 0.55, y = 0.5, kinds = { repair = true }, seen = 10, n = 1 }
+    local c2, addon2 = boot({ durability = low, char = { learned = { places = { services = { s1 = smith } } } } })
+    t.ok(plan(c2), "planned with the repairer seen")
+    t.eq(first(c2), "Get ready: Sell and repair", "a step the arrow walks")
+    t.eq(leftRow(addon2, "Get ready: Sell and repair"), nil, "and no words-only row")
+end
+
+-- Plexy, lead section 504 CHANGES-1. Red on f3a1550a: with the repair step
+-- switched off the words-only repair row is still in the left list.
+tests["dungeon ready: with the repair step switched off there is no repair row at all"] = function(t)
+    local low = { [5] = { cur = 5, max = 100 } }
+    local c, addon, base = boot({ durability = low })
+    addon.settings:set(ns.RepairStep.SETTING, false)
+    t.ok(plan(c), "the button is there and live")
+    t.eq(leftRow(addon, "Get ready: Sell and repair"), nil, "off: no words-only row")
+    addon.settings:set(ns.RepairStep.SETTING, true)
+    t.ok(plan(c), "planned again")
+    t.ok(leftRow(addon, "Get ready: Sell and repair") ~= nil, "on, gear low, no place: the row")
+    t.eq(addon.problems:count(), base, "no new problem")
+    -- Off with a repairer seen: no step for the arrow either.
+    local smith = { name = "Smith", map = MAP, x = 0.55, y = 0.5, kinds = { repair = true }, seen = 10, n = 1 }
+    local c2, addon2 = boot({ durability = low, char = { learned = { places = { services = { s1 = smith } } } } })
+    addon2.settings:set(ns.RepairStep.SETTING, false)
+    t.ok(plan(c2), "planned with the repairer seen")
+    local line = first(c2)
+    t.ok(line ~= nil and line:find("Red Silk", 1, true) ~= nil, "the run starts at the giver: " .. tostring(line))
+    t.eq(leftRow(addon2, "Get ready: Sell and repair"), nil)
 end
 
 return tests

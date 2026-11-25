@@ -95,9 +95,9 @@ end
 local PANEL_HELP = 'Shows the stops of your route in order beside the quest log while it is open, and numbers '
     .. 'them on the world map with a card for the zone. Turning it off hides the list, the map pins, the zone '
     .. 'card and the map trail together. To hide only the trail, turn off "Show route lines on the map" instead.'
-local PIN_LABEL = "Show your waypoint on the minimap"
-local PIN_HELP = "Puts a green dot on the minimap for a waypoint you set yourself, so you can see it without "
-    .. "opening the map."
+local PIN_LABEL = "Show your waypoint or the next step on the minimap"
+local PIN_HELP = "Puts a dot on the minimap for a waypoint you set yourself or, without one, the step the arrow "
+    .. "points at, so you can see it without opening the map."
 local PROF_LABEL = "Profession arrow"
 local PROF_HELP = "Shows a second, purple arrow for your profession steps: gathering in an area, smelting or "
     .. "crafting at a station, learning at a trainer, or buying from a vendor."

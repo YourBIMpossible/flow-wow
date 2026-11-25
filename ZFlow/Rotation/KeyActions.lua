@@ -7,7 +7,9 @@ local _, ns = ...
 -- bound and no macro is made (section 246).
 --
 --   N1  fishing (rotation.fishing, off by default): the fishing pole from
---       the bags, then Fishing on you; with an enemy targeted, your weapons
+--       the bags, then a lure on it when it has none (D-19, Flow's
+--       Actions.lua :4-5 and :46-48), then Fishing on you; with an enemy
+--       targeted, your weapons
 --       back first (main hand, then the off hand). A fish on the line is
 --       only shown: reeling in is the bobber click.
 --   N2  a corpse you targeted (rotation.corpseKey): loot on it is only
@@ -35,6 +37,10 @@ local _, ns = ...
 --   KA.Fishing(s), KA.WeaponsBack(s), KA.Corpse(s), KA.Station(s),
 --   KA.Upgrade(s) -> each one action's suggestion, or nil.
 --   KA.Learn(list, pos, kind) -> true when a station is added, else false.
+--   KA.LureOf(lines) -> the Fishing bonus of a lure, or nil: an item whose
+--       tooltip has a "Use:" line naming the fishing pole and "Fishing by
+--       N" (D-19). Flow used a typed list of six item ids with no source;
+--       the tooltip is the game's own word for it (lead section 611).
 --   KA.StationKind(toolName) -> "anvil", "forge", "fire" or nil.
 --   KA.Read(client, input, pack, role, lockdown) -> s, each read under
 --       pcall; a read that fails or gives nothing is not known.
@@ -90,12 +96,34 @@ function KA.WeaponsBack(s)
     return nil
 end
 
+function KA.LureOf(lines)
+    if type(lines) ~= "table" then return nil end
+    for _, l in ipairs(lines) do
+        if type(l) == "string" then
+            local low = l:lower()
+            if low:find("^use:") and low:find("fishing pole", 1, true) then
+                local n = tonumber(low:match("fishing by (%d+)"))
+                if n and n > 0 then return n end
+            end
+        end
+    end
+    return nil
+end
+
 function KA.Fishing(s)
     if type(s) ~= "table" or not on(s, "fishing") then return nil end
     if s.channel == "Fishing" then
         return { look = true, step = "fishing", reason = "A fish on the line: click the bobber" }
     end
     if s.pole == true then
+        -- D-19: a lure from the bags on the pole first, when the game says
+        -- plainly that it has none. Nothing is bought.
+        local lure = s.lure
+        if s.poleLured == false and type(lure) == "table" and type(lure.id) == "number" then
+            local name = type(lure.name) == "string" and lure.name or "the lure"
+            return { itemId = lure.id, targetSlot = 16, step = "fishing",
+                     reason = "Put " .. name .. " on your fishing pole" }
+        end
         if not has(s.known, "Fishing") then return nil end
         return { spell = "Fishing", unit = "player", step = "fishing", reason = "Fish" }
     end
@@ -331,6 +359,7 @@ function KA.Read(client, input, pack, role, lockdown)
     s.pole = ask(client, "fishingPole") == true
 
     local links, skip = {}, {}
+    local lureBonus
     local rows = ask(client, "bagItems")
     for _, row in ipairs(type(rows) == "table" and rows or {}) do
         local id = type(row) == "table" and idOf(row.item)
@@ -343,7 +372,26 @@ function KA.Read(client, input, pack, role, lockdown)
                 s.poleBag = id
                 skip[id] = true
             end
+            -- D-19: the best lure in the bags, by its own tooltip.
+            if s.on.fishing and s.pole == true then
+                local bonus = KA.LureOf(ask(client, "itemLines", id))
+                if bonus and (lureBonus == nil or bonus > lureBonus or (bonus == lureBonus and id < s.lure.id)) then
+                    local name
+                    if type(info) == "table" and type(info.name) == "string" and info.name ~= "" then
+                        name = info.name
+                    end
+                    s.lure, lureBonus = { id = id, name = name }, bonus
+                end
+            end
         end
+    end
+    -- D-19: whether the main hand (the pole) has an enchant: only a plain
+    -- answer counts; not read is nil, never "no lure".
+    if s.on.fishing and s.pole == true then
+        local we = ask(client, "weaponEnchant")
+        local main
+        if type(we) == "table" then main = we.main end
+        if type(main) == "table" and type(main.has) == "boolean" then s.poleLured = main.has end
     end
     local channel = ask(client, "channel")
     if type(channel) == "table" and type(channel.name) == "string" then s.channel = channel.name end

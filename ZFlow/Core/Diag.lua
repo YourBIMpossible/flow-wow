@@ -56,6 +56,7 @@ Diag.NAMES = {
     "C_Container.GetContainerItemLink", "GetContainerItemLink",
     "GetItemInfo", "C_Item.GetItemInfo", "GetItemCount", "C_Item.GetItemCount", "GetItemInfoInstant",
     "C_Map.GetBestMapForUnit", "C_Map.GetPlayerMapPosition", "C_Map.GetMapInfo",
+    "C_Map.GetAreaInfo",
     "C_Map.GetWorldPosFromMapPos", "Enum.UIMapType", "GetPlayerFacing", "UnitPosition",
     "GetZoneText", "GetSubZoneText", "GetRealZoneText",
     "UnitClass", "UnitLevel", "UnitRace", "UnitFactionGroup", "UnitHealth", "UnitHealthMax",
@@ -1246,6 +1247,11 @@ local function rotationRow(view)
         local unit = view.suggestion.unit
         line = head .. "suggesting " .. tostring(picked) .. (type(unit) == "string" and (" for " .. unit) or "")
             .. " (" .. tostring(why.step or "step not known") .. "; look only, nothing cast)."
+    elseif picked ~= nil and type(view.suggestion.unit) == "string" and view.suggestion.unit:find("^party%d$") then
+        -- D-24: a group buff or cure on the key names the party unit, never
+        -- the player's name.
+        line = head .. "suggesting " .. tostring(picked) .. " for " .. view.suggestion.unit
+            .. " (" .. tostring(why.step or "step not known") .. "; on your key)."
     elseif picked ~= nil then
         line = head .. "suggesting " .. tostring(picked) .. " (" .. tostring(why.step or "step not known") .. ")."
     else

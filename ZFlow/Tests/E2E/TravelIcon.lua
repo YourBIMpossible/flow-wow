@@ -39,6 +39,7 @@ local function boot(opts)
     c.setZone(1, HERE); c.setPosition(HERE, 0.5, 0.5); c.setFacing(0)
     c.setMapSize(HERE, 1000, 1000); c.setMapCont(HERE, 1)
     c.setMapSize(MOONGLADE, 1000, 1000); c.setMapCont(MOONGLADE, 1)
+    c.setMapName(MOONGLADE, "Moonglade")
     c.setClass("DRUID"); c.setFaction("Horde"); c.setLevel(20)
     if not opts.noId then c.setSpellId(SPELL, SPELL_ID) end
     c.setSpell(SPELL_ID, { known = opts.known })

@@ -90,7 +90,10 @@ tests["arrow words: an empty log with no Questie still says no quest tracked"] =
 end
 
 tests["arrow words: 30 yd from the nearest of several spawns: you're in the area"] = function(t)
-    local c = start({ log = BOARS, questie = questie({ { 53, 50 }, { 90, 50 } }) })
+    -- About the quest arrow's own pick (the nearest spawn): the route walk
+    -- off (A1-24, lead section 739).
+    local c = start({ log = BOARS, questie = questie({ { 53, 50 }, { 90, 50 } }),
+        account = { layout = { arrowIntroSeen = true, wayTips = 2 }, settings = { nav = { routeWalk = false } } } })
     t.eq(said(c), { "Boar Trouble", "Boars slain: 2/8", "You're in the area" })
 end
 

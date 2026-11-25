@@ -168,9 +168,9 @@ tests["merchant marks: the price, and 'more than you have' only when money was r
     local marks, info = M.Marks(client({ row(BETTER, 2540) }), packs())
     t.eq(marks[1].price, 2540)
     local tail = "Upgrade for your head piece (+5, dps)"
-    t.eq(M.Text(marks, info, { money = 1000 })[2], BETTER .. ": " .. tail .. "; 25s 40c, more than you have")
-    t.eq(M.Text(marks, info, { money = 2540 })[2], BETTER .. ": " .. tail .. "; 25s 40c")
-    t.eq(M.Text(marks, info, {})[2], BETTER .. ": " .. tail .. "; 25s 40c", "money not read")
+    t.eq(M.Text(marks, info, { money = 1000 })[2], BETTER .. ": " .. tail .. "; 25.4s, more than you have")
+    t.eq(M.Text(marks, info, { money = 2540 })[2], BETTER .. ": " .. tail .. "; 25.4s")
+    t.eq(M.Text(marks, info, {})[2], BETTER .. ": " .. tail .. "; 25.4s", "money not read")
     t.eq(M.Text(marks, info)[2], BETTER .. ": " .. tail, "no opts: as before")
 end
 

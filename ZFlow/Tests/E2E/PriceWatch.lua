@@ -85,7 +85,7 @@ tests["price watch e2e: a later visit's price replaces the older one"] = functio
     visit(c, { { index = 1, item = FLUX, price = 100, stack = 1 } })
     c.setClock(NOW + 60)
     visit(c, { { index = 1, item = FLUX, price = 120, stack = 1 } })
-    t.eq(say(c, "price " .. FLUX)[2], T("A merchant sells it for 1s 20c each (merchant window)"))
+    t.eq(say(c, "price " .. FLUX)[2], T("A merchant sells it for 1.2s each (merchant window)"))
 end
 
 tests["price watch e2e: unknown prices are left out, never kept as 0"] = function(t)

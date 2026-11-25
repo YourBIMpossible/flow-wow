@@ -274,7 +274,7 @@ tests["slice 3: expired lines are counted and shown as a floor"] = function(t)
     local before = #c.printed
     c.slashes[ns.id.slash]("auctions")
     t.eq(c.printed[before + 2], "20 x Linen Cloth: ask 2s each (seen 3s, 1 h ago; a vendor pays 13c; "
-        .. "about +35s 40c over vendoring, the deposit not counted) (unsold at least 2x)")
+        .. "about +35.4s over vendoring, the deposit not counted) (unsold at least 2x)")
 end
 
 tests["slice 3: a sale resets the count"] = function(t)

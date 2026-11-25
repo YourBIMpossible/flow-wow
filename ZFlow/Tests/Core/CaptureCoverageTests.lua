@@ -78,6 +78,9 @@ local KIND = {
 KIND.show[#KIND.show + 1] = "clickRow"
 -- G34: the hover-to-bind covers on the action buttons; binds nothing.
 KIND.show[#KIND.show + 1] = "bindHover"
+-- Lead section 624 Step 4: one plain cooldown face (a picture, the sweep,
+-- the seconds); draws only, on a frame of its own.
+KIND.show[#KIND.show + 1] = "cooldownFace"
 -- G34: one of the game's binding commands put on a key, only from the
 -- hover-to-bind mode's Save (UI/HoverBind.lua).
 KIND.act[#KIND.act + 1] = "setBinding"
@@ -293,6 +296,9 @@ KIND.act[#KIND.act + 1] = "sellBagItem"
 -- Lead section 382: a map's continent name; read by Nav/ProfFeed.lua only.
 -- Its name (C_Map.GetMapInfo, Enum.UIMapType) is in Diag.NAMES.
 READS.mapContName = false
+-- Lead section 625 (B-32): an area's name; read by Nav/TravelSpells.lua
+-- only. Its name (C_Map.GetAreaInfo) is in Diag.NAMES. Not captured.
+READS.areaName = false
 -- Lead section 404 item 2: seconds left on a spell's cooldown, the same
 -- client calls as spellCooldown. The capture does not ask it.
 READS.spellCooldownLeft = false
@@ -534,5 +540,23 @@ READS.rewardButtons = false
 -- G47 (lead section 397 item 15): who leads the group; read by
 -- Nav/FollowAdvice.lua only. Its name (UnitIsGroupLeader) is in Diag.NAMES.
 READS.groupLeader = false
+-- Lease rows (lead sections 659, 662, 677, 679, 682, 692, 693).
+READS.gossipOptions = false
+READS.itemIdByName = false
+READS.questRewardXp = false
+KIND.listen[#KIND.listen + 1] = "onBoughtBack"
+KIND.listen[#KIND.listen + 1] = "onLootLeft"
+KIND.listen[#KIND.listen + 1] = "onCraftStarted"
+KIND.show[#KIND.show + 1] = "inputBox"
+-- Hide or show a tracker frame, only on the player's own setting.
+KIND.act[#KIND.act + 1] = "hideGameTracker"
+KIND.act[#KIND.act + 1] = "hideQuestieTracker"
+KIND.act[#KIND.act + 1] = "showQuestWatch"
+KIND.act[#KIND.act + 1] = "showQuestieTracker"
+-- F-28 (lead sections 740 and 768): the queue read and the one accept.
+READS.queued = false
+KIND.act[#KIND.act + 1] = "acceptGroup"
+-- D-26 (lead sections 746 and 753): each press of the rotation key.
+KIND.listen[#KIND.listen + 1] = "onKeyPress"
 
 return tests

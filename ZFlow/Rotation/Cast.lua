@@ -105,7 +105,8 @@ local function actionOf(p)
     local id = a.itemId
     if type(id) == "number" and id > 0 and id % 1 == 0 then return { itemId = id } end
     if type(a.spell) ~= "string" or a.spell == "" then return nil end
-    if a.unit ~= nil and a.unit ~= "player" and a.unit ~= "target" then return nil end
+    -- D-24: a group buff or cure goes on the plan on its party member.
+    if a.unit ~= nil and a.unit ~= "player" and a.unit ~= "target" and not C.PARTY[a.unit] then return nil end
     return { spell = a.spell, unit = a.unit }
 end
 
@@ -232,12 +233,68 @@ end
 -- button = {}, header = {} } with the same two reasons as Apply.
 
 C.STATE = "castform"
+-- Parity row D-04 (lead section 697), as Flow's Modules/Rotation/Cast.lua
+-- (:877-932): the state handler's secure code, run by the game when the
+-- state driver on C.STATE changes state (a form change, in a fight too).
+-- It copies the header rows of the state entered ("key-N", "ctrl-N", ...)
+-- onto the key ("key" frame ref); "" clears a slot. Restricted code, given
+-- to the handler out of a fight only; never a macro. A first guess: the
+-- restricted calls are on warcraft.wiki.gg (SecureHandlerStateTemplate,
+-- RestrictedEnvironment), not seen in this client.
+-- D-04 CHANGES (Lazy, lead section 729), as Flow's Cast.lua (:797-815):
+-- out of a fight it does nothing (the add-on sets the key there itself);
+-- the key and each slot spell it copies are cast as a spell on your target.
+C.FORM_SNIPPET = [=[
+if not PlayerInCombat() then return end
+local key = self:GetFrameRef("key")
+if not key then return end
+local v = self:GetAttribute("key-" .. newstate)
+if v and v ~= "" then
+    key:SetAttribute("type", "spell")
+    key:SetAttribute("spell", v)
+    key:SetAttribute("unit", "target")
+    key:SetAttribute("item", nil)
+end
+v = self:GetAttribute("ctrl-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-ctrl", v)
+if v then
+    key:SetAttribute("*type-ctrl", "spell")
+    key:SetAttribute("*unit-ctrl", "target")
+end
+v = self:GetAttribute("shift-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-shift", v)
+if v then
+    key:SetAttribute("*type-shift", "spell")
+    key:SetAttribute("*unit-shift", "target")
+end
+v = self:GetAttribute("alt-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-alt", v)
+if v then
+    key:SetAttribute("*type-alt", "spell")
+    key:SetAttribute("*unit-alt", "target")
+end
+v = self:GetAttribute("more-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-more", v)
+if v then
+    key:SetAttribute("*type-more", "spell")
+    key:SetAttribute("*unit-more", "target")
+end
+]=]
 C.MODIFIERS = { "ctrl", "shift", "alt", "more" }
 C.ON_YOU = { heal = true, emergency = true, buff = true }
 -- The only units a suggestion may name for the key. Anyone else (a party or
 -- raid member, focus, mouseover) is never cast on: help for another player
 -- is only shown (look = true, Rotation/Group.lua), never put on the key.
 C.UNITS = { player = true, pet = true, target = true }
+-- Parity row D-24 (lead section 711): a group buff or a cure from
+-- Rotation/Group.lua, out of a fight, on its party member. No other kind
+-- may name a party unit, and no raid unit is ever taken.
+C.GROUP_KINDS = { groupBuff = true, dispel = true }
+C.PARTY = { party1 = true, party2 = true, party3 = true, party4 = true }
 C.ATTACK = { ["Attack"] = true, ["Auto Attack"] = true }
 -- Section 249 (CT-1): the one name the key casts the swing by. A suggestion
 -- or a slot may say "Auto Attack" (the rows name either); the secure button
@@ -282,6 +339,15 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     -- P-PARTY: a look-only suggestion (look = true: for another player) is
     -- never put on the key. The key holds what it holds with no suggestion.
     if type(suggestion) == "table" and suggestion.look == true then suggestion = nil end
+    -- D-24: a unit that is no one's but a group buff's or cure's party
+    -- member is refused: the key holds its plan.
+    -- A heal, an emergency or your own buff that names another player is
+    -- not refused: it falls through to the player rule below (on you).
+    if type(suggestion) == "table" and type(suggestion.unit) == "string" and not C.UNITS[suggestion.unit]
+        and not (C.GROUP_KINDS[suggestion.kind] and C.PARTY[suggestion.unit])
+        and not C.ON_YOU[suggestion.kind] then
+        if suggestion.unit:find("^party") or suggestion.unit:find("^raid") then suggestion = nil end
+    end
 
     local button = {}
     local spell, source = spellOf(suggestion), "suggestion"
@@ -296,6 +362,7 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     elseif spell then
         kind = "spell"
         unit = C.UNITS[suggestion.unit] and suggestion.unit or (C.ON_YOU[suggestion.kind] and "player") or nil
+        if C.GROUP_KINDS[suggestion.kind] and C.PARTY[suggestion.unit] then unit = suggestion.unit end
     elseif itemOf(suggestion) then
         -- Section 226 (CF-30): an item (Well Fed food) is used by its id on
         -- the player's press. Section 246 (N63-E): through the secure item
@@ -320,6 +387,15 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     row(button, "spell", kind == "spell" and spell or nil)
     row(button, "unit", unit)
     row(button, "item", item and ("item:" .. item) or nil)
+    -- D-19 (lead section 697): an item used on one of your weapon hands (a
+    -- lure on the fishing pole), the secure item type's own target-slot.
+    -- Set out of a fight only, as every row is.
+    local handSlot
+    if kind == "item" and source == "suggestion" and type(suggestion) == "table"
+        and (suggestion.targetSlot == 16 or suggestion.targetSlot == 17) then
+        handSlot = suggestion.targetSlot
+    end
+    row(button, "target-slot", handSlot)
     -- N8: with plan.altItem the Alt slot uses that item instead of its
     -- spell. Section 246 (N63-E): as the item type, "*type-alt" = "item" and
     -- "*item-alt" = "item:ID", the modifier form legacy Flow's slots used.

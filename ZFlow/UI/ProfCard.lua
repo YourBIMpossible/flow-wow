@@ -26,6 +26,24 @@ local _, ns = ...
 -- prompt appears when its cause does and is removed when its cause goes
 -- (the cap was raised, or the faction is no longer known). Stopped, it
 -- removes what it added. Look-only: it trains, buys and changes nothing.
+--
+-- Parity row C-50 (lead section 668), as Flow's Modules/Advisor/
+-- Builtins.lua professions source (:304-358). Below the cap, from the next
+-- rank in a trainer list the player opened (its level and skill are that
+-- window's own numbers, Spells/TrainerList.lua) and the player's level:
+--   ready   your skill and level reach the rank: "Mining 55/75: you can
+--           learn Journeyman Mining now from <trainer> (5s)."
+--   behind  your level has reached the rank's, your skill has not: "Mining
+--           is 40, behind your level: Journeyman Mining needs 50, and you
+--           are past its level 10."
+-- One prompt a profession: the cap first, then ready, then behind. A list
+-- saved before the reading's max was first read (r.maxAt, kept by
+-- Nav/ProfSeen.lua) is stale, the rank may be learned since: it gives
+-- neither (lead section 700); either time not known gives none. Flow
+-- also said "behind" from a levelling-guide table of skill by level (75 by
+-- 10, 125 by 20, ...). That table is hand-written and not cited, so it is
+-- not used (lead section 611); a rank no trainer list shows says nothing.
+-- "Learn a profession" is UI/ProfPick.lua's.
 -- Not tested in game.
 
 ns.ProfCard = {}
@@ -59,30 +77,56 @@ end
 -- Flow's SkillPlan TierPriceLine: a row not known, of this profession, whose
 -- rank is one of P.RANKS (in rank, or "<rank> <profession>" as its name;
 -- first guess, needs a game test) and whose cost was read. The cheapest
--- such row. Returns rank, copper, or nil.
+-- such row. Returns rank, copper, the row (its level and skill needs, as
+-- read) and its trainer's name, or nil.
 P.RANKS = { Apprentice = true, Journeyman = true, Expert = true, Artisan = true, Master = true }
-local function nextRank(lists, profession)
+local function nextRank(lists, profession, after)
     if type(lists) ~= "table" then return nil end
-    local bestRank, bestCost = nil, nil
+    local bestRank, bestCost, bestRow, bestNpc = nil, nil, nil, nil
     for _, l in pairs(lists) do
-        if type(l) == "table" and l.profession == profession and type(l.rows) == "table" then
+        -- after (C-50): only a list saved at or after that time.
+        local fresh = after == nil or (num(l.seen) and l.seen >= after)
+        if fresh and type(l) == "table" and l.profession == profession and type(l.rows) == "table" then
             for _, r in ipairs(l.rows) do
                 if type(r) == "table" and r.state ~= "known" and num(r.cost) and type(r.name) == "string" then
                     local rank = nil
                     if r.name == profession and type(r.rank) == "string" and P.RANKS[r.rank] then rank = r.rank end
                     local head = r.name:match("^(%S+) " .. profession:gsub("(%p)", "%%%1") .. "$")
                     if head and P.RANKS[head] then rank = head end
-                    if rank and (bestCost == nil or r.cost < bestCost) then bestRank, bestCost = rank, r.cost end
+                    if rank and (bestCost == nil or r.cost < bestCost) then
+                        bestRank, bestCost, bestRow = rank, r.cost, r
+                        if type(l.npc) == "string" and l.npc ~= "" then bestNpc = l.npc else bestNpc = nil end
+                    end
                 end
             end
         end
     end
-    return bestRank, bestCost
+    return bestRank, bestCost, bestRow, bestNpc
+end
+
+P.READY = "%s %d/%d: you can learn %s %s now%s (%s)."
+P.FROM = " from %s"
+P.BEHIND = "%s is %d, behind your level: %s %s needs %d, and you are past its level %d."
+
+-- C-50: the prompt for a profession below its cap, from its next rank, or
+-- nil. level: the player's.
+local function belowCap(name, r, lists, level)
+    if not num(level) or not num(r.maxAt) then return nil end
+    local rank, cost, row, npc = nextRank(lists, name, r.maxAt)
+    if not rank or type(row) ~= "table" or not num(row.level) or not num(row.skill) then return nil end
+    if level < row.level then return nil end
+    if r.skill >= row.skill then
+        local from = ""
+        if npc then from = P.FROM:format(npc) end
+        return P.READY:format(name, r.skill, r.max, rank, name, from, ns.Prices.Coin(cost))
+    end
+    return P.BEHIND:format(name, r.skill, rank, name, row.skill, row.level)
 end
 
 -- { { id =, text =, priority = }, ... } sorted by id. lists (slice 3,
--- optional): the saved trainer lists, for the next rank's price.
-function P.Prompts(readings, npcs, faction, lists)
+-- optional): the saved trainer lists, for the next rank's price. level
+-- (C-50, optional): the player's, for the prompts below the cap.
+function P.Prompts(readings, npcs, faction, lists, level)
     local out = {}
     if type(readings) ~= "table" or type(npcs) ~= "table" then return out end
     if type(faction) ~= "string" or faction == "" then return out end
@@ -102,6 +146,10 @@ function P.Prompts(readings, npcs, faction, lists)
                     priority = P.PRIORITY,
                 }
             end
+        elseif type(name) == "string" and name ~= "" and type(r) == "table"
+            and num(r.skill) and num(r.max) and r.max > 0 then
+            local text = belowCap(name, r, lists, level)
+            if text then out[#out + 1] = { id = P.PREFIX .. name, text = text, priority = P.PRIORITY } end
         end
     end
     table.sort(out, function(a, b) return a.id < b.id end)
@@ -112,12 +160,12 @@ end
 -- added before that no longer apply. faction: the player's faction.
 -- shown: { [id] = true } from the last call (nil the first time). Returns
 -- the new shown set.
-function P.Sync(advisor, readings, npcs, faction, shown, lists)
+function P.Sync(advisor, readings, npcs, faction, shown, lists, level)
     local now = {}
     if type(advisor) ~= "table" or type(advisor.Add) ~= "function" or type(advisor.Remove) ~= "function" then
         return now
     end
-    for _, p in ipairs(P.Prompts(readings, npcs, faction, lists)) do
+    for _, p in ipairs(P.Prompts(readings, npcs, faction, lists, level)) do
         if advisor.Add(p.id, p.text, p.priority) then now[p.id] = true end
     end
     if type(shown) == "table" then
@@ -164,8 +212,13 @@ function P.Declare(k)
                 end
                 -- An advisor that raises costs this module nothing; what it
                 -- held before is kept as it was.
+                local level
+                if type(ctx.client.level) == "function" then
+                    local okL, l = pcall(ctx.client.level)
+                    if okL and num(l) then level = l end
+                end
                 local okS, now = pcall(P.Sync, advisor, ctx.store:get("char", Seen.READINGS),
-                    ctx.store:get("account", Seen.NPCS), faction, shown, ctx.store:get("char", P.LISTS))
+                    ctx.store:get("account", Seen.NPCS), faction, shown, ctx.store:get("char", P.LISTS), level)
                 if okS and type(now) == "table" then shown = now end
             end
             ctx.bus:on(P.NAME, P.ENTER_EVENT, sync)

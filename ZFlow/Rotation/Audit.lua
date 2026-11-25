@@ -26,13 +26,21 @@ local _, ns = ...
 --   Au.New(opts) -> recorder         press / sent / mark over one data table
 -- The module:
 --   Au.Declare(k[, diag]) -> { press, mark, report, reset, data }
---     api.press() is the press of the key. NOTHING CALLS IT YET: see below.
+--     api.press() is the press of the key: called from the client's press
+--     read (client.onKeyPress), where the client has it (D-26).
 --     Words after the slash command: Au.WORD and Au.MARK.
 --
 -- CLIENT NEEDS, none is in Core/Client.lua yet:
 --   a press signal: the secure button of the rotation key calling
 --     ns.pressAudit.press() from its PreClick (Flow: Cast.lua called
 --     Au.Press from the button's PreClick). Without it nothing is counted.
+--   client.onKeyPress(fn) -> cancel   fn() at each press of the rotation
+--     key. LEAD NEED (Core/Client.lua, the lease holder), exactly:
+--     HookScript("PreClick") on _G[ns.id.framePrefix .. "RotationKey"]
+--     only (the add-on's own secure key button); the hook calls fn under
+--     pcall and nothing else: never SetAttribute, Click or any cast;
+--     cancel sets a flag the hook checks (a hooked script cannot be
+--     removed). Stubbed in Core/ClientFake.lua's "§ D-26" block.
 --   client.screenshot() -> true | false   optional: Flow took a screenshot
 --     at a disagreement (at most one every 20 s, 8 a session). Used when
 --     the client has it; without it no screenshot is taken.
@@ -230,6 +238,7 @@ end
 
 -- --------------------------------------------------------------- the module
 function Au.Declare(k, diag)
+    local cancelPress   -- D-26: the press read's cancel, called at stop
     local client, rec, view, plan
     local fightAt
     local api = {}
@@ -343,10 +352,22 @@ function Au.Declare(k, diag)
             ctx.bus:on(Au.NAME, D.EVENT, onView)
             client.listen("PLAYER_REGEN_DISABLED", function() fightAt = read(client.now) end)
             client.listen("PLAYER_REGEN_ENABLED", function() fightAt = nil end)
+            -- D-26: each press of the key, where the client tells of it.
+            if type(client.onKeyPress) == "function" then
+                local okP, cancel = pcall(client.onKeyPress, function()
+                    local ok = pcall(api.press)
+                    return ok
+                end)
+                if okP and type(cancel) == "function" then cancelPress = cancel end
+            end
             client.listen(Au.EVENT, function(unit, _, _, spellId)
                 if unit ~= "player" or not rec or not rec.waiting() then return end
                 rec.sent(spellId)
             end)
+        end,
+        stop = function()
+            if type(cancelPress) == "function" then pcall(cancelPress) end
+            cancelPress = nil
         end,
     })
 
