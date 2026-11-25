@@ -7,7 +7,7 @@ local _, ns = ...
 -- the merchant window.
 --
 --   marks, info = GearMerchantMarks.Marks(client, packs, role)
---     role: spec.role; none chosen, GearRole.Read's active role (one role)
+--     role: spec.role; none chosen, GearRole.Active's "dps" (one role)
 --   text        = GearMerchantMarks.Text(marks, info[, opts])
 --   badges      = GearMerchantMarks.Specs(client, packs, role)
 --
@@ -70,7 +70,7 @@ function M.Marks(client, packs, role)
             info.unread = info.unread + 1
         else
             local lines = ns.GearTooltipModule.Lines(client, packs, link,
-                { role = (ns.GearRole.Read(client, role)) })
+                { role = (ns.GearRole.Active(role)) })
             if type(lines) == "table" and #lines > 0 then
                 info.gear = info.gear + 1
                 local good = {}

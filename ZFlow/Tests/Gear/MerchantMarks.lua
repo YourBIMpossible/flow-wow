@@ -211,21 +211,17 @@ tests["merchant marks: two items that each win for a different role are never bo
     t.eq(marked((M.Marks(c, p, "tank"))), { TANKY }, "tank chosen")
     t.eq(marked((M.Marks(c, p, "dps"))), { DPSY }, "dps chosen")
     c.setFormName("Bear Form", true)
-    t.eq(marked((M.Marks(c, p))), { TANKY }, "no role chosen, in Bear Form: tank")
-    t.eq(marked((M.Marks(c, p, "dps"))), { DPSY }, "the chosen role beats the form")
+    c.setUnitBuffs("player", { { name = "Righteous Fury" } })
+    t.eq(marked((M.Marks(c, p))), { DPSY }, "no buff or form picks the role (section 564)")
+    t.eq(marked((M.Marks(c, p, "tank"))), { TANKY }, "nothing overrides the choice")
 end
 
-tests["merchant marks: the active role - chosen, else a tank sign, else dps"] = function(t)
+tests["merchant marks: the role - the one chosen, else dps (Flow's class default)"] = function(t)
     local GR = ns.GearRole
-    t.eq({ GR.Active("heal", { tank = true }) }, { "heal", "chosen" })
-    t.eq({ GR.Active("", { tank = true }) }, { "tank", "sign" })
-    t.eq({ GR.Active(nil, nil) }, { "dps", "class" })
-    local c = ns.make.fakeClient()
-    c.setClass("PALADIN")
-    t.eq((GR.Read(c, "")), "dps")
-    c.setUnitBuffs("player", { { name = "Righteous Fury" } })
-    t.eq({ GR.Read(c, "") }, { "tank", "sign" }, "Righteous Fury up: tank")
-    t.eq((GR.Read({}, nil)), "dps", "nothing readable: dps")
+    t.eq({ GR.Active("heal") }, { "heal", "chosen" })
+    t.eq({ GR.Active("") }, { "dps", "class" })
+    t.eq({ GR.Active(nil) }, { "dps", "class" })
+    t.eq({ GR.Active("bogus") }, { "dps", "class" })
 end
 
 return tests

@@ -125,4 +125,31 @@ tests["bag badge: the module draws on login and bag changes; off draws none"] = 
     t.eq(c.bagMarks(), {})
 end
 
+-- Section 564 R3: equipping the piece the badge suggests never makes the
+-- piece it replaced the next suggestion. Red before the code: with no role
+-- chosen each role was badged, so the swap marked the old piece for tank.
+local DPSY, TANKY = "item:21", "item:22"
+
+tests["bag badge: no swap loop - the replaced piece is not the next suggestion"] = function(t)
+    if type(BB()) ~= "table" then return t.ok(false, "ns.GearBagBadge") end
+    local c = client()
+    c.setItem(DPSY, helm({ [STR] = 4 }))
+    c.setItem(TANKY, helm({ [STA] = 4 }))
+    c.setWorn(1, TANKY)
+    c.setBagItems(bags(DPSY))
+    local k = ns.Kernel({}, c)
+    k:Setting({ key = BB().ROLE, scope = "char", type = "string", default = "", label = "Your role" })
+    BB().Declare(k, packs())
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    t.eq(c.bagMarks(), { { bag = 0, slot = 1, text = P("dps", "up") } }, "no role chosen: judged for dps")
+    c.setWorn(1, DPSY)
+    c.setBagItems(bags(TANKY))
+    c.fire("BAG_UPDATE_DELAYED")
+    t.eq(c.bagMarks(), { { bag = 0, slot = 1, text = P("dps", "down") } }, "after the swap the old piece is not suggested")
+    t.eq(k.settings:set(BB().ROLE, "tank"), true)
+    c.fire("BAG_UPDATE_DELAYED")
+    t.eq(c.bagMarks(), { { bag = 0, slot = 1, text = P("tank", "up") } }, "the chosen role decides")
+end
+
 return tests

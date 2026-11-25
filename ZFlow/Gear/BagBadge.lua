@@ -141,7 +141,7 @@ function BB.Declare(k, packs)
         if not ctx then return end
         if ctx.settings:get(BB.SETTING) ~= true then return draw({}) end
         local ok, marks = pcall(BB.Marks, ctx.client, packs or ns.Packs,
-            ns.GearRole.Read(ctx.client, ctx.settings:get(BB.ROLE)))
+            ns.GearRole.Active(ctx.settings:get(BB.ROLE)))
         if not ok then
             problem(marks)
             return draw({})
