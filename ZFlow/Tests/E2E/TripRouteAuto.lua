@@ -171,4 +171,61 @@ tests["route auto: the log signature changes with a step done, not with a count"
     t.eq(T.LogSignature(nil), nil)
 end
 
+-- Lead section 564 R6: the route is kept in saved data. Red on 22784f36:
+-- nothing is saved, so a walked route is gone after a restart.
+tests["route saved: a route the player walks is walked on after a restart, with no word"] = function(t)
+    local c, addon = boot()
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    t.eq(first(c), "Bandages", "walked")
+    c.slashes[ns.id.slash]("route skip")
+    c.advance(4, 8)
+    local kept = addon.store:get("char", ns.Nav.TripRoute.SAVED)
+    t.ok(type(kept) == "table" and type(kept.stops) == "table" and #kept.stops == 3, "kept in saved data")
+    t.eq(kept and kept.auto, nil, "as a walked route")
+    local c2, addon2, base2 = boot({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
+    t.ok(trip(addon2).Current() ~= nil, "walked on after the restart")
+    t.ok(first(c2) ~= "Bandages", "from where it was: the skipped stop stays behind: " .. tostring(first(c2)))
+    t.eq(said(c2, "1. Bandages"), nil, "with no word")
+    t.eq(addon2.problems:count(), base2, "no new problem")
+end
+
+tests["route saved: route off is kept off after a restart; the planned-by-itself route is kept too"] = function(t)
+    local c, addon = boot()
+    local kept = addon.store:get("char", ns.Nav.TripRoute.SAVED)
+    t.ok(type(kept) == "table" and kept.auto == true, "the route planned by itself is kept, as such")
+    c.slashes[ns.id.slash]("route")
+    c.slashes[ns.id.slash]("route off")
+    c.advance(4, 8)
+    t.eq(addon.store:get("char", ns.Nav.TripRoute.SAVED), nil, "off: nothing kept")
+    local _, addon2 = boot({ account = c.saved(ns.id.accountDB), char = c.saved(ns.id.charDB) })
+    t.eq(trip(addon2).Current(), nil, "no walked route after the restart")
+end
+
+-- Section 236: a saved table that is broken is no route.
+tests["route saved: keep and restore, pure; a broken saved table is no route"] = function(t)
+    local T = ns.Nav.TripRoute
+    local route = { kind = "quests", label = "x", stops = {
+        { quest = 1, objective = 1, label = "A", place = { map = MAP, x = 0.1, y = 0.2 }, leg = 9 },
+        { quest = 2, turnIn = true, label = "B", place = { map = MAP, x = 0.3, y = 0.4 }, gone = true },
+        { quest = 3, label = "No place" },
+    } }
+    local kept = T.Keep(route, 2)
+    t.eq(kept, { kind = "quests", label = "x", at = 2, stops = {
+        { quest = 1, objective = 1, label = "A", place = { map = MAP, x = 0.1, y = 0.2 } },
+        { quest = 2, turnIn = true, label = "B", gone = true, place = { map = MAP, x = 0.3, y = 0.4 } },
+    } }, "plain fields only; a stop with no place is left out")
+    local back, at = T.Restore(kept)
+    t.eq(at, 2)
+    t.eq(back and #back.stops, 2)
+    t.eq(back and back.stops[2].gone, true)
+    t.eq(T.Restore(nil), nil)
+    t.eq(T.Restore({ kind = "quests", stops = "no" }), nil)
+    t.eq(T.Restore({ kind = "strange", stops = kept.stops }), nil, "an unknown kind")
+    t.eq(T.Restore({ kind = "quests", stops = { { label = "no place" } } }), nil, "no stop with a place")
+    local _, from = T.Restore({ kind = "run", at = 99, stops = kept.stops })
+    t.eq(from, 1, "a place along it that is not there: the start")
+    t.eq(T.Keep(nil, 1), nil)
+end
+
 return tests
