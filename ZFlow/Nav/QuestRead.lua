@@ -320,6 +320,17 @@ function N.QuestWatch(client, opts)
             local okZ, v = pcall(zoneFirst)
             if okZ then zf = v end
         end
+        -- A1-24 (lead section 739): the route planned by itself takes this,
+        -- the quest arrow's own pick's place in the step chain, when the
+        -- player has it walked (Nav/TripRoute.lua AutoStep).
+        local trip = ns.tripRoute
+        if type(trip) == "table" and type(trip.AutoStep) == "function" then
+            local okA, auto = pcall(trip.AutoStep)
+            if okA and type(auto) == "table" then
+                last = { quest = auto.quest, from = "route" }
+                return auto
+            end
+        end
         local picked, from = Q.Pick(rows, places, here, type(focus) == "table" and focus or nil,
             { zoneFirst = zf })
         last = { quest = picked and picked.quest or nil, from = from }

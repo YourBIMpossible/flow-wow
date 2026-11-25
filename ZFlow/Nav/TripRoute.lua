@@ -712,7 +712,9 @@ function T.Declare(k, diag)
         return any
     end
 
-    function api.Step()
+    -- The next stop of the route as it is now, the log read again when due;
+    -- nil with none. The route planned by itself and the walked one alike.
+    local function nextStop()
         if not route or not on() then return nil end
         local c = client()
         local now = ask(c, "now")
@@ -755,13 +757,26 @@ function T.Declare(k, diag)
             end
         end
         if not s then return nil end
-        -- Planned by itself: the arrow walks it too (A1-24), unless the
-        -- player turned that off; then it is only shown on the map and in
-        -- the Router, and the arrow keeps its own pick until the word.
-        if route.auto and not walkOn() then return nil end
         return { quest = s.quest, objective = s.objective, turnIn = s.turnIn, label = s.label,
                  detail = s.need or s.detail, need = s.need,
                  place = { map = s.place.map, x = s.place.x, y = s.place.y } }
+    end
+
+    -- The route the player planned (the word, Plan the run): the arrow's
+    -- step ahead of its own pick, as before. Planned by itself: not here.
+    function api.Step()
+        if route and route.auto then return nil end
+        return nextStop()
+    end
+
+    -- A1-24 (lead sections 697 and 739): the route planned by itself, walked
+    -- in the quest arrow's own slot only (Nav/QuestRead.lua step(), where
+    -- Q.Pick answers), so repair, flight, service, corpse, waypoint, follow
+    -- and errand steps stay ahead of it, as in Flow. nil unless a route
+    -- planned by itself is there and nav.routeWalk is on.
+    function api.AutoStep()
+        if not route or not route.auto or not walkOn() then return nil end
+        return nextStop()
     end
 
     function api.Lines()
@@ -952,7 +967,7 @@ function T.Declare(k, diag)
     k:Module({
         name = T.NAME,
         needs = { "client", "store", "settings" },
-        provides = { Step = api.Step, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
+        provides = { Step = api.Step, AutoStep = api.AutoStep, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
                      Lines = api.Lines, Current = api.Current, View = api.View },
         ticks = { { every = T.AUTO_EVERY, when = "always", run = function()
             auto()
