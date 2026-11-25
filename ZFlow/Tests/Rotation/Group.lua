@@ -489,14 +489,21 @@ tests["group key: a cure goes on the key as a cure"] = function(t)
 end
 
 tests["group key: a fight, a lock that is on or not read, or the setting off keeps it look-only"] = function(t)
+    -- Twin CHANGES-1 item 4: the step must be there, and look-only; a
+    -- fight (inCombat = true) is one of the cases. In a fight the group
+    -- step names nothing at all (G.Step: out of a fight only), so that
+    -- case asserts no key step instead.
     for _, over in ipairs({ { lockdownRead = true }, { lockdownRead = "nil" }, { groupKey = false },
                             { lockdownRead = false, inCombat = "nil" } }) do
+        local label = "case " .. tostring(over.lockdownRead) .. "/" .. tostring(over.groupKey) .. "/"
+            .. tostring(over.inCombat)
         local s = choose({ missing("party1", {}) }, onKey(over))
-        if s then
-            t.eq(s.look, true, "look-only")
-            t.eq(s.kind, "group")
-        end
+        t.ok(s ~= nil, label .. ": the group step is there")
+        t.eq(s and { s.step, s.look, s.kind, s.unit } or nil, { "group", true, "group", "party1" }, label)
     end
+    local s = choose({ missing("party1", {}) }, onKey({ inCombat = true }))
+    t.ok(s == nil or (s.kind ~= "groupBuff" and s.kind ~= "dispel"), "in a fight: never on the key")
+    t.ok(s == nil or s.unit ~= "party1", "in a fight: never on the member")
 end
 
 tests["group key: no reason or note holds the member's name"] = function(t)
@@ -506,3 +513,5 @@ tests["group key: no reason or note holds the member's name"] = function(t)
         t.eq(tostring(row.note):find(NAME, 1, true), nil, "a note")
     end
 end
+
+return tests

@@ -167,6 +167,10 @@ return {
             r = ns.cast.Attributes({ spell = "Rejuvenation", kind = "heal", unit = unit }, plan(), nil, false)
             t.eq(attrs(r.button)[3], "unit=player", "never another player: " .. tostring(unit))
         end
+        -- D-24, Twin CHANGES-1 item 3: an emergency naming a party unit
+        -- also falls through to you, with its spell kept.
+        r = ns.cast.Attributes({ spell = "Rejuvenation", kind = "emergency", unit = "party2" }, plan(), nil, false)
+        t.eq({ attrs(r.button)[2], attrs(r.button)[3] }, { "spell=Rejuvenation", "unit=player" }, "emergency")
     end,
 
     -- Section 246 (N63-E): a macro-type secure button does not act on this
