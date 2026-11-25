@@ -151,7 +151,7 @@ T["not known: needs the level below it, not learned yet at it or above"] = funct
 end
 
 -- Section 623 item 1: the names the map may be called (the player's
--- Questie, in their language) take the place of the English one.
+-- client's own name for the area) take the place of the English one.
 T["map name: the names given are the ones that count"] = function(t)
     local yes = function() return true end
     local german = function() return "Mondlichtung" end

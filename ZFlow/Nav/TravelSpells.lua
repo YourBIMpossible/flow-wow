@@ -27,25 +27,18 @@ local _, ns = ...
 -- N.TRAVEL_PLAIN, N.TRAVEL_LEARN_PLAIN  labels when a spell name would be
 --                  over N.Waypoint.LABEL_MAX bytes (never cut)
 --
--- Lead section 623:
---   1. The map's name is checked in the player's language: against what
---      the player's own Questie calls the row's zone (its l10n module:
---      zoneLookup[group][area], and that name put through l10n itself,
---      which is how Questie translates a text). The row's English mapName
---      counts only when Questie gives no name. Read in Questie's public
---      repository (Localization/lookups/lookupZones.lua: [1] = { ...
---      [493]="Moonglade" }); that calling l10n gives the zone's name in
---      the client's language was not confirmed there: needs game test.
+-- Lead sections 623 and 625:
+--   1. The map's name is checked in the player's language: the client's
+--      name for the row's map (client.mapName) against the client's own
+--      name for the row's area (client.areaName, C_Map.GetAreaInfo). With
+--      no area name read, the row's English mapName is what it is checked
+--      against. With the map's name not read: no step.
 --   2. The trainer row is matched by the spell's name as the client says
---      it (client.spell(id).name) when it says one, else the row's name.
---      Core/Client.lua's spell read gives no name today, so on this build
---      it is always the row's English name.
+--      it (client.spell(id).name); the row's English name only when the
+--      client gives none.
 --   3. At the row's level or above (client.level()) the line for a spell
 --      not known is N.TRAVEL_NOT_YET, below it or with no level read
 --      N.TRAVEL_NEEDS.
--- N.TravelZoneNames(l10n, area) -> { name, ... }: what that Questie module
---   calls the zone, its own name first, then the translated one when it
---   differs; {} with none.
 -- N.TravelSpellTaught(lists, name) -> { npc, cost } or nil: the trainer
 --   whose saved list (char "learned.trainerLists", Spells/TrainerList.lua)
 --   has a row of that name, the first by key; cost in copper, left out
@@ -94,14 +87,15 @@ N.TRAVEL_SPELLS = {
         -- Moonglade is uiMapID 1450 has no source but legacy Flow, so the
         -- client is asked: the row counts only while it names 1450 so.
         map = 1450, mapName = "Moonglade",
-        -- The zone's number in the player's Questie (its zoneLookup has
-        -- [493]="Moonglade"), asked for the zone's name in their language.
+        -- The zone's area number, asked of the client for the zone's name
+        -- in the player's language. Source for 493: Questie's public
+        -- Localization/lookups/lookupZones.lua, [493]="Moonglade"; the
+        -- client's two names agreeing is what confirms it in game.
         area = 493,
     },
 }
 N.TRAVEL_NEEDS = "%s needs level %d"
 N.TRAVEL_NOT_YET = "%s: not learned yet"
-N.TRAVEL_L10N = "l10n" -- Questie's module of names and translations
 N.TRAVEL_TAUGHT = "%s. %s teaches it."
 N.TRAVEL_TAUGHT_COST = "%s. %s teaches it for %s."
 N.TRAVEL_LISTS = "learned.trainerLists" -- char: Spells/TrainerModule.lua M.PATH
@@ -118,26 +112,6 @@ end
 local function fit(label, plain)
     if #label > labelMax() then return plain end
     return label
-end
-
-function N.TravelZoneNames(l10n, area)
-    local out = {}
-    if type(l10n) ~= "table" or area == nil or type(l10n.zoneLookup) ~= "table" then return out end
-    local name = l10n.zoneLookup[area]
-    if type(name) ~= "string" then
-        name = nil
-        local groups = {}
-        for key, group in pairs(l10n.zoneLookup) do
-            if type(group) == "table" and type(group[area]) == "string" then groups[#groups + 1] = key end
-        end
-        table.sort(groups, function(a, b) return tostring(a) < tostring(b) end)
-        if groups[1] ~= nil then name = l10n.zoneLookup[groups[1]][area] end
-    end
-    if type(name) ~= "string" or name == "" then return out end
-    out[1] = name
-    local ok, said = pcall(function() return l10n(name) end)
-    if ok and type(said) == "string" and said ~= "" and said ~= name then out[2] = said end
-    return out
 end
 
 function N.TravelSpellTaught(lists, name)
@@ -250,18 +224,20 @@ function N.TravelSpellStepFrom(target, client, store)
         if not ok then return nil end
         return N.TravelSpellTaught(lists, name)
     end
-    -- Section 623: the player's level, the zone's names in their language
-    -- (their Questie; none: the row's English name), and the client's name
+    -- Sections 623 and 625: the player's level, the area's name in their
+    -- language (none read: the row's English name), and the client's name
     -- for the spell. The one row is asked about; a table with more rows
     -- would ask per row.
     local more = { level = ask(client, "level") }
     local row = N.TRAVEL_SPELLS[1]
     if type(row) == "table" then
-        local names = N.TravelZoneNames(ask(client, "questieModule", N.TRAVEL_L10N), row.area)
-        if #names > 0 then more.mapNames = names end
+        local area = type(row.area) == "number" and ask(client, "areaName", row.area) or nil
+        if type(area) == "string" and area ~= "" then more.mapNames = { area } end
         if type(row.id) == "number" then
             local read = ask(client, "spell", row.id)
-            if type(read) == "table" and type(read.name) == "string" then more.spellName = read.name end
+            if type(read) == "table" and type(read.name) == "string" and read.name ~= "" then
+                more.spellName = read.name
+            end
         end
     end
     return N.TravelSpellStep(N.TRAVEL_SPELLS, target, here, class, knows, mapName, taught, more)
