@@ -66,6 +66,20 @@ tests["quest spots word: the word prints the learned spots, one line a quest"] =
     t.eq(addon.problems:count(), before, "no problem raised")
 end
 
+-- Lead section 863.2: "spots" is F-new-4's word (Nav/LearnedForget.lua,
+-- LF.SPOTS_WORD); C-08's list has a word of its own, and typing it still
+-- prints the list, not F-new-4's count. Red before: both were "spots".
+tests["quest spots word: its own word, not F-new-4's"] = function(t)
+    local LF = ns.Nav.LearnedForget
+    t.ok(type(LF) == "table" and type(LF.SPOTS_WORD) == "string", "F-new-4's word is there")
+    t.ok(type(QS().WORD) == "string" and QS().WORD ~= "", "C-08's word is there")
+    if type(LF) ~= "table" then return end
+    t.ok(QS().WORD ~= LF.SPOTS_WORD, "not the same word: " .. tostring(QS().WORD))
+    t.ok(QS().WORD ~= LF.PLACES_WORD, "nor F-new-4's other word")
+    local c = boot(BOOK)
+    t.eq(typed(c), wanted(BOOK), "typing C-08's word prints the list")
+end
+
 tests["quest spots word: with nothing learned it says so, in one line"] = function(t)
     local c = boot(nil)
     local got = typed(c)
