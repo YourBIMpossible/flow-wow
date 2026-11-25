@@ -49,9 +49,9 @@ tests["intro still: the pure rule for off and on"] = function(t)
     t.eq(off.seconds, ns.Arrow.INTRO_SECONDS, "off: the full length")
     local on = S.Spec(true)
     t.eq(on.animate, false, "on: nothing turns")
-    t.near(on.show, 1.0, 1e-9, "on: shown for a second")
-    t.near(on.fade, 0.6, 1e-9, "on: then fades")
-    t.near(on.seconds, 1.6, 1e-9, "on: 1.6 seconds in all")
+    t.eq(on.show, 1.0, "on: shown for a second")
+    t.ok(math.abs(on.fade - 0.6) < 1e-9, "on: then fades")
+    t.ok(math.abs(on.seconds - 1.6) < 1e-9, "on: 1.6 seconds in all")
     t.ok(on.seconds < off.seconds, "on is shorter")
     -- Anything but a plain true is off, so a broken saved value never
     -- changes the intro.
