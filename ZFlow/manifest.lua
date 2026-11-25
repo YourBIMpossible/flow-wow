@@ -379,5 +379,7 @@ return {
     "UI/InventoryList.lua",
     -- FLOW-PARITY A2-14: zones with quests to take at your level, data only (after QuestRead, DungeonStates).
     "Nav/WhereNext.lua",
+    -- FLOW-PARITY A2-24: the notice for a zone with no quests in your level range, data only (after WhereNext, ZoneLeft).
+    "Nav/ZoneNotice.lua",
     },
 }
