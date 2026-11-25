@@ -909,6 +909,8 @@ function T.Declare(k, diag)
     local autoHeld, autoSig, autoAt, autoPos = false, nil, nil, nil
     -- Section 564 R6: what was last written to T.SAVED.
     local savedKey
+    -- Lead section 838 (b): how many times First moved a step (keepRoute's key).
+    local reordered = 0
 
     local function client() return ctx and ctx.client or k.client end
 
@@ -1214,9 +1216,13 @@ function T.Declare(k, diag)
     end
 
     -- A1-13: the n-th step shown goes first (T.First); the arrow follows it.
+    -- Lead section 838 (b): each move counts in keepRoute's key, so the new
+    -- order is saved at the next tick. Planning again rebuilds the order.
     function api.First(n)
         if not route then return false end
-        return T.First(route.stops, at, n)
+        local moved = T.First(route.stops, at, n)
+        if moved then reordered = reordered + 1 end
+        return moved
     end
 
     function api.Skip()
@@ -1597,7 +1603,7 @@ function T.Declare(k, diag)
         for _, s in ipairs(route and route.stops or {}) do
             if s.gone then gone = gone + 1 end
         end
-        local key = tostring(route) .. "|" .. tostring(at) .. "|" .. gone
+        local key = tostring(route) .. "|" .. tostring(at) .. "|" .. gone .. "|" .. reordered
         if key == savedKey then return end
         local ok, done, why = pcall(ctx.store.set, ctx.store, "char", T.SAVED, T.Keep(route, at))
         if not ok then
