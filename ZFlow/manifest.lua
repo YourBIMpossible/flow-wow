@@ -312,6 +312,7 @@ return {
     "Nav/QuestSpots.lua",
     -- P-TRIP (S39/S43/S40): quest routes and dungeon runs for the arrow (after RoutePlan, QuestSpots).
     "Nav/TripRoute.lua",
+    "Nav/TrackerList.lua",
     -- S37: what is still worth doing on this map before leaving (after TripRoute, Leaving).
     "Nav/ZoneLeft.lua",
     -- A2-20 (lead section 674): the tracker here mode, data half (after TripRoute).
