@@ -86,6 +86,12 @@ tests["forget: the name shown as written"] = function(t)
     t.eq(ns.Nav.LearnedForget.Shown("brog hamfist"), "Brog Hamfist")
     t.eq(ns.Nav.LearnedForget.Shown("o'malley"), "O'malley")
     t.eq(ns.Nav.LearnedForget.Shown(nil), "")
+    -- Lead section 818.3: with the rest of the line as typed, the name
+    -- keeps the player's own case; without it, title case as before.
+    t.eq(ns.Nav.LearnedForget.Shown("mcgee the elder", "forget McGee the Elder"), "McGee the Elder")
+    t.eq(ns.Nav.LearnedForget.Shown("nobody here", "forget  nobody HERE "), "nobody HERE")
+    t.eq(ns.Nav.LearnedForget.Shown("nobody here", "forget someone else"), "Nobody Here", "a typed text that is not this name: title case")
+    t.eq(ns.Nav.LearnedForget.Shown("nobody here", nil), "Nobody Here")
 end
 
 tests["forget: the places word forgets the one named and says so"] = function(t)

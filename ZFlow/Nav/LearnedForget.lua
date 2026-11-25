@@ -116,7 +116,14 @@ end
 -- slash command lower-cases the whole line before a word sees it, so each
 -- word of the name gets its first letter back (NPC names are written so).
 -- Lead section 816: the "nothing matched" reply names what was typed.
-function LF.Shown(text)
+-- typed (lead section 818.3): the rest of the slash line as the player
+-- wrote it, when the slash handler hands it over (Core/Diag.lua's second
+-- argument); then the name is taken from it, case and all.
+function LF.Shown(text, typed)
+    if type(typed) == "string" then
+        local name = typed:match("^%s*%S+%s+(.-)%s*$")
+        if name ~= nil and name ~= "" and name:lower() == tostring(text):lower() then return name end
+    end
     if type(text) ~= "string" then return "" end
     return (text:gsub("(%a)([%w']*)", function(first, rest) return first:upper() .. rest end))
 end
@@ -129,7 +136,7 @@ function LF.Declare(k, diag)
         if ctx then ctx.client.print(id.title .. ": " .. line) end
     end
 
-    local function places(rest)
+    local function places(rest, typed)
         local store = ctx.store
         local services = store:get("char", LF.SERVICES)
         local npcs = store:get("account", LF.NPCS)
@@ -142,7 +149,7 @@ function LF.Declare(k, diag)
         local s, a = copy(services), copy(npcs)
         local gone = LF.ForgetPlace(s, a, what)
         if #gone == 0 then
-            say(("no learned place called %s; nothing changed."):format(LF.Shown(what)))
+            say(("no learned place called %s; nothing changed."):format(LF.Shown(what, typed)))
             return
         end
         if count(s) ~= count(services) and store:set("char", LF.SERVICES, s) ~= true then
@@ -178,8 +185,8 @@ function LF.Declare(k, diag)
     end
 
     if diag and type(diag.commands) == "table" then
-        diag.commands[LF.PLACES_WORD] = function(rest)
-            if ctx then places(rest) end
+        diag.commands[LF.PLACES_WORD] = function(rest, typed)
+            if ctx then places(rest, typed) end
         end
         diag.commands[LF.SPOTS_WORD] = function(rest)
             if ctx then spots(rest) end
