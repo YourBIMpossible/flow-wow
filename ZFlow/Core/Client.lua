@@ -2675,14 +2675,19 @@ function ns.make.client(env)
     end
 
     -- G59 ACTS: the two writes behind the game options, called only by
-    -- UI/GameOptions.lua on the player own choice (the settings page or the
+    -- UI/GameOptions.lua and Settings/GameSuggest.lua on the player own choice (the settings page or the
     -- setting word). Nothing else may call them. Only the two settings the
     -- options use can be written; any other name is refused before the game
     -- is asked. Docs (warcraft.wiki.gg): C_CVar.SetCVar(name, value) answers
     -- whether it took; the older SetCVar(name, value) answers nothing.
     -- LoggingCombat(on) turns the combat log file on or off. Needs game test
     -- on 16001: each write, and a write in a fight.
-    local GAME_SETTINGS = { cameraDistanceMaxZoomFactor = true, showTimestamps = true }
+    -- F-14 (lead section 828.4): also the suggested game settings that
+    -- Settings/GameSuggest.lua sets on the player click. No key binding,
+    -- no graphics or video setting.
+    local GAME_SETTINGS = { cameraDistanceMaxZoomFactor = true, showTimestamps = true,
+        autoLootDefault = true, nameplateShowEnemies = true, instantQuestText = true,
+        autoSelfCast = true, statusText = true }
     function c.setGameSetting(name, v)
         if type(name) ~= "string" or not GAME_SETTINGS[name] then return nil, "notAllowed" end
         if type(v) ~= "string" then return nil, "bad" end
