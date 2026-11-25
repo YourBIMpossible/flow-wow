@@ -210,4 +210,89 @@ tests["dungeon wings: the vote, pure"] = function(t)
     t.eq(R.WingFor({}, {}, 41), nil, "no wings")
 end
 
+-- Twin, lead section 550 (F2): two wings one after the other. The Scarlet
+-- Monastery's wings are instances of one name, so coming out of the Library
+-- and into the Armory inside the grace time looks like walking back in. The
+-- first Armory boss tells them apart: the Library's run ends where you left
+-- it, and the Armory is a run of its own, with its own time and its own
+-- entering lines. Red on c717917d: one run, kept as the Armory's, with the
+-- Library's time in it, and no Armory lines.
+local function leave(c, clock)
+    c.setClock(clock)
+    c.setInstance({ inside = false, kind = "none" })
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(1, 5)
+end
+
+local function enter(c, clock)
+    c.setClock(clock)
+    c.setInstance({ inside = true, kind = "party" })
+    c.setInstanceName("Scarlet Monastery")
+    c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(1, 5)
+end
+
+local function said(c, text)
+    local n = 0
+    for _, line in ipairs(c.printed) do
+        if tostring(line) == text then n = n + 1 end
+    end
+    return n
+end
+
+local ARMORY_LINE = ": Scarlet Monastery (Armory): 1 of its quests in your log: Armory Quest (not done)"
+
+tests["dungeon wings: one wing, then another inside the grace time, are two runs"] = function(t)
+    local c, addon, base = boot({ clock = 1000 })
+    local V = ns.DungeonVisit
+    kill(c, "Test Houndmaster")
+    leave(c, 2200)
+    enter(c, 2320)
+    t.eq(said(c, ns.id.title .. ARMORY_LINE), 0, "which wing this is is not known yet: nothing is said of the Armory")
+    kill(c, "Test Champion")
+    t.eq(addon.store:get("char", "dungeon.times"), { ["Scarlet Monastery (Library)"] = 1200 },
+        "the Library's run ended where you left it")
+    t.eq(said(c, ns.id.title .. ARMORY_LINE), 1, "the Armory's entering lines are said, once")
+    local lines = typed(c, "dungeon")
+    t.ok(has(lines, "  Bosses killed this visit (1 of 1 in this wing): Test Champion"), "the summary is the Armory's")
+    leave(c, 3820)
+    c.setClock(3820 + V.GRACE + 1)
+    c.fire("ZONE_CHANGED_NEW_AREA")
+    c.advance(1, 5)
+    t.eq(addon.store:get("char", "dungeon.times"),
+        { ["Scarlet Monastery (Library)"] = 1200, ["Scarlet Monastery (Armory)"] = 1500 },
+        "the Armory's run is timed from when you came in")
+    t.eq(addon.problems:count(), base, "no new problem")
+end
+
+-- A death walk back into the same wing is still one run.
+tests["dungeon wings: out and back into the same wing inside the grace time is one run"] = function(t)
+    local c, addon = boot({ clock = 1000 })
+    local V = ns.DungeonVisit
+    kill(c, "Test Houndmaster")
+    leave(c, 1600)
+    enter(c, 1700)
+    kill(c, "Test Arcanist")
+    t.eq(addon.store:get("char", "dungeon.times"), nil, "nothing ended")
+    leave(c, 2800)
+    c.setClock(2800 + V.GRACE + 1)
+    c.fire("ZONE_CHANGED_NEW_AREA")
+    c.advance(1, 5)
+    t.eq(addon.store:get("char", "dungeon.times"), { ["Scarlet Monastery (Library)"] = 1800 }, "one run, start to end")
+end
+
+tests["dungeon wings: the split, pure"] = function(t)
+    local V = ns.DungeonVisit
+    local run = { name = "A", as = "A (One)", t = 100, said = true, xp = 70, back = 520, backLeft = 500, xpBack = 50 }
+    local old, fresh = V.Split(run, "A (Two)")
+    t.eq(old, { name = "A", as = "A (One)", t = 100, left = 500, xp = 50 })
+    t.eq(fresh, { name = "A", as = "A (Two)", t = 520, xp = 20 })
+    t.eq({ V.Split({ name = "A", as = "A (One)", t = 100 }, "A (Two)") }, {},
+        "never left: one instance with two wings, the last boss decides")
+    t.eq({ V.Split({ name = "A", t = 100, back = 520, backLeft = 500 }, "A (Two)") }, {}, "no wing known before")
+    t.eq({ V.Split(run, "A (One)") }, {}, "the same wing")
+    local stepped = V.Step({ name = "A", as = "A (One)", t = 100, left = 500, xp = 50 }, "A", 520)
+    t.eq({ stepped.back, stepped.backLeft, stepped.xpBack }, { 520, 500, 50 }, "coming back in is kept, for the split")
+end
+
 return tests
