@@ -30,6 +30,8 @@ return {
         "Core/Module.lua",
         "Core/Kernel.lua",
         "Core/Diag.lua",
+        -- F-03 (lead section 850): the api word's report, from the saved check (after Diag).
+        "Core/ApiReport.lua",
         "Items/Drops.lua",
         "Items/LootLeft.lua",
         "UI/Perf.lua",
