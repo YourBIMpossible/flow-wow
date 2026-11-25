@@ -16,7 +16,8 @@ tests["key binding F-19: the binding clicks the rotation key button, under a Z-F
     t.eq(type(KB()), "table")
     if type(KB()) ~= "table" then return end
     t.eq(KB().ACTION, "CLICK " .. ns.id.framePrefix .. "RotationKey:LeftButton")
-    t.eq(KB().HEADER, "ZFLOW")
+    t.eq(KB().HEADER, ns.id.bindingHeader)
+    t.eq(KB().HEADER_TEXT, ns.id.title)
 end
 
 tests["key binding F-19: the names the Key Bindings screen shows"] = function(t)

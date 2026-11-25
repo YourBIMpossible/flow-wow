@@ -1,0 +1,5 @@
+<Bindings>
+    <!-- F-19: the Z-Flow key; UI/KeyBindingNames.lua says its names. A click binding only. -->
+    <Binding name="CLICK ZFlowRotationKey:LeftButton" header="ZFLOW">
+    </Binding>
+</Bindings>
