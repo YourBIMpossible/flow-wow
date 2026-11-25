@@ -41,6 +41,14 @@ B.HELP = "what to put in the bank now, what your bank held at your last visit, "
 B.MAX = 10   -- rows a list shows before "and N more."
 B.NOT_SEEN = "In your bank: not seen yet. Open your bank once to fill this list."
 B.SELL_HEADER = "In your bank, you would now sell (take it out yourself):"
+-- E-19 join (lane A CHANGES-1): what a route, a quest or a hold wants from
+-- the bank, under Flow's labels; the sell header only for what is sold.
+B.ROUTE_HEADER = "In your bank, for your route (take it out yourself):"
+B.QUEST_HEADER = "In your bank, for a quest (take it out yourself):"
+B.HOLD_HEADER = "In your bank, held (take it out yourself):"
+-- Each take's header, in the order the groups are said.
+B.TAKES = { { take = "route", header = B.ROUTE_HEADER }, { take = "quest", header = B.QUEST_HEADER },
+    { take = "hold", header = B.HOLD_HEADER }, { take = "sell", header = B.SELL_HEADER } }
 B.NOTHING_TO_SELL = "Nothing in your bank to sell."
 B.SELL_NOT_SEEN = "In your bank to sell: not known until your bank is seen."
 B.FAILED = "could not be listed this time."
@@ -145,10 +153,29 @@ end
 function B.SellLines(rows, max)
     if type(rows) ~= "table" then return { B.SELL_NOT_SEEN } end
     if #rows == 0 then return { B.NOTHING_TO_SELL } end
-    return listed({ B.SELL_HEADER }, rows, max, function(r)
-        local head = whole(r.count) and (r.count .. " x " .. nameOf(r)) or nameOf(r)
-        return head .. ": " .. tostring(r.reason)
-    end)
+    -- One group per take, each in the rows' own order; a row with no take
+    -- is the sell rules' (B.SellRows).
+    local groups = {}
+    for _, r in ipairs(rows) do
+        local take = r.take
+        if take == nil then take = "sell" end
+        groups[take] = groups[take] or {}
+        local g = groups[take]
+        g[#g + 1] = r
+    end
+    local lines = {}
+    for _, kind in ipairs(B.TAKES) do
+        local g = groups[kind.take]
+        if g then
+            lines[#lines + 1] = kind.header
+            listed(lines, g, max, function(r)
+                local head = nameOf(r)
+                if whole(r.count) then head = r.count .. " x " .. head end
+                return head .. ": " .. tostring(r.reason)
+            end)
+        end
+    end
+    return lines
 end
 
 function B.Declare(k, diag)
