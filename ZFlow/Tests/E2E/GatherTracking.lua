@@ -126,6 +126,39 @@ tests["gather tracking: the suggestion goes to the key as a spell on yourself"] 
     t.eq(type(s) == "table" and { s.spell, s.kind, s.unit } or nil, { MINERALS, "buff", "player" })
 end
 
+-- Recovery R2 (lead section 564): with a buff still to cast the rotation's
+-- last step never wins, so the offer stands on the self button, where the
+-- player's own click or key casts it.
+local function selfHeld(c)
+    for _, h in ipairs(c.clickRows or {}) do
+        if h.spec and h.spec.name == ns.id.framePrefix .. "SelfButton" then
+            local a = h.slots[1].attrs
+            return a.type, a.spell, a.unit
+        end
+    end
+    return nil
+end
+
+tests["gather tracking R2: the self button offers Find Minerals while the rotation asks for something else"] = function(t)
+    local c, _, icon = start()
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Might"] = 200 }); c.advance(1, 5)
+    t.ok(not offered(icon, MINERALS), "the rotation asks for the seal, not the tracking")
+    t.eq({ selfHeld(c) }, { "spell", MINERALS, "player" }, "the self button holds Find Minerals on you")
+    c.setTracking(MINERALS, true); c.advance(1, 5)
+    local _, spell = selfHeld(c)
+    t.ok(spell ~= MINERALS, "tracking on: the self button lets it go, got " .. tostring(spell))
+end
+
+tests["gather tracking R2: the two buttons never both hold the tracking; mounted, nothing"] = function(t)
+    local c, _, icon = start()
+    t.ok(offered(icon, MINERALS), "every buff up: the rotation offers it")
+    local _, spell = selfHeld(c)
+    t.ok(spell ~= MINERALS, "so the self button does not, got " .. tostring(spell))
+    c.setPlayerBuffs({ ["Devotion Aura"] = true, ["Blessing of Might"] = 200 }); c.setMounted(true); c.advance(1, 5)
+    _, spell = selfHeld(c)
+    t.ok(spell ~= MINERALS, "mounted: not offered on the self button")
+end
+
 -- Lead section 230, MyBuddy GT-1, GT-2 and the key-attribute gap on a956ae3.
 
 -- GT-1: Flow refused when any tracking was on (X.AnyTracked): a hunter's

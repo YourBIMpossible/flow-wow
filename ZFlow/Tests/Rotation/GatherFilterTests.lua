@@ -91,6 +91,36 @@ tests["gather filter: a step that is not a table"] = function(t)
     t.eq(G.Step("x"), nil)
 end
 
+-- Self (recovery R2): the self button's offer.
+
+tests["gather self: the offer for the self button is the step's spell on yourself"] = function(t)
+    t.eq(G.Self(snap({ dead = false })), { spell = MINERALS, unit = "player" })
+    t.eq(G.Self(snap({ dead = false, professions = { Herbalism = true } })), { spell = HERBS, unit = "player" })
+    t.eq(G.Self(snap({ dead = false, resting = true })), { spell = MINERALS, unit = "player" }, "in a town too")
+end
+
+tests["gather self: not what the Flow button already holds, not when dead or dead unread"] = function(t)
+    t.eq(G.Self(snap({ dead = false }), { spell = MINERALS }), nil, "the Flow button holds it")
+    t.eq(G.Self(snap({ dead = false }), { spell = "Smite" }), { spell = MINERALS, unit = "player" })
+    t.eq(G.Self(snap({ dead = true })), nil, "dead")
+    t.eq(G.Self(snap()), nil, "dead not read")
+    t.eq(G.Self(nil), nil)
+end
+
+tests["gather self: every guard of the step holds"] = function(t)
+    for name, over in pairs({
+        ["switched off"] = { gatherOn = false }, ["in a fight"] = { inCombat = true },
+        ["mounted"] = { mounted = true }, ["mounted unread"] = { mounted = "nil" },
+        ["flight path"] = { onTaxi = true }, ["flight path unread"] = { onTaxi = "nil" },
+        ["eating"] = { buffs = { Food = 10 } }, ["buffs unread"] = { buffs = "nil" },
+        ["a tracking on"] = { trackingAny = true }, ["tracking unread"] = { trackingAny = "nil" },
+        ["professions unread"] = { professions = "nil" }, ["no profession"] = { professions = {} },
+    }) do
+        over.dead = false
+        t.eq(G.Self(snap(over)), nil, name)
+    end
+end
+
 -- Read
 
 tests["gather filter: tracking read nil vs empty vs missing reader"] = function(t)
