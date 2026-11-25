@@ -250,19 +250,24 @@ function P.Declare(k)
         if not t then return end
         if checkedAt and t - checkedAt < P.EVERY then return end
         checkedAt = t
-        dirty = false
         if not party() or not prefixOk then return end
         local c = client()
         local okL, rows = pcall(c.questLog)
         if not okL or type(rows) ~= "table" then return end
         local msgs = P.Encode(P.Mine(rows), ns.id.commVersion)
         local key = table.concat(msgs, "\n")
-        if key == lastKey then return end
+        if key == lastKey then
+            dirty = false
+            return
+        end
+        -- Lead section 833: still dirty until every part went, so a failed
+        -- send is tried again at the next check.
         for _, m in ipairs(msgs) do
             local ok, sent = pcall(c.addonSend, P.Prefix(), m, P.CHANNEL)
             if not ok or sent ~= true then return end
         end
         lastKey = key
+        dirty = false
     end
 
     local function roster()
@@ -291,8 +296,11 @@ function P.Declare(k)
         if prefix ~= P.Prefix() or channel ~= P.CHANNEL then return end
         local who = plain(sender)
         if not who or who == me() then return end
+        -- Lead section 833: kept only with the setting on, and only from a
+        -- member of the party the client lists (alone or in a raid: none).
+        if not on() then return end
         local names = party()
-        if names and not names[who] then return end
+        if not names or not names[who] then return end
         local d = P.Decode(text, ns.id.commVersion)
         if not d then return end
         if d.seq == 1 then
