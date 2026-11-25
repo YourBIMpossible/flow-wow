@@ -32,7 +32,7 @@ local _, ns = ...
 -- N.TravelPictureIcon(step) -> { kind = "spell", spell } or { kind = "hearth" } or nil
 --   step is the quest arrow's step after N.TravelVia: step.via says what
 --   it is ("spell", "hearth"; a ride or a flight is no picture) and
---   step.action.spell names the spell when the step carries it.
+--   step.spell names the spell when the step carries it.
 -- N.TravelPicture(icon, point, screenW, screenH) -> pic or nil
 --   point   the quest arrow's own point { anchor, relative anchor, x, y }
 --   pic = { icon, at = that point (a copy), size, alpha,
@@ -77,8 +77,7 @@ function N.TravelPictureIcon(step)
     if type(step) ~= "table" then return nil end
     if step.via == "hearth" then return { kind = "hearth" } end
     if step.via ~= "spell" then return nil end
-    local spell = type(step.action) == "table" and step.action.spell or nil
-    return { kind = "spell", spell = type(spell) == "string" and spell or nil }
+    return { kind = "spell", spell = type(step.spell) == "string" and step.spell or nil }
 end
 
 function N.TravelPicture(icon, point, screenW, screenH)

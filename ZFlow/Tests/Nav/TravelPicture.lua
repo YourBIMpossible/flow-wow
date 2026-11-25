@@ -9,7 +9,7 @@ local N = ns.Nav
 local T = {}
 
 local SPELL_STEP = { label = "Cast Teleport: Moonglade", still = true, via = "spell",
-                     action = { kind = "spell", spell = "Teleport: Moonglade", text = "Cast Teleport: Moonglade" } }
+                     spell = "Teleport: Moonglade" }
 local HEARTH_STEP = { label = "Hearth to Goldshire", still = true, via = "hearth" }
 local MID = { "CENTER", "CENTER", 0, -120 }
 
@@ -19,6 +19,7 @@ T["picture: which step gets one: a cast or the hearthstone, nothing else"] = fun
     -- The step does not name its spell: still a picture (the client shows
     -- the question mark), never a made-up spell.
     t.eq(N.TravelPictureIcon({ label = "Cast X", via = "spell" }), { kind = "spell" })
+    t.eq(N.TravelPictureIcon({ label = "Cast X", via = "spell", spell = 7 }), { kind = "spell" }, "not a name")
     t.eq(N.TravelPictureIcon({ label = "Fly to X", via = "flight" }), nil, "a flight")
     t.eq(N.TravelPictureIcon({ label = "Ride", via = "ride" }), nil, "a ride")
     t.eq(N.TravelPictureIcon({ label = "Wolves" }), nil, "a plain step")

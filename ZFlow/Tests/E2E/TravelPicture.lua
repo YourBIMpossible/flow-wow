@@ -11,8 +11,7 @@ local tests = {}
 local N = ns.Nav
 
 local SPELL, SPELL_ID = "Teleport: Moonglade", 18960
-local CAST = { label = "Cast " .. SPELL, still = true, via = "spell",
-               action = { kind = "spell", spell = SPELL, text = "Cast " .. SPELL } }
+local CAST = { label = "Cast " .. SPELL, still = true, via = "spell", spell = SPELL }
 local HEARTH = { label = "Hearth to Goldshire", still = true, via = "hearth" }
 local WALK = { label = "Wolves", place = { map = 1411, x = 0.5, y = 0.3 } }
 local MID = { "CENTER", "CENTER", 0, -120 }
