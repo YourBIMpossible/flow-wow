@@ -46,7 +46,8 @@ end
 tests["bank take out: what the sell rules sell, by name, with its count and reason"] = function(t)
     local rows, unread = T.Rows(ITEMS, { sell(4865, "Ruined Pelt", 3), sell(9001, "Broken Fang", 7) }, nil, nil)
     t.eq(keys(rows), { 9001, 4865 }, "by name, not by count")
-    t.eq(rows[1], { key = 9001, id = 9001, name = "Broken Fang", count = 7, quality = 0, reason = "made up" })
+    t.eq(rows[1], { key = 9001, id = 9001, name = "Broken Fang", count = 7, quality = 0, reason = "made up",
+                    take = T.SELL, next = ns.BankerRows.NextChoice(nil) })
     t.eq(rows[2].count, 3)
     t.eq(unread, 0)
 end
@@ -109,6 +110,70 @@ tests["bank take out: where in the bank, only when a read gives it"] = function(
     t.eq(T.Where({ bankSlots = function() error("boom") end }), nil)
     t.eq(T.Where({ bankSlots = function() return nil end }), nil, "the bank closed: not known")
     t.eq(T.Rows(ITEMS, { sell(4865, "Ruined Pelt", 3) }, nil, nil)[1].slots, nil)
+end
+
+-- E-19 one-source join: Flow's whole B.TakeOutRows (a529eea
+-- Modules/Items/Banker.lua, after B.ChoiceRows). A thing a route step wants
+-- (e.step), a quest wants (e.quest) or a reservation holds (e.hold, Z-Flow's
+-- own, between quest and sell) is taken out too. One row per thing, the
+-- winner by Flow's priority route > quest > hold > sell, then one sort of all
+-- rows by name, then key. NOT_OUT holds back the sell rows only.
+local WANTED = {
+    { key = 9002, name = "Bent Sword", count = 1, quality = 0, classID = 2, step = "Get from your bank: Bent Sword" },
+    { key = 9003, name = "Torn Vest", count = 1, quality = 0, classID = 4, quest = "Vests Wanted" },
+    { key = 9004, name = "Old Token", count = 2, quality = 0, classID = 12, hold = "for one of your item goals" },
+    { key = 4865, name = "Ruined Pelt", count = 3, quality = 0, classID = 15, quest = "Pelts", hold = "held" },
+    { key = 9001, name = "Broken Fang", count = 7, quality = 0, classID = 15 },
+    { key = 9006, name = "Apple", count = 1, classID = 0, step = "Buy apples", quest = "Fruit", hold = "held" },
+}
+
+local function takes(rows)
+    local out = {}
+    for i, r in ipairs(rows) do out[i] = r.take end
+    return out
+end
+
+tests["bank take out: one row per thing, the winner by Flow's priority, all by name"] = function(t)
+    local sells = { sell(4865, "Ruined Pelt", 3), sell(9001, "Broken Fang", 7), sell(9002, "Bent Sword", 1) }
+    local rows, unread = T.Rows(WANTED, sells, nil, nil)
+    t.eq(keys(rows), { 9006, 9002, 9001, 9004, 4865, 9003 }, "one sort by name, not route rows first")
+    t.eq(takes(rows), { T.ROUTE, T.ROUTE, T.SELL, T.HOLD, T.QUEST, T.QUEST })
+    t.eq(rows[1].reason, WANTED[6].step, "the route wins over a quest and a hold")
+    t.eq(rows[5].reason, WANTED[4].quest, "a quest wins over a hold and a sell")
+    t.eq(rows[4].reason, WANTED[3].hold)
+    t.eq(rows[2].count, 1, "the bank's count")
+    t.eq(rows[2].next, nil, "no keep or sell choice for a wanted thing")
+    t.eq(rows[3].next, ns.BankerRows.NextChoice(nil))
+    t.eq(unread, 0)
+end
+
+tests["bank take out: weapons, armor and quest things are held back from the sell rows only"] = function(t)
+    local rows = T.Rows(WANTED, { sell(9002, "Bent Sword", 1), sell(9003, "Torn Vest", 1) }, nil, nil)
+    local by = {}
+    for _, r in ipairs(rows) do by[r.key] = r.take end
+    t.eq(by[9002], T.ROUTE, "a weapon a route step wants is taken out (as Flow)")
+    t.eq(by[9003], T.QUEST, "armor a quest wants is taken out")
+    t.eq(by[9004], T.HOLD, "a quest thing a reservation holds is taken out")
+    local plain = {
+        { key = 9002, name = "Bent Sword", count = 1, classID = 2 },
+        { key = 9003, name = "Torn Vest", count = 1, classID = 4 },
+    }
+    t.eq(T.Rows(plain, { sell(9002, "Bent Sword", 1), sell(9003, "Torn Vest", 1) }, nil, nil), {},
+        "the same weapon and armor, only sold: not listed")
+end
+
+tests["bank take out: kept in the bank, nothing takes it out"] = function(t)
+    local sells = { sell(4865, "Ruined Pelt", 3), sell(9001, "Broken Fang", 7) }
+    local rules = { [9002] = "bank", [9003] = "bank", [9004] = "bank", [4865] = "bank", [9006] = "carry" }
+    t.eq(keys((T.Rows(WANTED, sells, rules, nil))), { 9006, 9001 })
+end
+
+tests["bank take out: your own sell choice is marked"] = function(t)
+    local mine = sell(9001, "Broken Fang", 7)
+    mine.mine = true
+    local rows = T.Rows(ITEMS, { mine, sell(4865, "Ruined Pelt", 3) }, nil, nil)
+    t.eq(rows[1].mine, true)
+    t.eq(rows[2].mine, nil)
 end
 
 -- ---------------------------------------------------------------- module
@@ -230,6 +295,96 @@ tests["bank take out module: look only, no acting client call is made"] = functi
         t.ok(not (w:find("withdraw") or w:find("deposit") or w:find("^take") or w:find("click") or w:find("auto")),
             "no acting function: " .. w)
     end
+end
+
+-- ------------------------------------------------- one source, every surface
+
+-- One saved bank, one set of bank rules, the reservations: the Take out
+-- list, E-21's route step count, the banker view's bank rows and the banker
+-- word's to-sell lines all come from the same rows. A banked grey weapon and
+-- a banked grey armor piece the sell rules would sell are in none of them.
+local LINEN = 2589
+local EVERY_INFO = {
+    [LINEN] = { name = "Linen Cloth", quality = 1, sellPrice = 13, classID = 7 },
+    [2318] = { name = "Light Leather", quality = 1, sellPrice = 15, classID = 7 },
+    [4865] = { name = "Ruined Pelt", quality = 0, sellPrice = 5, classID = 15 },
+    [9001] = { name = "Broken Fang", quality = 0, sellPrice = 3, classID = 15 },
+    [9002] = { name = "Bent Sword", quality = 0, sellPrice = 7, classID = 2 },
+    [9003] = { name = "Torn Vest", quality = 0, sellPrice = 6, classID = 4 },
+}
+local EVERY_BANK = { at = 1000, counts = { [2318] = 40, [4865] = 3, [9001] = 7, [9002] = 1, [9003] = 1 } }
+local EVERY_BANKER = { a = { map = 1411, x = 0.5, y = 0.3, name = "Made Up Banker", kinds = { banker = true } } }
+
+local function startEvery()
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, { learned = { places = { services = EVERY_BANKER } } })
+    c.setClock(5000)
+    c.setItemInfo(EVERY_INFO)
+    local bag = {}
+    for i = 1, ns.BankPutAway.MIN_STACKS do bag[i] = { item = LINEN, count = 20 } end
+    c.setBagItems(bag)
+    c.setBags({ { free = 10, total = 16, family = 0 } })
+    c.setZone(1, 1411)
+    c.setPosition(1411, 0.5, 0.5)
+    c.setMapSize(1411, 1000, 500)
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    ns.Reservations.Declare(k)
+    local api = T.Declare(k)
+    ns.BankPutAway.Declare(k)
+    ns.Banker.Declare(k, d)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    return k, c, api
+end
+
+local function keySet(rows)
+    local out = {}
+    for _, r in ipairs(rows) do out[#out + 1] = tostring(r.key) end
+    table.sort(out)
+    return out
+end
+
+tests["bank take out: one fixture, every surface lists the same rows"] = function(t)
+    local k, c, api = startEvery()
+    t.eq(k.store:set("char", ns.HaveTip.PATH, EVERY_BANK), true)
+    t.eq(k.store:set("account", "settings.banker.rules", { [9001] = "bank" }), true)
+    local list = api.list()
+    t.eq(keySet(list.rows), { "4865" }, "the pelt; not the fang you keep in the bank, not the sword or the vest")
+    -- E-21's step counts the same list.
+    local step = k.use(ns.BankPutAway.NAME).Step()
+    t.eq(step and step.out, #list.rows)
+    -- The banker view, from the same bank, decisions and rules.
+    local R = ns.Reservations
+    local r = ns.BankList.Current(k.use)
+    local context = ns.BankList.Context(k.store, R.HeldIn(R.Grants(r), "bank"))
+    local bank = {}
+    for i, e in ipairs(ns.Banker.Items(EVERY_BANK, c.itemInfo)) do
+        local x = {}
+        for f, v in pairs(e) do x[f] = v end
+        x.decision = ns.Disposition.Decide(e, context)
+        bank[i] = x
+    end
+    local inBank = {}
+    for _, row in ipairs(ns.BankerRows.SellRows({}, bank, context.bankRules)) do
+        if row.bank then inBank[#inBank + 1] = row end
+    end
+    t.eq(keySet(inBank), keySet(list.rows), "the banker view's bank rows")
+    -- The banker word's to-sell lines are the same rows' lines.
+    local before = #c.printed
+    c.slashes[ns.id.slash]("banker")
+    local want = ns.Banker.SellLines(list.rows)
+    local lines = {}
+    for i = before + 1, #c.printed do lines[#lines + 1] = c.printed[i] end
+    local tail = {}
+    for i = #lines - #want + 1, #lines do tail[#tail + 1] = ns.ItemPresent.Plain(lines[i]) end
+    local p = ns.id.title .. ": "
+    local plainWant = {}
+    for i, line in ipairs(want) do plainWant[i] = p .. ns.ItemPresent.Plain(line) end
+    t.eq(tail, plainWant, "the banker word's bank rows")
 end
 
 return tests

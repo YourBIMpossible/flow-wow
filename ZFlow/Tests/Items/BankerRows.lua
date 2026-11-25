@@ -40,7 +40,10 @@ tests["banker rows: to sell, then kept by your own choice, then what is in the b
         { key = 12, name = "Hearthstone", count = 1, decision = { action = "keep", rule = "unsellable" } },
         { key = 13, name = "Linen Cloth", count = 4, decision = { action = "keep", rule = "yourChoice" } },
     }
-    local bank = { { key = 20, name = "Old Boot", count = 1, decision = sell("junk") },
+    -- E-19 join: a bank thing to sell needs its kind read (classID; 15 is
+    -- miscellaneous), as BankTakeOut's rule: a weapon can't be told from a
+    -- pelt otherwise.
+    local bank = { { key = 20, name = "Old Boot", count = 1, classID = 15, decision = sell("junk") },
                    { key = 21, name = "Copper Ore", count = 5, decision = { action = "keep", rule = "neverSell" } } }
     local rows = BR().SellRows(bags, bank)
     t.eq(#rows, 4, "the sold one, two kept by choice, the bank's sold one")
@@ -104,7 +107,7 @@ tests["banker rows: your own choice is marked, a sell or a keep"] = function(t)
         { key = 30, name = "Old Boots", count = 1, decision = mineSell },
         { key = 31, name = "Lucky Coin", count = 1, decision = mineKeep },
         { key = 32, name = "Broken Fang", count = 1, decision = sell("junk") },
-    }, { { key = 33, name = "Old Hat", count = 1, decision = mineSell } })
+    }, { { key = 33, name = "Old Hat", count = 1, classID = 15, decision = mineSell } })
     local by = {}
     for _, r in ipairs(rows) do by[r.key] = r end
     t.eq(by[30] and by[30].mine, true, "a sell you chose")
@@ -127,14 +130,50 @@ tests["banker rows: a thing you keep in the bank is never taken out"] = function
     local bank = {
         { key = 50, name = "Dig Rat", count = 8, step = "Buy 8 Dig Rat", decision = { action = "keep" } },
         { key = 51, name = "Gnoll Paw", count = 4, quest = "Wanted: Gnolls", decision = { action = "keep" } },
-        { key = 52, name = "Old Boot", count = 1, decision = sell("junk") },
-        { key = 53, name = "Old Hat", count = 1, decision = sell("junk") },
+        { key = 52, name = "Old Boot", count = 1, classID = 15, decision = sell("junk") },
+        { key = 53, name = "Old Hat", count = 1, classID = 15, decision = sell("junk") },
     }
     local rules = { [50] = "bank", [51] = "bank", [52] = "bank", [53] = "carry" }
     local rows = BR().SellRows({}, bank, rules)
     t.eq(#rows, 1, "only the one you did not choose to keep in the bank")
     t.eq(rows[1] and rows[1].key, 53)
     t.eq(#BR().SellRows({}, bank, nil), 4, "no rules: as before")
+end
+
+-- E-19 one-source join: the bank half is BankTakeOut's rule (Flow's
+-- B.NOT_OUT): a banked weapon or armor piece the sell rules would sell is
+-- not offered; one a route step wants still is. Fails before: the view
+-- offered the weapon and the armor.
+tests["banker rows: a banked weapon or armor to sell is not offered"] = function(t)
+    if type(BR()) ~= "table" then return t.ok(false, "not loaded") end
+    local bank = {
+        { key = 60, name = "Bent Sword", count = 1, classID = 2, decision = sell("junk") },
+        { key = 61, name = "Torn Vest", count = 1, classID = 4, decision = sell("junk") },
+        { key = 62, name = "Ruined Pelt", count = 3, classID = 15, decision = sell("junk") },
+        { key = 63, name = "Rusty Axe", count = 1, classID = 2, step = "Get from your bank: Rusty Axe",
+          decision = sell("junk") },
+        { key = 64, name = "Linen Cloth", count = 2, decision = sell("junk") },
+    }
+    local by = {}
+    for _, r in ipairs(BR().SellRows({}, bank)) do by[r.key] = r end
+    t.eq(by[60], nil, "the weapon stays in the bank")
+    t.eq(by[61], nil, "the armor stays in the bank")
+    t.eq(by[62] and by[62].take, ns.BankTakeOut.SELL)
+    t.eq(by[63] and by[63].take, ns.BankTakeOut.ROUTE, "a weapon a route step wants is taken out")
+    t.eq(by[64], nil, "its kind not read: not offered")
+end
+
+tests["banker rows: rows handed in are the bank half"] = function(t)
+    if type(BR()) ~= "table" then return t.ok(false, "not loaded") end
+    local taken = { { key = 70, name = "Ruined Pelt", count = 3, take = ns.BankTakeOut.SELL, reason = "junk" },
+                    { key = 71, count = 1, take = ns.BankTakeOut.QUEST, reason = "Pelts" } }
+    local rows = BR().SellRows({}, { { key = 99, name = "Ignored", count = 1, classID = 15, decision = sell("junk") } },
+        nil, taken)
+    t.eq(#rows, 2)
+    t.eq(rows[1].key, 70)
+    t.eq(rows[1].bank, true)
+    t.eq(rows[2].name, "item 71", "a name not read, as the view names it")
+    t.eq(rows[2].take, ns.BankTakeOut.QUEST)
 end
 
 return tests

@@ -16,6 +16,8 @@ local INFO = {
     [858] = { name = "Lesser Healing Potion", quality = 1, sellPrice = 20, classID = 0 },
     [4865] = { name = "Ruined Pelt", quality = 0, sellPrice = 5, classID = 15 },
     [2318] = { name = "Light Leather", quality = 1, sellPrice = 15, classID = 7 },
+    [9002] = { name = "Bent Sword", quality = 0, sellPrice = 7, classID = 2 },
+    [9003] = { name = "Torn Vest", quality = 0, sellPrice = 6, classID = 4 },
 }
 
 local function info(item)
@@ -146,6 +148,22 @@ tests["banker word: the bank as last seen, and what in it you would sell"] = fun
     c.slashes[ns.id.slash]("banker")
     local lines = said(c, before)
     t.eq(lines[#lines], p .. B.NOTHING_TO_SELL)
+end
+
+-- E-19 one-source join: the word's bank rows are BankTakeOut's (Flow's
+-- B.NOT_OUT). A banked grey weapon and armor piece the sell rules would sell
+-- are not listed to take out. Fails before: both were listed.
+tests["banker word: a banked weapon or armor to sell is not listed"] = function(t)
+    local k, c = start()
+    t.eq(k.store:set("char", ns.HaveTip.PATH, { at = 1000, counts = { [4865] = 3, [9002] = 1, [9003] = 1 } }), true)
+    local sold = {}
+    for _, r in ipairs(B.SellRows(B.Items(k.store:get("char", ns.HaveTip.PATH), info), {})) do sold[r.key] = true end
+    t.ok(sold[9002] and sold[9003], "the sell rules would sell both")
+    local before = #c.printed
+    c.slashes[ns.id.slash]("banker")
+    local lines = said(c, before)
+    local p = ns.id.title .. ": "
+    t.eq({ lines[#lines - 1], lines[#lines] }, { p .. B.SELL_HEADER, p .. "3 x Ruined Pelt: junk" })
 end
 
 tests["banker word: bags not read still lists the bank"] = function(t)
