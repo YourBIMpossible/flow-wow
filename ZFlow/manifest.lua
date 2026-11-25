@@ -150,6 +150,8 @@ return {
         "Nav/RouteColor.lua",
         -- F-23 (section 828.2): the route and map colour of a role in a palette (after RouteColor).
         "Nav/RoutePalette.lua",
+        -- B-17: the route colour of each order mode, as Flow (section 844).
+        "Nav/RouteOrderColor.lua",
         "Nav/Bearing.lua",
         "Nav/ArrowView.lua",
         "Nav/ArrowMotion.lua",
