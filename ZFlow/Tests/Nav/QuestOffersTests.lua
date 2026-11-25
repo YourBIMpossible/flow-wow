@@ -173,6 +173,19 @@ tests["quest offers: the word lists and clears, and says how many"] = function(t
     t.ok(c.printed[#c.printed]:find(QO.NONE, 1, true) ~= nil)
 end
 
+-- Lead section 812 (Lazy CHANGES-1): clear counts only the quests dropped
+-- now, the ones the word lists, but empties the whole saved list, a pause
+-- that has run out included.
+tests["quest offers: clear counts the quests dropped now and empties the list"] = function(t)
+    local _, c, _, d = start({ offered = { ids = {}, titles = {} },
+        char = { learned = { facts = { notOffered = { [99] = { firstAt = 1 } } } } } })
+    c.fire("GOSSIP_SHOW")
+    d.commands[QO.WORD]("clear")
+    t.ok(c.printed[#c.printed]:find(string.format(QO.CLEARED, 1), 1, true) ~= nil,
+        "one dropped now, the run-out pause not counted: " .. tostring(c.printed[#c.printed]))
+    t.eq(next(saved(c) or {}), nil, "the saved list is empty, the old pause too")
+end
+
 tests["quest offers: a talk Questie could not judge is tried again"] = function(t)
     local k, c, api, _, db = start({ offered = { ids = {}, titles = {} }, ready = false })
     c.fire("GOSSIP_SHOW")
