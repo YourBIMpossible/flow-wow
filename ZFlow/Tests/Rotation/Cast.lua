@@ -244,6 +244,22 @@ return {
         t.eq(u3 ~= "party1", true, "look-only stays off the key")
     end,
 
+    -- D-24, Twin CHANGES-2 item 1: the key frame holds the plan, so the
+    -- group pick reaches the key as the plan's action on its party member;
+    -- no raid unit, no other unit.
+    ["attributes: the plan's action may name a party member, never a raid unit"] = function(t)
+        local p = plan()
+        p.action = { spell = "Mark of the Wild", unit = "party1" }
+        local got = {}
+        for _, a in ipairs(ns.cast.Attributes(nil, p, nil, false).button) do got[a.attr] = a.value end
+        t.eq({ got.spell, got.unit }, { "Mark of the Wild", "party1" })
+        p = plan()
+        p.action = { spell = "Mark of the Wild", unit = "raid3" }
+        got = {}
+        for _, a in ipairs(ns.cast.Attributes(nil, p, nil, false).button) do got[a.attr] = a.value end
+        t.ok(got.unit ~= "raid3", "a raid unit is refused")
+    end,
+
     -- Section 246 (N63-E): no suggestion, plan or Alt item ever gives a
     -- button row the type "macro", or a macro text.
     ["attributes: no row is ever a macro"] = function(t)

@@ -477,7 +477,7 @@ local function onKey(over)
 end
 
 tests["group key: out of a fight with the lock off, a buff goes on the key, on the member"] = function(t)
-    local s = choose({ missing("party1", {}) }, onKey())
+    local s = choose({ missing("party1", { [MOTW] = false }) }, onKey())
     t.eq(s and { s.spell, s.unit, s.look, s.kind } or nil, { MOTW, "party1", nil, "groupBuff" })
 end
 
@@ -497,17 +497,17 @@ tests["group key: a fight, a lock that is on or not read, or the setting off kee
                             { lockdownRead = false, inCombat = "nil" } }) do
         local label = "case " .. tostring(over.lockdownRead) .. "/" .. tostring(over.groupKey) .. "/"
             .. tostring(over.inCombat)
-        local s = choose({ missing("party1", {}) }, onKey(over))
+        local s = choose({ missing("party1", { [MOTW] = false }) }, onKey(over))
         t.ok(s ~= nil, label .. ": the group step is there")
         t.eq(s and { s.step, s.look, s.kind, s.unit } or nil, { "group", true, "group", "party1" }, label)
     end
-    local s = choose({ missing("party1", {}) }, onKey({ inCombat = true }))
+    local s = choose({ missing("party1", { [MOTW] = false }) }, onKey({ inCombat = true }))
     t.ok(s == nil or (s.kind ~= "groupBuff" and s.kind ~= "dispel"), "in a fight: never on the key")
     t.ok(s == nil or s.unit ~= "party1", "in a fight: never on the member")
 end
 
 tests["group key: no reason or note holds the member's name"] = function(t)
-    local s, trace = choose({ missing("party1", {}) }, onKey())
+    local s, trace = choose({ missing("party1", { [MOTW] = false }) }, onKey())
     t.eq(tostring(s and s.reason):find(NAME, 1, true), nil, "the reason")
     for _, row in ipairs(trace or {}) do
         t.eq(tostring(row.note):find(NAME, 1, true), nil, "a note")
