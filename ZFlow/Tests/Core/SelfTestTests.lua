@@ -107,4 +107,23 @@ tests["self-test: the word prints the head under the title and a line for each r
     t.eq(type(ns.selfTest), "table", "the addon's own is declared")
 end
 
+-- Lead section 671 (Twin's review): an identity with no title still gets a
+-- head line, under the add-on's own name.
+tests["self-test: with no title in the identity the head line names the add-on"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    local k = ns.Kernel({}, c)
+    local diag = ns.Diag.Start(k)
+    S.Declare(k, diag)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    local real = k.id
+    k.id = { addon = real.addon }
+    c.printed = {}
+    local ok = pcall(diag.commands[S.WORD], "")
+    k.id = real
+    t.eq(ok, true, "no error")
+    t.ok(c.printed[1] ~= nil and c.printed[1]:find(S.TITLE .. ": self-test: ", 1, true) == 1, tostring(c.printed[1]))
+end
+
 return tests

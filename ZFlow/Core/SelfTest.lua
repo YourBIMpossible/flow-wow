@@ -47,6 +47,8 @@ SelfTest.HEAD = "self-test: %d pass (%d with no answer now), %d fail, %d missing
 SelfTest.LINE = "  %s: %s"
 SelfTest.LINE_WHY = "  %s: fail (%s)"
 SelfTest.WHY_MAX = 80
+-- The add-on's name before the head line, when the identity gives none.
+SelfTest.TITLE = "Z-Flow"
 
 -- The reads asked, in this order. Each takes nothing and only reads.
 SelfTest.READS = {
@@ -62,7 +64,8 @@ function SelfTest.Run(client, names)
     if type(names) ~= "table" then names = SelfTest.READS end
     for _, name in ipairs(names) do
         local row = { name = name }
-        local fn = type(client) == "table" and client[name] or nil
+        local fn
+        if type(client) == "table" then fn = client[name] end
         if type(fn) ~= "function" then
             row.result = SelfTest.MISSING
             counts.missing = counts.missing + 1
@@ -116,10 +119,15 @@ function SelfTest.Declare(k, diag)
         diag.commands[SelfTest.WORD] = function()
             local client = k.client
             if type(client) ~= "table" or type(client.print) ~= "function" then return end
-            local id = k.id or ns.id
+            -- Lead section 671: an identity with no title of its own still
+            -- gets a head line that names the add-on.
+            local id = k.id
+            if type(id) ~= "table" then id = ns.id end
+            local title = SelfTest.TITLE
+            if type(id) == "table" and type(id.title) == "string" and id.title ~= "" then title = id.title end
             local rows, counts = api.Run()
             for i, line in ipairs(SelfTest.Lines(rows, counts)) do
-                if i == 1 then line = tostring(id.title) .. ": " .. line end
+                if i == 1 then line = title .. ": " .. line end
                 client.print(line)
             end
         end
