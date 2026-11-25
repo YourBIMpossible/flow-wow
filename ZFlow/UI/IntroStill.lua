@@ -47,7 +47,8 @@ end
 
 -- A missing kernel or a failing read is the normal intro.
 function S.For(k)
-    local s = type(k) == "table" and k.settings or nil
+    local s
+    if type(k) == "table" then s = k.settings end
     if type(s) ~= "table" or type(s.get) ~= "function" then return S.Spec(false) end
     local ok, v = pcall(s.get, s, S.SETTING)
     if not ok then return S.Spec(false) end
