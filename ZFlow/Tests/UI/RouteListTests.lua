@@ -344,7 +344,7 @@ tests["route list needs: a stop's tags follow its name; the note leads its line"
         return nil
     end
     local rows = RL().Rows(view(), HERE, needOf)
-    t.eq(rows[1].text, "Boar Trouble (escort, group of 3)")
+    t.eq(rows[1].text, "Boars slain: 2/8 (escort, group of 3)", "the tags follow the stop's own words")
     t.eq(rows[1].sub:sub(1, #"Escort note."), "Escort note.")
     local pickup
     for _, r in ipairs(rows) do
@@ -352,7 +352,7 @@ tests["route list needs: a stop's tags follow its name; the note leads its line"
     end
     t.eq(pickup and pickup.text, "Wolves at the Gate (group of 2)")
     local plain = RL().Rows(view(), HERE)
-    t.eq(plain[1].text, "Boar Trouble", "no needs given: as before")
+    t.eq(plain[1].text, "Boars slain: 2/8", "no needs given: as before")
 end
 
 return tests
