@@ -105,7 +105,8 @@ local function actionOf(p)
     local id = a.itemId
     if type(id) == "number" and id > 0 and id % 1 == 0 then return { itemId = id } end
     if type(a.spell) ~= "string" or a.spell == "" then return nil end
-    if a.unit ~= nil and a.unit ~= "player" and a.unit ~= "target" then return nil end
+    -- D-24: a group buff or cure goes on the plan on its party member.
+    if a.unit ~= nil and a.unit ~= "player" and a.unit ~= "target" and not C.PARTY[a.unit] then return nil end
     return { spell = a.spell, unit = a.unit }
 end
 
