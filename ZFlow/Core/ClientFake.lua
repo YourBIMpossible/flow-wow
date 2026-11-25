@@ -5527,8 +5527,8 @@ do
 end
 
 -- § F-20 (UI/TipSpot.lua): where a tooltip goes. c.setTipSpot(fn) keeps
--- fn(anchor) -> "GAME" | anchor, as the real client is asked to (CLIENT
--- NEED: each SetOwner in Core/Client.lua asks it, and on "GAME" calls
+-- fn(anchor) -> "GAME" | anchor, as the real client does (Core/Client.lua:
+-- each SetOwner asks it through placeTip, and on "GAME" calls
 -- GameTooltip_SetDefaultAnchor(tip, owner) instead); c.tipSpot(anchor)
 -- asks it (the anchor itself when nothing was handed in).
 do

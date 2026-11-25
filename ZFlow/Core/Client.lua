@@ -2104,6 +2104,42 @@ function ns.make.client(env)
         return pcall(fn, obj, ...)
     end
 
+    -- F-20 (UI/TipSpot.lua): where a tooltip goes. c.setTipSpot(fn) keeps
+    -- fn(anchor) -> "GAME" | anchor; every tooltip the client shows is
+    -- placed by placeTip(tip, owner, anchor), which asks it (under pcall;
+    -- no fn, an error or no text answer -> the anchor as given). "GAME"
+    -- puts the tip where the game puts its own, by
+    -- GameTooltip_SetDefaultAnchor(tip, owner), when the client has it;
+    -- else SetOwner(owner, answer). An "ANCHOR_NONE" tip is placed by its
+    -- caller's own SetPoint, so it is not asked about and stays as it is.
+    -- Returns as method(tip, "SetOwner", ...) does: true when placed.
+    -- First guess, not seen on 16001: GameTooltip_SetDefaultAnchor(tip,
+    -- owner) exists and owns the tip to owner as SetOwner does.
+    -- One local only (placeTip): this function is near Lua 5.1's limit of
+    -- 200 locals.
+    local placeTip
+    do
+        local spot = nil
+        function c.setTipSpot(fn)
+            if type(fn) == "function" then spot = fn end
+            return true
+        end
+        placeTip = function(tip, owner, anchor)
+            local where = anchor
+            if spot ~= nil and anchor ~= "ANCHOR_NONE" then
+                local ok, said = pcall(spot, anchor)
+                if ok and type(said) == "string" then where = said end
+            end
+            if where == "GAME" then
+                if type(env.GameTooltip_SetDefaultAnchor) == "function" then
+                    return (pcall(env.GameTooltip_SetDefaultAnchor, tip, owner))
+                end
+                where = anchor
+            end
+            return method(tip, "SetOwner", owner, where)
+        end
+    end
+
     -- The version text the client read from this addon's TOC, or nil.
     -- GetAddOnMetadata (C_AddOns or bare) is a first guess on 16001.
     -- Docs (warcraft.wiki.gg, API C_AddOns.GetAddOnMetadata): value =
@@ -3820,7 +3856,7 @@ function ns.make.client(env)
                 method(tip, "Hide")
                 return
             end
-            method(tip, "SetOwner", f, "ANCHOR_RIGHT")
+            placeTip(tip, f, "ANCHOR_RIGHT")
             method(tip, "ClearLines")
             method(tip, "AddLine", out[1], 1, 1, 1)
             for i = 2, #out do method(tip, "AddLine", out[i], 0.8, 0.8, 0.8, true) end
@@ -3970,7 +4006,7 @@ function ns.make.client(env)
             method(b, "SetScript", "OnEnter", function()
                 local tip = env.GameTooltip
                 if tip == nil then return end
-                if not method(tip, "SetOwner", b, "ANCHOR_RIGHT") then return end
+                if not placeTip(tip, b, "ANCHOR_RIGHT") then return end
                 method(tip, "SetText", spec.tip)
                 method(tip, "Show")
             end)
@@ -7872,7 +7908,7 @@ function ns.make.client(env)
                 tipped = false
                 return
             end
-            method(tip, "SetOwner", f, "ANCHOR_BOTTOM")
+            placeTip(tip, f, "ANCHOR_BOTTOM")
             method(tip, "ClearLines")
             for i, line in ipairs(lines) do
                 if i == 1 then method(tip, "AddLine", tostring(line), 1, 1, 1)
@@ -9391,7 +9427,7 @@ function ns.make.client(env)
         local hooked = method(f, "HookScript", "OnEnter", function()
             local okT, text = pcall(spec.text)
             if not okT or type(text) ~= "string" or text == "" then return end
-            method(tip, "SetOwner", f, "ANCHOR_RIGHT")
+            placeTip(tip, f, "ANCHOR_RIGHT")
             method(tip, "SetText", text)
             method(tip, "Show")
         end)
@@ -10211,7 +10247,7 @@ function ns.make.client(env)
                     method(b, "SetScript", "OnEnter", function()
                         local gt = env.GameTooltip
                         if gt == nil or #tip == 0 then return end
-                        method(gt, "SetOwner", b, "ANCHOR_TOPLEFT")
+                        placeTip(gt, b, "ANCHOR_TOPLEFT")
                         for i, line in ipairs(tip) do
                             if i == 1 then
                                 method(gt, "AddLine", line, 1, 0.82, 0)
@@ -11236,7 +11272,7 @@ function ns.make.client(env)
             local function tipShow(owner, text)
                 local tip = env.GameTooltip
                 if tip == nil then return end
-                method(tip, "SetOwner", owner, "ANCHOR_RIGHT")
+                placeTip(tip, owner, "ANCHOR_RIGHT")
                 method(tip, "SetText", text)
                 method(tip, "Show")
             end
@@ -11270,7 +11306,7 @@ function ns.make.client(env)
                         if tip ~= nil then
                             local link = item
                             if type(item) == "number" then link = "item:" .. item end
-                            method(tip, "SetOwner", f, "ANCHOR_NONE")
+                            placeTip(tip, f, "ANCHOR_NONE")
                             method(tip, "ClearAllPoints")
                             method(tip, "SetPoint", "TOPLEFT", f, "TOPRIGHT", size.gapSmall, 0)
                             method(tip, "SetHyperlink", link)
@@ -12972,7 +13008,7 @@ function ns.make.client(env)
         method(b, "SetScript", "OnEnter", function(self)
             local tip = env.GameTooltip
             if tip == nil or type(lines) ~= "table" then return end
-            method(tip, "SetOwner", self, "ANCHOR_LEFT")
+            placeTip(tip, self, "ANCHOR_LEFT")
             for _, line in ipairs(lines) do method(tip, "AddLine", tostring(line), 1, 1, 1) end
             method(tip, "Show")
         end)
@@ -13428,7 +13464,7 @@ function ns.make.client(env)
             method(b, "SetScript", "OnEnter", function()
                 local tip = env.GameTooltip
                 if tip == nil or m.text == nil then return end
-                method(tip, "SetOwner", b, "ANCHOR_RIGHT")
+                placeTip(tip, b, "ANCHOR_RIGHT")
                 method(tip, "SetText", m.text)
                 if m.sub ~= nil then method(tip, "AddLine", m.sub, 1, 1, 1, true) end
                 method(tip, "Show")
