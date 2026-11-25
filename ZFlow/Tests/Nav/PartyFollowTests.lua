@@ -225,4 +225,19 @@ tests["party follow: Follow points at the shared spot when the member is on anot
     t.eq(step and step.place and step.place.map, MAP)
 end
 
+-- Lead section 833: a spot is kept only from a member of the party the
+-- client lists (alone or in a raid: none), and only with the setting on.
+tests["party follow: nothing is kept alone, in a raid or with the setting off"] = function(t)
+    local spot = PF().EncodeSpot(OTHER, 0.3, 0.4, ns.id.commVersion)
+    local k, c = start("Ann", { on = true, party = false })
+    c.addonDeliver(PF().Prefix(), spot, "PARTY", "Bob")
+    t.eq(k.use(PF().NAME).Where("Bob"), nil, "alone")
+    local kr, r = start("Ann", { on = true, party = { { unit = "raid1", name = "Bob" } } })
+    r.addonDeliver(PF().Prefix(), spot, "PARTY", "Bob")
+    t.eq(kr.use(PF().NAME).Where("Bob"), nil, "in a raid")
+    local ko, o = start("Ann")
+    o.addonDeliver(PF().Prefix(), spot, "PARTY", "Bob")
+    t.eq(ko.use(PF().NAME).Where("Bob"), nil, "setting off")
+end
+
 return tests
