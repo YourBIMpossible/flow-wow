@@ -432,4 +432,33 @@ tests["press audit module: it presses nothing and makes no frame"] = function(t)
     t.eq(calls, 0)
 end
 
+-- D-26 (lead section 738): the key's press reaches the audit through the
+-- client's press read (client.onKeyPress, a CLIENT NEED; set on the fake
+-- here), and screenshots are left out: an add-on offers none.
+tests["press audit module: a press of the key is counted, through the client's press read"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    local pressed
+    c.onKeyPress = function(fn)
+        pressed = fn
+        return function() pressed = nil end
+    end
+    local addon = ns.offline.addon(c)
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    c.advance(1, 2)
+    t.eq(type(pressed), "function", "the audit listens to the key's presses")
+    if type(pressed) ~= "function" then return end
+    pressed()
+    pressed()
+    local data = addon.pressAudit.data()
+    local n = 0
+    for _, v in pairs(type(data) == "table" and data.counts or {}) do n = n + v end
+    t.eq(n, 1, "the first press is settled by the second")
+end
+
+tests["press audit words: no screenshots are offered"] = function(t)
+    t.eq(ns.Audit.HELP:find("shot", 1, true), nil, tostring(ns.Audit.HELP))
+    t.eq(ns.Audit.MARK_HELP:find("shot", 1, true), nil)
+end
+
 return tests
