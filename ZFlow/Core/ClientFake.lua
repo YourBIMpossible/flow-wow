@@ -5467,3 +5467,30 @@ do
         return c
     end
 end
+
+-- § C-42 (Gear/Sets.lua; lead section 789): one CLIENT NEED, stubbed here
+-- only. Core/Client.lua does not have it yet.
+--   c.equipmentSets() -> { { id, name, icon, worn, items = { [slot] =
+--     itemID } } } or nil (not read): C_EquipmentSet.GetEquipmentSetIDs,
+--     GetEquipmentSetInfo (name, icon, setID, isEquipped) and GetItemIDs.
+--     Read only: the fake has no call that makes, saves or equips a set.
+--   c.setEquipmentSets(list) sets it (nil as made: not read).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local sets = nil
+        function c.setEquipmentSets(list) sets = list end
+        function c.equipmentSets()
+            if type(sets) ~= "table" then return nil end
+            local out = {}
+            for i, e in ipairs(sets) do
+                local items = {}
+                for slot, id in pairs(e.items or {}) do items[slot] = id end
+                out[i] = { id = e.id, name = e.name, icon = e.icon, worn = e.worn, items = items }
+            end
+            return out
+        end
+        return c
+    end
+end

@@ -55,6 +55,43 @@ Sets.NOTHING_WORN = "You wear nothing to save, so no set was saved."
 Sets.FAILED = "That could not be saved, so nothing was changed."
 Sets.TOO_MANY = "You have " .. Sets.MAX_SETS .. " sets; forget one first. Nothing was saved."
 Sets.BAD_NAME = "A set name is up to " .. Sets.MAX_NAME .. " letters, with no bars or control characters."
+-- Parity row C-42, read only (lead section 789): the game's own equipment
+-- sets (the Equipment Manager), read through client.equipmentSets() (a
+-- CLIENT NEED: C_EquipmentSet GetEquipmentSetIDs, GetEquipmentSetInfo,
+-- GetItemIDs, on warcraft.wiki.gg for forever 1.60.1; research at
+-- from-zen/zflow-equipment-manager.md), listed by the set word beside your
+-- own, each with a role you give it, as Flow's sets per role (Modules/Gear/
+-- KeepSets.lua :277-311). Nothing creates, saves or equips a game set; the
+-- role is Z-Flow's own saved data (char ROLES_PATH = { [set name] = role }).
+--   rows = GearSets.Game(list, roles)   { { name, pieces, worn, role } } by
+--                                       name; nil when the sets are not read
+--   <slash> set role <set name> <dps|heal|tank|none>
+Sets.ROLES_PATH = "state.gearSetRoles"
+Sets.ROLES = { dps = true, heal = true, tank = true }
+Sets.GAME_HEAD = "Your game sets: "
+Sets.NO_GAME = "The game's equipment sets can't be read right now."
+Sets.NO_SUCH = "You have no game set named %s."
+Sets.ROLE_USAGE = "Say %s set role <game set name> <dps, heal, tank or none>."
+
+function Sets.Game(list, roles)
+    if type(list) ~= "table" then return nil end
+    local out = {}
+    for _, e in ipairs(list) do
+        if type(e) == "table" and type(e.name) == "string" and e.name ~= "" then
+            local n = 0
+            if type(e.items) == "table" then
+                for _, id in pairs(e.items) do
+                    if type(id) == "number" and id > 0 then n = n + 1 end
+                end
+            end
+            local row = { name = e.name, pieces = n, worn = e.worn == true }
+            if type(roles) == "table" and Sets.ROLES[roles[e.name]] then row.role = roles[e.name] end
+            out[#out + 1] = row
+        end
+    end
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return out
+end
 
 local function trim(text)
     return (tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -158,6 +195,15 @@ local function imported(store)
     return out
 end
 
+-- C-42: the game's equipment sets, as the client reads them, or nil.
+local function gameList(k)
+    local c = k.client
+    if type(c) ~= "table" or type(c.equipmentSets) ~= "function" then return nil end
+    local ok, list = pcall(c.equipmentSets)
+    if ok and type(list) == "table" then return list end
+    return nil
+end
+
 -- Is the character's saved data there and the store open? (saved() makes
 -- the table when it is missing, so ask whether it exists.)
 local function loaded(k)
@@ -235,6 +281,18 @@ function Sets.Run(k, rest)
             for i, s in ipairs(mine) do parts[i] = s.name .. " (" .. plural(#s.items, "piece", "pieces") .. ")" end
             lines[1] = "Your sets: " .. table.concat(parts, ", ")
         end
+        -- C-42: the game's own sets, when the client reads them.
+        local game = Sets.Game(gameList(k), get(k.store, "char", Sets.ROLES_PATH))
+        if type(game) == "table" and #game > 0 then
+            local parts = {}
+            for i, g in ipairs(game) do
+                local bits = { plural(g.pieces, "piece", "pieces") }
+                if g.worn then bits[#bits + 1] = "worn" end
+                if g.role then bits[#bits + 1] = g.role end
+                parts[i] = g.name .. " (" .. table.concat(bits, ", ") .. ")"
+            end
+            lines[#lines + 1] = Sets.GAME_HEAD .. table.concat(parts, ", ")
+        end
         local theirs = imported(k.store)
         if #theirs > 0 then
             local parts = {}
@@ -246,6 +304,31 @@ function Sets.Run(k, rest)
         return lines, false
     end
 
+    -- C-42: a role for one of the game's sets (Z-Flow's own data only).
+    if word == "role" then
+        local name, role = more:match("^(.-)%s+(%S+)$")
+        if not name or name == "" or not (Sets.ROLES[role] or role == "none") then
+            return { Sets.ROLE_USAGE:format(tostring(slash or "")) }, false
+        end
+        if not loaded(k) then return { Sets.NOT_LOADED }, false end
+        local game = Sets.Game(gameList(k), nil)
+        if game == nil then return { Sets.NO_GAME }, false end
+        local found = false
+        for _, g in ipairs(game) do
+            if g.name == name then found = true end
+        end
+        if not found then return { Sets.NO_SUCH:format(name) }, false end
+        local roles = {}
+        local was = get(k.store, "char", Sets.ROLES_PATH)
+        if type(was) == "table" then
+            for key, v in pairs(was) do roles[key] = v end
+        end
+        if role == "none" then roles[name] = nil else roles[name] = role end
+        local ok, done = pcall(k.store.set, k.store, "char", Sets.ROLES_PATH, roles)
+        if not ok or done ~= true then return { Sets.FAILED }, false end
+        if role == "none" then return { "Game set " .. name .. ": no role." }, true end
+        return { "Game set " .. name .. ": " .. role .. "." }, true
+    end
     if word ~= "save" and word ~= "forget" then return { usage(slash) }, false end
     if more == "" then return { usage(slash) }, false end
     if not goodName(more) then return { Sets.BAD_NAME }, false end
