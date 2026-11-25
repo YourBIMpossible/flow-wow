@@ -192,4 +192,39 @@ tests["party progress: a member who leaves the party is dropped"] = function(t)
     t.eq(api.Progress("Cid"), nil)
 end
 
+-- Lead section 833 (CHANGES-1, Lazy): progress from someone is kept only
+-- when they are in your party as the client reports it; alone or in a raid
+-- (no party list) nothing is kept.
+tests["party progress: nothing is kept alone or in a raid"] = function(t)
+    local msgs = PP().Encode(PP().Mine(log()), ns.id.commVersion)
+    local k, c = start({ party = false })
+    c.addonDeliver(PP().Prefix(), msgs[1], "PARTY", "Bob")
+    t.eq(k.use(PP().NAME).Progress("Bob"), nil, "alone")
+    local kr, r = start({ party = { { unit = "raid1", name = "Bob" } } })
+    r.addonDeliver(PP().Prefix(), msgs[1], "PARTY", "Bob")
+    t.eq(kr.use(PP().NAME).Progress("Bob"), nil, "in a raid")
+end
+
+-- Lead section 833: a send that fails is tried again later, without a new
+-- quest log change.
+tests["party progress: a failed send is tried again"] = function(t)
+    local _, c = start()
+    local real = c.addonSend
+    c.addonSend = function() error("send failed") end
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(PP().EVERY + 1)
+    t.eq(sent(c), 0, "nothing went")
+    c.addonSend = real
+    c.advance(PP().EVERY + 1)
+    t.eq(sent(c), 1, "sent on a later tick")
+end
+
+-- Lead section 833: with the setting off, others' progress is not kept.
+tests["party progress: nothing is kept with the setting off"] = function(t)
+    local k, c = start({ on = false })
+    local msgs = PP().Encode(PP().Mine(log()), ns.id.commVersion)
+    c.addonDeliver(PP().Prefix(), msgs[1], "PARTY", "Bob")
+    t.eq(k.use(PP().NAME).Progress("Bob"), nil)
+end
+
 return tests
