@@ -117,14 +117,6 @@ local function partByKey(tree, key)
     return found
 end
 
-local function partsOfKind(tree, kind)
-    local out = {}
-    ns.Kit.Each(tree, function(part)
-        if part.kind == kind then out[#out + 1] = part end
-    end)
-    return out
-end
-
 function tests.opensWithCardGrid(t)
     local _, c, api = boot()
     local rec = open(c, api)
