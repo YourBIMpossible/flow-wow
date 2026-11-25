@@ -209,6 +209,7 @@ return {
         "Items/RecipeLearned.lua",
         "Items/ProfRecipes.lua",
         "Items/Goals.lua",
+    "UI/TravelPicture.lua",
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
     "UI/RotationIcon.lua",
