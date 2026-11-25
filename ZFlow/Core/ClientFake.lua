@@ -4995,3 +4995,18 @@ do
         return c
     end
 end
+
+-- C-new-1 (Nav/QuestOffers.lua), CLIENT NEED: c.offeredQuests() -> { ids =
+-- { [id] = true }, titles = { [title] = true } } for the quest giver whose
+-- window is open, or nil when it shows no list of their quests. The fake
+-- answers what c.setOfferedQuests(v) set (nil, as made: no list).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local offered
+        function c.setOfferedQuests(v) offered = v end
+        function c.offeredQuests() return offered end
+        return c
+    end
+end

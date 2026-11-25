@@ -18,7 +18,9 @@ local _, ns = ...
 --     q in the shape S.State takes; ctx = { level, log = { [id] = true },
 --     done(id) -> true | false | nil (not known), me (S.Eligible) }
 --   P.Nearest(list, here, max) -> the max nearest of list on here.map
--- Client reads: P.Read(client, here, log) -> list or nil, why.
+-- Client reads: P.Read(client, here, log) -> list or nil, why. A quest
+-- whose giver was seen not to offer it (Nav/QuestOffers.lua) is left out:
+--   P.Keep(item, skip) -> bool
 -- Not tested in game.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -98,6 +100,20 @@ function P.Nearest(items, here, max)
     local kept = {}
     for i = 1, math.min(#out, tonumber(max) or P.MAX) do kept[i] = out[i].item end
     return kept
+end
+
+-- A pick-up stays unless the quest's giver was seen not to offer it
+-- (Nav/QuestOffers.lua). skip(id) -> true drops it; no skip keeps all.
+function P.Keep(item, skip)
+    if type(skip) ~= "function" or type(item) ~= "table" then return true end
+    return skip(item.quest) ~= true
+end
+
+local function dropped(id)
+    local off = ns.questOffers
+    if type(off) ~= "table" or type(off.dropped) ~= "function" then return false end
+    local ok, v = pcall(off.dropped, id)
+    return ok and v == true
 end
 
 -- --------------------------------------------------------------- reads
@@ -191,7 +207,7 @@ function P.Read(client, here, log)
                         requiredMaxRep = qt.requiredMaxRep, requiredSkill = qt.requiredSkill,
                         requiredSpell = qt.requiredSpell,
                         giverFaction = type(npc.friendlyToFaction) == "string" and npc.friendlyToFaction or nil }
-                    if type(qt.name) == "string" and P.Candidate(q, ctx) then
+                    if type(qt.name) == "string" and P.Candidate(q, ctx) and P.Keep({ quest = id }, dropped) then
                         local who = type(npc.name) == "string" and npc.name ~= "" and npc.name or P.GIVER
                         found[#found + 1] = { kind = "pickup", quest = id, label = P.LABEL:format(qt.name, who),
                                               place = place }

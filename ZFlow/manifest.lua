@@ -327,6 +327,8 @@ return {
     "Spells/Talents.lua",
     -- Lead section 375 item 7 (TN-1): the quest route's pick-ups (after RoutePlan, DungeonStates).
     "Nav/RoutePickups.lua",
+    -- C-new-1: a giver who does not offer a quest drops it from the pick-ups (after Diag, RoutePickups).
+    "Nav/QuestOffers.lua",
     -- G45: the riding step and its advisor line (after the advisor, the arrow and Prices).
     "Nav/RidingStep.lua",
     -- FLOW-PARITY B-25 (lead section 460): save up, learn riding, then the mount (after RidingStep).
