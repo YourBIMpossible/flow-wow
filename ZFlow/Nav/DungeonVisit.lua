@@ -154,6 +154,9 @@ V.MORE = "; and %d more"
 -- R-03 (lead section 777): Flow's third line when some quests are not in
 -- your log (Modules/Nav/Dungeons.lua D.EnterLines :1144), our own words.
 V.EARLIER = "One of these may need an earlier quest done first: go back for it, or ask your group to share it."
+-- R-04 (lead section 777): a quest you pick up inside, as Flow's run lines
+-- ("Starts inside:", Modules/Nav/Dungeons.lua D.QuestLines :1519-1537).
+V.STARTS_INSIDE = "you pick it up inside"
 V.MAX = 6
 V.KILLS = "Bosses killed this visit (%d): %s"
 V.KILLS_WING = "Bosses killed this visit (%d of %d in this wing): %s"
@@ -195,7 +198,7 @@ function V.Quests(pane, quests, log)
             for _, r in ipairs(g.rows) do
                 if g.id == "log" then
                     have[#have + 1] = { name = tostring(r.name), done = doneIn(byId[r.id]) }
-                elseif g.id == "pickup" then
+                elseif g.id == "pickup" or g.id == "inside" then
                     local q
                     if type(quests) == "table" then q = quests[r.id] end
                     local from
@@ -209,7 +212,9 @@ function V.Quests(pane, quests, log)
                         and r.note:find(R.DONE_UNKNOWN, 1, true) then
                         unknown = true
                     end
-                    missing[#missing + 1] = { name = tostring(r.name), from = from, unknown = unknown }
+                    local inside = nil
+                    if g.id == "inside" then inside = true end
+                    missing[#missing + 1] = { name = tostring(r.name), from = from, unknown = unknown, inside = inside }
                 end
             end
         end
@@ -258,6 +263,7 @@ function V.QuestLines(name, have, missing, max)
             local m = missing[i]
             said[i] = m.name
             if m.from then said[i] = m.name .. " (" .. m.from .. ")" end
+            if m.inside then said[i] = said[i] .. " (" .. V.STARTS_INSIDE .. ")" end
             if m.unknown and type(ns.DungeonRead) == "table" then
                 said[i] = said[i] .. " (" .. tostring(ns.DungeonRead.DONE_UNKNOWN) .. ")"
             end

@@ -455,4 +455,27 @@ tests["dungeon visit R-02: a log not read says so, not none of its quests"] = fu
     t.eq(all:find("0 of its quests", 1, true), nil, all)
 end
 
+-- R-04 (lead section 777; Plexy's note): a quest you pick up inside the
+-- dungeon is listed too, as Flow's run lines ("Starts inside:", Modules/
+-- Nav/Dungeons.lua D.QuestLines :1519-1537; D.EnterSplit :1110-1125 counts
+-- every quest not in your log). Fails before: the "inside" group was
+-- dropped from the visit's list.
+tests["dungeon visit R-04: a quest picked up inside is listed, marked so"] = function(t)
+    local V = ns.DungeonVisit
+    local pane = { groups = {
+        { id = "pickup", rows = { { id = 7, name = "Red Silk" } } },
+        { id = "inside", rows = { { id = 8, name = "The Defias Brotherhood" } } },
+    } }
+    local _, missing = V.Quests(pane, {}, {})
+    t.eq(#missing, 2)
+    local inside
+    for _, m in ipairs(missing) do
+        if m.name == "The Defias Brotherhood" then inside = m end
+    end
+    t.eq(inside and inside.inside, true)
+    local lines = V.QuestLines("Deadmines", {}, missing)
+    t.ok(lines[2] and lines[2]:find("The Defias Brotherhood (" .. V.STARTS_INSIDE .. ")", 1, true) ~= nil,
+        tostring(lines[2]))
+end
+
 return tests
