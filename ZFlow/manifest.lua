@@ -319,6 +319,7 @@ return {
     -- S33 (lead section 395 item 4): travel spell and mount advice text (after TripRoute, Arrow, the advisor).
     "Nav/TravelAdvice.lua",
     "Nav/InvitePrompt.lua",
+    "Nav/InviteAccept.lua",
     -- S41 (lead section 395 item 1): quest items in the bags, leftover and to buy (after QuestRead and the advisor).
     "Items/QuestBags.lua",
     -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).

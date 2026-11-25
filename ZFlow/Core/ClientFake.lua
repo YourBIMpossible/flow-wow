@@ -4995,3 +4995,26 @@ do
         return c
     end
 end
+
+-- § F-28 (Nav/InviteAccept.lua; lead section 738): three CLIENT NEEDs,
+-- stubbed here only. Core/Client.lua does not have them yet.
+--   c.queued() -> true while in a dungeon finder or battleground queue,
+--     false when not, nil when not known (GetLFGMode, GetBattlefieldStatus).
+--   c.isGuildmate(guid) -> true, false, or nil (IsGuildMember(guid)).
+--   c.acceptGroup() accepts the invite (AcceptGroup()); counted in
+--     c.groupAccepts.
+--   c.setQueued(v) (false as made), c.setGuildmate(guid, v).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local queued, guild = false, {}
+        c.groupAccepts = 0
+        function c.setQueued(v) queued = v end
+        function c.queued() return queued end
+        function c.setGuildmate(guid, v) guild[guid] = v end
+        function c.isGuildmate(guid) return guild[guid] end
+        function c.acceptGroup() c.groupAccepts = c.groupAccepts + 1 end
+        return c
+    end
+end
