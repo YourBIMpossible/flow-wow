@@ -70,14 +70,21 @@ T.REREAD = 1             -- seconds between looks at the quest log
 -- As in Flow (Modules/Nav/Nav.lua choose(): the plan is made by itself and
 -- made again when the steps change, every 8 s once you moved 30 yards, and
 -- every 60 s), the quest route is planned by itself from the quest log,
--- with no word. It is planned again at each login, so it is there after a
--- restart too; nothing of it is saved. It is shown on the map and in the
--- Router (View). The arrow keeps its own pick until the player plans with
--- the route word (see the module's auto()).
+-- with no word. It is shown on the map and in the Router (View). The arrow
+-- keeps its own pick until the player plans with the route word (see the
+-- module's auto()).
+-- Lead section 564 R6: the route is kept in saved data (per character,
+-- T.SAVED), the one planned by itself and the one the player walks, with
+-- how far along it is. At login it is there again before anything is
+-- planned: a walked route (the word, Plan the run) is walked on; the one
+-- planned by itself is planned again at the first look, from the log.
 T.AUTO_EVERY = 2         -- seconds between looks for a new plan
 T.AUTO_SOON = 8          -- seconds: no sooner than this, and only once you moved
 T.AUTO_MOVED = 30        -- yards moved that count (Flow's 30)
 T.AUTO_LATE = 60         -- seconds: planned again at the latest (Flow's 60)
+-- char: { kind, label, auto, at, stops = { { quest, objective, turnIn, kind, label, detail, gone, place } } }
+T.SAVED = "nav.tripRoute"
+
 
 T.WHY_NO_MAP = "Your map is not known yet; try again in a moment."
 T.WHY_NO_LOG = "Your quest log could not be read."
@@ -446,6 +453,48 @@ local function runLegs(stops, client)
     return yards
 end
 
+-- Pure: the route as kept in saved data, or nil. Only plain fields: no
+-- function, no table of the planner's own.
+function T.Keep(route, at)
+    if type(route) ~= "table" or type(route.stops) ~= "table" then return nil end
+    local stops = {}
+    for _, s in ipairs(route.stops) do
+        local p
+        if type(s) == "table" then p = s.place end
+        if type(p) == "table" and p.map ~= nil and finite(p.x) and finite(p.y) then
+            stops[#stops + 1] = { quest = s.quest, objective = s.objective, turnIn = s.turnIn or nil,
+                kind = s.kind, label = s.label, detail = s.detail, gone = s.gone or nil,
+                place = { map = p.map, x = p.x, y = p.y } }
+        end
+    end
+    if #stops == 0 then return nil end
+    local keep = { kind = route.kind, label = route.label, auto = route.auto or nil, stops = stops }
+    if finite(at) then keep.at = at end
+    return keep
+end
+
+-- Pure: a kept route made a route again, and where along it; nil when it
+-- is not one (a missing or broken saved table is no route).
+function T.Restore(kept)
+    if type(kept) ~= "table" or type(kept.stops) ~= "table" then return nil end
+    if kept.kind ~= "quests" and kept.kind ~= "run" then return nil end
+    local stops = {}
+    for _, s in ipairs(kept.stops) do
+        local p
+        if type(s) == "table" then p = s.place end
+        if type(p) == "table" and p.map ~= nil and finite(p.x) and finite(p.y) then
+            stops[#stops + 1] = { quest = s.quest, objective = s.objective, turnIn = s.turnIn == true or nil,
+                kind = s.kind, label = s.label, detail = s.detail, gone = s.gone == true or nil,
+                place = { map = p.map, x = p.x, y = p.y } }
+        end
+    end
+    if #stops == 0 then return nil end
+    local at = 1
+    if finite(kept.at) and kept.at >= 1 and kept.at <= #stops then at = math.floor(kept.at) end
+    return { kind = kept.kind, label = kept.label, auto = kept.auto == true or nil, stops = stops, left = {},
+             yards = false }, at
+end
+
 -- The quest log as far as the route's steps go: each quest, whether it is
 -- complete or failed, and which objectives are done. Counts going up do not
 -- change it: a step is planned the same until its objective is done.
@@ -473,6 +522,8 @@ function T.Declare(k, diag)
     -- Section 562 item 7: the route planned by itself. held: the player said
     -- "route off" (this session); the plan's log, time and place.
     local autoHeld, autoSig, autoAt, autoPos = false, nil, nil, nil
+    -- Section 564 R6: what was last written to T.SAVED.
+    local savedKey
 
     local function client() return ctx and ctx.client or k.client end
 
@@ -853,13 +904,47 @@ function T.Declare(k, diag)
         end
     end
 
+    -- Section 564 R6: the route kept in saved data when it changed: a new
+    -- route, a stop gone, a step on, no route.
+    local function keep()
+        if not ctx then return end
+        local gone = 0
+        for _, s in ipairs(route and route.stops or {}) do
+            if s.gone then gone = gone + 1 end
+        end
+        local key = tostring(route) .. "|" .. tostring(at) .. "|" .. gone
+        if key == savedKey then return end
+        local ok, done, why = pcall(ctx.store.set, ctx.store, "char", T.SAVED, T.Keep(route, at))
+        if not ok then
+            k.problems:add(T.NAME, "keep", tostring(done))
+        elseif done ~= true then
+            k.problems:add(T.NAME, "keep", tostring(why))
+        else
+            savedKey = key
+        end
+    end
+
     k:Module({
         name = T.NAME,
         needs = { "client", "store", "settings" },
         provides = { Step = api.Step, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
                      Lines = api.Lines, Current = api.Current, View = api.View },
-        ticks = { { every = T.AUTO_EVERY, when = "always", run = function() auto() end } },
-        start = function(c) ctx = c end,
+        ticks = { { every = T.AUTO_EVERY, when = "always", run = function()
+            auto()
+            keep()
+        end } },
+        start = function(c)
+            ctx = c
+            -- The route kept from the last session, there again at once.
+            local ok, kept = pcall(c.store.get, c.store, "char", T.SAVED)
+            if ok then
+                local r, from = T.Restore(kept)
+                if r then
+                    route, at = r, from
+                    settle()
+                end
+            end
+        end,
         stop = function() route, at = nil, 1 end,
     })
     return api
