@@ -297,22 +297,31 @@ function ns.make.client(env)
     --   { { bag = id, free = n, total = n, family = n or nil }, ... }
     -- family is the second value of GetContainerNumFreeSlots (0: takes
     -- anything); nil when the client does not give one (first guess that it
-    -- does on 16001). nil when any bag could not be read.
+    -- does on 16001). A bag whose reading fails is left out and the others
+    -- still count; nil when either call is missing or no bag could be read.
     -- Docs (warcraft.wiki.gg, API C_Container.GetContainerNumFreeSlots):
     -- numFreeSlots, bagFamily = ...(bagIndex); the second value matches.
     function c.bags()
         local slotsOf, freeOf = container("GetContainerNumSlots"), container("GetContainerNumFreeSlots")
-        local out = {}
+        if not slotsOf or not freeOf then return nil end
+        local out, readAny = {}, false
         for _, bag in ipairs(bagIds()) do
             local ok, total = call(slotsOf, bag)
-            if not ok or not wholeCount(total) then return nil end
-            if total > 0 then
-                local okFree, free, family = call(freeOf, bag)
-                if not okFree or not wholeCount(free) then return nil end
-                out[#out + 1] = { bag = bag, free = free, total = total,
-                    family = type(family) == "number" and family or nil }
+            if ok and wholeCount(total) then
+                if total == 0 then
+                    readAny = true
+                else
+                    local okFree, free, family = call(freeOf, bag)
+                    if okFree and wholeCount(free) then
+                        readAny = true
+                        local row = { bag = bag, free = free, total = total }
+                        if type(family) == "number" then row.family = family end
+                        out[#out + 1] = row
+                    end
+                end
             end
         end
+        if not readAny then return nil end
         return out
     end
 

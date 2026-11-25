@@ -185,7 +185,7 @@ return {
         t.eq(#ns.make.client(env).bags(), 3)
     end,
 
-    ["bags: a missing or erroring call makes the whole reading unknown"] = function(t)
+    ["bags: a missing call is unknown; one erroring bag is left out"] = function(t)
         local env = bagEnv(twoBags())
         local group = env.C_Container
         local c = ns.make.client(env)
@@ -196,7 +196,9 @@ return {
             if bag == 2 then boom() end
             return 1, 0
         end
-        t.eq(c.bags(), nil, "one bag errors: no partial list")
+        local rows = c.bags()
+        t.eq(#rows, 1, "one bag errors: the other bag still counts")
+        t.eq(rows[1].bag, 0)
 
         group.GetContainerNumSlots = boom
         t.eq(c.bags(), nil)
