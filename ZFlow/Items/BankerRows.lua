@@ -163,6 +163,12 @@ function BR.SellRows(bags, bank, rules)
             local r = row(e, { bank = true, take = "quest", reason = e.quest })
             r.next = nil
             inBank[#inBank + 1] = r
+        elseif type(e) == "table" and words(e.hold) then
+            -- Lead section 776: held by a reservation no route stop names
+            -- (Items/TakeOutWhy.lua HoldFor), with its own reason.
+            local r = row(e, { bank = true, take = "hold", reason = e.hold })
+            r.next = nil
+            inBank[#inBank + 1] = r
         elseif type(e) == "table" and type(e.decision) == "table" and e.decision.action ~= "keep"
             and sells(e.decision) then
             local r = row(e, { bank = true, take = "sell", reason = sellReason(e.decision) or BR.NO_REASON })
