@@ -182,6 +182,20 @@ end
 
 -- Where the docked self button stands: under the Flow button at point,
 -- centred, DOCK_GAP below its bottom edge, in the same anchor.
+-- Parity row D-11 (lead section 712), as Flow's BuffButton.lua (:580-607)
+-- and MoveHandle.lua (:10-19, ns.ClampScale): one step of a tenth a notch
+-- (delta 1 or -1), kept between 0.5 and 2 to the nearest twentieth
+-- (Import/Stored.lua's own SCALE_MIN, SCALE_MAX and SCALE_GRAIN). Pure.
+FB.SCALE_STEP = 0.1
+function FB.ScaleStep(now, delta)
+    local St = ns.Import.Stored
+    if type(now) ~= "number" or now ~= now then now = St.SCALE_DEFAULT end
+    if type(delta) ~= "number" or delta ~= delta then delta = 0 end
+    local s = now + delta * FB.SCALE_STEP
+    s = math.floor(s / St.SCALE_GRAIN + 0.5) * St.SCALE_GRAIN
+    return math.max(St.SCALE_MIN, math.min(St.SCALE_MAX, s))
+end
+
 function FB.DockPoint(point, flowSize, selfSize)
     if type(point) ~= "table" or type(point[1]) ~= "string" then return nil end
     local x, y = point[3], point[4]
@@ -525,6 +539,26 @@ function FB.Declare(k)
 
     units.flow = unit("flow", FB.FRAME, flowSize, flowPoint, FB.LAYOUT)
     units.self = unit("self", FB.SELF_FRAME, selfSize, selfPoint, FB.SELF_LAYOUT)
+
+    -- D-11: the self button's size, one step (delta 1 or -1), saved where
+    -- the Flow import keeps it: layout.buffButton.dockScale while docked,
+    -- else layout.buffButton.scale. Out of a fight only: true when saved.
+    function api.resizeSelf(delta)
+        if lockdown() ~= false or not store then return false end
+        local layout = raw("layout")
+        local now
+        if docked() then
+            now = St.DockScale(layout, St.RotationScale(layout))
+        else
+            now = St.BuffButtonLayout(layout).scale
+        end
+        local field = "scale"
+        if docked() then field = "dockScale" end
+        local ok, done = pcall(store.set, store, "account", "layout.buffButton." .. field, FB.ScaleStep(now, delta))
+        if not ok or done ~= true then return false end
+        if units.self then units.self.place() end
+        return true
+    end
 
     function api.made() return units.flow.made() end
     function api.selfMade() return units.self.made() end
