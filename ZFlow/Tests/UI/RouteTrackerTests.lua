@@ -113,4 +113,45 @@ tests["tracker parts: an item with odd facts still gives a line the kit takes"] 
     t.eq(named and named.item, nil)
 end
 
+-- The wiring to Nav/TrackerList.lua (A2-18): the tracker lists the route's
+-- View (held steps too, with their reason), the current step is the first
+-- not held, and the "more" line counts what TL.Rows left out.
+local function viewHeld()
+    return { kind = "quest", label = "Quests", stops = {
+        { label = "Hand in Wolves", turnIn = true, quest = 7, held = "the item is not looted yet",
+          place = { map = 1, x = 0.5, y = 0.6 } },
+        { label = "Boars", quest = 8, detail = "Boars slain: 2/8", place = { map = 1, x = 0.8, y = 0.6 } },
+    } }
+end
+
+tests["tracker wiring: the view's held step is listed with its reason, the next is current"] = function(t)
+    local rows, more = RT().Rows(viewHeld(), nil, HERE)
+    t.eq(#rows, 2)
+    t.eq(more, 0)
+    local kids = RT().Children(rows, nil, more)
+    local held = byKey(kids, "held1")
+    t.eq(held and held.text, "Hand in Wolves")
+    t.eq(held and held.sub, RT().HELD:format("the item is not looted yet"))
+    t.eq(held and held.tone, nil, "a held step is not the current one")
+    local now = byKey(kids, "current")
+    t.eq(now and now.text, "Boars")
+    t.eq(now and now.sub, "Boars slain: 2/8")
+    t.eq(now and now.tone, RT().TONE_NOW)
+    t.ok(ns.Kit.Window({ id = RT().ID, title = "x", children = kids }) ~= nil, "the kit takes the parts")
+end
+
+tests["tracker wiring: no view falls back to the walked route; more counts what is left out"] = function(t)
+    local rows = RT().Rows(nil, current(), HERE)
+    t.eq(rows and #rows, 3)
+    t.eq(rows and rows[1].current, true)
+    t.eq(RT().Rows(nil, nil, HERE), nil)
+    local long = { stops = {} }
+    for i = 1, RT().MAX + 2 do long.stops[i] = { label = "S" .. i, place = { map = 1, x = 0.5, y = 0.5 } } end
+    local r2, more = RT().Rows(long, nil, HERE)
+    t.eq(#r2, RT().MAX)
+    t.eq(more, 2)
+    local m = byKey(RT().Children(r2, nil, more), "more")
+    t.eq(m and m.text, RT().MORE:format(2))
+end
+
 return tests
