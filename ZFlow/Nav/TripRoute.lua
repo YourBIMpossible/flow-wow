@@ -685,10 +685,13 @@ function T.Declare(k, diag)
     local function dropLeft(rows)
         local told, any = {}, false
         for _, s in ipairs(route.stops) do
-            local check = route.kind == "quests" or s.logQuest == true
+            -- A pick-up's quest is not in the log yet: it is no step that left
+            -- it (T.Live drops it once it is in). Only a quest step can leave.
+            local check = (route.kind == "quests" and s.kind ~= "pickup") or s.logQuest == true
             if check and not s.gone and not T.InLog(s, rows) then
                 s.gone, s.left, any = true, true, true
-                if not told[s.quest] then
+                -- The route planned by itself says nothing in chat.
+                if not told[s.quest] and not route.auto then
                     told[s.quest] = true
                     tell(T.LEFT:format(tostring(s.label)))
                 end

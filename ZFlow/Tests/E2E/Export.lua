@@ -72,6 +72,10 @@ end
 
 tests["export: the word saves the lines and export dump prints them"] = function(t)
     local c, addon = boot()
+    -- Lead section 564 R6: the route is planned by itself with the Router's
+    -- setting on; off here, so that no route is planned.
+    addon.settings:set(ns.RouteList.SETTING, false)
+    c.advance(4, 8)
     word(c, "export")
     local line = said(c, ns.id.title .. ": export: ")
     t.ok(line ~= nil and line:find("lines (your class, quests and professions), saved for this character", 1, true) ~= nil,
