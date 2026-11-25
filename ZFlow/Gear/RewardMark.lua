@@ -35,6 +35,16 @@ local _, ns = ...
 --     fewer than two. Reads only, as Pick.
 --   api.board() -> the board now while a reward window is open, else nil
 --
+-- Parity row C-03 (lead section 704), as Flow's Modules/Quests/
+-- AutoTurnIn.lua (:190-201): at a turn-in with a choice of rewards the
+-- add-on stops and asks. Z-Flow takes no reward by itself, so the stop is
+-- the game's own window; the ask is one chat line, once a window, at the
+-- turn-in (QUEST_COMPLETE, not the offer) with two or more choices, with
+-- the mark's setting on: RM.ASK, then the best upgrade for your spec and
+-- the best to sell when the board names them. Nothing is picked.
+--   RM.AskLine(board, nameOf, role) -> the line; nameOf(index) -> the
+--     choice's name or nil. A choice whose name is not read is not named.
+--
 -- Pick: the index of the choice to mark, or nil and why (GearRewardMark.WHY).
 --   client.questChoices()  { { index, link } ... } for the open choice; nil
 --                          when it cannot be read. A link not given yet is
@@ -65,6 +75,9 @@ RM.SETTING = "gear.rewardMark"
 RM.PROBE_PATH = "diag.rewardButtons"  -- account: the G14 reward button probe
 RM.ROLE = "spec.role"           -- Rotation/Role.lua's setting
 RM.TICK = 1
+RM.ASK = "Pick your reward: the choice is yours."
+RM.ASK_BEST = "%s is the best upgrade for %s."
+RM.ASK_SELL = "%s sells for the most."
 
 RM.WHY = {
     unread = "the reward choices could not be read",
@@ -226,6 +239,30 @@ function RM.Board(client, packs, role)
     return board
 end
 
+function RM.AskLine(board, nameOf, role)
+    local line = RM.ASK
+    if type(board) ~= "table" or type(board.choices) ~= "table" or type(nameOf) ~= "function" then return line end
+    local who = board.chosen
+    if who == nil then who = role end
+    local best, tie
+    if type(who) == "string" then
+        for _, ch in ipairs(board.choices) do
+            if type(ch) == "table" and type(ch.roles) == "table" and ch.roles[who] == "upgrade" then
+                if best then tie = true else best = ch.index end
+            end
+        end
+    end
+    if best and not tie then
+        local ok, name = pcall(nameOf, best)
+        if ok and type(name) == "string" and name ~= "" then line = line .. " " .. RM.ASK_BEST:format(name, who) end
+    end
+    if board.bestSell ~= nil then
+        local ok, name = pcall(nameOf, board.bestSell)
+        if ok and type(name) == "string" and name ~= "" then line = line .. " " .. RM.ASK_SELL:format(name) end
+    end
+    return line
+end
+
 -- G14 coin (section 393): when no choice is an upgrade, the choice that
 -- sells for the most, to take and sell. nil when the choices or any price
 -- are not read, two prices tie, or nothing sells.
@@ -280,12 +317,36 @@ function RM.Declare(k, packs)
         if index ~= nil and done == true then marked = index end
     end
 
+    -- C-03: asked once a turn-in window, once two or more choices are read.
+    local turnIn, askedNow = false, false
+    local function askOnce()
+        if not turnIn or askedNow or type(ctx.client.print) ~= "function" then return end
+        local okB, b = pcall(RM.Board, ctx.client, packs or ns.Packs, ctx.settings:get(RM.ROLE))
+        if not okB or type(b) ~= "table" then return end
+        askedNow = true
+        local links = {}
+        for _, ch in ipairs(b.choices) do links[ch.index] = ch.link end
+        local function nameOf(index)
+            local link = links[index]
+            if link == nil or type(ctx.client.itemInfo) ~= "function" then return nil end
+            local info = ctx.client.itemInfo(link)
+            if type(info) == "table" then return info.name end
+            return nil
+        end
+        local line = RM.AskLine(b, nameOf, ctx.settings:get(RM.ROLE))
+        local id = k.id
+        if type(id) ~= "table" then id = ns.id end
+        if type(id) == "table" and type(id.title) == "string" and id.title ~= "" then line = id.title .. ": " .. line end
+        pcall(ctx.client.print, line)
+    end
+
     local function update()
         if not open then return end
         if ctx.settings:get(RM.SETTING) ~= true then
             show(nil)
             return
         end
+        askOnce()
         local ok, pick, why = pcall(RM.Pick, ctx.client, packs or ns.Packs, ctx.settings:get(RM.ROLE))
         if not ok then
             errors = errors + 1
@@ -335,6 +396,7 @@ function RM.Declare(k, packs)
 
     local function close()
         open = false
+        turnIn, askedNow = false, false
         if tick then tick() end
         tick = nil
         if ctx then show(nil) end
@@ -370,7 +432,10 @@ function RM.Declare(k, packs)
                 update()
                 repeatIfMany()
             end
-            c.bus:on(RM.NAME, "QUEST_COMPLETE", opened)
+            c.bus:on(RM.NAME, "QUEST_COMPLETE", function()
+                turnIn, askedNow = true, false
+                opened()
+            end)
             c.bus:on(RM.NAME, "QUEST_DETAIL", opened)
             c.bus:on(RM.NAME, "GET_ITEM_INFO_RECEIVED", function()
                 if not open or tick then return end
