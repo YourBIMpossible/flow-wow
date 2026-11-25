@@ -75,4 +75,38 @@ tests["quest bags e2e: wares that cannot be read say nothing"] = function(t)
     t.eq(prompt(addon, ns.QuestBags.BUY_PROMPT), nil)
 end
 
+-- Parity row C-10 (lead section 664). Fails before: no Answers, no hand-in prompt.
+tests["quest bags e2e: a quest ready to hand in says so for its item, and the answers are there to ask"] = function(t)
+    local c, addon = start()
+    local Q = ns.QuestBags
+    t.eq(prompt(addon, Q.HANDIN_PROMPT), nil, "the quest is not complete yet")
+    local answers = addon.use(Q.NAME).Answers()
+    t.eq(answers, { { item = "Gnoll Paw", answer = "keep", quest = "Gnoll Trouble", questId = GNOLL_Q } })
+    local ready = row(GNOLL_Q, "Gnoll Trouble", "Gnoll Paw: 8/8", true)
+    ready.complete = true
+    c.setQuestLog({ ready })
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(1, 5)
+    t.eq(prompt(addon, Q.HANDIN_PROMPT), "Gnoll Paw is for Gnoll Trouble, which is ready to hand in.")
+    t.eq(addon.use(Q.NAME).Answers()[1].answer, "handIn")
+    c.setBagItems({})
+    c.fire("BAG_UPDATE")
+    c.advance(1, 5)
+    t.eq(prompt(addon, Q.HANDIN_PROMPT), nil, "gone from the bags")
+    t.eq(addon.use(Q.NAME).Answers(), {})
+end
+
+tests["quest bags e2e: with the setting off no hand-in is said, and the answers can still be asked"] = function(t)
+    local c, addon = start()
+    local Q = ns.QuestBags
+    addon.settings:set(Q.SETTING, false)
+    local ready = row(GNOLL_Q, "Gnoll Trouble", "Gnoll Paw: 8/8", true)
+    ready.complete = true
+    c.setQuestLog({ ready })
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(1, 5)
+    t.eq(prompt(addon, Q.HANDIN_PROMPT), nil)
+    t.eq(addon.use(Q.NAME).Answers()[1].answer, "handIn")
+end
+
 return tests
