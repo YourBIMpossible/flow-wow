@@ -1749,6 +1749,8 @@ function ns.make.client(env)
 
     -- What the client says about one of your spells, by spell id:
     --   { known =, usable =, noPower = }   each true, false or nil
+    --   name = the spell's name as the client says it, in the player's
+    --          language, or left out (lead section 625, B-32)
     -- nil for a field means the client did not say; it is never guessed.
     -- noPower is the client's own "not enough power" answer, not an amount.
     -- Seen in game on 16001, out of a fight: C_Spell.IsSpellUsable gives two
@@ -1756,6 +1758,10 @@ function ns.make.client(env)
     -- known asks C_SpellBook.IsSpellKnown (the name on warcraft.wiki.gg,
     -- Patch 1.60.1/API changes), then the bare IsPlayerSpell, which is not
     -- listed for this client. Neither has been seen in game.
+    -- name asks C_Spell.GetSpellInfo(id).name where the client has it, else
+    -- GetSpellInfo's first answer (the same read as the learned-spell
+    -- line's, spellName above); a call that is absent, raises or answers a
+    -- hidden or empty name leaves it out. A first guess: not seen in game.
     function c.spell(id)
         if type(id) ~= "number" then return nil end
         local group = type(env.C_Spell) == "table" and env.C_Spell or {}
@@ -1766,6 +1772,7 @@ function ns.make.client(env)
         local ok, usable, noPower = call(group.IsSpellUsable, id)
         row.usable = flag(ok, usable)
         row.noPower = flag(ok, noPower)
+        row.name = (spellName(id))
         return row
     end
 
@@ -6782,6 +6789,18 @@ function ns.make.client(env)
         local name = info.name
         if hidden(name) or type(name) ~= "string" or name == "" then return nil end
         return name
+    end
+
+    -- The name of an area as the client says it, in the player's language
+    -- (C_Map.GetAreaInfo(areaId), the area numbers of the zone tables), or
+    -- nil: the call is absent, raises, or answers nothing, an empty or a
+    -- hidden name. Lead section 625 (B-32): Nav/TravelSpells.lua compares
+    -- it with a map's name. Checked on warcraft.wiki.gg (API
+    -- C_Map.GetAreaInfo: areaID -> name). A first guess on 16001: needs
+    -- game test.
+    function c.areaName(area)
+        if type(area) ~= "number" then return nil end
+        return text(mapCall("GetAreaInfo", area))
     end
 
     -- c.mapClick(fn) -> true when the world map will tell of the player's

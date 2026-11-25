@@ -270,6 +270,48 @@ return {
         t.eq(c.spell("Wrath"), nil, "by id only")
     end,
 
+    -- Lead section 625 (B-32): the spell's name as the client says it, in
+    -- the player's language. Fails before: no name field.
+    ["spell: its name as the client says it, or none"] = function(t)
+        local env = { C_Spell = { GetSpellInfo = function(id)
+            return id == 18960 and { name = "Teleportieren: Mondlichtung" } or nil
+        end } }
+        local c = ns.make.client(env)
+        t.eq(c.spell(18960).name, "Teleportieren: Mondlichtung")
+        t.eq(c.spell(1).name, nil, "no answer: no name")
+        env.C_Spell.GetSpellInfo = boom
+        t.eq(c.spell(18960).name, nil, "the call raises: no name")
+        env.C_Spell = nil
+        env.GetSpellInfo = function(id) return id == 18960 and "Teleport: Moonglade" or nil end
+        t.eq(c.spell(18960).name, "Teleport: Moonglade", "the bare call where there is no group")
+        env.GetSpellInfo = nil
+        t.eq(c.spell(18960).name, nil, "neither call: no name")
+        env.GetSpellInfo = function() return "Hidden" end
+        env.issecretvalue = function(v) return v == "Hidden" end
+        t.eq(c.spell(18960).name, nil, "a hidden name is not read")
+    end,
+
+    -- Section 625: an area's name as the client says it (C_Map.GetAreaInfo).
+    -- Fails before: no such read.
+    ["areaName: the client's name for an area, or nil"] = function(t)
+        local env = { C_Map = { GetAreaInfo = function(area) return area == 493 and "Mondlichtung" or nil end } }
+        local c = ns.make.client(env)
+        t.eq(c.areaName(493), "Mondlichtung")
+        t.eq(c.areaName(1), nil, "no answer")
+        t.eq(c.areaName("493"), nil, "by number only")
+        env.C_Map.GetAreaInfo = function() return "" end
+        t.eq(c.areaName(493), nil, "an empty name is none")
+        env.C_Map.GetAreaInfo = boom
+        t.eq(c.areaName(493), nil, "the call raises")
+        env.C_Map.GetAreaInfo = nil
+        t.eq(c.areaName(493), nil, "the call is absent")
+        env.C_Map = nil
+        t.eq(c.areaName(493), nil, "no map calls at all")
+        env.C_Map = { GetAreaInfo = function() return "Hidden" end }
+        env.issecretvalue = function(v) return v == "Hidden" end
+        t.eq(c.areaName(493), nil, "a hidden name is not read")
+    end,
+
     ["spell: known asks the spell book first, the bare name second"] = function(t)
         local asked = {}
         local env = {

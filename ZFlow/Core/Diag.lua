@@ -56,6 +56,7 @@ Diag.NAMES = {
     "C_Container.GetContainerItemLink", "GetContainerItemLink",
     "GetItemInfo", "C_Item.GetItemInfo", "GetItemCount", "C_Item.GetItemCount", "GetItemInfoInstant",
     "C_Map.GetBestMapForUnit", "C_Map.GetPlayerMapPosition", "C_Map.GetMapInfo",
+    "C_Map.GetAreaInfo",
     "C_Map.GetWorldPosFromMapPos", "Enum.UIMapType", "GetPlayerFacing", "UnitPosition",
     "GetZoneText", "GetSubZoneText", "GetRealZoneText",
     "UnitClass", "UnitLevel", "UnitRace", "UnitFactionGroup", "UnitHealth", "UnitHealthMax",

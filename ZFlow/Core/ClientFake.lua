@@ -235,7 +235,7 @@ function ns.make.fakeClient(opts)
     function c.spell(id)
         if type(id) ~= "number" then return nil end
         local r = s.spells and s.spells[id] or {}
-        return { known = r.known, usable = r.usable, noPower = r.noPower }
+        return { known = r.known, usable = r.usable, noPower = r.noPower, name = r.name }
     end
     function c.spellId(name) return s.spellIds and s.spellIds[name] or nil end
     function c.watchTrainer() end
@@ -978,7 +978,8 @@ function ns.make.fakeClient(opts)
     -- out reads as not known.
     function c.setSpell(id, row)
         s.spells = s.spells or {}
-        s.spells[id] = row and { known = row.known, usable = row.usable, noPower = row.noPower } or nil
+        s.spells[id] = row and { known = row.known, usable = row.usable, noPower = row.noPower,
+            name = row.name } or nil
     end
     function c.setSpellId(name, id)
         s.spellIds = s.spellIds or {}
@@ -2227,6 +2228,12 @@ function ns.make.fakeClient(opts)
         s.mapNames[map] = name
     end
     function c.mapName(map) return s.mapNames and s.mapNames[map] or nil end
+    -- Area names: c.setAreaName(area, name); areaName(area) is nil until told.
+    function c.setAreaName(area, name)
+        s.areaNames = s.areaNames or {}
+        s.areaNames[area] = name
+    end
+    function c.areaName(area) return s.areaNames and s.areaNames[area] or nil end
     -- The player's Alt + left click on the world map: mapClick(fn) keeps
     -- fn (nil and a reason with no frames); c.clickMap(map, x, y) is the
     -- player doing it.
