@@ -311,6 +311,8 @@ return {
     "UI/SetupList.lua",
     -- P-TRIP (S43): quest spots learned from the player's own play (after QuestRead and Diag).
     "Nav/QuestSpots.lua",
+    -- F-new-4: forget one wrongly learned place or quest spot (after ServiceSeen, QuestSpots and Diag).
+    "Nav/LearnedForget.lua",
     -- P-TRIP (S39/S43/S40): quest routes and dungeon runs for the arrow (after RoutePlan, QuestSpots).
     "Nav/TripRoute.lua",
     "Nav/TrackerList.lua",
