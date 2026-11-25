@@ -302,14 +302,35 @@ tests["spec talents: a real pack - a Warrior with 31 points in Fury reads damage
     t.eq(role, "tank")
 end
 
-tests["spec talents: a real pack - Feral Combat reads no role, tank or damage by gear and form"] = function(t)
+tests["spec talents: a real pack - 31 points in Feral reads damage, the tree that also tanks"] = function(t)
     local druid = ns.Packs.DRUID
+    local role, tree, points = Sp.FromTalents(druid, {
+        { name = "Balance", points = 0 }, { name = "Feral", points = 31 }, { name = "Restoration", points = 0 },
+    })
+    t.eq(role, "dps")
+    t.eq(tree, "Feral")
+    t.eq(points, 31)
     t.eq(Sp.FromTalents(druid, {
-        { name = "Balance", points = 0 }, { name = "Feral Combat", points = 31 }, { name = "Restoration", points = 0 },
-    }), nil)
-    t.eq(Sp.FromTalents(druid, {
-        { name = "Balance", points = 0 }, { name = "Feral Combat", points = 5 }, { name = "Restoration", points = 21 },
+        { name = "Balance", points = 0 }, { name = "Feral", points = 5 }, { name = "Restoration", points = 21 },
     }), "heal")
+end
+
+tests["spec source: a tank role set with Feral talents gives no note"] = function(t)
+    local druid = ns.Packs.DRUID
+    local l = Sp.SourceLines(druid, "tank", {
+        { name = "Balance", points = 0 }, { name = "Feral", points = 31 }, { name = "Restoration", points = 0 },
+    })
+    t.eq(#l, 1, "Feral is one of the tank trees: no note")
+    t.ok(l[1]:find("your role setting", 1, true), l[1])
+end
+
+tests["spec source: points read that fit no one role never say none were read"] = function(t)
+    local l = Sp.SourceLines(pack(), "", trees(4, 4))
+    t.eq(#l, 1)
+    t.ok(l[1]:find("no role set", 1, true), l[1])
+    t.ok(not l[1]:find("no talent points read", 1, true), l[1])
+    l = Sp.SourceLines(pack(), "", nil)
+    t.ok(l[1]:find("no talent points read", 1, true), l[1])
 end
 
 tests["spec source: your setting wins, then talents, then the recommendation"] = function(t)
