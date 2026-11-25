@@ -257,7 +257,8 @@ end
 
 tests["rotation driver RD10: no flag, value or number is invented in the snapshot"] = function(t)
     local v = D.Step(stub(false, false, false), pack())
-    local own = { dead = true, inCombat = true, hostile = true }
+    -- D-24: lockdownRead is the driver's own read of the lock (D.Step).
+    local own = { dead = true, inCombat = true, hostile = true, lockdownRead = true }
     for _, f in ipairs(R.SNAPSHOT_FIELDS) do
         local name, kind = f[1], f[2]
         if (kind == "flag" or kind == "value" or kind == "number") and not own[name] then

@@ -167,6 +167,10 @@ return {
             r = ns.cast.Attributes({ spell = "Rejuvenation", kind = "heal", unit = unit }, plan(), nil, false)
             t.eq(attrs(r.button)[3], "unit=player", "never another player: " .. tostring(unit))
         end
+        -- D-24, Twin CHANGES-1 item 3: an emergency naming a party unit
+        -- also falls through to you, with its spell kept.
+        r = ns.cast.Attributes({ spell = "Rejuvenation", kind = "emergency", unit = "party2" }, plan(), nil, false)
+        t.eq({ attrs(r.button)[2], attrs(r.button)[3] }, { "spell=Rejuvenation", "unit=player" }, "emergency")
     end,
 
     -- Section 246 (N63-E): a macro-type secure button does not act on this
@@ -240,6 +244,44 @@ return {
         local o = {}
         for _, a in ipairs(odd.button) do o[a.attr] = a.value end
         t.eq(o["target-slot"], nil, "only the two weapon hands")
+    end,
+
+    -- Parity row D-24 (lead section 711): a group buff or cure goes on its
+    -- party member; any other kind naming a party unit is refused, and the
+    -- key holds its plan. Fails before: the party unit was never taken.
+    ["attributes: a group buff or cure on a party member; nothing else on one"] = function(t)
+        local function unitOf(sug)
+            local r = ns.cast.Attributes(sug, plan(), nil, false)
+            local got = {}
+            for _, a in ipairs(r.button) do got[a.attr] = a.value end
+            return got.unit, got.spell
+        end
+        t.eq({ unitOf({ spell = "Mark of the Wild", kind = "groupBuff", unit = "party2" }) },
+            { "party2", "Mark of the Wild" })
+        t.eq({ unitOf({ spell = "Remove Curse", kind = "dispel", unit = "party1" }) }, { "party1", "Remove Curse" })
+        local u, sp = unitOf({ spell = "Moonfire", kind = "damage", unit = "party1" })
+        t.eq(sp ~= "Moonfire", true, "another kind on a party unit is refused")
+        t.eq(u ~= "party1", true)
+        local u2 = unitOf({ spell = "Mark of the Wild", kind = "groupBuff", unit = "raid7" })
+        t.eq(u2 ~= "raid7", true, "no raid units")
+        local u3 = unitOf({ spell = "Mark of the Wild", kind = "groupBuff", unit = "party1", look = true })
+        t.eq(u3 ~= "party1", true, "look-only stays off the key")
+    end,
+
+    -- D-24, Twin CHANGES-2 item 1: the key frame holds the plan, so the
+    -- group pick reaches the key as the plan's action on its party member;
+    -- no raid unit, no other unit.
+    ["attributes: the plan's action may name a party member, never a raid unit"] = function(t)
+        local p = plan()
+        p.action = { spell = "Mark of the Wild", unit = "party1" }
+        local got = {}
+        for _, a in ipairs(ns.cast.Attributes(nil, p, nil, false).button) do got[a.attr] = a.value end
+        t.eq({ got.spell, got.unit }, { "Mark of the Wild", "party1" })
+        p = plan()
+        p.action = { spell = "Mark of the Wild", unit = "raid3" }
+        got = {}
+        for _, a in ipairs(ns.cast.Attributes(nil, p, nil, false).button) do got[a.attr] = a.value end
+        t.ok(got.unit ~= "raid3", "a raid unit is refused")
     end,
 
     -- Section 246 (N63-E): no suggestion, plan or Alt item ever gives a

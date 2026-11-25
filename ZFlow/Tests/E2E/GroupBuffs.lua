@@ -53,6 +53,7 @@ local function start(opts)
         if tostring(h.spec.name):find("RotationIcon", 1, true) then icon = h end
     end
     addon.settings:set(D.SETTING, true)
+    if opts.groupKey ~= true then addon.settings:set(addon.PartyGroup.KEY_SETTING, false) end
     c.setFormName(nil, true); c.setPlayerBuffs(BUFFED); c.setTarget({ exists = false }); c.setCombat(false)
     c.advance(2, 10)
     return c, addon, icon
@@ -478,6 +479,34 @@ tests["group e2e 19: a member becomes the tank: their missing buff comes first o
     c.fire("GROUP_ROSTER_UPDATE"); c.advance(2, 10)
     s = picked(addon)
     t.eq(s and { s.spell, s.unit } or nil, { THORNS, "party2" }, "the new tank's Thorns first")
+end
+
+-- D-24, Twin CHANGES-1 items 1 and 5 (lead section 723): through the real
+-- entry (Rotation/Snapshot.lua carries groupKey and lockdownRead), with
+-- "Cast group buffs and cures on the key" as made (on), out of a fight and
+-- the lock off: the key casts Mark of the Wild on party1. Fails before:
+-- the snapshot dropped both fields, so it stayed look-only.
+tests["group e2e D-24: as made, out of a fight, the key casts the buff on the member"] = function(t)
+    local c, addon = start({ groupKey = true })
+    local b = keyOn(c, addon)
+    local s = picked(addon)
+    t.ok(s ~= nil, "a suggestion")
+    t.eq(s and { s.step, s.spell, s.unit, s.kind, s.look } or nil, { "group", MOTW, "party1", "groupBuff", nil })
+    t.eq(b and { b.attrs.type, b.attrs.spell, b.attrs.unit }, { "spell", MOTW, "party1" }, "on the key, on the member")
+    t.eq(errors(addon), 0)
+end
+
+tests["group e2e D-24: with the key on, no printed or diag line and nothing saved holds the name"] = function(t)
+    local c, addon = start({ groupKey = true })
+    keyOn(c, addon)
+    local line = said(c)
+    t.ok(line:find("party1", 1, true) ~= nil, "the diag line names the unit: " .. line)
+    t.ok(not line:find(NAME, 1, true), "the diag line has no name")
+    for _, printed in ipairs(c.printed) do
+        t.ok(not tostring(printed):find(NAME, 1, true), "no printed line holds the name")
+    end
+    t.ok(not holds(c.saved(ns.id.accountDB), NAME), "the account's saved data holds no name")
+    t.ok(not holds(c.saved(ns.id.charDB), NAME), "the character's saved data holds no name")
 end
 
 return tests

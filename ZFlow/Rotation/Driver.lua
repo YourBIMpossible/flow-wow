@@ -772,7 +772,7 @@ function D.Read(client, pack, ids, role, extra)
             return nil
         end
         -- P-PARTY: your group and its setting (Rotation/Group.lua).
-        if field == "party" or field == "groupOn" then
+        if field == "party" or field == "groupOn" or field == "groupKey" then
             if type(ns.PartyGroup) ~= "table" then return nil end
             return ns.PartyGroup.Read(client, field, { pack = pack, ids = ids })
         end
@@ -915,7 +915,17 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
         return { pack = false, trace = {}, why = { pack = false } }
     end
     local ids, missing = RR.SpellIds(pack, client.spellId)
-    local snapshot = ns.Snapshot(D.Read(client, pack, ids, role, extra))
+    -- D-24: the lock is read once a step (RD11), here, and the snapshot's
+    -- lockdownRead is that answer: a plain true or false, else nil.
+    local lockdown = client.combatLockdown()
+    local read = D.Read(client, pack, ids, role, extra)
+    local snapshot = ns.Snapshot(function(field)
+        if field == "lockdownRead" then
+            if type(lockdown) == "boolean" then return lockdown end
+            return nil
+        end
+        return read(field)
+    end)
     -- N39 and N27 (P-KEYS slice E): with no prefs passed, the spells list
     -- and the auto attack row (Rotation/SpellKeys.lua), extra.spellKeys,
     -- give them: the chooser's, and the key plan's (Skip and Bar off it).
@@ -929,7 +939,6 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     local passed = passedIn(trace)
     if suggestion and #passed > 0 then suggestion.passed = passed end
 
-    local lockdown = client.combatLockdown()
     local plan = ns.KeyPlan(pack, planPrefs)
     -- N8: the healing item on Alt + the key (KeyPlan gives a fresh table).
     local hi = snapshot.healItem
@@ -970,6 +979,14 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
                 end
             end
         end
+    end
+    -- D-24: the key frame holds the plan, so a group buff or cure for a
+    -- party member (Rotation/Group.lua, on the key only out of a fight with
+    -- the lock off and the setting on) goes on it as its action.
+    if type(suggestion) == "table" and ns.cast.GROUP_KINDS[suggestion.kind] and ns.cast.PARTY[suggestion.unit]
+        and suggestion.look ~= true and type(suggestion.spell) == "string"
+        and type(plan) == "table" and plan.action == nil and lockdown == false then
+        plan.action = { spell = suggestion.spell, unit = suggestion.unit }
     end
     -- N39 (P-KEYS slice E): the engage step's Attack goes on the plan, a
     -- spell (never a macro), out of combat lockdown only. SE-1: the key
