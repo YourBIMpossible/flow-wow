@@ -66,7 +66,7 @@ tests["dungeon mode: per-quest rows are listed grey after the counts, at most tw
     t.eq(grey[12], "Pick up: Q12")
     local more
     for _, it in ipairs(items) do
-        if it.disabled and it.text == "... and 2 more." then more = true end
+        if it.disabled and it.text == "2 more quests not listed." then more = true end
     end
     t.ok(more, "how many more")
     t.eq(actions(M().Items({ name = "Test Mines", on = true, extra = { "Pick up: Q1" } })), "leave,prep,cancel")

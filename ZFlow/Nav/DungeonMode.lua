@@ -33,7 +33,7 @@ M.ASK = "Ask my group in chat who has its quests"
 M.PREP = "Get ready on the way: training, selling and repairs, your bank"
 M.CANCEL = "Cancel this run"
 M.QUEST_LINES = 12
-M.MORE = "... and %d more."
+M.MORE = "%d more quests not listed."
 
 function M.Line(name, on, done, total)
     if type(name) ~= "string" then return nil end
@@ -73,7 +73,8 @@ function M.Items(state)
             if i > 1 then items[#items + 1] = { text = line, disabled = true } end
         end
     end
-    local extra = type(state.extra) == "table" and state.extra or {}
+    local extra = {}
+    if type(state.extra) == "table" then extra = state.extra end
     local shown = 0
     for _, line in ipairs(extra) do
         if type(line) == "string" then
