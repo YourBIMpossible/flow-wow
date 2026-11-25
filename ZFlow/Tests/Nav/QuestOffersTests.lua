@@ -186,6 +186,21 @@ tests["quest offers: clear counts the quests dropped now and empties the list"] 
     t.eq(next(saved(c) or {}), nil, "the saved list is empty, the old pause too")
 end
 
+-- Lead section 820 (Lazy CHANGES-2): the list and the clear count share one
+-- helper, so a key the list skips (not a quest number) is never counted.
+tests["quest offers: QO.Listed is what both the list and clear count"] = function(t)
+    t.eq(type(QO.Listed), "function", "QO.Listed")
+    if type(QO.Listed) ~= "function" then return end
+    local l = { [5] = { firstAt = 90 }, [3] = { firstAt = 95 }, ["7"] = { firstAt = 95 }, [9] = { firstAt = 1 } }
+    t.eq(QO.Listed(l, 100), { 3, 5 }, "numbers only, dropped now, in order")
+    t.eq(QO.Listed(nil, 100), {})
+    local _, c, _, d = start({ offered = { ids = {}, titles = {} },
+        char = { learned = { facts = { notOffered = { ["77"] = { firstAt = 100000 } } } } } })
+    d.commands[QO.WORD]("clear")
+    t.ok(c.printed[#c.printed]:find(string.format(QO.CLEARED, 0), 1, true) ~= nil,
+        "a key that is no quest number is not counted: " .. tostring(c.printed[#c.printed]))
+end
+
 tests["quest offers: a talk Questie could not judge is tried again"] = function(t)
     local k, c, api, _, db = start({ offered = { ids = {}, titles = {} }, ready = false })
     c.fire("GOSSIP_SHOW")
