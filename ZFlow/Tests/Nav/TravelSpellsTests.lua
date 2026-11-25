@@ -104,6 +104,35 @@ T["from client: class, position, the map's name and known by the spell number"] 
     t.eq(none, "class unknown")
 end
 
+-- Lead section 621: who teaches it, and for how much, only from a trainer
+-- list the player opened.
+T["trainer record: the trainer and cost a saved list gives the spell"] = function(t)
+    local SPELL = "Teleport: Moonglade"
+    local lists = {
+        b = { npc = "Zed", rows = { { name = SPELL, state = "unavailable" } } },
+        a = { npc = "Turak Runetotem", rows = { { name = "Moonfire", state = "known", cost = 10 },
+                                                { name = SPELL, state = "unavailable", cost = 300 } } },
+    }
+    t.eq(N.TravelSpellTaught(lists, SPELL), { npc = "Turak Runetotem", cost = 300 }, "the first list by key")
+    t.eq(N.TravelSpellTaught({ b = lists.b }, SPELL), { npc = "Zed" }, "no cost read: none said")
+    t.eq(N.TravelSpellTaught(lists, "Hibernate"), nil, "not listed")
+    t.eq(N.TravelSpellTaught(nil, SPELL), nil)
+    t.eq(N.TravelSpellTaught({ x = { rows = { { name = SPELL } } } }, SPELL), nil, "no trainer name: nothing")
+end
+
+T["not known, with a trainer record: the line names that trainer and cost"] = function(t)
+    local no = function() return false end
+    local needs = "Teleport: Moonglade needs level 10"
+    local step = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", no, NAMED,
+        function() return { npc = "Turak Runetotem", cost = 300 } end)
+    t.eq(step and step.hint, N.TRAVEL_TAUGHT_COST:format(needs, "Turak Runetotem", ns.Prices.Coin(300)))
+    local bare = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", no, NAMED,
+        function() return { npc = "Turak Runetotem" } end)
+    t.eq(bare and bare.hint, N.TRAVEL_TAUGHT:format(needs, "Turak Runetotem"), "no cost read: the trainer only")
+    local none = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", no, NAMED, function() return nil end)
+    t.eq(none and none.hint, needs, "no record: the level only")
+end
+
 T["planner: a step a cast away counts as legacy's ten-second cast"] = function(t)
     t.eq(N.TRAVEL_SPELL_YARDS, 120)
 end

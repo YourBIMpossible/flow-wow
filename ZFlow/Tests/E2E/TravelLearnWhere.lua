@@ -33,7 +33,8 @@ local function start(opts)
     opts = opts or {}
     local here = opts.here or 1411
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
+    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, opts.lists and { learned = { trainerLists = opts.lists } } or {})
     c.setZone(1, here); c.setPosition(here, 0.5, 0.5); c.setFacing(0)
     c.setMapSize(1411, 1000, 500); c.setMapCont(1411, 1)
     c.setMapSize(MOONGLADE, 1000, 1000); c.setMapCont(MOONGLADE, 1)
@@ -111,6 +112,27 @@ tests["travel learn where: no spell line when the client does not name map 1450 
         t.ok(has(a.lines, Flights.NONE), "the no-flight line instead")
         local c2 = start({ known = true, mapName = name })
         t.ok(c2.arrows[1].lines[1] ~= "Cast " .. TELEPORT, "and no cast: " .. tostring(name))
+    end
+end
+
+-- Lead section 621: a trainer list the player opened that has the spell
+-- names that trainer and its cost; nothing but that record says who
+-- teaches it. Fails before: the line never names a trainer.
+tests["travel learn where: the trainer and cost come from the player's own trainer list"] = function(t)
+    local lists = { k = { npc = "Turak Runetotem", shown = { available = true, unavailable = true, known = true },
+        complete = true, rows = { { name = TELEPORT, state = "unavailable", level = 10, cost = 300 } } } }
+    local c = start({ known = false, lists = lists })
+    local want = ns.Nav.TRAVEL_TAUGHT_COST:format(LEARN, "Turak Runetotem", ns.Prices.Coin(300))
+    t.ok(has(c.arrows[1].lines, want), "the recorded trainer and cost: " .. want)
+    t.ok(not has(c.arrows[1].lines, LEARN), "one line, not two")
+end
+
+-- Section 621: no record, no trainer named.
+tests["travel learn where: with no trainer list the line names no trainer"] = function(t)
+    local c = start({ known = false })
+    t.ok(has(c.arrows[1].lines, LEARN), "only the level: " .. LEARN)
+    for _, l in ipairs(c.arrows[1].lines) do
+        t.eq(l:find("trainer", 1, true), nil, "no trainer claimed: " .. l)
     end
 end
 
