@@ -293,4 +293,62 @@ tests["reward board: a choice not read yet has no verdict, and no window has no 
     t.eq(board(addon), nil, "the window closed")
 end
 
+-- Parity row C-03 (lead section 704), as Flow's Modules/Quests/
+-- AutoTurnIn.lua (:190-201): at a reward choice the add-on stops and asks;
+-- nothing is picked. One chat line, once a window, with the board's words.
+-- Fails before: nothing is said.
+local function asked(c)
+    local out = {}
+    for _, l in ipairs(c.printed) do
+        if tostring(l):find("Pick your reward", 1, true) then out[#out + 1] = l end
+    end
+    return out
+end
+
+tests["reward ask: a choice at the turn-in is said once, with the best for your spec and the best to sell"] = function(t)
+    local c = boot({ role = "dps" })
+    c.setItemInfo({ [23] = { name = "Strong Helm", sellPrice = 90 }, [24] = { name = "Weak Helm", sellPrice = 15 } })
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.printed = {}
+    c.fire("QUEST_COMPLETE")
+    later(c)
+    later(c)
+    local lines = asked(c)
+    t.eq(#lines, 1, "once")
+    t.ok(lines[1] ~= nil and lines[1]:find(ns.GearRewardMark.ASK_BEST:format("Strong Helm", "dps"), 1, true) ~= nil,
+        tostring(lines[1]))
+    t.ok(lines[1] ~= nil and lines[1]:find(ns.GearRewardMark.ASK_SELL:format("Strong Helm"), 1, true) ~= nil,
+        "and to sell")
+end
+
+tests["reward ask: the offer, one reward, or the mark switched off says nothing"] = function(t)
+    local c, addon = boot({ role = "dps" })
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.printed = {}
+    c.fire("QUEST_DETAIL")
+    later(c)
+    t.eq(asked(c), {}, "the offer is no turn-in")
+    c.fire("QUEST_FINISHED")
+    c.setQuestChoices(choices(WEAK))
+    c.fire("QUEST_COMPLETE")
+    later(c)
+    t.eq(asked(c), {}, "one reward: nothing to choose")
+    c.fire("QUEST_FINISHED")
+    addon.settings:set(ns.GearRewardMark.SETTING, false)
+    c.setQuestChoices(choices(WEAK, STRONG))
+    c.fire("QUEST_COMPLETE")
+    later(c)
+    t.eq(asked(c), {}, "switched off")
+end
+
+tests["reward ask: the line names no choice it cannot read, and never picks"] = function(t)
+    local RM = ns.GearRewardMark
+    t.eq(RM.AskLine(nil, function() return nil end, "dps"), RM.ASK)
+    local board = { chosen = "dps", choices = { { index = 1, roles = { dps = "worse" } },
+        { index = 2, roles = { dps = "upgrade" } } }, bestSell = 1 }
+    t.eq(RM.AskLine(board, function() return nil end, "dps"), RM.ASK, "names not read: the plain ask")
+    t.eq(RM.AskLine(board, function(i) return ({ "A", "B" })[i] end, "dps"),
+        RM.ASK .. " " .. RM.ASK_BEST:format("B", "dps") .. " " .. RM.ASK_SELL:format("A"))
+end
+
 return tests
