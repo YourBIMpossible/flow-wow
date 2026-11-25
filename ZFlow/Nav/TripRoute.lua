@@ -853,12 +853,12 @@ function T.Declare(k, diag)
             -- cannot be told (as before). Reached and not done, it stays
             -- first (s.seen); walking away from it then lets it go, so no
             -- stop sticks for ever.
-            local now
+            local town
             for _, s in ipairs(route.stops) do
                 if T.TOWN_KINDS[s.kind] and not s.gone then
                     if reached(s, here) then
-                        now = now or townNow(c)
-                        if T.TownDone(s, now) == false then s.seen = true else s.gone = true end
+                        town = town or townNow(c)
+                        if T.TownDone(s, town) == false then s.seen = true else s.gone = true end
                     elseif s.seen then
                         s.gone = true
                     end
