@@ -173,8 +173,9 @@ return {
         "Nav/FlightStep.lua",
         "Nav/MapFlights.lua",
         "Nav/TaxiMark.lua",
-        -- S30: the flight paths still to learn, said in words (after FlightPaths).
+        -- A1-32: the flight times learned by flying (before FlightWord, which lists them).
         "Nav/FlightTimes.lua",
+        -- S30: the flight paths still to learn, said in words (after FlightPaths).
         "Nav/FlightWord.lua",
         "Nav/Flights.lua",
         "Nav/Gates.lua",

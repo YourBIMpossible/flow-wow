@@ -120,7 +120,14 @@ function T.Declare(k)
             for k2, v in pairs(times) do copy[k2] = v end
         end
         copy[from .. ">" .. to] = math.floor(seconds + 0.5)
-        ctx.store:set("account", path(), copy)
+        -- A write that fails is said, never lost without a word (Zen's
+        -- review, lead section 609; as Nav/TripRoute.lua keeps its route).
+        local okSet, done, why = pcall(ctx.store.set, ctx.store, "account", path(), copy)
+        if not okSet then
+            k.problems:add(T.NAME, "keep", tostring(done))
+        elseif done == false then
+            k.problems:add(T.NAME, "keep", tostring(why))
+        end
     end
 
     local function tick()
