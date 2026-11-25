@@ -64,7 +64,7 @@ tests["corpse hint e2e: a corpse on another map says the graveyard path"] = func
 end
 
 tests["corpse hint e2e: alive, or not known, there is no hint"] = function(t)
-    local c, addon = boot()
+    local _, addon = boot()
     t.eq(hint(addon), nil, "alive")
     local CH = ns.Nav.CorpseHint
     t.eq(CH.Words(nil, false, nil), nil, "ghost not known")

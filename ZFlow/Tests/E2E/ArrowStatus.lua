@@ -49,7 +49,6 @@ end
 
 tests["arrow status e2e: nothing to point at says so"] = function(t)
     local c = boot()
-    local WS = ns.Nav.WaypointStatus
     local lines = said(c, "arrow status")
     t.eq(#lines, 2, table.concat(lines, " | "))
     t.ok(lines[1] and lines[1]:find("^Arrow: ") ~= nil, tostring(lines[1]))
