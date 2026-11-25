@@ -355,6 +355,9 @@ M.FLOW_WINDOWS = {
     { name = "dungeonWindow", text = "Dungeon quests", open = "Open", close = "Close", shown = "Shown" },
     { name = "settingsPanel", text = "Settings", open = "Toggle" },
     { name = "sellList", text = "Sell list", open = "Show" },
+    -- R9: the inventory list (UI/InventoryList.lua), look only; before
+    -- this row only the slash word reached it.
+    { name = "inventoryList", text = "Inventory", open = "Show" },
     { name = "feedback", text = "Feedback", open = "Open" },
 }
 
