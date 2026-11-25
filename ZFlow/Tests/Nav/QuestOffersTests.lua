@@ -1,0 +1,184 @@
+-- Tests for ZFlow/Nav/QuestOffers.lua (C-new-1): one talk to a quest giver
+-- who does not offer a quest the route would send you to drops that quest
+-- from the pick-ups; a word lists and clears the dropped ones; a talk that
+-- could not be judged (Questie not ready) is tried again. Made-up NPCs and
+-- quests, test only. Not tested in game.
+local _, ns = ...
+
+local QO = ns.QuestOffers
+local tests = {}
+
+local GIVER_GUID = "Creature-0-1-0-1-777-0000000001"
+
+-- A Questie that knows one giver (npc 777) starting quests 11, 12 and 13.
+local function questie(ready)
+    local db = {}
+    if ready ~= false then
+        db.GetNPC = function(id)
+            if id == 777 then return { name = "Old Giver", questStarts = { 11, 12, 13 } } end
+            return nil
+        end
+    end
+    db.GetQuest = function(id)
+        local names = { [11] = "Wolves", [12] = "Boars", [13] = "Letters" }
+        if names[id] then return { name = names[id] } end
+        return nil
+    end
+    return db
+end
+
+-- opts: char (saved table), offered (what the window shows), ready (Questie
+-- answers GetNPC), clock.
+local function start(opts)
+    opts = opts or {}
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, opts.char or {})
+    c.setClock(opts.clock or 100000)
+    local db = questie(opts.ready)
+    c.setQuestieModule("QuestieDB", db)
+    c.setServiceNpc(GIVER_GUID, "Old Giver")
+    c.setOfferedQuests(opts.offered)
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    local api = QO.Declare(k, d)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    return k, c, api, d, db
+end
+
+local function saved(c)
+    local root = c.saved(ns.id.charDB)
+    root = type(root) == "table" and root.learned or nil
+    root = type(root) == "table" and root.facts or nil
+    return type(root) == "table" and root.notOffered or nil
+end
+
+tests["quest offers: the names are the ones agreed"] = function(t)
+    t.eq(QO.NAME, "questOffers")
+    t.eq(QO.PATH, "learned.facts.notOffered", "where the import from Flow puts the list")
+    t.eq(QO.WORD, "offers")
+end
+
+tests["quest offers: one talk drops a quest the giver does not offer"] = function(t)
+    local k, c, api = start({ offered = { ids = { [11] = true }, titles = { Boars = true } } })
+    c.fire("GOSSIP_SHOW")
+    t.eq(api.dropped(11), false, "offered by id")
+    t.eq(api.dropped(12), false, "offered by title")
+    t.eq(api.dropped(13), true, "not on offer: dropped after one talk")
+    t.eq(saved(c)[13].at, 100000)
+    t.eq(saved(c)[13].npc, "Old Giver")
+    t.eq(k.problems:count(), 0)
+end
+
+tests["quest offers: a greeting window counts like gossip"] = function(t)
+    local _, c, api = start({ offered = { ids = {}, titles = { Wolves = true, Boars = true } } })
+    c.fire("QUEST_GREETING")
+    t.eq(api.dropped(13), true)
+    t.eq(api.dropped(11), false)
+end
+
+tests["quest offers: a window with no list concludes nothing"] = function(t)
+    local _, c, api = start({ offered = nil })
+    c.fire("GOSSIP_SHOW")
+    t.eq(api.dropped(13), false)
+    t.eq(saved(c), nil)
+end
+
+tests["quest offers: quests done or in the log are not judged"] = function(t)
+    local _, c, api = start({ offered = { ids = {}, titles = {} } })
+    c.setQuestDone(11, true)
+    c.setQuestLog({ { id = 12, title = "Boars", objectives = {} } })
+    c.fire("GOSSIP_SHOW")
+    t.eq(api.dropped(11), false, "done")
+    t.eq(api.dropped(12), false, "in the log")
+    t.eq(api.dropped(13), true)
+end
+
+tests["quest offers: right after an accept the list is changing, so nothing is judged"] = function(t)
+    local _, c, api = start({ offered = { ids = {}, titles = {} } })
+    c.fire("QUEST_ACCEPTED")
+    c.fire("GOSSIP_SHOW")
+    t.eq(api.dropped(13), false)
+    c.advance(QO.QUIET + 1)
+    c.fire("GOSSIP_SHOW")
+    t.eq(api.dropped(13), true)
+end
+
+tests["quest offers: offered again later brings the quest back"] = function(t)
+    local _, c, api = start({ offered = { ids = {}, titles = {} } })
+    c.fire("GOSSIP_SHOW")
+    t.eq(api.dropped(13), true)
+    c.setOfferedQuests({ ids = { [13] = true }, titles = {} })
+    c.fire("GOSSIP_SHOW")
+    t.eq(api.dropped(13), false)
+end
+
+tests["quest offers: a drop runs out after a day"] = function(t)
+    local _, c, api = start({ offered = { ids = {}, titles = {} } })
+    c.fire("GOSSIP_SHOW")
+    c.setClock(100000 + QO.HIDE + 1)
+    t.eq(api.dropped(13), false)
+end
+
+tests["quest offers: an entry imported from Flow counts"] = function(t)
+    local _, _, api = start({ char = { learned = { facts = { notOffered = { [55] = { firstAt = 99000, hiddenAt = 99500 } } } } } })
+    t.eq(api.dropped(55), true)
+end
+
+tests["quest offers: pure note and dropped"] = function(t)
+    local list = {}
+    t.eq(QO.Note(list, 5, false, 10, "A"), "dropped")
+    t.eq(QO.Dropped(list, 5, 10 + QO.HIDE - 1), true)
+    t.eq(QO.Dropped(list, 5, 10 + QO.HIDE), false)
+    t.eq(QO.Note(list, 5, true, 20), "back")
+    t.eq(list[5], nil)
+    t.eq(QO.Note(list, 6, true, 20), nil, "never dropped: nothing changes")
+    t.eq(QO.Dropped(nil, 5, 0), false)
+end
+
+tests["quest offers: the word lists and clears, and says how many"] = function(t)
+    local _, c, api, d = start({ offered = { ids = {}, titles = {} } })
+    c.fire("GOSSIP_SHOW")
+    t.eq(type(d.help[QO.WORD]), "string")
+    d.commands[QO.WORD]("")
+    local listed = table.concat(c.printed, "\n")
+    t.ok(listed:find("Letters", 1, true) ~= nil, "the dropped quest is listed by name")
+    d.commands[QO.WORD]("clear")
+    t.ok(c.printed[#c.printed]:find(string.format(QO.CLEARED, 1), 1, true) ~= nil, c.printed[#c.printed])
+    t.eq(api.dropped(13), false)
+    t.eq(next(saved(c) or {}), nil, "the saved list is empty")
+    d.commands[QO.WORD]("")
+    t.ok(c.printed[#c.printed]:find(QO.NONE, 1, true) ~= nil)
+end
+
+tests["quest offers: a talk Questie could not judge is tried again"] = function(t)
+    local k, c, api, _, db = start({ offered = { ids = {}, titles = {} }, ready = false })
+    c.fire("GOSSIP_SHOW")
+    t.eq(api.dropped(13), false, "Questie not ready: nothing judged yet")
+    t.eq(api.waiting(), 1)
+    db.GetNPC = questie(true).GetNPC
+    c.advance(QO.RETRY + 1)
+    t.eq(api.dropped(13), true, "judged on the retry")
+    t.eq(api.waiting(), 0)
+    t.eq(k.problems:count(), 0)
+end
+
+tests["quest offers: retries stop after a few tries"] = function(t)
+    local _, c, api = start({ offered = { ids = {}, titles = {} }, ready = false })
+    c.fire("GOSSIP_SHOW")
+    for _ = 1, QO.TRIES + 2 do c.advance(QO.RETRY + 1) end
+    t.eq(api.waiting(), 0, "given up")
+    t.eq(api.dropped(13), false)
+end
+
+tests["quest offers: the route's pick-ups leave a dropped quest out"] = function(t)
+    local item = { kind = "pickup", quest = 13 }
+    t.eq(ns.Nav.RoutePickups.Keep(item, function(id) return id == 13 end), false)
+    t.eq(ns.Nav.RoutePickups.Keep({ quest = 11 }, function(id) return id == 13 end), true)
+    t.eq(ns.Nav.RoutePickups.Keep({ quest = 11 }, nil), true)
+end
+
+return tests
