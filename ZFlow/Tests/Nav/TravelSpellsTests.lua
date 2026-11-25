@@ -22,6 +22,7 @@ T["data: Teleport: Moonglade, with the facts its tooltip gives"] = function(t)
     t.eq(s.mapName, "Moonglade")
     t.eq(s.class, "DRUID")
     t.eq(s.level, 10)
+    t.eq(s.area, 493, "the zone's number in Questie")
     t.eq(s.from, nil, "where it is learned is not verified: not said")
 end
 
@@ -131,6 +132,73 @@ T["not known, with a trainer record: the line names that trainer and cost"] = fu
     t.eq(bare and bare.hint, N.TRAVEL_TAUGHT:format(needs, "Turak Runetotem"), "no cost read: the trainer only")
     local none = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", no, NAMED, function() return nil end)
     t.eq(none and none.hint, needs, "no record: the level only")
+end
+
+-- Lead section 623 item 3: the level is the client's.
+T["not known: needs the level below it, not learned yet at it or above"] = function(t)
+    local no = function() return false end
+    local function hint(level)
+        local step = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", no, NAMED, nil, { level = level })
+        return step and step.hint
+    end
+    t.eq(hint(9), "Teleport: Moonglade needs level 10")
+    t.eq(hint(10), "Teleport: Moonglade: not learned yet")
+    t.eq(hint(40), "Teleport: Moonglade: not learned yet")
+    t.eq(hint(nil), "Teleport: Moonglade needs level 10", "level not read: the cited fact only")
+    local step = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", no, NAMED,
+        function() return { npc = "Turak Runetotem" } end, { level = 12 })
+    t.eq(step and step.hint, N.TRAVEL_TAUGHT:format("Teleport: Moonglade: not learned yet", "Turak Runetotem"))
+end
+
+-- Section 623 item 1: the names the map may be called (the player's
+-- Questie, in their language) take the place of the English one.
+T["map name: the names given are the ones that count"] = function(t)
+    local yes = function() return true end
+    local german = function() return "Mondlichtung" end
+    local a = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", yes, german, nil,
+        { mapNames = { "Moonglade", "Mondlichtung" } })
+    t.eq(a and a.label, "Cast Teleport: Moonglade", "one of the names")
+    local b, why = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", yes, german, nil,
+        { mapNames = { "Moonglade", "Reflet-de-Lune" } })
+    t.eq(b, nil); t.eq(why, "map not confirmed")
+    local c, whyC = N.TravelSpellStep(N.TRAVEL_SPELLS, STEP, HERE, "DRUID", yes, german, nil, { mapNames = {} })
+    t.eq(c, nil); t.eq(whyC, "map not confirmed", "no names given: the English one, which is not it")
+end
+
+T["zone names: what the player's Questie calls a zone, plain and in their language"] = function(t)
+    local l10n = setmetatable({ zoneLookup = { [0] = { [1] = "Dun Morogh" }, [1] = { [493] = "Moonglade" } } },
+        { __call = function(_, text) return text == "Moonglade" and "Mondlichtung" or text end })
+    t.eq(N.TravelZoneNames(l10n, 493), { "Moonglade", "Mondlichtung" })
+    t.eq(N.TravelZoneNames({ zoneLookup = { [1] = { [493] = "Moonglade" } } }, 493), { "Moonglade" },
+        "a Questie that translates nothing: its own name")
+    t.eq(N.TravelZoneNames({ zoneLookup = { [493] = "Moonglade" } }, 493), { "Moonglade" }, "a flat table too")
+    t.eq(N.TravelZoneNames({ zoneLookup = { [1] = {} } }, 493), {}, "not listed")
+    t.eq(N.TravelZoneNames(nil, 493), {}, "no Questie")
+    local raising = setmetatable({ zoneLookup = { [1] = { [493] = "Moonglade" } } },
+        { __call = function() error("no") end })
+    t.eq(N.TravelZoneNames(raising, 493), { "Moonglade" }, "a translation that raises is left out")
+end
+
+-- Section 623 item 2: the trainer row is matched by the spell's name as
+-- the client says it, when the client says one.
+T["from client: the trainer row is matched by the client's name for the spell"] = function(t)
+    local store = { get = function(_, scope, path)
+        if scope == "char" and path == N.TRAVEL_LISTS then
+            return { a = { npc = "Turak Runentotem", rows = { { name = "Teleportieren: Mondlichtung" } } } }
+        end
+    end }
+    local client = {
+        class = function() return "DRUID" end,
+        level = function() return 12 end,
+        position = function() return { map = 1456, x = 0.4, y = 0.4 } end,
+        mapName = function() return "Moonglade" end,
+        spell = function() return { known = false, name = "Teleportieren: Mondlichtung" } end,
+    }
+    local want = N.TRAVEL_TAUGHT:format("Teleport: Moonglade: not learned yet", "Turak Runentotem")
+    t.eq(N.TravelSpellStepFrom(STEP, client, store).hint, want, "the client's name finds the row")
+    client.spell = function() return { known = false } end
+    t.eq(N.TravelSpellStepFrom(STEP, client, store).hint, "Teleport: Moonglade: not learned yet",
+        "no name from the client: the English name, which is not in this list")
 end
 
 T["planner: a step a cast away counts as legacy's ten-second cast"] = function(t)

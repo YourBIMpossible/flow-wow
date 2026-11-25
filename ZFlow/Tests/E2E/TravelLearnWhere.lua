@@ -41,13 +41,14 @@ local function start(opts)
     if opts.mapName ~= false then c.setMapName(MOONGLADE, opts.mapName or "Moonglade") end
     c.setMapCorners(1411, { cont = 1, ox = 0, oy = 0, ex = 1000, ey = 0, sx = 0, sy = 500 })
     c.setMapCorners(MOONGLADE, { cont = 1, ox = 5000, oy = 0, ex = 6000, ey = 0, sx = 5000, sy = 1000 })
-    c.setClass(opts.class or "DRUID"); c.setFaction("Horde"); c.setLevel(20)
+    c.setClass(opts.class or "DRUID"); c.setFaction("Horde"); c.setLevel(opts.level or 5)
     if opts.known ~= nil then
         c.setSpellId(TELEPORT, TELEPORT_ID)
         c.setSpell(TELEPORT_ID, { known = opts.known })
     end
     local db, zones = questie()
     c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
+    if opts.l10n then c.setQuestieModule("l10n", opts.l10n) end
     c.setQuestLog({ { id = 303, title = "Grove Wolves", objectives = { { text = "Grove Wolf slain: 0/4" } } } })
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
@@ -134,6 +135,31 @@ tests["travel learn where: with no trainer list the line names no trainer"] = fu
     for _, l in ipairs(c.arrows[1].lines) do
         t.eq(l:find("trainer", 1, true), nil, "no trainer claimed: " .. l)
     end
+end
+
+-- Lead section 623 item 3: at the spell's level or above, the line no
+-- longer says a level is needed. The level is the client's.
+-- Fails before: "needs level 10" at level 20.
+tests["travel learn where: at level 10 or above the line says not learned yet"] = function(t)
+    local c = start({ known = false, level = 20 })
+    t.ok(has(c.arrows[1].lines, TELEPORT .. ": not learned yet"), "not learned yet")
+    t.ok(not has(c.arrows[1].lines, LEARN), "no level asked of a level 20")
+    local c2 = start({ known = false, level = 9 })
+    t.ok(has(c2.arrows[1].lines, LEARN), "below it: the level it needs")
+end
+
+-- Section 623 item 1: a client in another language. The map's name is
+-- checked against the name the player's own Questie gives zone 493 in
+-- their language. Fails before: only the English name counts.
+tests["travel learn where: a client in another language, Questie names the zone the same"] = function(t)
+    local l10n = setmetatable({ zoneLookup = { [1] = { [493] = "Moonglade" } } },
+        { __call = function(_, text) return text == "Moonglade" and "Mondlichtung" or text end })
+    local c = start({ known = true, mapName = "Mondlichtung", l10n = l10n })
+    t.eq(c.arrows[1].lines[1], "Cast " .. TELEPORT, "the names match: the step")
+    local c2 = start({ known = true, mapName = "Winterquell", l10n = l10n })
+    t.ok(c2.arrows[1].lines[1] ~= "Cast " .. TELEPORT, "another name: no step")
+    local c3 = start({ known = true, mapName = "Mondlichtung" })
+    t.ok(c3.arrows[1].lines[1] ~= "Cast " .. TELEPORT, "no Questie zone names: only the English name counts")
 end
 
 return tests
