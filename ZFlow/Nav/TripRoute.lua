@@ -122,6 +122,11 @@ T.REPAIR_DETAIL = "Repair at the vendor; nothing is repaired for you."
 T.RIDING_DETAIL = "Learn it at the trainer; nothing is trained for you."
 T.RIDING_UNSEEN = "place not seen yet: ask a city guard for the riding trainer"
 T.RIDING_OTHER = "not on this map: %s"
+-- FLOW-PARITY A1-24 (lead sections 693 and 697): the arrow walks the route
+-- planned by itself, as legacy Flow's arrow walks its plan (Nav.lua choose(),
+-- :3536-3575). On by default, as in Flow; off, the arrow keeps its own pick
+-- and the route is only shown on the map and in the Router.
+T.WALK_SETTING = "nav.routeWalk"
 T.NOT_HERE = "not on this map"
 T.NO_DISTANCE = "distance not known"
 T.DONE = "Route done."
@@ -887,6 +892,13 @@ function T.Declare(k, diag)
 
     local function client() return ctx and ctx.client or k.client end
 
+    local function walkOn()
+        local s = ctx and ctx.settings
+        if type(s) ~= "table" or type(s.get) ~= "function" then return true end
+        local ok, v = pcall(s.get, s, T.WALK_SETTING)
+        return not (ok and v == false)
+    end
+
     local function on()
         local s = ctx and ctx.settings
         if type(s) ~= "table" or type(s.get) ~= "function" then return true end
@@ -1226,7 +1238,9 @@ function T.Declare(k, diag)
         return any
     end
 
-    function api.Step()
+    -- The next stop of the route as it is now, the log read again when due;
+    -- nil with none. The route planned by itself and the walked one alike.
+    local function nextStop()
         if not route or not on() then return nil end
         local c = client()
         local now = ask(c, "now")
@@ -1285,12 +1299,26 @@ function T.Declare(k, diag)
             end
         end
         if not s then return nil end
-        -- Planned by itself: shown on the map and in the Router, but the arrow
-        -- keeps its own pick until the player plans with the word.
-        if route.auto then return nil end
         return { quest = s.quest, objective = s.objective, turnIn = s.turnIn, label = s.label,
                  detail = s.need or s.detail, need = s.need,
                  place = { map = s.place.map, x = s.place.x, y = s.place.y } }
+    end
+
+    -- The route the player planned (the word, Plan the run): the arrow's
+    -- step ahead of its own pick, as before. Planned by itself: not here.
+    function api.Step()
+        if route and route.auto then return nil end
+        return nextStop()
+    end
+
+    -- A1-24 (lead sections 697 and 739): the route planned by itself, walked
+    -- in the quest arrow's own slot only (Nav/QuestRead.lua step(), where
+    -- Q.Pick answers), so repair, flight, service, corpse, waypoint, follow
+    -- and errand steps stay ahead of it, as in Flow. nil unless a route
+    -- planned by itself is there and nav.routeWalk is on.
+    function api.AutoStep()
+        if not route or not route.auto or not walkOn() then return nil end
+        return nextStop()
     end
 
     -- A1-29: with a count picked by the route word, the first that many
@@ -1459,6 +1487,12 @@ function T.Declare(k, diag)
         -- this row by "selling" and "repair" in its label.
         synonyms = { "route", "selling", "vendor", "bags", "hearth", "inn", "town" } })
 
+    k:Setting({ key = T.WALK_SETTING, scope = "account", type = "bool", default = true,
+        label = "The arrow walks the planned route", group = "travel.route",
+        help = "On: the arrow takes you to the planned route's stops in order, the route shown on the map."
+            .. " Off: the route is only shown, and the arrow picks your next quest step itself.",
+        synonyms = { "route", "arrow", "walk", "follow", "planned", "order" } })
+
     k:Setting({ key = T.PICKUP_SETTING, scope = "account", type = "bool", default = true,
         label = "Add quests to pick up on the way", group = "travel.route",
         help = "Acts when you plan a quest route with the route word: quests you can take now whose giver stands on this map (from Questie) are added as stops when on the way, else listed as skipped. Nothing is accepted for you.",
@@ -1579,7 +1613,7 @@ function T.Declare(k, diag)
     k:Module({
         name = T.NAME,
         needs = { "client", "store", "settings" },
-        provides = { Step = api.Step, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
+        provides = { Step = api.Step, AutoStep = api.AutoStep, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
                      Lines = api.Lines, Current = api.Current, View = api.View },
         ticks = { { every = T.AUTO_EVERY, when = "always", run = function()
             auto()

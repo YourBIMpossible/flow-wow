@@ -153,4 +153,21 @@ tests["repair step: gear fine, no repair stop in the route"] = function(t)
         "a repair vendor on another map is not a stop here")
 end
 
+-- Lead section 739 (A1-24 on White): with the arrow walking the route
+-- planned by itself, the repair step still comes first; once repaired the
+-- arrow goes back to the route's stop. The route takes only the quest
+-- arrow's own slot in the step chain.
+tests["repair step: with the route walked, repair first, then the route's stop"] = function(t)
+    local c, addon = boot({ durability = LOW })
+    t.eq(addon.settings:get(ns.Nav.TripRoute.WALK_SETTING), true, "the route is walked (the default)")
+    local trip = addon.use(ns.Nav.TripRoute.NAME)
+    local view = trip and trip.View()
+    t.ok(type(view) == "table" and view.stops and view.stops[1] ~= nil, "a route is planned by itself")
+    t.eq(lines(c)[1], RS.LABEL .. ": " .. SMITH, "worn gear: repair first, ahead of the route")
+    c.setDurability(FINE)
+    c.fire("UPDATE_INVENTORY_DURABILITY")
+    c.advance(10, 40)
+    t.eq(lines(c)[1], view and view.stops[1] and view.stops[1].label, "repaired: the route's stop")
+end
+
 return tests

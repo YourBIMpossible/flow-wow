@@ -69,7 +69,9 @@ end
 
 tests["trip route: the slash word lists the quest route in order and the arrow walks it"] = function(t)
     local c = boot()
-    t.eq(first(c), "Boars", "before a route: the quest arrow's own pick")
+    -- A1-24 (lead sections 697 and 739): before the word the arrow already
+    -- walks the route planned by itself, in the quest arrow's own slot.
+    t.eq(first(c), "Bandages", "before the word: the route planned by itself")
     c.slashes[ns.id.slash]("route")
     c.advance(1, 5)
     local one = said(c, "1. Bandages")

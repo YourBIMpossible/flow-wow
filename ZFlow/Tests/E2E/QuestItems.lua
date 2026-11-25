@@ -32,7 +32,9 @@ end
 local function boot(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
-    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true } })
+    -- About the quest arrow's own step and its item: the route walk off
+    -- (A1-24, lead section 739).
+    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true }, settings = { nav = { routeWalk = false } } })
     c.setSaved(ns.id.charDB, {})
     c.setZone(1, MAP); c.setPosition(MAP, 0.1, 0.5); c.setFacing(0)
     c.setMapSize(MAP, 1000, 1000); c.setMapCont(MAP, 1)
