@@ -48,6 +48,8 @@ QS.WORD = "spots"
 QS.HELP = "quest spots learned from your own play: where each objective moved on and where quests were handed in"
 QS.NONE = "No quest spots learned yet. They are learned as your quest objectives move on and quests are handed in."
 QS.LINES_MAX = 20
+-- Said after the list while the setting QS.SETTING is off.
+QS.OFF = "Learning is off (setting: Learn where my quest objectives are)."
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -275,8 +277,10 @@ function QS.Lines(book, titles, mapName)
         spots, spots == 1 and "" or "s") }
     for i = 1, math.min(#quests, QS.LINES_MAX) do
         local e = quests[i]
-        local title = type(titles) == "table" and titles[e.id] or nil
-        local head = type(title) == "string" and title ~= "" and (title .. " (" .. e.id .. ")") or ("quest " .. e.id)
+        local title
+        if type(titles) == "table" then title = titles[e.id] end
+        local head = "quest " .. e.id
+        if type(title) == "string" and title ~= "" then head = title .. " (" .. e.id .. ")" end
         out[#out + 1] = head .. ": " .. e.text
     end
     if #quests > QS.LINES_MAX then
@@ -367,7 +371,7 @@ function QS.Declare(k, diag)
             local lines = QS.Lines(api.Book(), titles, function(m) return ask(client, "mapName", m) end)
             client.print(ns.id.title .. ": " .. lines[1])
             for i = 2, #lines do client.print(lines[i]) end
-            if not on() then client.print("Learning is off (setting: Learn where my quest objectives are).") end
+            if not on() then client.print(QS.OFF) end
         end
         if type(diag.help) == "table" then diag.help[QS.WORD] = QS.HELP end
     end
