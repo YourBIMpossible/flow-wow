@@ -183,4 +183,47 @@ tests["off-spec: every class pack gives its roles and their names"] = function(t
     t.eq(seen, 9, "nine class packs")
 end
 
+-- Parity row C-32, the data half (lead section 789): a tick per role, as
+-- Flow's keep-set ticks under the bags (Modules/Gear/KeepSets.lua
+-- :277-285), saved per character at O.KEEP_FOR_PATH ({ [role] = true |
+-- false }). With no ticks saved, the one switch gear.keepOffspec works
+-- exactly as before (every role, or none). The ticks are the drawing
+-- lane's. Fails before: one switch only.
+tests["off-spec C-32: which roles to keep gear for, from ticks, else the one switch"] = function(t)
+    local O = ns.GearOffSpec
+    t.eq(type(O.KeepFor), "function")
+    if type(O.KeepFor) ~= "function" then return end
+    local roles = { "dps", "heal", "tank" }
+    t.eq(O.KeepFor(nil, roles, nil), { dps = true, heal = true, tank = true }, "no ticks, switch on as made: all")
+    t.eq(O.KeepFor(nil, roles, true), { dps = true, heal = true, tank = true })
+    t.eq(O.KeepFor(nil, roles, false), nil, "no ticks, switch off: none, as before")
+    t.eq(O.KeepFor({}, roles, false), nil, "an empty tick list is no ticks")
+    t.eq(O.KeepFor({ tank = true, heal = false }, roles, false), { tank = true }, "ticks win over the switch")
+    t.eq(O.KeepFor({ heal = false, tank = false }, roles, true), nil, "every tick off: none")
+    t.eq(O.KeepFor({ wizard = true }, roles, true), { dps = true, heal = true, tank = true },
+        "a tick for no role of yours counts for nothing: the switch")
+end
+
+tests["off-spec C-32: the facts read your ticks; with none saved they are as before"] = function(t)
+    local O = ns.GearOffSpec
+    if type(O.KeepFor) ~= "function" then return t.ok(false, "no KeepFor") end
+    local client = { class = function() return "WARRIOR" end, level = function() return 10 end }
+    local function store(account, char)
+        return { get = function(_, scope, path)
+            if scope == "account" and path == O.PATH then return account end
+            if scope == "char" and path == O.KEEP_FOR_PATH then return char end
+            return nil
+        end }
+    end
+    local all = O.Facts(client, store(nil, nil), ns.Packs, {})
+    local before = O.Facts(client, nil, ns.Packs, {})
+    t.eq(all.keptRoles, before.keptRoles, "no ticks: the same as before")
+    local off = O.Facts(client, store(false, nil), ns.Packs, {})
+    t.eq(off.keptRoles, nil, "switch off, no ticks: none")
+    local role
+    for r in pairs(ns.Packs.WARRIOR.weights) do role = r break end
+    local one = O.Facts(client, store(false, { [role] = true }), ns.Packs, {})
+    t.eq(one.keptRoles, { [role] = true }, "your one tick")
+end
+
 return tests
