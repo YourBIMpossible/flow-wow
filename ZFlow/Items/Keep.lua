@@ -40,8 +40,10 @@ end
 
 local function nameOf(k, key)
     local client = k.client
+    local info
+    if type(client) == "table" then info = client.itemInfo end
     -- Coloured by the item's quality (ItemPresent.Tint).
-    return ns.ItemPresent.Name(key, ns.ItemPresent.Names(type(client) == "table" and client.itemInfo or nil))
+    return ns.ItemPresent.Name(key, ns.ItemPresent.Names(info))
 end
 
 -- The saved list, with every entry under its item key. nil when the
