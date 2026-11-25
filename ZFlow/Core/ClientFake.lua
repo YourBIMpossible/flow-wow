@@ -5005,6 +5005,10 @@ end
 --     each true, or false and "lockdown" while c.combatLockdown() is not
 --     a plain false. h.attrs, h.drivers, h.snippets keep what was given.
 --   c.stateHandlers: every handler made, in order.
+--   For the lead (Lazy, section 729): the real h.driver(condition) must
+--     UnregisterStateDriver(header, state) before RegisterStateDriver when
+--     one was registered (Flow Cast.lua :930), so an old condition never
+--     stays; KeyFrame calls it only when the condition changed.
 do
     local make = ns.make.fakeClient
     ns.make.fakeClient = function(...)
