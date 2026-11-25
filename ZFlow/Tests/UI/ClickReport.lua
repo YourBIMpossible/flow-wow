@@ -23,8 +23,10 @@ tests["click report: what each button does, and a dead plain click"] = function(
     t.eq(lines[2], "Right button: open its menu")
     t.eq(lines[3], "Modifier 1 + left button: cast Lesser Heal")
     t.eq(#lines, 3, "nothing wrong: no warning")
-    local dead = CC().Report({ MENU, heal })
-    t.eq(dead[#dead - 1], CC().WARN .. CC().DeadLine("left button", "Target", true))
+    local moved = { type = 3, actionID = 1, button = "LeftButton", modifiers = 2 }
+    local dead = CC().Report({ MENU, moved })
+    t.eq(dead[2], "Modifier 2 + left button: target it")
+    t.eq(dead[3], CC().WARN .. CC().DeadLine("left button", "Target", true), "Target needs a modifier now")
     t.eq(dead[#dead], CC().FIX)
     t.eq(CC().Problems({ MENU, { type = 1, actionID = 5, button = "LeftButton", modifiers = 0 } }),
         { CC().DeadLine("left button", "Target", false) }, "Target has no button at all")
