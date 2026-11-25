@@ -99,6 +99,7 @@ return {
         "Gear/RewardMark.lua",
         "Gear/MerchantShow.lua",
         "Items/BagMarks.lua",
+        "Items/AuctionOverDisenchant.lua",
         "Gear/RollHint.lua",
         "Gear/Sets.lua",
         "Gear/SetIcons.lua",
