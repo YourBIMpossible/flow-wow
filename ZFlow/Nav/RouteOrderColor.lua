@@ -53,6 +53,15 @@ end
 function ROC.Mode(settings)
     if type(settings) ~= "table" or type(settings.get) ~= "function" then return ROC.DEFAULT end
     local ok, v = pcall(settings.get, settings, ROC.SORT_KEY)
-    if ok and (v == "xp" or v == "distance" or v == "custom") then return v end
+    if not ok or v == nil then return ROC.DEFAULT end
+    -- Plexy CHANGES-1 (section 874): Settings keeps the shown label ("Most
+    -- XP first"), so read it the way the route does, through
+    -- Nav/TripRoute.lua T.SortOf, looked up at the call (file order free).
+    local T = ns.Nav and ns.Nav.TripRoute
+    if type(T) == "table" and type(T.SortOf) == "function" then
+        local okS, mode = pcall(T.SortOf, v)
+        if okS and (mode == "xp" or mode == "distance") then return mode end
+    end
+    if v == "xp" or v == "distance" or v == "custom" then return v end
     return ROC.DEFAULT
 end
