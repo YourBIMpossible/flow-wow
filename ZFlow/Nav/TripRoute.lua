@@ -575,10 +575,27 @@ function T.Shown(route, n)
     return out
 end
 
-function T.Plan(rows, places, here, legs, pickups, note)
+-- B-42 (lead section 843.2): the party route's filter, as Flow's
+-- PartyHelp.lua H.Keep (:381-399) on the route: a function of the steps,
+-- or nil when there is no party route. A filter that errors, or gives back
+-- no list, keeps every step.
+function T.PartyKeep(k)
+    if type(k) ~= "table" or type(k.use) ~= "function" then return nil end
+    local pr = k.use("partyRoute")
+    if type(pr) ~= "table" or type(pr.Filter) ~= "function" then return nil end
+    return function(steps)
+        local ok, kept = pcall(pr.Filter, steps)
+        if ok and type(kept) == "table" then return kept end
+        return steps
+    end
+end
+
+function T.Plan(rows, places, here, legs, pickups, note, keep)
     here = type(here) == "table" and here or {}
     if here.map == nil then return nil, T.WHY_NO_MAP end
     local stops, left = T.Stops(rows, places, here)
+    -- B-42: only the steps the party route keeps.
+    if type(keep) == "function" then stops = keep(stops) end
     pickups = type(pickups) == "table" and pickups or {}
     if #stops == 0 and #pickups == 0 then return nil, T.WHY_NONE end
     local w, h, yards = scale(here)
@@ -1090,7 +1107,8 @@ function T.Declare(k, diag)
         -- one is chosen is the route planned again with its stop in. One
         -- more plan for each route word, never one a frame.
         local town, aside = townStops(c, here, nil)
-        local r, why = T.Plan(rows, places or {}, here, legs, extrasOf(town), note)
+        local keep = T.PartyKeep(k)
+        local r, why = T.Plan(rows, places or {}, here, legs, extrasOf(town), note, keep)
         if not r then return nil, why, note end
         -- A route planned by the player: the one planned by itself may come
         -- back once this one ends.
@@ -1101,7 +1119,7 @@ function T.Declare(k, diag)
             if type(p) == "table" and p.kind == "hearth" then hasInn = true end
         end
         if hasInn then
-            local again = T.Plan(rows, places or {}, here, legs, extrasOf(withInn), note)
+            local again = T.Plan(rows, places or {}, here, legs, extrasOf(withInn), note, keep)
             if again then r, aside = again, asideInn end
         end
         for _, a in ipairs(aside or {}) do
