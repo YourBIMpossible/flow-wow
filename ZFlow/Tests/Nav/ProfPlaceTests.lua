@@ -166,7 +166,8 @@ tests["prof place: Questie's NPCs are read by sub-name and by flag, with a place
         "the banker bit (256); a spawn off the map is left out")
     t.eq(found.auction, { { name = "Auctioneer Test", map = 1412, x = 0.2, y = 0.3, side = "AH" } },
         "the auctioneer bit (4096)")
-    t.eq(n, 5, "five places in all")
+    t.eq(found.vendor, { { name = "Just A Vendor", map = 1411, x = 0.5, y = 0.5 } }, "the vendor bit (4), kept for the nearest service")
+    t.eq(n, 6, "six places in all")
     -- Questie's own list of flags wins over the first game's numbers.
     db.npcFlags = { BANKER = 4, AUCTIONEER = 16 }
     local own = PP().Scan(db, zones)
