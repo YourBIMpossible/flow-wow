@@ -5,8 +5,9 @@ local _, ns = ...
 -- starts a quest; only the giver's own window says whether they offer it
 -- to you now (an event, a hidden prerequisite, a quest the server changed).
 -- One talk is enough: when the giver's list is on screen and a quest Questie
--- says they start is not on it, that quest is dropped for a day. Seen on
--- offer again, it comes back at once.
+-- says they start is not on it, that quest is dropped for ten minutes; a
+-- second talk without it drops it for a day. Seen on offer again, it comes
+-- back at once.
 --
 -- Nothing is authored here: the giver and their quests come from Questie at
 -- runtime, what is on offer from the window the game shows.
@@ -178,10 +179,15 @@ function QO.Declare(k, diag)
         return QO.Dropped(list(), id, now())
     end
 
+    -- Empties the whole list (a pause that has run out too) and returns how
+    -- many quests were dropped right now: the ones the word lists.
     function api.clear()
-        local l, n = list(), 0
-        for _ in pairs(l) do n = n + 1 end
-        if ctx and n > 0 then ctx.store:set("char", QO.PATH, {}) end
+        local l, t, n, any = list(), now(), 0, false
+        for id in pairs(l) do
+            any = true
+            if QO.Dropped(l, id, t) then n = n + 1 end
+        end
+        if ctx and any then ctx.store:set("char", QO.PATH, {}) end
         return n
     end
 
