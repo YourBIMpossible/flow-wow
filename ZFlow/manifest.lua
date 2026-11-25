@@ -247,6 +247,7 @@ return {
     -- N41 key controls and S23 click-casting check (P-KEYS slice B).
     "Rotation/KeyControls.lua",
     "UI/ClickCheck.lua",
+    "UI/TipSpot.lua",
     -- S15 click slots and S29 move handle (P-KEYS slice C).
     "UI/MoveHandle.lua",
     "Rotation/ClickSlots.lua",
