@@ -33,10 +33,10 @@ tests["also here: the current step is never listed, by identity or by quest and 
     t.eq(AH().Lines({ copy }, cur, HERE, SIZE), nil)
 end
 
-tests["also here: a step at 50 yd is not listed, one at 45 is"] = function(t)
+tests["also here: a step at 50 yd is not listed, one just inside 45 is"] = function(t)
     local cur = obj("Now", 1, 1, 1, 0.5, 0.5)
     t.eq(AH().Lines({ cur, obj("Far", 2, 1, 1, 0.55, 0.5) }, cur, HERE, SIZE), nil)
-    local out = AH().Lines({ cur, obj("Edge", 3, 1, 1, 0.545, 0.5) }, cur, HERE, SIZE)
+    local out = AH().Lines({ cur, obj("Edge", 3, 1, 1, 0.544, 0.5) }, cur, HERE, SIZE)
     t.eq(out and out.lines, { "Edge" })
 end
 
