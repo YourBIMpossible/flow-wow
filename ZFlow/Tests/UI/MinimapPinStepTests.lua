@@ -22,8 +22,8 @@ end
 tests["minimap pin step: your waypoint first, else where the arrow points, else none"] = function(t)
     local wp = { map = MAP, x = 0.52, y = 0.47 }
     local step = { map = MAP, x = 0.6, y = 0.5 }
-    t.eq(Pin.Target(wp, step), wp, "your waypoint wins")
-    t.eq(Pin.Target(nil, step), step, "else the arrow's step")
+    t.eq((Pin.Target(wp, step)), wp, "your waypoint wins")
+    t.eq((Pin.Target(nil, step)), step, "else the arrow's step")
     local none, why = Pin.Target(nil, nil)
     t.eq(none, nil)
     t.eq(why, Pin.NONE)

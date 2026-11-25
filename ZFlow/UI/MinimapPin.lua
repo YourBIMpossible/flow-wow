@@ -27,8 +27,11 @@ local _, ns = ...
 --   arrow points now, its step of any kind (the arrow's Heading, UI/
 --   Arrow.lua), as legacy Flow's pin sits at the arrow's point
 --   (Modules/Nav/MinimapPin.lua P:Update, :384-408). Your waypoint first.
---   MinimapPin.Target(waypoint, heading) -> place | nil, Pin.NONE   (pure)
---   MinimapPin.Update(client, store, state[, heading]) -> report   one look
+--   MinimapPin.Target(waypoint, heading, followed) -> place, source
+--     | nil, Pin.NONE (pure). source "waypoint" (yours, or a party member
+--     you follow: followed true, as Flow :397-398) or "step"; the report
+--     carries it so the drawing lane can colour the pin.
+--   MinimapPin.Update(client, store, state[, heading[, followed]]) -> report
 --     state: a table kept between looks (the handle is made once).
 --     report = { shown = true, x, y, edge, distance }
 --            or { shown = false, reason }
@@ -88,21 +91,24 @@ local function placed(p)
         and p.x == p.x and p.y == p.y
 end
 
-function Pin.Target(waypoint, heading)
-    if placed(waypoint) then return waypoint end
-    if placed(heading) then return heading end
+function Pin.Target(waypoint, heading, followed)
+    if placed(waypoint) then return waypoint, "waypoint" end
+    if placed(heading) then
+        if followed == true then return heading, "waypoint" end
+        return heading, "step"
+    end
     return nil, Pin.NONE
 end
 
-function Pin.Update(client, store, state, heading)
+function Pin.Update(client, store, state, heading, followed)
     if type(state) ~= "table" then state = {} end
     local W = N.Waypoint
     local slot
     if type(store) == "table" and type(store.get) == "function" then
         slot = store:get(W.SCOPE, W.PATH)
     end
-    local target, none = Pin.Target(W.Get(slot), heading)
-    if not target then return hidden(state, none) end
+    local target, source = Pin.Target(W.Get(slot), heading, followed)
+    if not target then return hidden(state, source) end
 
     local seen = ask(client, "minimap")
     local mini
@@ -124,7 +130,7 @@ function Pin.Update(client, store, state, heading)
     if not handle then return hidden(state, "no pin frame") end
     handle.place(pin.x, pin.y, pin.edge)
     state.shown = true
-    return { shown = true, x = pin.x, y = pin.y, edge = pin.edge, distance = pin.distance }
+    return { shown = true, x = pin.x, y = pin.y, edge = pin.edge, distance = pin.distance, source = source }
 end
 
 -- Declares the module on kernel k. On a client without the two reads it
@@ -168,7 +174,14 @@ function Pin.Declare(k)
                     local okH, h = pcall(arrow.Heading)
                     if okH then heading = h end
                 end
-                last = Pin.Update(client, ctx.store, state, heading)
+                -- A party member you point at (Nav/Follow.lua) is a waypoint's colour.
+                local followed = false
+                local follow = k.use and k.use("follow")
+                if type(follow) == "table" and type(follow.Step) == "function" then
+                    local okF, f = pcall(follow.Step)
+                    followed = okF and type(f) == "table"
+                end
+                last = Pin.Update(client, ctx.store, state, heading, followed)
                 return last
             end
             ctx.sched:every(Pin.NAME, Pin.EVERY, look)
