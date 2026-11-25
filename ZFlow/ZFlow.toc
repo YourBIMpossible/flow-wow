@@ -120,6 +120,7 @@ Nav\GuideRead.lua
 Nav\ViewState.lua
 Nav\WaypointStep.lua
 Nav\Waypoint.lua
+Nav\WaypointStatus.lua
 Nav\MinimapPin.lua
 Nav\ProfStep.lua
 Nav\ProfSeen.lua
@@ -139,6 +140,7 @@ Nav\WeaponMasterStep.lua
 Nav\WeaponMasterSeen.lua
 Nav\QuestSource.lua
 Nav\QuestRead.lua
+Nav\Focus.lua
 Nav\AddonSources.lua
 Nav\Rides.lua
 Nav\TravelSpells.lua
@@ -148,6 +150,12 @@ Nav\FlightPaths.lua
 Nav\FlightStep.lua
 Nav\MapFlights.lua
 Nav\TaxiMark.lua
+Nav\FlightTimes.lua
+Nav\FlightNow.lua
+Nav\PlateTarget.lua
+Nav\NoDirections.lua
+Nav\CorpseHint.lua
+Nav\AreaWords.lua
 Nav\FlightWord.lua
 Nav\Flights.lua
 Nav\Gates.lua
@@ -235,6 +243,7 @@ UI\MinimapButton.lua
 Nav\Trails.lua
 Nav\Follow.lua
 Nav\Nodes.lua
+Nav\NodeRest.lua
 UI\Chat.lua
 Nav\PartyRoute.lua
 Core\AutoEvidence.lua
