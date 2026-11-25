@@ -366,5 +366,7 @@ return {
     "UI/RouteArea.lua",
     -- F7 (lead section 447 item 6): route and waypoint lines on the world map (after RouteList, MapRoute).
     "UI/MapRouteLines.lua",
+    -- C-30, C-31: bag upgrades as advice and the gear check word (after TooltipModule, whose gear word it keeps, and the advisor).
+    "Gear/BagUpgrades.lua",
     },
 }
