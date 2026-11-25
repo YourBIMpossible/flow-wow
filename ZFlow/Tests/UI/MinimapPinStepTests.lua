@@ -55,4 +55,32 @@ tests["minimap pin step: the report says waypoint or step; a followed member is 
     t.eq(src, "waypoint", "your own waypoint")
 end
 
+-- Lead section 749 (builder 1's A2-23 note): Nav/Follow.lua's Step reads
+-- the party (client.party) on every call, so the pin asks it at most every
+-- Pin.FOLLOW_EVERY seconds, and in a fight (or a fight not known) not at
+-- all beyond the answer it holds. Fails before: asked on every look.
+tests["minimap pin step: the follow read is kept for a while, and not made in a fight"] = function(t)
+    t.eq(Pin.FOLLOW_EVERY, 0.5)
+    t.eq(type(Pin.Followed), "function")
+    if type(Pin.Followed) ~= "function" then return end
+    local reads = 0
+    local function read() reads = reads + 1 return true end
+    local memo = {}
+    t.eq(Pin.Followed(memo, 10, false, read), true, "first look: read")
+    t.eq(reads, 1)
+    t.eq(Pin.Followed(memo, 10.3, false, read), true, "within half a second: kept")
+    t.eq(reads, 1)
+    t.eq(Pin.Followed(memo, 10.6, false, read), true, "after it: read again")
+    t.eq(reads, 2)
+    t.eq(Pin.Followed(memo, 20, true, read), true, "in a fight: the kept answer, no read")
+    t.eq(Pin.Followed(memo, 30, nil, read), true, "a fight not known: no read")
+    t.eq(reads, 2)
+    local fresh = {}
+    t.eq(Pin.Followed(fresh, 5, true, read), false, "in a fight with nothing kept: not followed, no read")
+    t.eq(reads, 2)
+    t.eq(Pin.Followed({}, nil, false, read), true, "no clock: read each time")
+    t.eq(reads, 3)
+    t.eq(Pin.Followed({}, 1, false, function() error("refused") end), false, "a read that raises: not followed")
+end
+
 return tests
