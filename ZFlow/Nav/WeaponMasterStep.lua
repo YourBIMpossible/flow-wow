@@ -13,8 +13,17 @@ local _, ns = ...
 -- visited: the step and its words say so, and that which weapons they
 -- teach is not known until then. With no Questie, or none found: words
 -- only ("a weapon master in a capital city teaches <kind>") and no place,
--- so the arrow has no needle for it. No weapon master data is carried
--- here, and none is guessed.
+-- so the arrow has no needle for it. No weapon master place is carried
+-- here, and none is guessed. The one exception to carrying no data, by
+-- the owner's ruling, lead section 602: Nav/WeaponMasterNames.lua, the
+-- names of the weapon masters and the weapon kinds each teaches
+-- (approximate, from Flow). With it the feed is asked first for a weapon
+-- master the table has WITH the wanted kind (this map, else this
+-- continent): the step then says it is from Flow's list and may be out of
+-- date, never "not known". A master the table has without the kind is
+-- never pointed at. Only when no teacher is found: a weapon master the
+-- table says nothing about, with the "not known" line as before. A weapon
+-- master the player visited on this map still comes before all of it.
 --
 -- LOOK ONLY. Nothing here trains, buys, clicks or opens anything, and
 -- nothing moves the player: it reads what the client shows and saved
@@ -36,7 +45,14 @@ local _, ns = ...
 --             place = { map, x, y } (left out for words only), radius }
 --           From the module only, for a weapon master not visited:
 --           unvisited = true, detail = WM.NOT_KNOWN (the arrow's line
---           under the label).
+--           under the label); for one the table has with the kind:
+--           unvisited = true, listed = true, detail = WM.LISTED.
+--   teach, all = WeaponMasterStep.Teachers(subclassID): the table's names
+--           with that kind, and all its names, each { [name] = true } or
+--           nil when there is none (no table: nil, nil).
+--   step = WeaponMasterStep.Elsewhere(step, place): a step in words given
+--           a place when one is known. place(ask) -> { name, map, x, y },
+--           from: the feed's Place.
 --
 -- Module: WeaponMasterStep.Declare(k[, packs]) -> api; api.step(),
 --   api.lines(). ns.use(WeaponMasterStep.NAME) -> { Step, Lines }.
@@ -67,6 +83,8 @@ WM.ASK = "visit_weapon_master"
 -- A weapon master the player has not visited: the skill, then the name.
 WM.UNVISITED = "To train %s, try the weapon master %s."
 WM.NOT_KNOWN = "You have not visited them: which weapons they teach is not known yet."
+-- A weapon master the names table has with the wanted kind.
+WM.LISTED = "This is from Flow's list of weapon masters, which is approximate and may be out of date."
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -123,11 +141,68 @@ function WM.Of(wanted, here, npcs)
     return step
 end
 
+function WM.Teachers(subclassID)
+    local N = ns.Nav
+    local list = type(N) == "table" and N.WeaponMasterNames or nil
+    if type(list) ~= "table" then return nil, nil end
+    local teach, all
+    for name, row in pairs(list) do
+        if type(name) == "string" and type(row) == "table" and type(row.skills) == "table" then
+            all = all or {}
+            all[name] = true
+            if subclassID ~= nil and row.skills[subclassID] == true then
+                teach = teach or {}
+                teach[name] = true
+            end
+        end
+    end
+    return teach, all
+end
+
+-- Only a place said to be a saved one counts as visited.
+function WM.Elsewhere(step, place)
+    if type(step) ~= "table" or step.place ~= nil or type(place) ~= "function" then return step end
+    local function try(ask)
+        local ok, to, from = pcall(place, ask)
+        if not ok or type(to) ~= "table" or not text(to.name) or to.map == nil
+            or not (share(to.x) and share(to.y)) then
+            return nil
+        end
+        return to, from
+    end
+    local teach, all = WM.Teachers(step.subclassID)
+    local to, from
+    local listed = false
+    -- First a weapon master the table has with the wanted kind.
+    if teach then
+        to, from = try({ kind = WM.ASK, only = teach })
+        listed = to ~= nil
+    end
+    -- Else one the table says nothing about (with no table: any).
+    if not to then to, from = try({ kind = WM.ASK, skip = all }) end
+    if not to then return step end
+    point(step, to)
+    local N = ns.Nav
+    local PP = type(N) == "table" and N.ProfPlace or nil
+    if type(PP) ~= "table" or PP.SAVED == nil or from ~= PP.SAVED then
+        step.unvisited = true
+        if listed then
+            step.listed = true
+            step.detail = WM.LISTED
+        else
+            step.detail = WM.NOT_KNOWN
+        end
+    end
+    return step
+end
+
 function WM.Lines(step)
     if type(step) ~= "table" or not text(step.skill) then return {} end
     if type(step.place) == "table" and text(step.name) then
         if step.unvisited == true then
-            return { WM.UNVISITED:format(step.skill, step.name), WM.NOT_KNOWN }
+            local why = WM.NOT_KNOWN
+            if step.listed == true then why = WM.LISTED end
+            return { WM.UNVISITED:format(step.skill, step.name), why }
         end
         return { "Train " .. step.skill .. " at a weapon master you have seen: " .. step.name .. "." }
     end
@@ -192,26 +267,15 @@ function WM.Declare(k, packs)
         return nil
     end
 
-    -- A step with no weapon master saved on this map: the nearest one
-    -- known elsewhere (the profession feed's Place), when there is one.
-    -- Only a place said to be a saved one counts as visited.
+    -- A step with no weapon master saved on this map: one known elsewhere
+    -- (the profession feed's Place, WM.Elsewhere), when there is one.
     local function elsewhere(step)
         local N = ns.Nav
         local feedName = type(N) == "table" and type(N.ProfFeed) == "table" and N.ProfFeed.NAME or nil
         if feedName == nil or type(ctx.use) ~= "function" then return end
         local okUse, feed = pcall(ctx.use, feedName)
         if not okUse or type(feed) ~= "table" or type(feed.Place) ~= "function" then return end
-        local ok, to, from = pcall(feed.Place, { kind = WM.ASK })
-        if not ok or type(to) ~= "table" or not text(to.name) or to.map == nil
-            or not (share(to.x) and share(to.y)) then
-            return
-        end
-        point(step, to)
-        local PP = N.ProfPlace
-        if type(PP) ~= "table" or PP.SAVED == nil or from ~= PP.SAVED then
-            step.unvisited = true
-            step.detail = WM.NOT_KNOWN
-        end
+        WM.Elsewhere(step, feed.Place)
     end
 
     function api.step()

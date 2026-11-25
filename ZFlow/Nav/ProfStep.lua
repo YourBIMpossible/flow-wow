@@ -753,6 +753,14 @@ end
 --       npcs whose roles say weaponMaster (Nav/WeaponMasterSeen.lua).
 --       Questie: an NPC whose sub-name is exactly PP.WEAPON_MASTER. Which
 --       weapons one teaches is not read: not known until the player visits.
+--       step.only = { [name] = true }: only weapon masters of those names;
+--       step.skip = { [name] = true }: none of those names (saved ones and
+--       Questie's alike). The names are the asker's (Nav/WeaponMasterStep.lua
+--       with Nav/WeaponMasterNames.lua, lead section 602).
+--   visit_named                the NPC whose name is step.name, from Questie
+--       only: on this map, else on this continent. Found only for a name
+--       given to PP.Want before the pass (Nav/RidingNames.lua's riding
+--       trainers, lead section 602; asked for by Nav/RidingStep.lua).
 -- Any other kind: nil. The plan gives a vendor or node step its own place.
 -- An npc the player's faction cannot use is left out: a saved one by its
 -- factions (none saved, or the faction not known: it stays in), Questie's
@@ -775,7 +783,13 @@ end
 --     { { name, map, x, y, side } } }, banker = { ... }, auction = { ... } },
 --     and weaponMaster = { ... } once one is met (the sub-name read, no
 --     read more), at most PP.SPOTS places an NPC; n = how many places in
---     all.
+--     all. And named = { [name] = { ... } } once an NPC with a name given
+--     to PP.Want is met: for that, the name of an NPC that has any npcFlags
+--     is read in the same pass (one read more for such an NPC not kept
+--     for another reason; none for an NPC with no flags, which is no
+--     trainer or vendor; none at all while no name is wanted).
+--   PP.Want(name): asks the pass to keep the places of the NPC of that
+--     name (PP.NAMES). Called when a names file loads, before any pass.
 --   PP.ScanStart(db) -> pass or nil; PP.ScanStep(pass, zones, count) ->
 --     done: the same pass a part at a time, count NPCs a call. pass.found
 --     and pass.n are the answer once done.
@@ -815,7 +829,10 @@ PP.KIND = {
     gather_skill = "node",
     craft = "station", make_part = "station", go_station = "station",
     visit_weapon_master = "weaponMaster",
+    visit_named = "named",
 }
+-- The NPC names the pass over Questie keeps places for (PP.Want).
+PP.NAMES = {}
 -- The npc role of a saved entry, by place kind.
 PP.ROLE = { banker = "bank", auction = "auction", weaponMaster = "weaponMaster" }
 -- Questie's sub-name of a weapon master, the whole of it.
@@ -845,6 +862,10 @@ end
 
 local function placed(p)
     return type(p) == "table" and p.map ~= nil and share(p.x) and share(p.y)
+end
+
+function PP.Want(name)
+    if text(name) then PP.NAMES[name] = true end
 end
 
 local function call(fn, ...)
@@ -960,7 +981,10 @@ local function questieList(known, kind, prof)
     local found = call(known.questie)
     local list
     if type(found) == "table" then
-        if kind ~= "trainer" then
+        if kind == "named" then
+            -- prof: the NPC's name.
+            if type(found.named) == "table" and prof ~= nil then list = found.named[prof] end
+        elseif kind ~= "trainer" then
             list = found[kind]
         elseif type(found.trainer) == "table" then
             list = found.trainer[prof]
@@ -974,12 +998,29 @@ local function questieList(known, kind, prof)
     return out
 end
 
-local function npcPlace(known, kind, prof, same)
-    local seen = seenList(known, kind, prof)
+-- list without the names a step leaves out: with step.only, only the
+-- names in it; with step.skip, none of the names in it.
+local function namesKept(list, step)
+    local only, skip
+    if type(step) == "table" then
+        if type(step.only) == "table" then only = step.only end
+        if type(step.skip) == "table" then skip = step.skip end
+    end
+    if not only and not skip then return list end
+    local out = {}
+    for _, c in ipairs(list) do
+        if (not only or only[c.name] == true) and not (skip and skip[c.name] == true) then out[#out + 1] = c end
+    end
+    return out
+end
+
+-- step: the asking step, for its only and skip names (nil: every name).
+local function npcPlace(known, kind, prof, same, step)
+    local seen = namesKept(seenList(known, kind, prof), step)
     local to = onMap(seen, known)
     if to then return to, PP.SAVED end
     -- Questie is asked only now: nothing saved is on this map.
-    local q = questieList(known, kind, prof)
+    local q = namesKept(questieList(known, kind, prof), step)
     to = onMap(q, known)
     if to then return to, PP.QUESTIE end
     to = onContinent(seen, known, same)
@@ -1033,8 +1074,16 @@ function PP.Pick(step, prof, known)
     if kind == "trainer" then
         if step.npc ~= nil or type(prof) ~= "string" then return nil end
         to, from = npcPlace(known, kind, prof, sameOf(known))
-    elseif kind == "banker" or kind == "auction" or kind == "weaponMaster" then
+    elseif kind == "banker" or kind == "auction" then
         to, from = npcPlace(known, kind, nil, sameOf(known))
+    elseif kind == "weaponMaster" then
+        to, from = npcPlace(known, kind, nil, sameOf(known), step)
+    elseif kind == "named" then
+        -- Questie's alone: this map, else this continent.
+        if not text(step.name) then return nil end
+        local q = questieList(known, kind, step.name)
+        to = onMap(q, known) or onContinent(q, known, sameOf(known))
+        if to then from = PP.QUESTIE end
     elseif kind == "node" then
         local what = step.gather
         if type(what) ~= "string" then what = prof end
@@ -1107,7 +1156,9 @@ function PP.ScanStart(db)
         if type(id) == "number" then ids[#ids + 1] = id end
     end
     table.sort(ids)
-    return { db = db, ids = ids, at = 0, bits = bits, n = 0,
+    local names
+    if next(PP.NAMES) ~= nil then names = PP.NAMES end
+    return { db = db, ids = ids, at = 0, bits = bits, n = 0, names = names,
              found = { trainer = {}, banker = {}, auction = {} } }
 end
 
@@ -1132,12 +1183,24 @@ function PP.ScanStep(pass, zones, count)
             end
         end
         local mask = call(db.QueryNPCSingle, id, "npcFlags")
+        local name
+        local named = false
         if finite(mask) and mask > 0 then
             if flagged(mask, bits.banker) then lists[#lists + 1] = found.banker end
             if flagged(mask, bits.auction) then lists[#lists + 1] = found.auction end
+            -- An NPC asked for by its name (PP.Want): the name is read of
+            -- an NPC with any flag only (a trainer or a vendor has one).
+            if pass.names then
+                name, named = call(db.QueryNPCSingle, id, "name"), true
+                if type(name) == "string" and pass.names[name] == true then
+                    found.named = found.named or {}
+                    found.named[name] = found.named[name] or {}
+                    lists[#lists + 1] = found.named[name]
+                end
+            end
         end
         if #lists > 0 then
-            local name = call(db.QueryNPCSingle, id, "name")
+            if not named then name = call(db.QueryNPCSingle, id, "name") end
             local spots = {}
             if type(name) == "string" and name ~= "" then
                 spots = spotsOf(zones, call(db.QueryNPCSingle, id, "spawns"), PP.SPOTS, nil)
@@ -1289,6 +1352,7 @@ function PP.From(client, store, use, kind, reads)
         known.npcs = saved(store, "account", PP.NPCS)
         if q then known.questie = function() return call(q.places, client) end end
     end
+    if kind == "named" and q then known.questie = function() return call(q.places, client) end end
     if kind == "banker" or kind == "auction" then
         known.services = saved(store, "char", N.SERVICES or "learned.places.services")
     end
