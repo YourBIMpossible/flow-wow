@@ -148,6 +148,8 @@ return {
         "Nav/ArrowLayout.lua",
         -- Pathing UI slice 1 (lead section 519): the one colour of a step at a distance (after ArrowLayout).
         "Nav/RouteColor.lua",
+        -- F-23 (section 828.2): the route and map colour of a role in a palette (after RouteColor).
+        "Nav/RoutePalette.lua",
         "Nav/Bearing.lua",
         "Nav/ArrowView.lua",
         "Nav/ArrowMotion.lua",
