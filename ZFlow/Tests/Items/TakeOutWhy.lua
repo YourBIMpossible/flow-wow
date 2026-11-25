@@ -72,6 +72,18 @@ tests["take out why: a hold no stop names says the reservation's own reason"] = 
     t.eq({ out[1].step, out[1].hold }, { nil, TW().REASONS.goal })
 end
 
+-- e22-held follow-up (lead section 851): a claim that names no activity
+-- (or an empty one) still says it is held, with the general word, never a
+-- blank reason.
+tests["take out why: a hold whose claim has no activity says held for something"] = function(t)
+    if type(TW()) ~= "table" then return t.ok(false, "not loaded") end
+    local none = { claim = { kind = "item", key = 93, owner = "x:93", amount = 1 }, got = 1, from = { bags = 0, bank = 1 } }
+    local empty = { claim = { kind = "item", key = 94, owner = "x:94", activity = "", amount = 1 }, got = 1, from = { bags = 0, bank = 1 } }
+    local said = TW().HELD_FOR:format(TW().SOMETHING)
+    t.eq(TW().HoldFor(93, { none }), said, "no activity")
+    t.eq(TW().HoldFor(94, { empty }), said, "an empty activity")
+end
+
 tests["banker rows: a held thing is taken out with the hold's reason, after the route and quests"] = function(t)
     local BR = ns.BankerRows
     local keep = { action = "keep", rule = "keepRule" }
