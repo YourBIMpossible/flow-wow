@@ -176,4 +176,39 @@ tests["perf command: running it changes no timing row"] = function(t)
     t.eq(k.meter:report(), before, "it reads a copy and measures nothing itself")
 end
 
+-- F-07 (lead section 557): the perf word also says the memory the add-on
+-- holds, read through client.addonMemory() (KB). A client that has no such
+-- read, or one that raises or answers no number, says it is not known.
+tests["perf memory: the line in MB, and unknown when not read"] = function(t)
+    t.eq(P.MemoryLine(2560), "Memory in use: 2.5 MB.")
+    t.eq(P.MemoryLine(0), "Memory in use: 0.0 MB.")
+    t.eq(P.MemoryLine(nil), P.NO_MEMORY)
+    t.eq(P.MemoryLine(0 / 0), P.NO_MEMORY, "not a number: not known, never 0")
+    t.eq(P.MemoryLine(-5), P.NO_MEMORY)
+    t.eq(P.MemoryLine("12"), P.NO_MEMORY)
+end
+
+tests["perf command: the memory line comes first, from the client's read"] = function(t)
+    local k, c, diag = start()
+    c.addonMemory = function() return 1536 end
+    k.meter:run("slow", "handler", nil, function() c.burn(8) end)
+    local before = #c.printed
+    diag.commands[P.WORD]("")
+    t.eq(c.printed[before + 1], ns.id.title .. ": Memory in use: 1.5 MB.")
+    t.eq(c.printed[before + 2], ns.id.title .. ": Time by module since load, slowest first:")
+end
+
+tests["perf command: no memory read, or one that raises, says memory is not known"] = function(t)
+    local k, c, diag = start()
+    c.addonMemory = nil
+    local before = #c.printed
+    diag.commands[P.WORD]("")
+    t.eq(c.printed[before + 1], ns.id.title .. ": " .. P.NO_MEMORY)
+    c.addonMemory = function() error("broken", 0) end
+    before = #c.printed
+    diag.commands[P.WORD]("")
+    t.eq(c.printed[before + 1], ns.id.title .. ": " .. P.NO_MEMORY)
+    t.ok(k ~= nil)
+end
+
 return tests
