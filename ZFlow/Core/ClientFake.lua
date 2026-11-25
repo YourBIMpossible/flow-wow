@@ -2307,6 +2307,29 @@ function ns.make.fakeClient(opts)
     c.crafts = {}
     local craftFails
     function c.setCraftFails(why) craftFails = why end
+    -- E-57 (Items/CraftProgress.lua), two CLIENT NEEDs stubbed here only;
+    -- Core/Client.lua does not have them yet.
+    --   c.ownCastSeconds() -> the length of the cast the player is making
+    --     now, in seconds, or nil; setOwnCastSeconds(n or nil) sets it.
+    --   c.onCraftStarted(fn) -> cancel: fn(id, count, name) when the game's
+    --     own craft call is made; craftStarted(id, count, name) plays one.
+    function c.setOwnCastSeconds(n) s.ownCastSeconds = n end
+    function c.ownCastSeconds() return s.ownCastSeconds end
+    local craftStartedFns = {}
+    function c.onCraftStarted(fn)
+        if type(fn) ~= "function" then return nil end
+        craftStartedFns[#craftStartedFns + 1] = fn
+        return function()
+            for i = #craftStartedFns, 1, -1 do
+                if craftStartedFns[i] == fn then table.remove(craftStartedFns, i) end
+            end
+        end
+    end
+    function c.craftStarted(id, count, name)
+        local list = {}
+        for i = 1, #craftStartedFns do list[i] = craftStartedFns[i] end
+        for i = 1, #list do list[i](id, count, name) end
+    end
     -- Section 240, the repeat runner: setCraftRepeat(seconds) makes each
     -- craft asked with a repeat count n finish n times by itself, one
     -- UNIT_SPELLCAST_SUCCEEDED ("player", a cast guid, the recipe) each
