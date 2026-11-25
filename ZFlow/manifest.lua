@@ -325,6 +325,8 @@ return {
     "Nav/ZoneLeft.lua",
     -- A2-20 (lead section 674): the tracker here mode, data half (after TripRoute).
     "Nav/RouteHere.lua",
+    -- R-09: other steps in the area on the arrow's hover (section 835).
+    "Nav/AlsoHere.lua",
     -- Lead DISPATCH section 340: the minimap button's rim math (pure), then the button.
     "UI/MinimapPlace.lua",
     "UI/MinimapButton.lua",
