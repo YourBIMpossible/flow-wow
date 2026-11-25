@@ -14311,6 +14311,68 @@ function ns.make.client(env)
         end
         return out
     end
+
+    -- F-32 (UI/ClickCheck.lua): the game's click bindings on unit frames,
+    -- and what is under the mouse. Read only.
+    --   c.clickBindings() -> { { type, actionID, button, modifiers } }, or
+    --     nil when the client has no C_ClickBindings or will not say.
+    --     First guess, not seen on 16001: C_ClickBindings.GetProfileInfo()
+    --     -> { ClickBindingInfo }, each { type, actionID, button,
+    --     modifiers }. A row that is not a table is skipped; a secret
+    --     field is left out.
+    --   c.mouseFoci() -> { frame name, ... } under the mouse, or nil when
+    --     the client has neither GetMouseFoci nor GetMouseFocus. First
+    --     guesses, not seen on 16001: GetMouseFoci() -> { frame, ... } (the
+    --     newer clients'), else GetMouseFocus() -> frame (the older); each
+    --     frame's GetDebugName(), else GetName(), under pcall. A frame with
+    --     no name that reads is skipped.
+    function c.clickBindings()
+        local cb = env.C_ClickBindings
+        if type(cb) ~= "table" then return nil end
+        local ok, list = call(cb.GetProfileInfo)
+        if not ok or type(list) ~= "table" then return nil end
+        local out = {}
+        for _, b in ipairs(list) do
+            if type(b) == "table" then
+                local row = {}
+                for _, key in ipairs({ "type", "actionID", "button", "modifiers" }) do
+                    local okV, v = pcall(function() return b[key] end)
+                    if okV and v ~= nil and not hidden(v) then row[key] = v end
+                end
+                out[#out + 1] = row
+            end
+        end
+        return out
+    end
+
+    function c.mouseFoci()
+        local function focusName(f)
+            if f == nil then return nil end
+            local okD, name = method(f, "GetDebugName")
+            if okD and type(name) == "string" and not hidden(name) and name ~= "" then return name end
+            local okN, plain = method(f, "GetName")
+            if okN and type(plain) == "string" and not hidden(plain) and plain ~= "" then return plain end
+            return nil
+        end
+        local frames
+        if type(env.GetMouseFoci) == "function" then
+            local ok, list = call(env.GetMouseFoci)
+            if not ok or type(list) ~= "table" then return nil end
+            frames = list
+        elseif type(env.GetMouseFocus) == "function" then
+            local ok, f = call(env.GetMouseFocus)
+            if not ok then return nil end
+            frames = { f }
+        else
+            return nil
+        end
+        local out = {}
+        for _, f in ipairs(frames) do
+            local name = focusName(f)
+            if name ~= nil then out[#out + 1] = name end
+        end
+        return out
+    end
     return c
 end
 

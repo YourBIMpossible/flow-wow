@@ -5496,7 +5496,7 @@ do
 end
 
 -- § F-32 (UI/ClickCheck.lua): the game's click bindings on unit frames and
--- what is under the mouse, as the real client is asked for (CLIENT NEEDs:
+-- what is under the mouse, as the real client has them (Core/Client.lua:
 -- c.clickBindings() -> { { type, actionID, button, modifiers } } from
 -- C_ClickBindings.GetProfileInfo, nil when the client has none to read;
 -- c.mouseFoci() -> { frame name, ... } from GetMouseFoci, nil when not
