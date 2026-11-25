@@ -420,6 +420,25 @@ function P.AskWho(name, progress, asked, scope, me)
     return name
 end
 P.HELP_ASK = "%s is in your group with quests to do (%d). Join the party route, or help with just theirs?"
+-- B-44 (lead section 843.2): a member joining or leaving the party route,
+-- as Flow's PartyHelp.lua J handler (:278-291). -> "ask" (on your own route,
+-- they joined with quests to do, not asked yet), "joined" or "left" (you
+-- are on the party route and it changed), or nil.
+P.HELP_JOIN = "%s is on the party route with quests to do (%d). Join them?"
+P.JOINED_SAID = "%s joined the party route: their quests are on it now."
+P.LEFT_SAID = "%s left the party route."
+function P.JoinNews(name, on, wasOn, progress, askedJoin, scope, me)
+    if type(name) ~= "string" or plain(name) == plain(me) then return nil end
+    if (on == true) == (wasOn == true) then return nil end
+    if scope == "combined" then
+        if on == true then return "joined" end
+        return "left"
+    end
+    if scope ~= "mine" or on ~= true then return nil end
+    if type(askedJoin) == "table" and askedJoin[name] then return nil end
+    if type(progress) ~= "table" or P.ToDo(progress[name]) == 0 then return nil end
+    return "ask"
+end
 P.JOIN = "Join the party route"
 P.JUST = "Just %s's"
 P.NOT_NOW = "Not now"
@@ -455,6 +474,7 @@ function P.Declare(k, diag)
     -- B-42, B-44, B-45: whose quests, who joined, whom we asked.
     local scope, focus = "mine", nil
     local progress, joined, asked = {}, {}, {}
+    local askedJoin = {}
     local feed
 
     local function client() return ctx and ctx.client or k.client end
@@ -792,7 +812,19 @@ function P.Declare(k, diag)
             return
         end
         if p.type == "J" then
-            joined[tostring(sender)] = p.on
+            local who = tostring(sender)
+            local was = joined[who]
+            joined[who] = p.on
+            -- B-44: what to say about it, once.
+            local news = P.JoinNews(who, p.on, was, progress, askedJoin, scope, me())
+            if news == "ask" then
+                askedJoin[who] = true
+                say(P.HELP_JOIN:format(who, P.ToDo(progress[who])) .. " " .. P.HelpChoices(id().addon, who))
+            elseif news == "joined" then
+                say(P.JOINED_SAID:format(who))
+            elseif news == "left" then
+                say(P.LEFT_SAID:format(who))
+            end
             return
         end
         if p.type == "E" then return edited(p, tostring(sender)) end
@@ -863,6 +895,7 @@ function P.Declare(k, diag)
             bufs, offer = {}, nil
             party, scope, focus = nil, "mine", nil
             progress, joined, asked = {}, {}, {}
+            askedJoin = {}
         end,
     })
     return api
