@@ -1089,11 +1089,39 @@ function D.Step(client, pack, prefs, bias, applied, role, extra)
     }
 end
 
+-- Parity row D-29 (lead section 732): the learned bias for the fight you
+-- are about to have (Rotation/Profiler.lua). Its kind is read now: in a
+-- group "group"; alone with an elite, rare elite or boss targeted "elite";
+-- else "solo"; not known whether you are grouped: no bias. One bias for
+-- both choices of a step (D.Step hands it to ns.Choose and D.PullPick), so
+-- the icon and the spell held for the fight agree.
+local ELITE = { elite = true, rareelite = true, worldboss = true }
+function D.BiasFor(profiler, client, role)
+    if type(profiler) ~= "table" or type(profiler.Bias) ~= "function" or type(client) ~= "table" then return nil end
+    if role ~= "dps" and role ~= "heal" and role ~= "tank" then return nil end
+    if type(client.grouped) ~= "function" then return nil end
+    local okG, grouped = pcall(client.grouped)
+    if not okG or type(grouped) ~= "boolean" then return nil end
+    local kind = "solo"
+    if grouped then
+        kind = "group"
+    elseif type(client.targetRank) == "function" then
+        local okR, rank = pcall(client.targetRank)
+        if okR and type(rank) == "string" and ELITE[rank] then kind = "elite" end
+    end
+    local ok, b = pcall(profiler.Bias, kind, role)
+    if ok and type(b) == "table" then return b end
+    return nil
+end
+
 -- One tick's work: the class's pack, then a step.
 local function work(client, packs, role, extra)
     local class = type(client.class) == "function" and client.class() or nil
     local pack = type(class) == "string" and type(packs) == "table" and packs[class] or nil
-    return D.Step(client, pack, nil, nil, nil, role, extra)
+    -- D-29: the learned bias, given by the tick (extra.bias).
+    local bias = nil
+    if type(extra) == "table" and type(extra.bias) == "table" then bias = extra.bias end
+    return D.Step(client, pack, nil, bias, nil, role, extra)
 end
 
 -- CF-32: what the ownCasts module keeps (Rotation/OwnCasts.lua), asked
@@ -1209,7 +1237,8 @@ function D.Declare(k, packs)
         local ok, got = pcall(work, ctx.client, packs or ns.Packs, ctx.settings:get(D.ROLE),
             { food = food, heal = heal, chosen = chosenOf(k), combo = comboOf(k), controls = controls,
               keyActions = keyActions, spellKeys = spellKeys, counts = counts,
-              hurt = math.floor(hurt) })
+              hurt = math.floor(hurt),
+              bias = D.BiasFor(k.use("profiler"), ctx.client, ctx.settings:get(D.ROLE)) })
         local Dg = ns.Diag
         if type(Dg) == "table" and type(Dg.MARK_EVENT) == "string" then
             for key, name in pairs(D.MARKS) do

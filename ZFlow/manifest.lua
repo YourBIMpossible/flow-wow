@@ -131,6 +131,7 @@ return {
         "UI/FightLog.lua",
         -- FLOW-PARITY C-51: advice from the fight log, the same enemy killing you again (after Advisor, FightLog).
         "UI/FightInsight.lua",
+        "Rotation/Profiler.lua",
         "Classes/Druid.lua",
         "Classes/Hunter.lua",
         "Classes/Mage.lua",
