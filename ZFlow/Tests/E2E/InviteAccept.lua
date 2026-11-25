@@ -1,5 +1,6 @@
 -- Parity row F-28 (lead sections 738 and 740): a group invite from a
--- friend is accepted for you (friends only, as Flow; not guild members), as Flow's Modules/Invites.lua (:1-3
+-- friend is accepted for you (friends only, as Flow; not guild members),
+-- as Flow's Modules/Invites.lua (:1-3
 -- "accepted for you", on by default; :78-87 the event, not when already
 -- in a group, only a friend). Never in a fight, never from a stranger,
 -- never while queued, never in a group already, never with the setting
