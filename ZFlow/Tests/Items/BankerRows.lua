@@ -63,7 +63,8 @@ end
 tests["banker rows: the to-sell note, as Flow's"] = function(t)
     if type(BR()) ~= "table" then return t.ok(false, "not loaded") end
     t.eq(BR().SellNote({}), BR().NOTHING)
-    t.eq(BR().SellNote({ { kept = true } }), BR().ONLY_KEPT:format(1))
+    t.eq(BR().SellNote({ { kept = true } }), "Nothing to sell. Below: 1 thing(s) kept because you chose to; a click sells one instead.",
+        "our own words (section 757)")
     local rows = { { name = "a" }, { name = "b" }, { kept = true }, { bank = true } }
     t.eq(BR().SellNote(rows, false), BR().BAGS:format(2) .. BR().BANK_AWAY:format(1))
     t.eq(BR().SellNote(rows, true), BR().BAGS:format(2) .. BR().BANK_AT:format(1))

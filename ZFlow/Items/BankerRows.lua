@@ -37,7 +37,7 @@ BR.BANK_SOME = "%d thing(s) in your bank, as seen %s:"
 BR.LAST_VISIT = "at your last visit"
 BR.KEPT = { yourChoice = "your choice", neverSell = "on your never-sell list" }
 BR.NOTHING = "Nothing to sell: everything in your bags and your bank is kept."
-BR.ONLY_KEPT = "Nothing to sell now. %d thing(s) you keep by your own choice are listed: click one to sell it after all."
+BR.ONLY_KEPT = "Nothing to sell. Below: %d thing(s) kept because you chose to; a click sells one instead."
 BR.BAGS = "%d thing(s) in your bags to sell at the next vendor."
 BR.BANK_AWAY = " %d more in your bank to sell: take them out at a bank."
 BR.BANK_AT = " %d more in your bank to sell: take them out now."
