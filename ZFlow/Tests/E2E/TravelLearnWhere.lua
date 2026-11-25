@@ -44,11 +44,11 @@ local function start(opts)
     c.setClass(opts.class or "DRUID"); c.setFaction("Horde"); c.setLevel(opts.level or 5)
     if opts.known ~= nil then
         c.setSpellId(TELEPORT, TELEPORT_ID)
-        c.setSpell(TELEPORT_ID, { known = opts.known })
+        c.setSpell(TELEPORT_ID, { known = opts.known, name = opts.spellName })
     end
     local db, zones = questie()
     c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
-    if opts.l10n then c.setQuestieModule("l10n", opts.l10n) end
+    if opts.areaName then c.setAreaName(493, opts.areaName) end
     c.setQuestLog({ { id = 303, title = "Grove Wolves", objectives = { { text = "Grove Wolf slain: 0/4" } } } })
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
@@ -148,18 +148,31 @@ tests["travel learn where: at level 10 or above the line says not learned yet"] 
     t.ok(has(c2.arrows[1].lines, LEARN), "below it: the level it needs")
 end
 
--- Section 623 item 1: a client in another language. The map's name is
--- checked against the name the player's own Questie gives zone 493 in
--- their language. Fails before: only the English name counts.
-tests["travel learn where: a client in another language, Questie names the zone the same"] = function(t)
-    local l10n = setmetatable({ zoneLookup = { [1] = { [493] = "Moonglade" } } },
-        { __call = function(_, text) return text == "Moonglade" and "Mondlichtung" or text end })
-    local c = start({ known = true, mapName = "Mondlichtung", l10n = l10n })
+-- Lead section 625: a client in another language. The map's name is
+-- checked against the client's own name for area 493.
+-- Fails before: only the English name counts.
+tests["travel learn where: a German client, the map and the area named the same"] = function(t)
+    local c = start({ known = true, mapName = "Mondlichtung", areaName = "Mondlichtung" })
     t.eq(c.arrows[1].lines[1], "Cast " .. TELEPORT, "the names match: the step")
-    local c2 = start({ known = true, mapName = "Winterquell", l10n = l10n })
+    local c2 = start({ known = true, mapName = "Winterquell", areaName = "Mondlichtung" })
     t.ok(c2.arrows[1].lines[1] ~= "Cast " .. TELEPORT, "another name: no step")
     local c3 = start({ known = true, mapName = "Mondlichtung" })
-    t.ok(c3.arrows[1].lines[1] ~= "Cast " .. TELEPORT, "no Questie zone names: only the English name counts")
+    t.ok(c3.arrows[1].lines[1] ~= "Cast " .. TELEPORT, "no area name read: only the English name counts")
+    local c4 = start({ known = true })
+    t.eq(c4.arrows[1].lines[1], "Cast " .. TELEPORT, "no area name read, the English map name: the step")
+end
+
+-- Section 625: the trainer row is found by the client's name for the spell.
+-- Fails before: the client's spell read has no name.
+tests["travel learn where: a German trainer list is matched by the client's spell name"] = function(t)
+    local german = "Teleportieren: Mondlichtung"
+    local lists = { k = { npc = "Turak Runentotem", shown = { available = true, unavailable = true, known = true },
+        complete = true, rows = { { name = german, state = "unavailable", level = 10 } } } }
+    local c = start({ known = false, lists = lists, spellName = german })
+    local want = ns.Nav.TRAVEL_TAUGHT:format(LEARN, "Turak Runentotem")
+    t.ok(has(c.arrows[1].lines, want), "found by the client's name: " .. want)
+    local c2 = start({ known = false, lists = lists })
+    t.ok(has(c2.arrows[1].lines, LEARN), "no name read: the English name, which this list does not have")
 end
 
 return tests

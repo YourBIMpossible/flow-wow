@@ -22,7 +22,7 @@ T["data: Teleport: Moonglade, with the facts its tooltip gives"] = function(t)
     t.eq(s.mapName, "Moonglade")
     t.eq(s.class, "DRUID")
     t.eq(s.level, 10)
-    t.eq(s.area, 493, "the zone's number in Questie")
+    t.eq(s.area, 493, "the zone's area number")
     t.eq(s.from, nil, "where it is learned is not verified: not said")
 end
 
@@ -165,18 +165,36 @@ T["map name: the names given are the ones that count"] = function(t)
     t.eq(c, nil); t.eq(whyC, "map not confirmed", "no names given: the English one, which is not it")
 end
 
-T["zone names: what the player's Questie calls a zone, plain and in their language"] = function(t)
-    local l10n = setmetatable({ zoneLookup = { [0] = { [1] = "Dun Morogh" }, [1] = { [493] = "Moonglade" } } },
-        { __call = function(_, text) return text == "Moonglade" and "Mondlichtung" or text end })
-    t.eq(N.TravelZoneNames(l10n, 493), { "Moonglade", "Mondlichtung" })
-    t.eq(N.TravelZoneNames({ zoneLookup = { [1] = { [493] = "Moonglade" } } }, 493), { "Moonglade" },
-        "a Questie that translates nothing: its own name")
-    t.eq(N.TravelZoneNames({ zoneLookup = { [493] = "Moonglade" } }, 493), { "Moonglade" }, "a flat table too")
-    t.eq(N.TravelZoneNames({ zoneLookup = { [1] = {} } }, 493), {}, "not listed")
-    t.eq(N.TravelZoneNames(nil, 493), {}, "no Questie")
-    local raising = setmetatable({ zoneLookup = { [1] = { [493] = "Moonglade" } } },
-        { __call = function() error("no") end })
-    t.eq(N.TravelZoneNames(raising, 493), { "Moonglade" }, "a translation that raises is left out")
+-- Lead section 625: the map's name is compared with the client's own name
+-- for the row's area, so the check holds in every language.
+T["from client: map 1450 is the spell's zone when the client names its area the same"] = function(t)
+    local map, area = "Mondlichtung", "Mondlichtung"
+    local client = {
+        class = function() return "DRUID" end,
+        position = function() return { map = 1456, x = 0.4, y = 0.4 } end,
+        mapName = function(m) return m == MOONGLADE and map or nil end,
+        areaName = function(a) return a == 493 and area or nil end,
+        spell = function() return { known = true } end,
+    }
+    t.eq(N.TravelSpellStepFrom(STEP, client).label, "Cast Teleport: Moonglade", "a German client, both the same")
+    area = "Winterquell"
+    local _, why = N.TravelSpellStepFrom(STEP, client)
+    t.eq(why, "map not confirmed", "the area has another name")
+    area = "Moonglade"
+    local _, whyEn = N.TravelSpellStepFrom(STEP, client)
+    t.eq(whyEn, "map not confirmed", "an area name read is the only one that counts, never the English one too")
+    area = nil
+    local _, whyNone = N.TravelSpellStepFrom(STEP, client)
+    t.eq(whyNone, "map not confirmed", "no area name, and the map is not the English name")
+    map = "Moonglade"
+    t.eq(N.TravelSpellStepFrom(STEP, client).label, "Cast Teleport: Moonglade",
+        "no area name read: the English name is the fallback")
+    map, area = nil, nil
+    local _, whyBoth = N.TravelSpellStepFrom(STEP, client)
+    t.eq(whyBoth, "map not confirmed", "neither name read: no step")
+    map, area = nil, "Mondlichtung"
+    local _, whyMap = N.TravelSpellStepFrom(STEP, client)
+    t.eq(whyMap, "map not confirmed", "the map's name not read: no step")
 end
 
 -- Section 623 item 2: the trainer row is matched by the spell's name as
