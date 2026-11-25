@@ -240,4 +240,29 @@ tests["dungeon rate: the sums, pure"] = function(t)
     t.eq(ended, { { name = "B", t = 600 }, true, "A", 400, 70 }, "a run that ends hands on its XP")
 end
 
+-- B-55 (lead section 646, Twin's CHANGES on d156b39c): api.Ratio through
+-- the real module: nil when not measured, the number when both rates are
+-- kept, and asking it never starts measuring.
+tests["dungeon rate: Ratio is nil unmeasured, the number when measured, and starts nothing"] = function(t)
+    local c, addon, base = boot(1000, { fresh = true })
+    local visit = addon.use("dungeonVisit")
+    t.ok(type(visit) == "table" and type(visit.Ratio) == "function", "dungeonVisit provides Ratio")
+    if type(visit) ~= "table" or type(visit.Ratio) ~= "function" then return end
+    t.eq(visit.Ratio("The Deadmines"), nil, "nothing measured: not known")
+    t.eq(visit.Measuring(), false, "asking does not start measuring")
+    t.eq(addon.store:get("char", "dungeon.measure"), nil, "and keeps nothing")
+    addon.store:set("char", "dungeon.xpSamples", { { t = 1000, xp = 0 }, { t = 1300, xp = 500 },
+        { t = 1600, xp = 500 }, { t = 1900, xp = 500 }, { t = 2200, xp = 500 } })
+    addon.store:set("char", "dungeon.runXp", { ["The Deadmines"] = 6000 })
+    addon.store:set("char", "dungeon.times", { ["The Deadmines"] = 1800 })
+    c.setClock(2200)
+    local r = visit.Ratio("The Deadmines")
+    t.ok(type(r) == "number" and math.abs(r - 2) < 0.001, "12000 XP an hour in the run against 6000 questing: " .. tostring(r))
+    local lower = visit.Ratio("the deadmines")
+    t.ok(type(lower) == "number" and math.abs(lower - 2) < 0.001, "the name in any case: " .. tostring(lower))
+    t.eq(visit.Ratio("Other Keep"), nil, "a dungeon never run: not known")
+    t.eq(visit.Measuring(), false, "still not measuring")
+    t.eq(addon.problems:count(), base, "no new problem")
+end
+
 return tests
