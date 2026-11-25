@@ -136,7 +136,8 @@ function Q.Leftovers(owners, rows, bag, done)
     end
     local seen = {}
     for _, e in ipairs(bag) do
-        local name = type(e) == "table" and e.name or nil
+        local name = nil
+        if type(e) == "table" then name = e.name end
         local quests = type(name) == "string" and owners[name] or nil
         if not seen[name or false] and e.classID == Q.QUEST_CLASS and type(quests) == "table" and next(quests) ~= nil then
             local left = true
@@ -168,7 +169,8 @@ function Q.Answers(owners, rows, bag, done)
     end
     local seen = {}
     for _, e in ipairs(bag) do
-        local name = type(e) == "table" and e.name or nil
+        local name = nil
+        if type(e) == "table" then name = e.name end
         if type(name) == "string" and name ~= "" and e.classID == Q.QUEST_CLASS and not seen[name] then
             seen[name] = true
             local quests = type(owners[name]) == "table" and owners[name] or {}
@@ -204,7 +206,13 @@ function Q.Answers(owners, rows, bag, done)
             end
             if id ~= nil then
                 row.questId = id
-                local title = inLog[id] and inLog[id].title or quests[id]
+                -- The log's title when the quest is in it, else the one learned.
+                local title
+                if inLog[id] and type(inLog[id].title) == "string" and inLog[id].title ~= "" then
+                    title = inLog[id].title
+                else
+                    title = quests[id]
+                end
                 if type(title) == "string" and title ~= "" then row.quest = title end
             end
             out[#out + 1] = row
@@ -215,15 +223,32 @@ end
 
 function Q.AnswerLine(row)
     if type(row) ~= "table" or type(row.item) ~= "string" then return nil end
-    local quest = type(row.quest) == "string" and row.quest or nil
+    local quest = nil
+    if type(row.quest) == "string" then quest = row.quest end
     local line = Q.LINES[row.answer]
     if line and quest then return line:format(row.item, quest) end
     if quest then return Q.LINE_NOT_KNOWN:format(row.item, quest) end
     return Q.LINE_NO_QUEST:format(row.item)
 end
 
-function Q.HandInText(answers)
+-- C-10 CHANGES-1 (Twin, lead section 730; owner section 563): as Flow's
+-- Modules/Quests/QuestBags.lua (:221, ns.BagsNearlyFull, Core.lua
+-- :103-106), the hand-in is said only when your bags are nearly full: this
+-- many free slots or fewer, in plain bags (family 0 or not given).
+Q.NEARLY_FULL = 3
+function Q.Free(bags)
+    if type(bags) ~= "table" then return nil end
+    local n = 0
+    for _, b in ipairs(bags) do
+        if type(b) ~= "table" or type(b.free) ~= "number" or b.free ~= b.free then return nil end
+        if b.family == nil or b.family == 0 then n = n + b.free end
+    end
+    return n
+end
+
+function Q.HandInText(answers, free)
     if type(answers) ~= "table" then return nil end
+    if type(free) ~= "number" or free > Q.NEARLY_FULL then return nil end
     local ready = {}
     for _, row in ipairs(answers) do
         if type(row) == "table" and row.answer == Q.HAND_IN and type(row.item) == "string"
@@ -447,7 +472,7 @@ function Q.Declare(k)
                 if type(rows) == "table" and type(owners) == "table" then Q.Learn(owners, rows) end
                 local left, buy, handIn, auction
                 if ctx.settings:get(Q.SETTING) ~= false and type(rows) == "table" then
-                    handIn = Q.HandInText(Q.Answers(owners, rows, bag(), doneOf))
+                    handIn = Q.HandInText(Q.Answers(owners, rows, bag(), doneOf), Q.Free(ask(client, "bags")))
                     left = Q.LeftoverText(Q.Leftovers(owners, rows, bag(),
                         function(id) return ask(client, "questDone", id) end))
                     if ask(client, "merchantOpen") == true then buy = Q.BuyText(Q.ToBuy(rows, wares())) end
