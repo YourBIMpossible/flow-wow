@@ -5469,7 +5469,7 @@ do
 end
 
 -- § C-42 (Gear/Sets.lua; lead section 789): one CLIENT NEED, stubbed here
--- only. Core/Client.lua does not have it yet.
+-- (Core/Client.lua has it too).
 --   c.equipmentSets() -> { { id, name, icon, worn, items = { [slot] =
 --     itemID } } } or nil (not read): C_EquipmentSet.GetEquipmentSetIDs,
 --     GetEquipmentSetInfo (name, icon, setID, isEquipped) and GetItemIDs.

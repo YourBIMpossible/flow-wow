@@ -14272,6 +14272,45 @@ function ns.make.client(env)
         if not ok or type(xp) ~= "number" or hidden(xp) or xp ~= xp or xp <= 0 then return nil end
         return xp
     end
+
+    -- C-42 (Gear/Sets.lua, lead section 789): the player's saved equipment
+    -- sets, read only (nothing here makes, saves or equips a set).
+    --   c.equipmentSets() -> { { id, name, icon, worn, items = { [slot] =
+    --     itemID } } }, or nil when the client has no C_EquipmentSet or
+    --     will not list the sets.
+    -- First guesses, not seen on 16001: C_EquipmentSet.GetEquipmentSetIDs()
+    -- -> { setID, ... }; GetEquipmentSetInfo(setID) -> name, iconFileID,
+    -- setID, isEquipped, ...; GetItemIDs(setID) -> { [slot] = itemID }
+    -- (slot 1 to 19; an empty slot is 0 or nil, skipped). A set whose
+    -- name will not read is skipped; a secret icon or worn is left out.
+    function c.equipmentSets()
+        local es = env.C_EquipmentSet
+        if type(es) ~= "table" then return nil end
+        local okI, ids = call(es.GetEquipmentSetIDs)
+        if not okI or type(ids) ~= "table" then return nil end
+        local out = {}
+        for _, id in ipairs(ids) do
+            if type(id) == "number" and not hidden(id) then
+                local okS, name, icon, _, worn = call(es.GetEquipmentSetInfo, id)
+                if okS and type(name) == "string" and not hidden(name) then
+                    local e = { id = id, name = name, items = {} }
+                    if icon ~= nil and not hidden(icon) then e.icon = icon end
+                    if worn ~= nil and not hidden(worn) then e.worn = worn == true end
+                    local okG, items = call(es.GetItemIDs, id)
+                    if okG and type(items) == "table" then
+                        for slot, item in pairs(items) do
+                            if type(slot) == "number" and type(item) == "number"
+                                and not hidden(item) and item > 0 then
+                                e.items[slot] = item
+                            end
+                        end
+                    end
+                    out[#out + 1] = e
+                end
+            end
+        end
+        return out
+    end
     return c
 end
 
