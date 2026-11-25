@@ -773,6 +773,8 @@ end
 --       again no sooner than PP.RETRY seconds later and PP.TRIES times in
 --       all, then kept as it is. A client with no time (now() 0) has
 --       nothing to wait by: its tries come in a row and still end.
+--     reader.ids(client, prof, read) -> read()'s list, kept PP.RETRY
+--       seconds, so the saved nodes are not gone through on every update.
 --     reader.spots(client, ids, map) -> { { map, x, y } }: the places of
 --       those objects on that map; one read an object, kept, with the same
 --       bounds while Questie does not answer.
@@ -781,7 +783,7 @@ end
 --     far, questie = the reader } are the caller's. It writes nothing; a
 --     read that fails is "not known".
 -- Not tested in game: Questie's field names (subName, npcFlags, spawns,
--- friendlyToFaction, QueryNPCSingle, QueryObjectSingle, npcFlags) are the
+-- friendlyToFaction, QueryNPCSingle, QueryObjectSingle, NPCPointers) are the
 -- ones Spells/ClassQuestList.lua and the predecessor read.
 
 local PP = {}
@@ -1126,12 +1128,26 @@ function PP.Questie()
         local now = nowOf(client)
         if not due(state, now) then return nil end
         local db = ask(client, "questieModule", "QuestieDB")
-        if type(db) ~= "table" then return nil end
+        -- Questie not there, or its list of NPCs not built yet: nothing to
+        -- go through, and no try is used up.
+        if type(db) ~= "table" or type(db.NPCPointers) ~= "table" then return nil end
         local got, n = PP.Scan(db, ask(client, "questieModule", "ZoneDB"))
         state.tries = state.tries + 1
         state.last = now
         if n > 0 or state.tries >= PP.TRIES then found = got end
         return got
+    end
+
+    -- read() -> the object ids of a profession, asked again no sooner than
+    -- PP.RETRY seconds later (a client with no time: every call).
+    local idsOf = {}
+    function reader.ids(client, prof, read)
+        local kept, now = idsOf[prof], nowOf(client)
+        if kept and now and kept.at and now >= kept.at and now - kept.at < PP.RETRY then return kept.ids end
+        local ids = call(read)
+        if type(ids) ~= "table" then ids = {} end
+        idsOf[prof] = { ids = ids, at = now }
+        return ids
     end
 
     function reader.spots(client, ids, map)
@@ -1218,7 +1234,10 @@ function PP.From(client, store, use, kind, reads)
             end
         end
         if q and known.here then
-            known.spots = function(prof) return call(q.spots, client, nodeIds(store, prof), known.here.map) end
+            known.spots = function(prof)
+                local ids = call(q.ids, client, prof, function() return nodeIds(store, prof) end)
+                return call(q.spots, client, ids, known.here.map)
+            end
         end
     end
     return known
