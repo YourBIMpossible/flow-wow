@@ -36,7 +36,10 @@ local _, ns = ...
 --   behind  your level has reached the rank's, your skill has not: "Mining
 --           is 40, behind your level: Journeyman Mining needs 50, and you
 --           are past its level 10."
--- One prompt a profession: the cap first, then ready, then behind. Flow
+-- One prompt a profession: the cap first, then ready, then behind. A list
+-- saved before the reading's max was first read (r.maxAt, kept by
+-- Nav/ProfSeen.lua) is stale, the rank may be learned since: it gives
+-- neither (lead section 700); either time not known gives none. Flow
 -- also said "behind" from a levelling-guide table of skill by level (75 by
 -- 10, 125 by 20, ...). That table is hand-written and not cited, so it is
 -- not used (lead section 611); a rank no trainer list shows says nothing.
@@ -77,11 +80,13 @@ end
 -- such row. Returns rank, copper, the row (its level and skill needs, as
 -- read) and its trainer's name, or nil.
 P.RANKS = { Apprentice = true, Journeyman = true, Expert = true, Artisan = true, Master = true }
-local function nextRank(lists, profession)
+local function nextRank(lists, profession, after)
     if type(lists) ~= "table" then return nil end
     local bestRank, bestCost, bestRow, bestNpc = nil, nil, nil, nil
     for _, l in pairs(lists) do
-        if type(l) == "table" and l.profession == profession and type(l.rows) == "table" then
+        -- after (C-50): only a list saved at or after that time.
+        local fresh = after == nil or (num(l.seen) and l.seen >= after)
+        if fresh and type(l) == "table" and l.profession == profession and type(l.rows) == "table" then
             for _, r in ipairs(l.rows) do
                 if type(r) == "table" and r.state ~= "known" and num(r.cost) and type(r.name) == "string" then
                     local rank = nil
@@ -106,8 +111,8 @@ P.BEHIND = "%s is %d, behind your level: %s %s needs %d, and you are past its le
 -- C-50: the prompt for a profession below its cap, from its next rank, or
 -- nil. level: the player's.
 local function belowCap(name, r, lists, level)
-    if not num(level) then return nil end
-    local rank, cost, row, npc = nextRank(lists, name)
+    if not num(level) or not num(r.maxAt) then return nil end
+    local rank, cost, row, npc = nextRank(lists, name, r.maxAt)
     if not rank or type(row) ~= "table" or not num(row.level) or not num(row.skill) then return nil end
     if level < row.level then return nil end
     if r.skill >= row.skill then
