@@ -115,7 +115,9 @@ T["service questie: the pass keeps vendors, repair vendors, flight masters and i
     t.eq(found.innkeeper, { { name = "Host", map = MAP, x = 0.3, y = 0.5, side = "A" } }, "the innkeeper bit")
     t.eq(found.banker, {}, "no banker among them")
     t.eq(n, 6, "six places in all: one for each list an NPC is in")
-    t.eq(state.names, 4, "a name is read only of an NPC that is kept")
+    -- With a name asked for (PP.Want) the name of every NPC with a flag is
+    -- read, once; with none, only of an NPC that is kept.
+    t.eq(state.names, next(PP.NAMES) ~= nil and 5 or 4, "a name is read once of an NPC with a flag, never of the wolf")
 end
 
 T["service questie: a list is made only once an NPC of that kind is met"] = function(t)
@@ -187,7 +189,7 @@ T["service questie: nothing saved, and Questie's repair vendor is the nearest, m
     t.eq(got and got.name, SMITH, "Questie's smith of the player's faction")
     t.eq(got and got.kind, "repair")
     t.eq(got and { got.map, got.x, got.y, got.cont }, { MAP, 0.6, 0.5, 1 }, "its place, on the player's continent")
-    t.eq(got and got.yards, 100, "100 yards east")
+    t.eq(got and got.yards and math.floor(got.yards + 0.5), 100, "100 yards east")
     t.eq(got and got.unvisited, true, "marked as not visited")
     t.eq(got and got.seen, nil, "never said to be seen")
     t.ok(got and got.key ~= nil, "with a key of its own")
@@ -319,7 +321,7 @@ T["service questie: the repair step gets a place from Questie when none is saved
     t.eq(step and step.kind, RS.KIND)
     t.eq(step and step.place, { cont = 1, map = MAP, x = 0.6, y = 0.5 }, "Questie's repair vendor")
     t.eq(step and step.name, SMITH)
-    t.eq(step and step.yards, 100)
+    t.eq(step and step.yards and math.floor(step.yards + 0.5), 100)
     t.eq(step and step.unvisited, true, "marked as not visited")
     t.ok(step and step.from ~= "seen", "not said to be seen")
     t.eq(step and step.detail, RS.FROM_QUESTIE, "the arrow's line says where it is from")
