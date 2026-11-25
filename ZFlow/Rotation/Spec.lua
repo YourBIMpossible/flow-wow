@@ -151,7 +151,13 @@ end
 
 function Sp.Source(pack, chosen, trees)
     local talents, tree, points = Sp.FromTalents(pack, trees)
-    local out = { talents = talents, tree = tree, points = points }
+    local out = { talents = talents, tree = tree, points = points, read = false }
+    -- Were any points read at all? A split or a tree in no role still was.
+    if type(trees) == "table" then
+        for _, t in ipairs(trees) do
+            if type(t) == "table" and type(t.points) == "number" and t.points > 0 then out.read = true end
+        end
+    end
     local set = roleOf(chosen)
     if set ~= nil then
         out.role, out.from = set, "setting"
@@ -168,13 +174,21 @@ end
 function Sp.SourceLines(pack, chosen, trees)
     local s = Sp.Source(pack, chosen, trees)
     if s.role == nil then
+        if s.read then
+            return { "spec in use: not known. No role set, talents that fit no one role, and nothing recommended." }
+        end
         return { "spec in use: not known. No role set, no talent points read, and nothing recommended." }
     end
     local _, name = partOf(pack, s.role)
     local what = "spec in use: " .. named(s.role, name)
     if s.from == "setting" then
         local lines = { what .. ", from your role setting." }
-        if s.talents ~= nil and s.talents ~= s.role then
+        -- No note when the role you set holds the leading tree itself
+        -- (a druid tank with Feral talents: Feral is a tank tree too).
+        local row, rowName = partOf(pack, s.role)
+        local holds = false
+        if row ~= nil and s.tree ~= nil then holds = treeIn(row, rowName, s.tree) end
+        if s.talents ~= nil and s.talents ~= s.role and not holds then
             lines[#lines + 1] = "note: your talents lean to " .. named(s.talents, s.tree)
                 .. " (" .. s.points .. " points there), not the role you set."
         end
@@ -182,6 +196,9 @@ function Sp.SourceLines(pack, chosen, trees)
     end
     if s.from == "talents" then
         return { what .. ", from your talents (" .. s.points .. " points in " .. s.tree .. ")." }
+    end
+    if s.read then
+        return { what .. ", the default: no role set and your talents fit no one role, so the recommended one." }
     end
     return { what .. ", the default: no role set and no talent points read, so the recommended one." }
 end
