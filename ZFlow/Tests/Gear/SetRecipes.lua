@@ -86,7 +86,12 @@ end
 
 tests["set recipes: an empty main hand gives off = nil"] = function(t)
     local c = client({}, { { item = POLE, count = 1 } })
+    -- The main hand read and empty (the fake answers "not known" until a
+    -- slot is set; MyBuddy lane B, lead section 867.3).
+    c.setWorn(16, false)
     local s = SR.Swaps(fishing(), c)
+    t.ok(type(s) == "table", "a swap list")
+    if type(s) ~= "table" then return end
     t.eq(s.rows[1].off, nil)
     t.eq(s.rows[1].reason, "Fishing Pole is in your bags; it goes on where nothing is worn now.")
 end
