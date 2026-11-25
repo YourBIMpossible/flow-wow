@@ -90,9 +90,25 @@ T["from client: class, position, the map's name and known by the spell number"] 
         position = function() return { map = 1456, x = 0.4, y = 0.4 } end,
         mapName = function(map) return map == MOONGLADE and "Moonglade" or nil end,
         spell = function(id) asked = id; return id == 18960 and { known = true } or nil end,
+        spellId = function(name) return name == "Teleport: Moonglade" and 18960 or nil end,
     }
     t.eq(N.TravelSpellStepFrom(STEP, client).label, "Cast Teleport: Moonglade")
     t.eq(asked, 18960, "asked by the number in the row")
+    -- Lead section 629: a client that gives no number for the spell's name
+    -- is not believed that it is known. Fails before: a cast step.
+    client.spellId = function() return nil end
+    local noId, whyNoId = N.TravelSpellStepFrom(STEP, client)
+    t.eq(noId, nil, "no number from the client: no cast")
+    t.eq(whyNoId, "known unknown")
+    client.spellId = function() return 5 end
+    local _, whyOther = N.TravelSpellStepFrom(STEP, client)
+    t.eq(whyOther, "known unknown", "another number: no cast")
+    client.spell = function() return { known = true, name = "Teleportieren: Mondlichtung" } end
+    client.spellId = function(name) return name == "Teleportieren: Mondlichtung" and 18960 or nil end
+    t.eq(N.TravelSpellStepFrom(STEP, client).label, "Cast Teleport: Moonglade",
+        "the number is asked by the client's own name for the spell")
+    client.spell = function(id) asked = id; return id == 18960 and { known = true } or nil end
+    client.spellId = function(name) return name == "Teleport: Moonglade" and 18960 or nil end
     client.spell = function() return { known = false } end
     t.eq(N.TravelSpellStepFrom(STEP, client).hint, "Teleport: Moonglade needs level 10")
     client.spell = function() return nil end
@@ -175,6 +191,7 @@ T["from client: map 1450 is the spell's zone when the client names its area the 
         mapName = function(m) return m == MOONGLADE and map or nil end,
         areaName = function(a) return a == 493 and area or nil end,
         spell = function() return { known = true } end,
+        spellId = function() return 18960 end,
     }
     t.eq(N.TravelSpellStepFrom(STEP, client).label, "Cast Teleport: Moonglade", "a German client, both the same")
     area = "Winterquell"

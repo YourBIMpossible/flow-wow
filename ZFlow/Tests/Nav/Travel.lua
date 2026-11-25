@@ -41,13 +41,17 @@ end
 
 -- Lead section 403 (b): a spell to learn is no shortcut, but the player is
 -- told where to learn it, as a line under the step (its hint).
-local LEARN = { label = "Learn " .. SPELL, text = true, spell = SPELL, learn = true, detail = "your class trainer" }
+-- The step as Nav/TravelSpells.lua gives it now (owner, lead sections 619,
+-- 621 and 623): its own line, the level the spell needs; no place it is
+-- learned at is claimed.
+local NEEDS = SPELL .. " needs level 10"
+local LEARN = { label = "Learn " .. SPELL, text = true, spell = SPELL, learn = true, hint = NEEDS }
 
 tests["travel via: a spell to learn is no shortcut; where to learn it is said under the step"] = function(t)
     local step = boars()
     local out, how = N.TravelVia(step, { spell = LEARN }, false)
     t.eq(how, nil, "not a way: no how")
-    t.eq(out, { label = "Kill boars", place = boars().place, hint = "Learn " .. SPELL .. " (your class trainer)" })
+    t.eq(out, { label = "Kill boars", place = boars().place, hint = NEEDS })
     t.eq(step, boars(), "the chosen step is not changed")
 end
 
@@ -64,7 +68,7 @@ tests["travel via: the learn line gives way to a real way and walking, and comes
     t.eq(how, "hearth", "the stone is still the action")
     t.eq(out.hint, nil)
     local hinted = N.TravelVia(boars(), { spell = LEARN, flightHint = "No flight learned to there yet" }, false)
-    t.eq(hinted.hint, "Learn " .. SPELL .. " (your class trainer)", "parity B-32: the spell before the no-flight line")
+    t.eq(hinted.hint, NEEDS, "parity B-32: the spell before the no-flight line")
     local flightOnly = N.TravelVia(boars(), { flightHint = "No flight learned to there yet" }, false)
     t.eq(flightOnly.hint, "No flight learned to there yet", "no spell to learn: the flight's line as it was")
     local walked = N.TravelVia(boars(), { spell = LEARN }, true)
@@ -217,7 +221,7 @@ tests["travel module: spell not known: the step and where to learn it; the clien
     local out, how = api.via(step)
     t.eq(how, nil, "not known: walk")
     t.eq(out.label, "Kill boars")
-    t.eq(out.hint, "Learn " .. SPELL .. " (your class trainer, from level 10)", "where to learn it is said")
+    t.eq(out.hint, NEEDS, "the level it needs is said; no level read here")
     local _, _, api2 = start({ knows = "unknown" })
     t.ok(api2.via(step) == step, "no answer is never taken as known")
 end
@@ -304,7 +308,7 @@ tests["travel module: the arrow shows where to learn the spell under the map pin
     local k, c = start({ arrow = true, knows = false, pin = { map = MOONGLADE, x = 0.4, y = 0.6 } })
     local lines = c.arrows[1].lines
     t.eq(lines[1], N.WAYPOINT_LABEL)
-    t.eq(lines[2], "Learn " .. SPELL .. " (your class trainer, from level 10)", "the learn line under the step")
+    t.eq(lines[2], NEEDS, "the learn line under the step")
     t.eq(k.problems:count(), 0)
 end
 

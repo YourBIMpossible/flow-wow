@@ -71,6 +71,11 @@ local _, ns = ...
 --   client.class(), client.position(), client.mapName(map) and
 --   client.spell(id).known with the row's id (a row with no id:
 --   client.spellId(name)). No id or no answer: "known unknown".
+--   Lead section 629: "known" is taken only when the client itself gives
+--   that number for the spell's name (client.spellId of the client's own
+--   name for it, else of the row's name). A client that cannot say the
+--   spell's number is not believed that the spell is known: no cast step.
+--   "Not known" needs no such check: the line only names the spell.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
 
@@ -214,8 +219,13 @@ function N.TravelSpellStepFrom(target, client, store)
         if type(id) ~= "number" then return nil end
         local row = ask(client, "spell", id)
         if type(row) ~= "table" then return nil end
-        if row.known == true or row.known == false then return row.known end
-        return nil
+        if row.known == false then return false end
+        if row.known ~= true then return nil end
+        -- Section 629: no number for the spell from the client, no cast.
+        local said = name
+        if type(row.name) == "string" and row.name ~= "" then said = row.name end
+        if ask(client, "spellId", said) ~= id then return nil end
+        return true
     end
     local function mapName(map) return ask(client, "mapName", map) end
     local function taught(name)
@@ -231,7 +241,8 @@ function N.TravelSpellStepFrom(target, client, store)
     local more = { level = ask(client, "level") }
     local row = N.TRAVEL_SPELLS[1]
     if type(row) == "table" then
-        local area = type(row.area) == "number" and ask(client, "areaName", row.area) or nil
+        local area
+        if type(row.area) == "number" then area = ask(client, "areaName", row.area) end
         if type(area) == "string" and area ~= "" then more.mapNames = { area } end
         if type(row.id) == "number" then
             local read = ask(client, "spell", row.id)
