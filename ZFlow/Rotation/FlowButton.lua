@@ -81,6 +81,7 @@ FB.DEFAULT_POINT = { "CENTER", "CENTER", 0, -270 } -- authored: well under the r
 -- to its right, one button and a gap clear of it (authored).
 FB.SELF_DEFAULT_POINT = { "CENTER", "CENTER", 100, -270 }
 FB.FLOW_NAME = "Flow button"
+FB.ITEM_PENDING = "Item not loaded yet."
 FB.SELF_NAME = "Buff button, for your self buffs"
 -- Lead section 409 item 4: the word under each button, so the two are told
 -- apart without hovering.
@@ -206,6 +207,7 @@ function FB.Tip(which, why, hold, now)
     local name = FB.FLOW_NAME
     if which == "self" then name = FB.SELF_NAME end
     if type(hold) ~= "table" then return name .. ". " .. tostring(why) end
+    if hold.pending then return name .. ". " .. FB.ITEM_PENDING end
     local what = hold.spell or hold.item
     if which == "self" then return name .. ". Casts " .. tostring(what) .. " on you when you click it." end
     local line = name .. ". Casts " .. tostring(what) .. " when you click it."
@@ -221,6 +223,22 @@ function FB.FightPick(view)
     if type(view) ~= "table" or type(view.fight) ~= "table" or view.fight.ok ~= true then return nil end
     local plan = ns.ClickSlots.Plan(view.fight.button, nil)
     return plan.key
+end
+
+-- Section 448 (F5): the tooltip's own copy of what the button holds, its
+-- item resolved to the display name client.itemInfo gives (a link or an ID
+-- in, { name = } out) so the line reads a name, never the raw secure-
+-- attribute token ("item:28653") the button is actually set with; FB.Tip
+-- stays pure and unaware of the client. Unresolved (not yet loaded, or no
+-- client): the hold is marked pending and FB.Tip says FB.ITEM_PENDING,
+-- never the raw token (section 454).
+local function tipHold(client, hold)
+    if type(hold) ~= "table" or type(hold.item) ~= "string" then return hold end
+    local pending = { item = hold.item, pending = true }
+    if type(client) ~= "table" or type(client.itemInfo) ~= "function" then return pending end
+    local ok, info = pcall(client.itemInfo, hold.item)
+    if not ok or type(info) ~= "table" or type(info.name) ~= "string" or info.name == "" then return pending end
+    return { item = info.name }
 end
 
 local function texture(client, e)
@@ -458,8 +476,9 @@ function FB.Declare(k)
             ns.MoveHandle.Attach(k, client, { target = name, width = size, height = size, save = moved, quiet = true })
             if type(client.hoverTip) == "function" then
                 local function line()
-                    if which == "flow" then return FB.Tip(which, u.why, u.hold, suggestedNow()) end
-                    return FB.Tip(which, u.why, u.hold)
+                    local hold = tipHold(client, u.hold)
+                    if which == "flow" then return FB.Tip(which, u.why, hold, suggestedNow()) end
+                    return FB.Tip(which, u.why, hold)
                 end
                 pcall(client.hoverTip, { frame = name .. "1", text = line })
             end

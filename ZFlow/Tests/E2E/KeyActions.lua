@@ -33,6 +33,13 @@ local INFO = {
 }
 local HEAD, BETTER = "item:4320", "item:4321"
 local STR = "ITEM_MOD_STRENGTH_SHORT"
+local FB = ns.FlowButton
+local FLOW = ns.id.framePrefix .. "FlowButton"
+
+local function tip(c, name)
+    if type(c.hoverTipText) ~= "function" then return nil end
+    return c.hoverTipText(name .. "1")
+end
 
 local function learn(c, name, id)
     c.setSpellId(name, id)
@@ -333,6 +340,43 @@ tests["key actions F1: Find Minerals off, a better bag item: the key shows Find 
     c.setTracking("Find Minerals", true); c.advance(1, 5)
     t.eq(attr(c, "item"), "item:4321", "with the tracking on the item is on the key")
     nothingWritten(t, c)
+end
+
+-- Section 448 (F5): the Flow button holds the same key (FB.SETTING is
+-- K.SETTING), so the same equip-upgrade item that reaches the RotationKey
+-- button also reaches it; its tooltip must read the item's name, not the
+-- raw secure-attribute text the button is actually set with ("item:4321").
+tests["key actions: a better item in the bags: the Flow button's tooltip names it, not the raw item text"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no FlowButton module"); return end
+    local c, addon = start()
+    gear(c, addon)
+    local info = {}
+    for id, row in pairs(INFO) do info[id] = row end
+    info[4321] = { name = "Reinforced Circlet" }
+    c.setItemInfo(info); c.advance(1, 5)
+    t.eq(attr(c, "item"), "item:4321", "the key still casts by the raw item text")
+    local line = tip(c, FLOW)
+    t.ok(type(line) == "string" and line:find("Reinforced Circlet", 1, true) ~= nil,
+        "the tooltip names the item: " .. tostring(line))
+    t.ok(type(line) == "string" and line:find("item:4321", 1, true) == nil,
+        "never the raw item text: " .. tostring(line))
+end
+
+-- Section 454: the item's name not loaded yet: a plain line, never the token.
+tests["key actions: the Flow button's item name not loaded yet: a plain line, not the raw item text"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no FlowButton module"); return end
+    local c, addon = start()
+    gear(c, addon)
+    local info = {}
+    for id, row in pairs(INFO) do info[id] = row end
+    info[4321] = { name = "" }
+    c.setItemInfo(info); c.advance(1, 5)
+    t.eq(attr(c, "item"), "item:4321", "the key still casts by the raw item text")
+    local line = tip(c, FLOW)
+    t.ok(type(line) == "string" and line:find(FB.ITEM_PENDING or "Item not loaded yet.", 1, true) ~= nil,
+        "the tooltip says the item is not loaded yet: " .. tostring(line))
+    t.ok(type(line) == "string" and line:find("item:4321", 1, true) == nil,
+        "never the raw item text: " .. tostring(line))
 end
 
 tests["key actions: the key's actions row off: none of these is put on the key"] = function(t)
