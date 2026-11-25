@@ -101,7 +101,9 @@ local function currentIndex(rows)
     local marked = false
     for i, r in ipairs(rows) do
         if r.current == true then return i end
-        if r.current ~= nil or r.held ~= nil then marked = true end
+        -- Lazy (lead section 773): a step that cannot be placed (r.left) is
+        -- marked too, so a route of those only has no current step.
+        if r.current ~= nil or r.held ~= nil or r.left ~= nil then marked = true end
     end
     if marked then return nil end
     return 1
