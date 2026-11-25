@@ -15,7 +15,9 @@ local _, ns = ...
 -- LOOK ONLY. Nothing is equipped, moved, sold or clicked; equipping a set is
 -- not here. It writes only the character's own saved data.
 --
---   facts = GearSets.Facts(store)   { [item key] = { set name, ... } }, or
+--   facts = GearSets.Facts(store[, client])   client: whose equipment sets
+--                                   to read (else the one this store's module
+--                                   started with) -> { [item key] = { set name, ... } }, or
 --                                   nil when no set is saved: what
 --                                   Disposition's inSet rule reads
 --   sets  = GearSets.Saved(store)   { { name, items = { key ... },
@@ -164,9 +166,12 @@ end
 -- C-42-keep (lead section 791): the client each store's module started
 -- with, so Facts can read the game's own equipment sets for every caller
 -- (the sell list, the bank list, the loot note, the tooltip) as it is.
+-- A caller that holds the client passes it instead (CHANGES-1, section
+-- 804): a lookup by store finds nothing for a store this copy of the
+-- module did not start with.
 local clientOf = setmetatable({}, { __mode = "k" })
 
-function Sets.Facts(store)
+function Sets.Facts(store, client)
     local facts, any = {}, false
     for _, s in ipairs(Sets.Saved(store)) do
         for _, key in ipairs(s.items) do
@@ -184,8 +189,8 @@ function Sets.Facts(store)
     -- own equipment sets are held too, matched by item ID (the game gives a
     -- set's items as IDs; an item with a random suffix is keyed by more than
     -- its ID, so such a piece is not matched). Read only.
-    local c = nil
-    if type(store) == "table" then c = clientOf[store] end
+    local c = client
+    if type(c) ~= "table" and type(store) == "table" then c = clientOf[store] end
     local list = nil
     if type(c) == "table" and type(c.equipmentSets) == "function" then
         local ok, got = pcall(c.equipmentSets)

@@ -328,16 +328,21 @@ tests["gear sets C-42-keep: a piece of a game equipment set is never offered at 
     t.ok(starts(visit(c), "1 x Frayed Cloak: "), "the game's sets not read: nothing held for them")
 end
 
+-- C-42-keep CHANGES-1 (lead section 804): the client is passed in. This
+-- file's ns.GearSets is not the booted add-on's own table, so a lookup by
+-- the add-on's store finds no client from here; Facts takes it as an
+-- argument (the add-on's own callers still find theirs by their store).
 tests["gear sets C-42-keep: the facts name both kinds of set"] = function(t)
     local Sets = ns.GearSets
     local c, addon = start({ worn = WORN })
     say(c, "set save tank")
     c.setEquipmentSets({ { id = 1, name = "Pvp", items = { [16] = SWORD, [15] = CLOAK } } })
-    local facts = Sets.Facts(addon.store)
+    local facts = Sets.Facts(addon.store, c)
     t.eq(facts and facts[CLOAK], { "tank", "Pvp" }, "your set, then the game's")
     t.eq(facts and facts[SWORD], { "tank", "Pvp" })
     c.setEquipmentSets({})
-    t.eq(Sets.Facts(addon.store)[CLOAK], { "tank" })
+    t.eq(Sets.Facts(addon.store, c)[CLOAK], { "tank" })
+    t.eq(addon.GearSets.Facts(addon.store)[SWORD], { "tank" }, "the add-on's own copy finds its client by its store")
 end
 
 return tests
