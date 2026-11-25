@@ -85,4 +85,25 @@ tests["step card: hand in says so"] = function(t)
     t.eq(card.distance, nil, "no distance given")
 end
 
+-- Lead section 826: "Do this next" runs through the planned route's own
+-- First(n) (Nav/TripRoute.lua), as PartyRoute's api.First; SC.CanFirst says
+-- whether the route offers it.
+tests["step card: the route can put a step first"] = function(t)
+    local T = ns.Nav.TripRoute
+    t.eq(type(T.First), "function", "T.First")
+    if type(T.First) ~= "function" then return end
+    local stops = { { label = "A" }, { label = "B", gone = true }, { label = "C" }, { label = "D" } }
+    t.eq(T.First(stops, 1, 3), true, "the third shown (D) goes first")
+    t.eq({ stops[1].label, stops[2].label, stops[3].label, stops[4].label }, { "D", "A", "B", "C" })
+    t.eq(T.First(stops, 1, 1), false, "already first")
+    t.eq(T.First(stops, 1, 9), false, "no such step")
+    t.eq(T.First(nil, 1, 2), false)
+    local later = { { label = "done" }, { label = "X" }, { label = "Y" } }
+    t.eq(T.First(later, 2, 2), true, "counted from the step the route is at")
+    t.eq({ later[1].label, later[2].label, later[3].label }, { "done", "Y", "X" })
+    t.eq(SC().CanFirst({ First = function() end }), true)
+    t.eq(SC().CanFirst({}), false)
+    t.eq(SC().CanFirst(nil), false)
+end
+
 return tests
