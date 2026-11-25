@@ -535,4 +535,9 @@ READS.rewardButtons = false
 -- Nav/FollowAdvice.lua only. Its name (UnitIsGroupLeader) is in Diag.NAMES.
 READS.groupLeader = false
 
+-- A2-27: the open gossip window's options, read by Nav/ServiceSeen.lua
+-- only, when a gossip window opens; nothing is chosen. The capture does not
+-- ask it.
+READS.gossipOptions = false
+
 return tests
