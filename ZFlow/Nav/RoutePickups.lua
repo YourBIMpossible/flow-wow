@@ -16,7 +16,8 @@ local _, ns = ...
 -- Pure:
 --   P.Candidate(q, ctx) -> true | false, why
 --     q in the shape S.State takes; ctx = { level, log = { [id] = true },
---     done(id) -> true | false | nil (not known), me (S.Eligible) }
+--     done(id) -> true | false | nil (not known), me (S.Eligible),
+--     lowOn (true: low-level quests are kept, Nav/LowQuests.lua, A2-05) }
 --   P.Nearest(list, here, max) -> the max nearest of list on here.map
 -- Client reads: P.Read(client, here, log) -> list or nil, why.
 -- Not tested in game.
@@ -41,11 +42,11 @@ local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
 end
 
-local function inReach(level, reqLevel, qLevel)
+local function inReach(level, reqLevel, qLevel, lowOn)
     if tonumber(reqLevel) and tonumber(reqLevel) > level then return false, "from level " .. reqLevel end
     local l = tonumber(qLevel)
     if l and l > level + S.LEVEL_ABOVE then return false, "above you" end
-    if l and l > 0 and l < level - P.BELOW then return false, "far below you" end
+    if lowOn ~= true and l and l > 0 and l < level - P.BELOW then return false, "far below you" end
     return true
 end
 
@@ -59,7 +60,7 @@ function P.Candidate(q, ctx)
     for _, ex in ipairs(list(q.exclusiveTo)) do
         if log[ex] or done(ex) == true then return false, "ruled out by a quest you did" end
     end
-    local ok, why = inReach(tonumber(ctx.level) or 0, q.requiredLevel, q.level)
+    local ok, why = inReach(tonumber(ctx.level) or 0, q.requiredLevel, q.level, ctx.lowOn)
     if not ok then return false, why end
     for _, id in ipairs(list(q.preQuestGroup)) do
         if done(id) == false then return false, "an earlier quest first" end
@@ -121,6 +122,12 @@ local function quick(db, id, name)
     return nil
 end
 
+local function lowOn()
+    local low = N.LowQuests
+    if low and type(low.On) == "function" then return low.On() == true end
+    return false
+end
+
 local function mapOf(zones, area)
     if type(zones.GetUiMapIdByAreaId) ~= "function" then return nil end
     local ok, m = pcall(zones.GetUiMapIdByAreaId, area)
@@ -167,11 +174,12 @@ function P.Read(client, here, log)
         me = { raceId = ask(client, "raceId"), classId = class and S.CLASS_ID[class] or nil,
                faction = ask(client, "faction") },
         done = function(id) return ask(client, "questDone", id) end,
+        lowOn = lowOn(),
     }
     local found, areaMap, npcs = {}, {}, {}
     for id in pairs(db.QuestPointers) do
         if type(id) == "number" and not ctx.log[id]
-            and inReach(level, quick(db, id, "requiredLevel"), quick(db, id, "questLevel")) then
+            and inReach(level, quick(db, id, "requiredLevel"), quick(db, id, "questLevel"), ctx.lowOn) then
             local ok, qt = pcall(db.GetQuest, id)
             local starts = ok and type(qt) == "table" and type(qt.Starts) == "table" and qt.Starts or nil
             local giver = starts and type(starts.NPC) == "table" and starts.NPC[1] or nil
