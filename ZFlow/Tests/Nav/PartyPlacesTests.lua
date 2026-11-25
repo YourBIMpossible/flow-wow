@@ -236,4 +236,15 @@ tests["party places: nothing from quest spots or Questie is ever sent"] = functi
     t.eq(all:find("Imported", 1, true), nil)
 end
 
+-- Lead section 833: places are kept only from a member of the party the
+-- client lists; alone or in a raid nothing is kept.
+tests["party places: nothing is kept alone or in a raid"] = function(t)
+    local _, c = start({ on = true, party = false })
+    c.addonDeliver(PL().Prefix(), bobMessage(), "PARTY", "Bob")
+    t.eq(shared(c), nil, "alone")
+    local _, r = start({ on = true, party = { { unit = "raid1", name = "Bob" } } })
+    r.addonDeliver(PL().Prefix(), bobMessage(), "PARTY", "Bob")
+    t.eq(shared(r), nil, "in a raid")
+end
+
 return tests
