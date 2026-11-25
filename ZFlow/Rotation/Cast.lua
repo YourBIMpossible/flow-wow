@@ -232,6 +232,36 @@ end
 -- button = {}, header = {} } with the same two reasons as Apply.
 
 C.STATE = "castform"
+-- Parity row D-04 (lead section 697), as Flow's Modules/Rotation/Cast.lua
+-- (:877-932): the state handler's secure code, run by the game when the
+-- state driver on C.STATE changes state (a form change, in a fight too).
+-- It copies the header rows of the state entered ("key-N", "ctrl-N", ...)
+-- onto the key ("key" frame ref); "" clears a slot. Restricted code, given
+-- to the handler out of a fight only; never a macro. A first guess: the
+-- restricted calls are on warcraft.wiki.gg (SecureHandlerStateTemplate,
+-- RestrictedEnvironment), not seen in this client.
+C.FORM_SNIPPET = [=[
+local key = self:GetFrameRef("key")
+if not key then return end
+local v = self:GetAttribute("key-" .. newstate)
+if v and v ~= "" then
+    key:SetAttribute("type", "spell")
+    key:SetAttribute("spell", v)
+    key:SetAttribute("item", nil)
+end
+v = self:GetAttribute("ctrl-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-ctrl", v)
+v = self:GetAttribute("shift-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-shift", v)
+v = self:GetAttribute("alt-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-alt", v)
+v = self:GetAttribute("more-" .. newstate)
+if v == "" then v = nil end
+key:SetAttribute("*spell-more", v)
+]=]
 C.MODIFIERS = { "ctrl", "shift", "alt", "more" }
 C.ON_YOU = { heal = true, emergency = true, buff = true }
 -- The only units a suggestion may name for the key. Anyone else (a party or
