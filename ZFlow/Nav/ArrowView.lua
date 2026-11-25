@@ -168,7 +168,11 @@ function N.ArrowView(state)
     local qr, qg, qb
     local RC = ns.RouteColor
     local qFamily = q.family
-    if RC and RC.FAMILIES[qFamily] and qState ~= "corpse" then
+    -- The one-colour arrow setting (far, mid and near all one colour) is the
+    -- player's saved choice: it keeps its flat colour (lead section 564).
+    local flatRow = type(state.palette) == "table" and state.palette.far ~= nil
+        and state.palette.far == state.palette.near
+    if RC and RC.FAMILIES[qFamily] and qState ~= "corpse" and not flatRow then
         qr, qg, qb = RC.Of({ family = qFamily, state = qState }, q.distance, N.ArrowPaletteWord(state.palette))
     else
         qr, qg, qb = N.ArrowColor(qState, q.distance, state.palette)

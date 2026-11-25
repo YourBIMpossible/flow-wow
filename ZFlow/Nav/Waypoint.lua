@@ -188,6 +188,8 @@ function W.Step(slot, position, zone)
     end
     return {
         label = wp.label or N.WAYPOINT_LABEL or "Waypoint",
+        -- R7: the arrow colours the player's own spot green (RC.Of).
+        family = "waypoint",
         place = { cont = cont, map = wp.map, x = wp.x, y = wp.y },
         radius = W.NEAR,
     }

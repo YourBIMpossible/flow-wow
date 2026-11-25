@@ -542,6 +542,12 @@ T["R7: the quest arrow's colour is RC.Of's for its step"] = function(t)
     colour(t, N.ArrowView(state()).quest.colour, dr, dg, db, "a route step: by distance")
 end
 
+T["R7: with the one-colour setting a waypoint arrow keeps the saved flat colour"] = function(t)
+    local flat = N.ArrowPaletteOf("standard", false)
+    local r, g, b = N.ArrowColor("zone", 300, flat)
+    colour(t, N.ArrowView(state({ palette = flat }, { family = "waypoint" })).quest.colour, r, g, b, "flat")
+end
+
 T["R7: a palette row gives back its palette word"] = function(t)
     t.eq(N.ArrowPaletteWord(N.ARROW_PALETTE.colourBlind), "colourBlind")
     t.eq(N.ArrowPaletteWord(N.ArrowPaletteOf("colourBlind", false)), "colourBlind")

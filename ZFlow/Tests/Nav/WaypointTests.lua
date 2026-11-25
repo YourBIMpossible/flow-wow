@@ -233,7 +233,7 @@ return {
         local slot = {}
         W.Set(slot, HERE, "way 50 25 inn")
         t.eq(W.Step(slot, HERE, { cont = 1, zone = 1411 }),
-            { label = "inn", place = { cont = 1, map = 1411, x = 0.5, y = 0.25 }, radius = W.NEAR })
+            { label = "inn", family = "waypoint", place = { cont = 1, map = 1411, x = 0.5, y = 0.25 }, radius = W.NEAR })
         W.Set(slot, HERE, "way 50 25")
         t.eq(W.Step(slot, HERE, { cont = 1 }).label, N.WAYPOINT_LABEL, "no label typed: the plain one")
         t.eq(W.Step({}), nil)
