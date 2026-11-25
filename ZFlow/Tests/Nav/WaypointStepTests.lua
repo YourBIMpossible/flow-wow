@@ -39,7 +39,7 @@ return {
         local c = start()
         c.setWaypoint(1411, 0.3, 0.5)
         t.eq(N.WaypointStep(c), {
-            label = "Waypoint",
+            label = "Waypoint", family = "waypoint",
             place = { cont = 1, map = 1411, x = 0.3, y = 0.5 },
         })
     end,
@@ -58,7 +58,7 @@ return {
         c.setMapSize(1412, 2000, 1000)
         c.setWaypoint(1412, 0.5, 0.5)
         local step = N.WaypointStep(c)
-        t.eq(step, { label = "Waypoint", place = { map = 1412, x = 0.5, y = 0.5 } },
+        t.eq(step, { label = "Waypoint", family = "waypoint", place = { map = 1412, x = 0.5, y = 0.5 } },
             "the player's continent is not given to a map the player is not on")
         local state, more = N.ViewState(c, { quest = step })
         t.eq(state.quest.distance, nil, "no distance from a guessed offset")
@@ -69,11 +69,11 @@ return {
     ["waypoint set, zone unknown: the place has no continent"] = function(t)
         local c = ns.make.fakeClient()
         c.setWaypoint(1411, 0.3, 0.5)
-        t.eq(N.WaypointStep(c), { label = "Waypoint", place = { map = 1411, x = 0.3, y = 0.5 } })
+        t.eq(N.WaypointStep(c), { label = "Waypoint", family = "waypoint", place = { map = 1411, x = 0.3, y = 0.5 } })
         c.zone = function() error("the client refused") end
-        t.eq(N.WaypointStep(c), { label = "Waypoint", place = { map = 1411, x = 0.3, y = 0.5 } })
+        t.eq(N.WaypointStep(c), { label = "Waypoint", family = "waypoint", place = { map = 1411, x = 0.3, y = 0.5 } })
         c.zone = function() return "nowhere" end
-        t.eq(N.WaypointStep(c), { label = "Waypoint", place = { map = 1411, x = 0.3, y = 0.5 } })
+        t.eq(N.WaypointStep(c), { label = "Waypoint", family = "waypoint", place = { map = 1411, x = 0.3, y = 0.5 } })
     end,
 
     ["a malformed answer: no step"] = function(t)

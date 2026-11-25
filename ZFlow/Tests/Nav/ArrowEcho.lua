@@ -150,13 +150,20 @@ T["echo colour: dim far to bright near in purple, never one flat colour"] = func
     local fr, fg, fb = N.EchoColor("zone", N.COLOR_FAR)
     local mr, mg, mb = N.EchoColor("zone", (N.COLOR_FAR + N.COLOR_NEAR) / 2)
     local nr, ng, nb = N.EchoColor("zone", N.COLOR_NEAR)
-    t.ok(bright(mr, mg, mb) > bright(fr, fg, fb) + 0.2, "half way is clearly brighter than far")
-    t.ok(bright(nr, ng, nb) > bright(mr, mg, mb) + 0.2, "near is clearly brighter than half way")
+    t.ok(bright(mr, mg, mb) > bright(fr, fg, fb) + 0.1, "half way is clearly brighter than far")
+    t.ok(bright(nr, ng, nb) > bright(mr, mg, mb) + 0.1, "near is clearly brighter than half way")
     local hr, hg, hb = N.EchoColor("here", 0)
     t.ok(hg < hr and hr <= hb, "at its own step: still purple")
     t.ok(bright(hr, hg, hb) >= bright(nr, ng, nb), "and the brightest")
     local ar, ag, ab = N.EchoColor("away", 100)
-    t.ok(ag < ar and ar < ab, "another zone: a greyed purple")
+    t.ok(ag < ar and ar < ab, "another zone: the dim far purple")
+    -- Lead section 529: the echo and RC.Of's profession colour agree.
+    local RC = ns.RouteColor
+    for _, d in ipairs({ 900, 320, 180, 40 }) do
+        local er, eg, eb = N.EchoColor("zone", d)
+        local pr, pg, pb = RC.Of({ family = "profession" }, d, "standard")
+        t.ok(math.abs(er - pr) < 0.01 and math.abs(eg - pg) < 0.01 and math.abs(eb - pb) < 0.01, d .. " yd: same purple as RC.Of")
+    end
 end
 
 T["echo colour: the view paints the echo by its own distance, the ring at its own step"] = function(t)

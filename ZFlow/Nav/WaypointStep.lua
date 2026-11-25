@@ -45,6 +45,8 @@ function N.WaypointStep(client)
     end
     return {
         label = N.WAYPOINT_LABEL,
+        -- R7: the arrow colours the player's own spot green (RC.Of).
+        family = "waypoint",
         place = { cont = cont, map = at.map, x = at.x, y = at.y },
     }
 end
