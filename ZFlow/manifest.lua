@@ -355,6 +355,8 @@ return {
     "Nav/InvitePrompt.lua",
     "Nav/RouteHover.lua",
     "Nav/StepDetail.lua",
+    -- A1-13 (lead section 825.2): the step card data (after StepDetail, whose rows it reuses).
+    "Nav/StepCard.lua",
     "Nav/InviteAccept.lua",
     -- S41 (lead section 395 item 1): quest items in the bags, leftover and to buy (after QuestRead and the advisor).
     "Items/QuestBags.lua",
