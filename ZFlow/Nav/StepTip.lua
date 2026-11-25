@@ -25,6 +25,9 @@ local _, ns = ...
 --   ST.LevelLine(level, mine) -> "|cff<hex>Level N|r: <says>" or nil
 --   ST.Xp(level, mine) -> xp, note   (nil without both levels)
 --   ST.ObjectiveLines(objectives) -> { "  <text>" ... }
+--   ST.Also(stops, quest, yardsTo) -> the labels of the other stops within
+--     ST.ALSO_YARDS (yardsTo(place) -> yards or nil), each quest once
+--     (R-06: one stop per objective named the quest twice)
 --   ST.Lines(info) -> lines; info = { level, mine, objectives, also }
 -- Module "stepTip" provides Lines(quest) -> lines or nil.
 ns.Nav = ns.Nav or {}
@@ -96,6 +99,25 @@ function ST.ObjectiveLines(objectives)
     return out
 end
 
+function ST.Also(stops, quest, yardsTo)
+    local out, seen = {}, {}
+    if type(stops) ~= "table" or type(yardsTo) ~= "function" then return out end
+    for _, s in ipairs(stops) do
+        if type(s) == "table" and type(s.label) == "string" and (s.quest == nil or s.quest ~= quest) then
+            local key = s.quest
+            if key == nil then key = "label:" .. s.label end
+            if not seen[key] then
+                local ok, d = pcall(yardsTo, s.place)
+                if ok and type(d) == "number" and d <= ST.ALSO_YARDS then
+                    seen[key] = true
+                    out[#out + 1] = s.label
+                end
+            end
+        end
+    end
+    return out
+end
+
 function ST.Lines(info)
     local out = {}
     if type(info) ~= "table" then return out end
@@ -147,13 +169,7 @@ function ST.Declare(k)
         local fine, cur = pcall(walk.Current)
         local stops = fine and type(cur) == "table" and cur.stops or nil
         local here = ask("position")
-        for _, s in ipairs(type(stops) == "table" and stops or {}) do
-            if type(s) == "table" and s.quest ~= quest and type(s.label) == "string" then
-                local d = yards(here, s.place)
-                if d and d <= ST.ALSO_YARDS then out[#out + 1] = s.label end
-            end
-        end
-        return out
+        return ST.Also(stops, quest, function(place) return yards(here, place) end)
     end
 
     function api.Lines(quest)
