@@ -684,6 +684,24 @@ function ns.make.fakeClient(opts)
         c.icons[#c.icons + 1] = h
         return h
     end
+    -- A2-27: the open gossip window's options, as the real client's
+    -- c.gossipOptions(). c.setGossipOptions(list or nil): nil (the start)
+    -- is "not known"; {} an open window with no option. Copied in and out,
+    -- so no table is shared with the test.
+    local function gossipCopy(list)
+        if type(list) ~= "table" then return nil end
+        local out = {}
+        for i, row in ipairs(list) do
+            local r = {}
+            if type(row) == "table" then
+                for key, v in pairs(row) do r[key] = v end
+            end
+            out[i] = r
+        end
+        return out
+    end
+    function c.setGossipOptions(list) s.gossipOptions = gossipCopy(list) end
+    function c.gossipOptions() return gossipCopy(s.gossipOptions) end
     function c.spellTexture(id) return s.spellTextures and s.spellTextures[id] or nil end
 
     -- Every arrow made is in c.arrows, in order. A handle keeps what it

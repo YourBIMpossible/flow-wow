@@ -13661,6 +13661,68 @@ function ns.make.client(env)
         if not any then return nil end
         return out
     end
+
+    -- A2-27 (Nav/ServiceSeen.lua): the options of the open gossip window,
+    -- one row per option, in the game's order:
+    --   c.gossipOptions() -> { { type = the game's own option type in lower
+    --     case, or nil; icon = number or nil; name = the option's words, or
+    --     nil } ... }
+    -- nil when the window is not shown, the client has neither call, the
+    -- call raises or it answers something that is no list of options. An
+    -- empty list only when the window says it is shown and has no option:
+    -- with no window to ask and no option, open or not is not known (nil).
+    -- A field that is missing, empty, secret or of another kind is nil; a
+    -- row with no usable type keeps type = nil. The type is never worked
+    -- out from the icon or the words.
+    -- First guesses, not seen in game on 16001: GossipFrame:IsShown();
+    -- C_GossipInfo.GetOptions() answering rows with name, icon and, on some
+    -- clients, type (Flow read only this one and only its name:
+    -- Modules/Nav/Places.lua at a529eea, lines 420-430); else the older
+    -- GetGossipOptions() answering text1, type1, text2, type2, ... A client
+    -- whose rows carry no type gives rows with type = nil.
+    -- Read only: it never chooses an option, and never opens or closes the
+    -- window.
+    function c.gossipOptions()
+        local open = nil
+        local okF, shown = method(env.GossipFrame, "IsShown")
+        if okF and not hidden(shown) then open = (shown ~= nil and shown ~= false) end
+        if open == false then return nil end
+        local function word(v)
+            if hidden(v) or type(v) ~= "string" or v == "" then return nil end
+            return v
+        end
+        local function kindOf(v)
+            local text = word(v)
+            if text == nil then return nil end
+            return string.lower(text)
+        end
+        local out = {}
+        local group = env.C_GossipInfo
+        if type(group) == "table" and type(group.GetOptions) == "function" then
+            local ok, list = call(group.GetOptions)
+            if not ok or hidden(list) or type(list) ~= "table" then return nil end
+            for i = 1, #list do
+                local o = list[i]
+                if hidden(o) or type(o) ~= "table" then return nil end
+                local row = { type = kindOf(o.type), name = word(o.name) }
+                if not hidden(o.icon) and type(o.icon) == "number" then row.icon = o.icon end
+                out[i] = row
+            end
+        elseif type(env.GetGossipOptions) == "function" then
+            local function gather(ok, ...)
+                return ok, select("#", ...), { ... }
+            end
+            local ok, n, flat = gather(pcall(env.GetGossipOptions))
+            if not ok or n % 2 ~= 0 then return nil end
+            for i = 1, n, 2 do
+                out[#out + 1] = { type = kindOf(flat[i + 1]), name = word(flat[i]) }
+            end
+        else
+            return nil
+        end
+        if #out == 0 and open ~= true then return nil end
+        return out
+    end
     return c
 end
 
