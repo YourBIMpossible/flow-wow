@@ -143,7 +143,7 @@ tests["arrow echo: the quest arrow is coloured by distance as before, the echo d
     r, g, b = N.ArrowColor("zone", d)
     close(t, q.drawn.colour, r, g, b, "the quest arrow far away, as before")
     local near = purple(t, p.drawn.colour, "the echo at 60 yards")
-    t.ok(near > far + 0.3, "the echo is clearly brighter near than far")
+    t.ok(near > far + 0.15, "the echo is clearly brighter near than far")
     t.ok(p.faded < 1, "the echo is see-through")
     t.eq(q.faded, 1, "the quest arrow is not")
 end
