@@ -267,7 +267,7 @@ function Travel.Declare(k, diag)
         local ways = { cont = type(zone) == "table" and zone.cont or nil }
         ways.far = type(target) == "table" and target.cont or nil
 
-        local okSpell, spell = pcall(N.TravelSpellStepFrom, target, client)
+        local okSpell, spell = pcall(N.TravelSpellStepFrom, target, client, ctx.store)
         if okSpell then ways.spell = spell end
         local okHearth, hearth = pcall(N.HearthStepFrom, target, client, ctx.store)
         if okHearth then ways.hearth = hearth end

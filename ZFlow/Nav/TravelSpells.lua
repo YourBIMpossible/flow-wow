@@ -20,15 +20,24 @@ local _, ns = ...
 --                  map is the game's uiMapID, mapName what the client must
 --                  name it for the row to count
 -- N.TRAVEL_NEEDS   the line for a spell not known: its name and level
+-- N.TRAVEL_TAUGHT, N.TRAVEL_TAUGHT_COST  that line with the trainer, and
+--                  the cost, of a trainer list the player opened (lead
+--                  section 621). Who teaches the spell is said from that
+--                  record and nothing else: with none, no trainer is named.
 -- N.TRAVEL_PLAIN, N.TRAVEL_LEARN_PLAIN  labels when a spell name would be
 --                  over N.Waypoint.LABEL_MAX bytes (never cut)
 --
--- N.TravelSpellStep(spells, target, here, class, knows, mapName) -> step, reason
+-- N.TravelSpellTaught(lists, name) -> { npc, cost } or nil: the trainer
+--   whose saved list (char "learned.trainerLists", Spells/TrainerList.lua)
+--   has a row of that name, the first by key; cost in copper, left out
+--   when the window gave none. The lists hold names, not spell numbers.
+-- N.TravelSpellStep(spells, target, here, class, knows, mapName[, taught]) -> step, reason
 --   target  { map, x, y }: the step the guide is on
 --   here    { position = { map, x, y } } (position may be absent)
 --   class   the player's class token ("DRUID"), or nil
 --   knows   function(name, id) -> true, false, or nil when the client did not say
 --   mapName function(map) -> the client's name for that map, or nil
+--   taught  function(name) -> { npc, cost } from the player's trainer lists
 --   step = { label, text = true, spell } when known, or
 --          { label, text = true, spell, learn = true, hint } when not: hint
 --          is N.TRAVEL_NEEDS ("Teleport: Moonglade needs level 10"), left
@@ -44,7 +53,7 @@ local _, ns = ...
 --   A player whose position is not known still gets the step: the spell
 --   works from anywhere else.
 --
--- N.TravelSpellStepFrom(target, client) -> the same, read from
+-- N.TravelSpellStepFrom(target, client[, store]) -> the same, read from
 --   client.class(), client.position(), client.mapName(map) and
 --   client.spell(id).known with the row's id (a row with no id:
 --   client.spellId(name)). No id or no answer: "known unknown".
@@ -67,6 +76,9 @@ N.TRAVEL_SPELLS = {
     },
 }
 N.TRAVEL_NEEDS = "%s needs level %d"
+N.TRAVEL_TAUGHT = "%s. %s teaches it."
+N.TRAVEL_TAUGHT_COST = "%s. %s teaches it for %s."
+N.TRAVEL_LISTS = "learned.trainerLists" -- char: Spells/TrainerModule.lua M.PATH
 -- What a ten-second cast is worth in running yards, for a planner that
 -- measures a step a cast away (legacy TS.YARDS).
 N.TRAVEL_SPELL_YARDS = 120
@@ -82,7 +94,27 @@ local function fit(label, plain)
     return label
 end
 
-function N.TravelSpellStep(spells, target, here, class, knows, mapName)
+function N.TravelSpellTaught(lists, name)
+    if type(lists) ~= "table" or type(name) ~= "string" then return nil end
+    local keys = {}
+    for key in pairs(lists) do keys[#keys + 1] = tostring(key) end
+    table.sort(keys)
+    for _, key in ipairs(keys) do
+        local l = lists[key]
+        if type(l) == "table" and type(l.npc) == "string" and l.npc ~= "" and type(l.rows) == "table" then
+            for _, r in ipairs(l.rows) do
+                if type(r) == "table" and r.name == name then
+                    local cost
+                    if type(r.cost) == "number" and r.cost >= 0 and r.cost % 1 == 0 then cost = r.cost end
+                    return { npc = l.npc, cost = cost }
+                end
+            end
+        end
+    end
+    return nil
+end
+
+function N.TravelSpellStep(spells, target, here, class, knows, mapName, taught)
     if type(target) ~= "table" or type(target.map) ~= "number" then return nil, "no target" end
     if type(class) ~= "string" or class == "" then return nil, "class unknown" end
     local spell
@@ -111,6 +143,21 @@ function N.TravelSpellStep(spells, target, here, class, knows, mapName)
     if known == false then
         local hint
         if type(spell.level) == "number" then hint = N.TRAVEL_NEEDS:format(spell.name, spell.level) end
+        -- Section 621: the trainer and cost of the player's own record.
+        if hint and type(taught) == "function" then
+            local ok, by = pcall(taught, spell.name)
+            if ok and type(by) == "table" and type(by.npc) == "string" and by.npc ~= "" then
+                local coin
+                if type(by.cost) == "number" and ns.Prices and type(ns.Prices.Coin) == "function" then
+                    coin = ns.Prices.Coin(by.cost)
+                end
+                if type(coin) == "string" and coin ~= "" then
+                    hint = N.TRAVEL_TAUGHT_COST:format(hint, by.npc, coin)
+                else
+                    hint = N.TRAVEL_TAUGHT:format(hint, by.npc)
+                end
+            end
+        end
         return { label = fit("Learn " .. spell.name, N.TRAVEL_LEARN_PLAIN), text = true, spell = spell.name,
                  learn = true, hint = hint }
     end
@@ -125,7 +172,7 @@ local function ask(client, name, ...)
     return nil
 end
 
-function N.TravelSpellStepFrom(target, client)
+function N.TravelSpellStepFrom(target, client, store)
     local class = ask(client, "class")
     local here = { position = ask(client, "position") }
     local function knows(name, id)
@@ -137,5 +184,11 @@ function N.TravelSpellStepFrom(target, client)
         return nil
     end
     local function mapName(map) return ask(client, "mapName", map) end
-    return N.TravelSpellStep(N.TRAVEL_SPELLS, target, here, class, knows, mapName)
+    local function taught(name)
+        if type(store) ~= "table" or type(store.get) ~= "function" then return nil end
+        local ok, lists = pcall(store.get, store, "char", N.TRAVEL_LISTS)
+        if not ok then return nil end
+        return N.TravelSpellTaught(lists, name)
+    end
+    return N.TravelSpellStep(N.TRAVEL_SPELLS, target, here, class, knows, mapName, taught)
 end
