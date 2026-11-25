@@ -376,7 +376,7 @@ tests["press audit module: the rotation off, a press has nothing to compare"] = 
     t.eq(w.api.data().disagreed, nil)
 end
 
-tests["press audit module: the word reports and resets"] = function(t)
+tests["press audit module: the word reports, resets and switches screenshots"] = function(t)
     local w = start()
     tick(w.c)
     local run = w.diag.commands[Au.WORD]
@@ -390,6 +390,10 @@ tests["press audit module: the word reports and resets"] = function(t)
     local all = table.concat(w.c.printed, "\n", n + 1)
     t.ok(has(all, "1 key presses: 0 cast what the icon showed, 1 cast the key's spell"), all)
     t.ok(has(all, "icon Moonfire, key set to Wrath, cast Wrath"), all)
+    run("shots off")
+    t.eq(w.api.data().shots, false)
+    run("shots on")
+    t.eq(w.api.data().shots, true)
     run("reset")
     t.eq(w.api.data().counts, {})
     t.eq(w.api.data().list, {})
@@ -429,32 +433,24 @@ tests["press audit module: it presses nothing and makes no frame"] = function(t)
 end
 
 -- D-26 (lead section 738): the key's press reaches the audit through the
--- client's press read (client.onKeyPress, a CLIENT NEED; set on the fake
--- here), and screenshots are left out: an add-on offers none.
+-- client's press read (client.onKeyPress, a CLIENT NEED; the fake's
+-- "§ D-26" block plays a press with c.pressKey). Screenshots stay as they were (lead section 746).
 tests["press audit module: a press of the key is counted, through the client's press read"] = function(t)
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {}); c.setSaved(ns.id.charDB, {})
-    local pressed
-    c.onKeyPress = function(fn)
-        pressed = fn
-        return function() pressed = nil end
-    end
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(1, 2)
-    t.eq(type(pressed), "function", "the audit listens to the key's presses")
-    if type(pressed) ~= "function" then return end
-    pressed()
-    pressed()
+    c.pressKey()
+    c.pressKey()
     local data = addon.pressAudit.data()
     local n = 0
     for _, v in pairs(type(data) == "table" and data.counts or {}) do n = n + v end
     t.eq(n, 1, "the first press is settled by the second")
 end
 
-tests["press audit words: no screenshots are offered"] = function(t)
-    t.eq(ns.Audit.HELP:find("shot", 1, true), nil, tostring(ns.Audit.HELP))
-    t.eq(ns.Audit.MARK_HELP:find("shot", 1, true), nil)
+tests["press audit words: the screenshot switch is offered"] = function(t)
+    t.ok(ns.Audit.HELP:find("audit shots on|off", 1, true) ~= nil, tostring(ns.Audit.HELP))
 end
 
 return tests

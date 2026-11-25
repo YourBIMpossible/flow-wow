@@ -35,11 +35,15 @@ local _, ns = ...
 --     ns.pressAudit.press() from its PreClick (Flow: Cast.lua called
 --     Au.Press from the button's PreClick). Without it nothing is counted.
 --   client.onKeyPress(fn) -> cancel   fn() at each press of the rotation
---     key, from the key's own secure button (HookScript "PreClick" on the
---     add-on's button; it only calls fn: nothing is cast or changed).
--- Screenshots are left out (lead section 738, row D-26): the add-on offers
--- none. Flow took one at a disagreement; the recorder's shot part is kept
--- pure and unused, so a row never says "screenshot".
+--     key. LEAD NEED (Core/Client.lua, the lease holder), exactly:
+--     HookScript("PreClick") on _G[ns.id.framePrefix .. "RotationKey"]
+--     only (the add-on's own secure key button); the hook calls fn under
+--     pcall and nothing else: never SetAttribute, Click or any cast;
+--     cancel sets a flag the hook checks (a hooked script cannot be
+--     removed). Stubbed in Core/ClientFake.lua's "§ D-26" block.
+--   client.screenshot() -> true | false   optional: Flow took a screenshot
+--     at a disagreement (at most one every 20 s, 8 a session). Used when
+--     the client has it; without it no screenshot is taken.
 -- The game event UNIT_SPELLCAST_SENT (unit, target, castGUID, spellID) is
 -- listened to as Flow did. Not tested in game.
 local Au = {}
@@ -51,7 +55,7 @@ Au.NAME = "pressAudit"
 Au.PATH = "audit"       -- per character
 Au.WORD = "audit"
 Au.MARK = "mark"
-Au.HELP = "how often your key cast what the icon showed; audit reset clears it"
+Au.HELP = "how often your key cast what the icon showed; audit reset clears it; audit shots on|off"
 Au.MARK_HELP = "note the moment something looked wrong, with what the icon and the key held"
 Au.EVENT = "UNIT_SPELLCAST_SENT"
 Au.WINDOW = 0.7       -- as Flow: a cast sent this soon after a press belongs to it
@@ -234,6 +238,7 @@ end
 
 -- --------------------------------------------------------------- the module
 function Au.Declare(k, diag)
+    local cancelPress   -- D-26: the press read's cancel, called at stop
     local client, rec, view, plan
     local fightAt
     local api = {}
@@ -257,6 +262,7 @@ function Au.Declare(k, diag)
                 data = data,
                 now = client.now,
                 stamp = function() return Au.Stamp(read(client.clock)) end,
+                shoot = type(client.screenshot) == "function" and client.screenshot or nil,
                 idOf = client.spellId,
             })
         end
@@ -319,6 +325,12 @@ function Au.Declare(k, diag)
             say("press audit cleared")
             return
         end
+        local shots = rest:match("^shots%s+(o[nf]f?)$")
+        if shots == "on" or shots == "off" then
+            rec.data.shots = (shots == "on")
+            say("press audit screenshots: " .. shots)
+            return
+        end
         say("press audit (does the key cast what the icon shows?):")
         local lines = api.report()
         for i = 1, #lines do say("  " .. lines[i]) end
@@ -329,7 +341,7 @@ function Au.Declare(k, diag)
     local function mark(rest)
         if not ready() then return end
         local r = api.mark(rest)
-        if r then say("marked.") end
+        say("marked" .. (r and r.shot and ", with a screenshot." or "."))
     end
 
     k:Module({
@@ -342,15 +354,20 @@ function Au.Declare(k, diag)
             client.listen("PLAYER_REGEN_ENABLED", function() fightAt = nil end)
             -- D-26: each press of the key, where the client tells of it.
             if type(client.onKeyPress) == "function" then
-                pcall(client.onKeyPress, function()
+                local okP, cancel = pcall(client.onKeyPress, function()
                     local ok = pcall(api.press)
                     return ok
                 end)
+                if okP and type(cancel) == "function" then cancelPress = cancel end
             end
             client.listen(Au.EVENT, function(unit, _, _, spellId)
                 if unit ~= "player" or not rec or not rec.waiting() then return end
                 rec.sent(spellId)
             end)
+        end,
+        stop = function()
+            if type(cancelPress) == "function" then pcall(cancelPress) end
+            cancelPress = nil
         end,
     })
 
