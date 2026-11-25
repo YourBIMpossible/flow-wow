@@ -10,8 +10,10 @@ local _, ns = ...
 --
 -- Behaviour from Flow's Modules/Bonus.lua "Spoken" extra, built in this
 -- add-on's shape. Its master switch (Bonus mode) is the setting
--- "general.bonus" here: on by default, off turns every bonus extra off at
--- once; today the only extra is this one.
+-- "general.bonus" here: off by default, as Flow's (F-22, lead section 794;
+-- a saved choice is kept), and off turns every bonus extra off at once;
+-- today the only extra is this one. The word S.BONUS_WORD turns it on or
+-- off and says where it stands, with each extra (Flow's `/flow bonus`).
 --
 -- Pure parts:
 --   NpcSpeech.Clean(text) -> the words only (no colour codes, links,
@@ -47,6 +49,22 @@ S.BONUS = "general.bonus"
 S.NO_CALL = "Your game client has no text-to-speech call"
 S.NO_DEST = "Your game client gives no local playback destination for speech"
 S.BONUS_OFF = "Bonus extras are off"
+S.BONUS_WORD = "bonus"
+S.BONUS_HELP = "bonus extras just for fun: bonus on | off"
+S.BONUS_IS_ON = "Bonus extras are on (bonus on | off). Each extra has its own switch:"
+S.BONUS_IS_OFF = "Bonus extras are off (bonus on | off). With them on, each extra has its own switch:"
+S.EXTRA_LINE = "%s: %s"
+S.EXTRA_SPEECH = "NPCs read their words aloud"
+
+-- The bonus word's lines: where Bonus mode stands, then each extra and its
+-- own switch.
+function S.BonusLines(bonusOn, speechOn)
+    local head = S.BONUS_IS_OFF
+    if bonusOn == true then head = S.BONUS_IS_ON end
+    local state = "off"
+    if speechOn == true then state = "on" end
+    return { head, S.EXTRA_LINE:format(S.EXTRA_SPEECH, state) }
+end
 S.NO_VOICE = "This computer has no text-to-speech voices, so NPCs cannot be read aloud."
 S.WORD = "speech"
 S.HELP = "NPCs reading their words aloud: where it stands; on, off, or say for a test line"
@@ -136,7 +154,7 @@ function S.Declare(k, diag)
 
     local function on()
         if not ctx or not ctx.settings then return false end
-        return ctx.settings:get(S.SETTING) == true and ctx.settings:get(S.BONUS) ~= false and blocked() == nil
+        return ctx.settings:get(S.SETTING) == true and ctx.settings:get(S.BONUS) == true and blocked() == nil
     end
 
     local function stop()
@@ -200,7 +218,7 @@ function S.Declare(k, diag)
         local out = { on = false, voices = 0 }
         if not ctx then return out end
         out.why = blocked()
-        if out.why == nil and ctx.settings:get(S.BONUS) == false then out.why = S.BONUS_OFF end
+        if out.why == nil and ctx.settings:get(S.BONUS) ~= true then out.why = S.BONUS_OFF end
         out.on = ctx.settings:get(S.SETTING) == true
         local sp = ask("speech")
         if type(sp) == "table" and type(sp.voices) == "table" then out.voices = #sp.voices end
@@ -216,7 +234,7 @@ function S.Declare(k, diag)
         return string.format("NPC speech is on, %d voices found (%s on | off | say).", st.voices, S.WORD)
     end
 
-    k:Setting({ key = S.BONUS, scope = "account", type = "bool", default = true,
+    k:Setting({ key = S.BONUS, scope = "account", type = "bool", default = false,
         label = "Bonus extras", group = "general",
         help = "The optional extras just for fun. Off turns every one of them off at once; "
             .. "today that is NPCs reading their words aloud.",
@@ -231,7 +249,7 @@ function S.Declare(k, diag)
         requires = function(settings)
             local why = blocked()
             if why then return false, why end
-            if settings:get(S.BONUS) == false then return false, S.BONUS_OFF end
+            if settings:get(S.BONUS) ~= true then return false, S.BONUS_OFF end
             return true
         end })
 
@@ -270,6 +288,18 @@ function S.Declare(k, diag)
             ctx.client.print(ns.id.title .. ": " .. api.line())
         end
         if type(diag.help) == "table" then diag.help[S.WORD] = S.HELP end
+        diag.commands[S.BONUS_WORD] = function(rest)
+            if not ctx then return end
+            local word = tostring(rest or ""):lower():match("^%s*(%S*)")
+            if word == "on" or word == "off" then
+                ctx.settings:set(S.BONUS, word == "on")
+                if word == "off" then stop() end
+            end
+            local lines = S.BonusLines(ctx.settings:get(S.BONUS) == true, ctx.settings:get(S.SETTING) == true)
+            ctx.client.print(ns.id.title .. ": " .. lines[1])
+            for i = 2, #lines do ctx.client.print("  " .. lines[i]) end
+        end
+        if type(diag.help) == "table" then diag.help[S.BONUS_WORD] = S.BONUS_HELP end
     end
     return api
 end
