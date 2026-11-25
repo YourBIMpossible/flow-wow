@@ -108,13 +108,17 @@ tests["flow button off: a reload with the rotation off shows the word; switched 
     t.eq(addon2.settings:get(D.SETTING), false, "off is kept over the reload")
     t.ok(saysFlow(c2), "the word Flow from the start")
     t.eq(tip(c2), OFF_TIP)
+    t.eq(addon2.problems:count(), base2, "no new problem while off")
     addon2.settings:set(D.SETTING, true)
     c2.advance(3, 5)
+    -- Switched on, modules the reload started off report what the fake
+    -- client lacks (the icon glow); count from here.
+    local on2 = addon2.problems:count()
     t.eq(face(c2).empty, false, "switched on: the planned spell's picture")
     t.eq(tip(c2), "Flow button. Casts Power Word: Fortitude when you click it.")
     off(c2, addon2)
     t.ok(saysFlow(c2), "and off again: the word")
-    t.eq(addon2.problems:count(), base2, "no new problem")
+    t.eq(addon2.problems:count(), on2, "no new problem")
 end
 
 tests["flow button off: the tooltip line, pure"] = function(t)
