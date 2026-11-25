@@ -168,12 +168,18 @@ function N.ArrowView(state)
     local qr, qg, qb
     local RC = ns.RouteColor
     local qFamily = q.family
-    -- The one-colour arrow setting (far, mid and near all one colour) is the
-    -- player's saved choice: it keeps its flat colour (lead section 564).
+    -- A1-06 (lead section 643): the arrow wears the route's colour, the one
+    -- the map line of the same step gets (MRL.Paint asks RC.Of the same way).
+    -- The one-colour setting (far, mid and near all one colour) is the
+    -- player's saved choice: it reaches RC.Of as byDistance false, so route
+    -- steps keep the one flat colour (N.ArrowColor with the saved row, the
+    -- same sum as RC.Of); a waypoint stays green and a
+    -- profession step purple, as their map lines are.
     local flatRow = type(state.palette) == "table" and state.palette.far ~= nil
         and state.palette.far == state.palette.near
-    if RC and RC.FAMILIES[qFamily] and qState ~= "corpse" and not flatRow then
-        qr, qg, qb = RC.Of({ family = qFamily, state = qState }, q.distance, N.ArrowPaletteWord(state.palette))
+    if RC and type(RC.Of) == "function" and RC.FAMILIES[qFamily] and qState ~= "corpse" then
+        qr, qg, qb = RC.Of({ family = qFamily, state = qState }, q.distance, N.ArrowPaletteWord(state.palette),
+            not flatRow)
     else
         qr, qg, qb = N.ArrowColor(qState, q.distance, state.palette)
     end
