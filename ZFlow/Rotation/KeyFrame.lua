@@ -140,7 +140,8 @@ function K.New(opts)
     opts = type(opts) == "table" and opts or {}
     local button = type(opts.button) == "table" and opts.button or nil
     -- D-04: the state handler, or nil.
-    local handler = type(opts.handler) == "table" and opts.handler or nil
+    local handler = nil
+    if type(opts.handler) == "table" then handler = opts.handler end
     local handlerHeld, handlerCond, handlerCode = {}, nil, false
     local lockdown = type(opts.lockdown) == "function" and opts.lockdown or function() return nil end
     local formOf = type(opts.form) == "function" and opts.form or nil
@@ -277,7 +278,26 @@ function K.New(opts)
                     else failed[#failed + 1] = { attr = "handler:" .. tostring(row.attr), why = got } end
                 end
             end
-            local cond = type(attrs.driver) == "table" and attrs.driver.condition or nil
+            -- D-04 CHANGES (Flow Cast.lua :921-926): a row held before that
+            -- this header no longer gives is written "", so nothing is left.
+            local given = {}
+            for _, row in ipairs(attrs.header) do given[row.attr] = true end
+            local stale = {}
+            for attr, value in pairs(handlerHeld) do
+                if not given[attr] and value ~= "" then stale[#stale + 1] = attr end
+            end
+            table.sort(stale)
+            for _, attr in ipairs(stale) do
+                if #failed == 0 and type(handler.setAttribute) == "function" then
+                    parts = parts + 1
+                    local got = call("setAttribute", attr, "")
+                    if got == "wait" then return waiting(true, { form = form, formRead = formRead }) end
+                    if got == true then handlerHeld[attr] = ""
+                    else failed[#failed + 1] = { attr = "handler:" .. tostring(attr), why = got } end
+                end
+            end
+            local cond = nil
+            if type(attrs.driver) == "table" then cond = attrs.driver.condition end
             if #failed == 0 and type(cond) == "string" and cond ~= handlerCond and type(handler.driver) == "function" then
                 parts = parts + 1
                 local got = call("driver", cond)
