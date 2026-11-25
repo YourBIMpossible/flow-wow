@@ -91,6 +91,27 @@ Advisor.HELP = "show the advice panel, even when it has nothing to say"
 -- one-row lines: the title bar, the padding above and below, the lines.
 -- Lead section 408: the window is as tall as its lines. The client fits it
 -- at every draw (a wrapped line is taller); this is where it starts.
+-- Parity row C-43, the data half (lead section 715), as Flow's
+-- Modules/Advisor/Advisor.lua (:274 the "!" button's hover, :140-156
+-- TipLines): the hover list for a button the drawing lane makes. Pure:
+-- list is api.List()'s, title the first line; then each prompt numbered in
+-- shown order, at most TIP_MAX, then "and N more". No prompt: NONE.
+Advisor.TIP_MAX = 10
+function Advisor.TipLines(list, title)
+    local out = { title }
+    if type(list) ~= "table" or #list == 0 then
+        out[2] = Advisor.NONE
+        return out
+    end
+    for i = 1, math.min(#list, Advisor.TIP_MAX) do
+        out[#out + 1] = i .. ". " .. tostring(list[i].text)
+    end
+    if #list > Advisor.TIP_MAX then
+        out[#out + 1] = "and " .. (#list - Advisor.TIP_MAX) .. " more"
+    end
+    return out
+end
+
 function Advisor.KitHeight(lines)
     local size = ns.Kit.look.size
     if type(lines) ~= "number" or lines < 1 then lines = 1 end
@@ -266,6 +287,10 @@ function Advisor.Declare(k, diag)
         return out
     end
 
+    -- C-43: how many prompts are open, and the hover list (TipLines).
+    function api.Count() return #entries end
+    function api.Tip() return Advisor.TipLines(api.List(), Advisor.Title(k.id or ns.id)) end
+
     function api.Open()
         if not host or not ctx then return false, Advisor.NOT_READY end
         if not enabled() then return false, Advisor.OFF end
@@ -306,7 +331,7 @@ function Advisor.Declare(k, diag)
         name = Advisor.NAME,
         needs = { "client", "store", "settings" },
         provides = { Add = api.Add, Remove = api.Remove, List = api.List, Watch = api.Watch,
-            Open = api.Open },
+            Open = api.Open, Count = api.Count, Tip = api.Tip },
         start = function(c)
             ctx = c
             -- Follow the setting while running: turning it off hides the
