@@ -36,9 +36,13 @@ local function boot(lines, log)
     return c, addon
 end
 
+-- rest: a word to say first, after forgetting what was printed before. With
+-- no word, what was printed since the test last emptied c.printed.
 local function said(c, rest)
-    c.printed = {}
-    if rest then c.slashes[ns.id.slash](rest) end
+    if rest then
+        c.printed = {}
+        c.slashes[ns.id.slash](rest)
+    end
     local out, prefix = {}, ns.id.title .. ": "
     for _, line in ipairs(c.printed) do
         local s = tostring(line)
