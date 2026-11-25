@@ -154,4 +154,35 @@ tests["tracker wiring: no view falls back to the walked route; more counts what 
     t.eq(m and m.text, RT().MORE:format(2))
 end
 
+-- Lead section 762: the view is used whenever it has stops or steps that
+-- can't be placed (left); the walked route (Current) only when it has
+-- neither, as Flow's tracker listed its blocked goals with an empty plan
+-- (Modules/Nav/RouteTracker.lua:504-519). Fails before: an empty view fell
+-- back to Current, which carries no left list.
+tests["tracker wiring: an empty route with steps that can't be placed lists them"] = function(t)
+    local view = { stops = {}, left = { { label = "Kill Hogger", quest = 9, why = "no place known" } } }
+    local rows = RT().Rows(view, current(), HERE)
+    t.eq(rows and #rows, 1)
+    t.eq(rows and rows[1] and { rows[1].label, rows[1].left }, { "Kill Hogger", "no place known" })
+    t.eq(rows and rows[1] and rows[1].current, nil, "never the current step")
+    local r2 = RT().Rows({ stops = {}, left = {} }, current(), HERE)
+    t.eq(r2 and #r2, 3, "neither: the walked route, as before")
+end
+
+-- Lazy's CHANGES-1 (lead section 773): a route with only steps that can't
+-- be placed has no current step: no "current" line, no TONE_NOW, and no
+-- item line. Fails before: currentIndex fell back to the first row.
+tests["tracker parts: only steps that can't be placed: none is current, no item line"] = function(t)
+    local view = { stops = {}, left = { { label = "Kill Hogger", quest = 9, why = "no place known" },
+                                       { label = "Find Bob", why = "no place known" } } }
+    local rows = RT().Rows(view, nil, HERE)
+    local item = { id = 7001, name = "Test Whistle", count = 1 }
+    local kids = RT().Children(rows, item, 0)
+    t.eq(byKey(kids, "current"), nil, "no current line")
+    t.eq(byKey(kids, "questItem"), nil, "no item line")
+    for _, k in ipairs(kids) do
+        t.ok(k.tone ~= RT().TONE_NOW, "nothing in the now tone: " .. tostring(k.key))
+    end
+end
+
 return tests

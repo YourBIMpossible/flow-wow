@@ -82,8 +82,16 @@ end
 function RT.Rows(view, current, here)
     local TL = ns.Nav and ns.Nav.TrackerList
     if type(TL) ~= "table" then return nil end
+    -- Lead section 762: the view whenever it has stops or steps that can't
+    -- be placed (left); the walked route only when it has neither (Flow
+    -- listed its blocked goals with an empty plan, RouteTracker.lua:504-519).
     local src = current
-    if type(view) == "table" and type(view.stops) == "table" and #view.stops > 0 then src = view end
+    if type(view) == "table" then
+        local n = 0
+        if type(view.stops) == "table" then n = n + #view.stops end
+        if type(view.left) == "table" then n = n + #view.left end
+        if n > 0 then src = view end
+    end
     return TL.Rows(src, here, RT.MAX)
 end
 
@@ -93,7 +101,9 @@ local function currentIndex(rows)
     local marked = false
     for i, r in ipairs(rows) do
         if r.current == true then return i end
-        if r.current ~= nil or r.held ~= nil then marked = true end
+        -- Lazy (lead section 773): a step that cannot be placed (r.left) is
+        -- marked too, so a route of those only has no current step.
+        if r.current ~= nil or r.held ~= nil or r.left ~= nil then marked = true end
     end
     if marked then return nil end
     return 1
