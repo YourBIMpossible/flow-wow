@@ -347,6 +347,8 @@ return {
     "UI/DungeonTracker.lua",
     -- S35 (section 395 item 3): gate words for trip legs (after Gates, Trip).
     "Nav/GateWords.lua",
+    -- A2-25 (lead section 667): hop from mob group to mob group in a kill area (after ProfStep).
+    "Nav/MobHop.lua",
     -- Lead section 406 item 3: recipe facts for the profession plan, seen in game then shipped (read by ProfPlan at call time).
     "Items/RecipeFacts.lua",
     -- Lead section 422 item 1: recipes seen for sale at vendors, for the profession plan (read by ProfPlan at call time).
