@@ -254,6 +254,7 @@ Nav\InvitePrompt.lua
 Items\QuestBags.lua
 Spells\TrainAdvice.lua
 Spells\Talents.lua
+Spells\BarSpells.lua
 Nav\RoutePickups.lua
 Nav\RidingStep.lua
 Nav\MountMilestone.lua
