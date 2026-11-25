@@ -69,7 +69,7 @@ return {
     ["lines: rank, level and cost; unknown cost uses the trainer wording"] = function(t)
         local e = ns.TrainerList.Record({}, reading(rows()), 1)["Loganaar|class"]
         t.eq(ns.TrainerList.Lines(e), {
-            "Moonfire (Rank 2), level 10, 1s 50c: can learn",
+            "Moonfire (Rank 2), level 10, 1.5s: can learn",
             "Wrath (Rank 3), level 14, " .. UNKNOWN .. ": not yet",
             "Rejuvenation (Rank 1), level 4, 1s: known",
         })

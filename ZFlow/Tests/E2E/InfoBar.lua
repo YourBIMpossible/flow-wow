@@ -72,7 +72,7 @@ tests["info bar: turned off it shows nothing; turned on, the four default metric
     local c, addon = boot({ before = values, account = off() })
     t.eq(text(c), nil, "off as saved")
     t.ok(on(addon, "infoBar.shown", true), "the setting is there")
-    t.eq(text(c), "1g 23s 45c  |  Bags 12  |  Dur 50%  |  XP 45%")
+    t.eq(text(c), "1.23g  |  Bags 12  |  Dur 50%  |  XP 45%")
 end
 
 tests["info bar: a hidden bar reads nothing and listens to nothing of its own"] = function(t)
@@ -182,7 +182,7 @@ tests["info bar: a setting changed while shown takes effect at once"] = function
     on(addon, "infoBar.opacity", 0)
     t.eq(bar(c).alpha, 0)
     on(addon, "infoBar.layout", "box")
-    t.eq(text(c), "1g 23s 45c\nBags 12\nDur 50%\nXP 45%")
+    t.eq(text(c), "1.23g\nBags 12\nDur 50%\nXP 45%")
     on(addon, "infoBar.metrics", "bags")
     t.eq(text(c), "Bags 12")
 end
@@ -205,7 +205,7 @@ tests["info bar: hover gives the details, a click opens the settings page only"]
     on(addon, "infoBar.shown", true)
     local b = bar(c)
     b.hover(true)
-    t.eq(b.tipLines, { "Gold: 1g 23s 45c", "Free bag slots: 12 of 36", "Durability: 50% on the most worn item",
+    t.eq(b.tipLines, { "Gold: 1.23g", "Free bag slots: 12 of 36", "Durability: 50% on the most worn item",
         "Experience: 450 / 1000 (45%), rested 200", ns.InfoBar.CLICK })
     b.hover(false)
     t.eq(b.tipLines, nil)

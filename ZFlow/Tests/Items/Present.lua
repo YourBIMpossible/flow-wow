@@ -59,8 +59,8 @@ tests["present: an observed price is shown plain, with the total"] = function(t)
     local book = {}
     Prices.Record(book, "thread", "vendor", 120)
     local v = view({ recipe = "make:kit", count = 3 }, R.Fake({ bags = { hide = 6 }, bank = {}, money = 1000 }), book)
-    t.eq(rowOf(v, "thread").text, "3 x Thread: buy 3 from a merchant at 1s 20c each (3s 60c)", "the row")
-    t.eq(v.cost, "To buy: 3s 60c", "cost")
+    t.eq(rowOf(v, "thread").text, "3 x Thread: buy 3 from a merchant at 1.2s each (3.6s)", "the row")
+    t.eq(v.cost, "To buy: 3.6s", "cost")
     t.eq(v.afford, "You have the money for it", "afford")
 end
 
@@ -76,16 +76,16 @@ tests["present: an estimate is always labelled, and never says you can pay"] = f
     Prices.Record(book, "thread", "vendor", 120, { basis = "estimated", source = "price at another merchant" })
     local v = view({ recipe = "make:kit", count = 3 }, R.Fake({ bags = { hide = 6 }, bank = {}, money = 100000 }), book)
     local text = rowOf(v, "thread").text
-    t.ok(has(text, "about 1s 20c (estimate) each"), "the price is labelled: " .. text)
-    t.ok(has(text, "(about 3s 60c (estimate))"), "and so is the total: " .. text)
-    t.eq(v.cost, "To buy: about 3s 60c (estimate)", "cost is labelled")
+    t.ok(has(text, "about 1.2s (estimate) each"), "the price is labelled: " .. text)
+    t.ok(has(text, "(about 3.6s (estimate))"), "and so is the total: " .. text)
+    t.eq(v.cost, "To buy: about 3.6s (estimate)", "cost is labelled")
     t.eq(v.afford, "Can't tell if you have the money: a price is an estimate or unknown", "an estimate does not decide")
 end
 
 tests["present: an observed part and an estimated part are never added together"] = function(t)
     local plan = build({ recipe = "make:kit", count = 1 }, R.Fake({ bags = {}, bank = {}, money = 5 }))
     plan.cost = { known = 250, estimated = 120, unknown = 0 }
-    t.eq(V.Cost(plan), "To buy: 2s 50c, plus about 1s 20c (estimate)", "two figures")
+    t.eq(V.Cost(plan), "To buy: 2.5s, plus about 1.2s (estimate)", "two figures")
 end
 
 tests["present: an unknown price reads price unknown—check vendor"] = function(t)
@@ -100,7 +100,7 @@ tests["present: an estimate with no recorded source is shown as unknown"] = func
     local book = { vendor = { thread = { value = 120, basis = "estimated" } } }
     local v = view({ recipe = "make:kit", count = 1 }, R.Fake({ bags = { hide = 2 }, bank = {}, money = 0 }), book)
     t.ok(has(rowOf(v, "thread").text, "price unknown—check vendor"), "unknown")
-    t.ok(not has(rowOf(v, "thread").text, "1s 20c"), "the figure is not shown")
+    t.ok(not has(rowOf(v, "thread").text, "1.2s"), "the figure is not shown")
 end
 
 tests["present: bank never seen: the row and the plan say so"] = function(t)
@@ -124,7 +124,7 @@ tests["present: bags not read: no have, no missing, amounts are at most"] = func
     t.eq(r.text, "6 x Hide: bags not read yet; at most gather 6 (Skinning)", "the row")
     t.ok(not has(r.text, "in your bags"), "no bag count is made up")
     t.eq(v.ready, "Can't tell if it is ready: the bags have not been read yet", "ready")
-    t.eq(v.cost, "To buy: at most 3s 60c", "the cost is an upper figure")
+    t.eq(v.cost, "To buy: at most 3.6s", "the cost is an upper figure")
     t.eq(v.afford, "Can't tell if you have the money: the bags have not been read yet", "afford")
 end
 
