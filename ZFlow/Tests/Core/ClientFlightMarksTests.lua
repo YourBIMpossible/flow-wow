@@ -81,7 +81,10 @@ local function fault(env)
     end
     for _, f in ipairs(env.frames) do
         if f.template ~= nil then return "a frame with a template: " .. tostring(f.template) end
-        if f.mouse ~= false then return "a frame that may take the mouse" end
+        -- B-10: a map-pin dot is a Button on the pins host (on the canvas)
+        -- and takes clicks; it is still no template and no secure frame.
+        local dot = f.kind == "Button" and f.parent ~= nil and f.parent.parent == env.canvas
+        if f.mouse ~= false and not dot then return "a frame that may take the mouse" end
     end
     return nil
 end

@@ -220,8 +220,7 @@ tests["off-spec C-32: the facts read your ticks; with none saved they are as bef
     t.eq(all.keptRoles, before.keptRoles, "no ticks: the same as before")
     local off = O.Facts(client, store(false, nil), ns.Packs, {})
     t.eq(off.keptRoles, nil, "switch off, no ticks: none")
-    local role
-    for r in pairs(ns.Packs.WARRIOR.weights) do role = r break end
+    local role = next(ns.Packs.WARRIOR.weights)
     local one = O.Facts(client, store(false, { [role] = true }), ns.Packs, {})
     t.eq(one.keptRoles, { [role] = true }, "your one tick")
 end

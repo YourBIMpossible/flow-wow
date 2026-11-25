@@ -111,8 +111,8 @@ function P.Candidate(q, ctx)
     -- then decide, as before, and nothing reads that nil as "not locked".
     local needs = N.StepNeeds
     if needs and type(needs.Why) == "function" then
-        local okWhy, why = pcall(needs.Why, q, ctx)
-        if okWhy and type(why) == "table" and type(why.text) == "string" then return false, why.text end
+        local okWhy, need = pcall(needs.Why, q, ctx)
+        if okWhy and type(need) == "table" and type(need.text) == "string" then return false, need.text end
     end
     for _, id in ipairs(list(q.preQuestGroup)) do
         if done(id) == false then return false, "an earlier quest first" end
