@@ -261,4 +261,40 @@ tests["advisor panel: Watch is reached through needs and is the addon's own"] = 
     t.eq(ns.Advisor.Watch, ns.advisor.Watch, "Advisor.Watch is the addon's own")
 end
 
+-- Parity row C-43, the data half (lead section 715), as Flow's
+-- Modules/Advisor/Advisor.lua (:274 the button's hover, :140-156 TipLines):
+-- how many prompts are open, and the hover list: the title, then each
+-- prompt numbered in shown order, at most TIP_MAX, then "and N more".
+-- The "!" button itself is the drawing lane's. Fails before: no count, no list.
+tests["advisor button data: the count and the hover list, in shown order"] = function(t)
+    local _, _, api = start({ prompts = {
+        { "repair", "Repair your gear.", 20 },
+        { "bank", "Bank your reagents.", 50 },
+    } })
+    t.eq(type(api.Count), "function")
+    t.eq(type(api.Tip), "function")
+    if type(api.Count) ~= "function" or type(api.Tip) ~= "function" then return end
+    t.eq(api.Count(), 2)
+    t.eq(api.Tip(), { TITLE, "1. Bank your reagents.", "2. Repair your gear." })
+    api.Remove("bank")
+    t.eq(api.Count(), 1, "a prompt taken back")
+end
+
+tests["advisor button data: none open, and more than the hover holds"] = function(t)
+    t.eq(A.TipLines({}, "T"), { "T", A.NONE })
+    local list = {}
+    for i = 1, A.TIP_MAX + 2 do list[i] = { text = "p" .. i } end
+    local lines = A.TipLines(list, "T")
+    t.eq(#lines, A.TIP_MAX + 2, "title, the kept ones, and the rest")
+    t.eq(lines[2], "1. p1")
+    t.eq(lines[#lines], "and 2 more")
+    t.eq(A.TipLines(nil, "T"), { "T", A.NONE }, "no list")
+end
+
+tests["advisor button data: reached through needs"] = function(t)
+    local _, _, _, source = start({ prompts = { { "a", "One.", 1 } } })
+    t.eq(type(source.advisor.Count), "function")
+    if type(source.advisor.Count) == "function" then t.eq(source.advisor.Count(), 1) end
+end
+
 return tests
