@@ -7,22 +7,30 @@ local _, ns = ...
 --              still needing it (here: an objective "<item>: n/m" not done,
 --              in a quest not ready to hand in)
 --   route(id)  B.RouteFetch / B.FetchBy (:228-241): a step on your route
---              that uses it, by its words; "a step on your route" when not
---              known (here: the route step whose quest still needs it, from
---              TripRoute View; else what the reservations hold in the bank
---              for a step, Reservations.HeldIn(grants, "bank"))
+--              that uses it, by its words (here: the route step whose quest
+--              still needs it, from TripRoute View; only a stop that names
+--              it counts, lead section 776)
+--   hold       a thing the reservations hold in the bank that no route stop
+--              names: the reservation's own reason, from its claim's
+--              activity (Items/Resources.lua; Items/Goals.lua "goal")
 -- Only existing reads (owner section 611): the quest log's rows
 -- (Nav.QuestLogRows), TripRoute's View, the reservations' holds. Pure; look
 -- only. The caller is the banker window's (a MUSE NEED for the drawing).
 --   TakeOutWhy.QuestFor(name, rows) -> quest title | nil
---   TakeOutWhy.StepFor(name, key, view, rows, held) -> words | nil
---   TakeOutWhy.Fill(bank, view, rows, held) -> copies of bank's entries
---     with step and quest set where something wants them
+--   TakeOutWhy.StepFor(name, key, view, rows) -> words | nil
+--   TakeOutWhy.HoldFor(key, grants) -> reason | nil   grants: the
+--     reservations' (Reservations.Grants(r)); held in the bank only
+--   TakeOutWhy.Fill(bank, view, rows[, grants]) -> copies of bank's entries
+--     with step, quest and hold set where something wants them
 -- Not tested in game.
 local TW = {}
 ns.TakeOutWhy = TW
 
-TW.ON_ROUTE = "a step on your route"
+-- A reservation's own reason, by its claim's activity.
+TW.REASONS = { goal = "for one of your item goals" }
+TW.HELD_FOR = "held for %s"
+-- A claim that names no activity: a plain word, never its internal owner key.
+TW.SOMETHING = "something you planned"
 
 local function itemOf(text)
     local Q = ns.QuestBags
@@ -49,7 +57,7 @@ function TW.QuestFor(name, rows)
     return nil
 end
 
-function TW.StepFor(name, key, view, rows, held)
+function TW.StepFor(name, _, view, rows)
     local r = wanting(name, rows)
     if r and type(view) == "table" and type(view.stops) == "table" then
         for _, s in ipairs(view.stops) do
@@ -58,22 +66,44 @@ function TW.StepFor(name, key, view, rows, held)
             end
         end
     end
-    if type(held) == "table" and type(held.Held) == "function" and key ~= nil then
-        local ok, n = pcall(held.Held, held, key)
-        if ok and type(n) == "number" and n > 0 then return TW.ON_ROUTE end
+    return nil
+end
+
+-- The reason of the first claim that holds some of key in the bank (as
+-- Reservations.HeldIn counts the bank: from.bank, or an unseen bank's
+-- share), worded by its activity.
+function TW.HoldFor(key, grants)
+    if key == nil or type(grants) ~= "table" then return nil end
+    for _, g in ipairs(grants) do
+        local c = nil
+        if type(g) == "table" then c = g.claim end
+        if type(c) == "table" and not g.invalid and c.kind == "item" and c.key == key then
+            local n = 0
+            if type(g.from) == "table" and type(g.from.bank) == "number" then n = g.from.bank end
+            if g.unknown == "bank" and type(c.amount) == "number" then
+                n = n + math.max(0, c.amount - (tonumber(g.got) or 0))
+            end
+            if n > 0 then
+                local act = c.activity
+                if type(act) == "string" and TW.REASONS[act] then return TW.REASONS[act] end
+                if type(act) == "string" and act ~= "" then return TW.HELD_FOR:format(act) end
+                return TW.HELD_FOR:format(TW.SOMETHING)
+            end
+        end
     end
     return nil
 end
 
-function TW.Fill(bank, view, rows, held)
+function TW.Fill(bank, view, rows, grants)
     local out = {}
     if type(bank) ~= "table" then return out end
     for i, e in ipairs(bank) do
         local c = {}
         if type(e) == "table" then
             for k, v in pairs(e) do c[k] = v end
-            c.step = TW.StepFor(e.name, e.key, view, rows, held)
+            c.step = TW.StepFor(e.name, e.key, view, rows)
             c.quest = TW.QuestFor(e.name, rows)
+            c.hold = TW.HoldFor(e.key, grants)
         end
         out[i] = c
     end
