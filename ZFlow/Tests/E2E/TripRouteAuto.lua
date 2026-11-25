@@ -228,4 +228,20 @@ tests["route saved: keep and restore, pure; a broken saved table is no route"] =
     t.eq(T.Keep(nil, 1), nil)
 end
 
+-- Twin's note 1 (lead section 575): planned while the map is known but not
+-- where on it the player stands; at a later look, with the place known, the
+-- "moved far" check must not raise. Red on f758c155: it reads the unknown
+-- place as a number and raises on the tick (a problem is recorded).
+tests["route auto: planned with the place on the map unknown, the next look does not raise"] = function(t)
+    local c, addon, base = boot()
+    c.setPosition(MAP, nil, nil)
+    c.setQuestLog({ LOG[1], LOG[2], LOG[3], { id = 404, title = "Wolves", objectives = { { text = "Wolves: 0/6" } } } })
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(4, 8)
+    c.setPosition(MAP, 0.5, 0.5)
+    c.advance(ns.Nav.TripRoute.AUTO_SOON + 2, 12)
+    t.eq(addon.problems:count(), base, "no problem recorded")
+    t.ok(labels(addon) ~= nil, "the route is still there")
+end
+
 return tests
