@@ -46,8 +46,6 @@ M.SHOW_ON_MAP = "Show on map"
 -- repair and a bank the player has seen.
 M.PLAN_RUN = "Plan the run"
 M.NO_ROUTE = "Routes are not loaded."
-M.BOSS_LOOT = "learned.bossLoot"   -- account, UI/BossLoot.lua
-M.DROPS = "learned.drops"          -- character, Items/Drops.lua
 -- Where the window was left, account wide: { point, width, height }
 -- (Twin review 18:06, F1). Read back through ns.Kit.Place.
 M.PATH = "layout.dungeonMenu"
@@ -59,10 +57,6 @@ M.NEEDS_GROUP = "Needs a group."
 M.UNKNOWN = "?"
 -- The Solo/Group toggle, as the mock has it in the detail view.
 M.PARTY = { "Solo", "Group" }
--- Bosses tab: item names not read yet are asked again this many times, this
--- many seconds apart, for each dungeon picked.
-M.READ_TRIES = 5
-M.READ_WAIT = 1
 
 -- The tone a group's lines are drawn in (the kit's three words).
 local TONE = { log = "good", later = "warn", notforyou = "bad" }
@@ -72,7 +66,8 @@ local ICON = { log = "questInLog", pickup = "questAvailable", inside = "questAva
 
 local function iconOf(group)
     local icons = ns.Kit and ns.Kit.look and ns.Kit.look.icon
-    return type(icons) == "table" and icons[ICON[group]] or nil
+    if type(icons) == "table" then return icons[ICON[group]] end
+    return nil
 end
 
 local function join(a, b)
@@ -85,6 +80,9 @@ end
 -- module is not loaded. One function, so it switches to the real api when
 -- B-55 merges (fork branch zflow-zen3-b55, tip 44427648, batch 3). The
 -- ratio is by name, as Nav/DungeonBadge.lua B.Build reads it.
+-- B-55 NEED: dungeonVisit.Ratio is not on the base yet, so the pcall below
+-- hides any mismatch as "?". The end-to-end test against the real module
+-- comes after B-55 lands; that is not this slice's job.
 local function dungeonVisitRatio(k, name)
     local visit = k.use and k.use("dungeonVisit")
     if type(visit) ~= "table" or type(visit.Ratio) ~= "function" then return nil end
@@ -123,7 +121,7 @@ function M.Declare(k, diag)
     local ctx, handle
     local st
     local view = { search = "", pick = nil, solo = true, folded = {}, said = nil, reads = 0 }
-    local cancelStep, cancelRead
+    local cancelStep
     local render
 
     local R, S = ns.DungeonRead, ns.DungeonStates
@@ -222,15 +220,19 @@ function M.Declare(k, diag)
 
     local function footer(d)
         local e = R.Entrance(st, client(), d and d.key)
+        local showTip = nil
+        if e == nil then showTip = R.WHY_NO_ENTRANCE[1] end
         local buttons = { { kind = "button", key = "showOnMap", text = M.SHOW_ON_MAP, enabled = e ~= nil,
-                tooltip = e == nil and R.WHY_NO_ENTRANCE[1] or nil,
+                tooltip = showTip,
                 onClick = function()
                     showOnMap(d)
                     render()
                 end } }
         local run, why = R.Run(st, client(), d and d.key)
+        local planTip = nil
+        if run == nil and why then planTip = why[1] end
         buttons[#buttons + 1] = { kind = "button", key = "planRun", text = M.PLAN_RUN, enabled = run ~= nil,
-            tooltip = run == nil and why and why[1] or nil,
+            tooltip = planTip,
             onClick = function()
                 planRun(d)
                 render()
@@ -290,9 +292,11 @@ function M.Declare(k, diag)
                     end }
                 if not folded then
                     for _, r in ipairs(g.rows) do
+                        local levelText = nil
+                        if r.level then levelText = "Level " .. tostring(r.level) end
                         rows[#rows + 1] = { kind = "line", text = r.name, icon = iconOf(g.id),
                             sub = join(join(r.chain, r.note), r.next),
-                            right = r.level and ("Level " .. tostring(r.level)) or nil, tone = TONE[g.id] }
+                            right = levelText, tone = TONE[g.id] }
                     end
                 end
             end
@@ -392,8 +396,6 @@ function M.Declare(k, diag)
         stop = function()
             if cancelStep then cancelStep() end
             cancelStep = nil
-            if type(cancelRead) == "function" then cancelRead() end
-            cancelRead = nil
             if handle then handle.close() end
         end,
     })
