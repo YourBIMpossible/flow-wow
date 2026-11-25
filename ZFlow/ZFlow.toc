@@ -111,6 +111,7 @@ Classes\Warrior.lua
 Classes\Warlock.lua
 Rotation\GroupTip.lua
 Nav\ArrowLayout.lua
+Nav\RouteColor.lua
 Nav\Bearing.lua
 Nav\ArrowView.lua
 Nav\ArrowMotion.lua
@@ -277,3 +278,5 @@ Gear\BagBadge.lua
 Nav\FollowAdvice.lua
 UI\RouteArea.lua
 UI\MapRouteLines.lua
+Gear\BagUpgrades.lua
+UI\InventoryList.lua
