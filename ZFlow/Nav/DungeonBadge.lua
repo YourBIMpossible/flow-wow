@@ -16,6 +16,12 @@ local _, ns = ...
 --     s = { inside, prepared = run, best = run, solo, tip = lines }
 --     badge = { key, text, tone ("good" | "muted"), tip, action
 --               ("prepare" | "cancel"), clickText }
+--   B.Build(k, st) -> s, for Status (lead section 639): the refresh hook is
+--     one call, B.Status(B.Build(k, st)). k: the add-on's kit (k.client,
+--     k.use); st: the Dungeon Quests reader's state (Nav/DungeonRead.lua).
+--     prepared comes from the "dungeonRun" module (Nav/DungeonRun.lua,
+--     branch zflow-zen3-b50-wire): nil while that module is not loaded.
+--     Ratios come from "dungeonVisit" (Ratio); nil without it.
 local B = {}
 ns.DungeonBadge = B
 
@@ -53,4 +59,54 @@ function B.Status(s)
         tip[#tip + 1] = B.NEEDS_GROUP
     end
     return { key = run.key, text = text, tone = tone, tip = tip, action = action, clickText = clickText }
+end
+
+local KINDS = { party = true, raid = true }
+
+local function ask(obj, name, ...)
+    if type(obj) ~= "table" or type(obj[name]) ~= "function" then return nil end
+    local ok, v = pcall(obj[name], ...)
+    if ok then return v end
+    return nil
+end
+
+local function use(k, name)
+    if type(k) ~= "table" or type(k.use) ~= "function" then return nil end
+    local ok, m = pcall(k.use, name)
+    if ok and type(m) == "table" then return m end
+    return nil
+end
+
+function B.Build(k, st)
+    if type(k) ~= "table" then return {} end
+    local c = k.client
+    local inst = ask(c, "instance")
+    local inside = type(inst) == "table" and inst.inside == true and KINDS[inst.kind] == true
+    local visit = use(k, "dungeonVisit")
+    local function ratio(name)
+        local v = ask(visit, "Ratio", name)
+        if finite(v) then return v end
+        return nil
+    end
+    local prepared
+    local state = ask(use(k, "dungeonRun"), "State")
+    if type(state) == "table" and state.key ~= nil then
+        prepared = { key = state.key, name = state.name, ratio = ratio(state.name) }
+    end
+    local list = {}
+    local R = ns.DungeonRead
+    if R and type(R.List) == "function" then
+        for _, d in ipairs(R.List(st)) do
+            list[#list + 1] = { key = d.key, name = d.name, ratio = ratio(d.name) }
+        end
+    end
+    local best = B.Best(list)
+    local shown = prepared or best
+    local tip = {}
+    if type(shown) == "table" then
+        tip[1] = tostring(shown.name)
+        local V = ns.DungeonVisit
+        if finite(shown.ratio) and V and type(V.RATE) == "string" then tip[2] = V.RATE:format(shown.ratio) end
+    end
+    return { inside = inside, prepared = prepared, best = best, solo = ask(c, "grouped") ~= true, tip = tip }
 end
