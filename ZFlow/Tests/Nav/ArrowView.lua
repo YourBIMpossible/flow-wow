@@ -542,10 +542,21 @@ T["R7: the quest arrow's colour is RC.Of's for its step"] = function(t)
     colour(t, N.ArrowView(state()).quest.colour, dr, dg, db, "a route step: by distance")
 end
 
-T["R7: with the one-colour setting a waypoint arrow keeps the saved flat colour"] = function(t)
+-- A1-06 (lead section 643): the arrow wears the route's colour, the one the
+-- map line of the same step gets (UI/MapRouteLines.lua MRL.Paint). With the
+-- one-colour setting the route steps keep the one flat colour; the
+-- waypoint stays green and a profession step purple, as on the map.
+T["A1-06: with the one-colour setting the arrow wears the map line's colour"] = function(t)
     local flat = N.ArrowPaletteOf("standard", false)
-    local r, g, b = N.ArrowColor("zone", 300, flat)
-    colour(t, N.ArrowView(state({ palette = flat }, { family = "waypoint" })).quest.colour, r, g, b, "flat")
+    local MRL = ns.MapRouteLines
+    local wr, wg, wb = MRL.Paint("waypoint", nil, 300, "standard", false)
+    colour(t, N.ArrowView(state({ palette = flat }, { family = "waypoint" })).quest.colour, wr, wg, wb,
+        "waypoint: green, as its map line")
+    local rr, rg, rb = MRL.Paint("first", { state = "zone" }, 300, "standard", false)
+    colour(t, N.ArrowView(state({ palette = flat })).quest.colour, rr, rg, rb, "route step: the one flat colour")
+    local pr, pg, pb = MRL.Paint("first", { family = "profession", state = "zone" }, 300, "standard", false)
+    colour(t, N.ArrowView(state({ palette = flat }, { family = "profession" })).quest.colour, pr, pg, pb,
+        "profession step: as its map line")
 end
 
 T["R7: a palette row gives back its palette word"] = function(t)
