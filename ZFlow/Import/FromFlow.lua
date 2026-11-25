@@ -490,8 +490,9 @@ local MAP = {
     { "spellbar.offer", to = "settings.spellbar.offer" },
     { "spellbar.upgradeRanks", to = "settings.spellbar.upgradeRanks" },
     { "spellbar.muted", to = "settings.spellbar.muted", char = true },
-    { "splash.enabled", to = "settings.splash.enabled" },
-    { "splash.short", to = "settings.splash.short" },
+    -- Lead section 872: the keys UI/LoginIntro.lua reads (LI.SETTING, LI.SHORT).
+    { "splash.enabled", to = "settings.ui.splash" },
+    { "splash.short", to = "settings.ui.splashShort" },
     { "tracker.enabled", to = "settings.tracker.enabled" },
     { "tracker.dock", to = "settings.tracker.dock" },
     { "tracker.gameTracker", to = "settings.tracker.gameTracker" },
