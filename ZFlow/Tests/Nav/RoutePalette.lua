@@ -80,4 +80,23 @@ tests["route palette: an unknown role gives nothing"] = function(t)
     t.eq(RP().Color("standard", nil), nil)
 end
 
+-- Lead section 838: a missing arrow palette or profession colour table
+-- gives no colour, never an error.
+tests["route palette: a missing source table gives nothing, without an error"] = function(t)
+    local N, RC = ns.Nav, ns.RouteColor
+    local arrow, prof = N.ARROW_PALETTE, RC.PROFESSION
+    N.ARROW_PALETTE, RC.PROFESSION = nil, nil
+    local ok1, r1 = pcall(RP().Color, "standard", "far")
+    local ok2, r2 = pcall(RP().Color, "standard", "profFar")
+    N.ARROW_PALETTE, RC.PROFESSION = { standard = "not a table" }, { standard = 7 }
+    local ok3, r3 = pcall(RP().Color, "standard", "near")
+    local ok4, r4 = pcall(RP().Color, "standard", "profNear")
+    N.ARROW_PALETTE, RC.PROFESSION = arrow, prof
+    t.eq({ ok1, r1 }, { true }, "no arrow palette")
+    t.eq({ ok2, r2 }, { true }, "no profession colours")
+    t.eq({ ok3, r3 }, { true }, "arrow palette entry not a table")
+    t.eq({ ok4, r4 }, { true }, "profession entry not a table")
+    t.eq(hex("standard", "far"), TODAY.far, "restored")
+end
+
 return tests
