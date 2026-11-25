@@ -64,4 +64,26 @@ tests["dungeon first: outside a dungeon, nothing is cut"] = function(t)
     t.eq(why, nil)
 end
 
+-- Section 708 (Twin's CHANGES-1).
+tests["dungeon first: a step or tour the player picked keeps the route as it is"] = function(t)
+    t.eq(labels(DF().First(ROUTE, RUN, { picked = true })), labels(ROUTE), "Flow Nav.lua:3398")
+end
+
+tests["dungeon first: the run's optional steps are not put first"] = function(t)
+    local run = {
+        stop("Pick up: Red Silk", { kind = "giver", quest = 101 }),
+        stop("Pick up: Maybe", { kind = "giver", quest = 103, optional = true }),
+        stop("The Mines", { kind = "entrance" }),
+    }
+    t.eq(labels(DF().First({}, run)), { "Pick up: Red Silk", "The Mines" }, "Flow Nav.lua:3400")
+end
+
+tests["dungeon first: inside, with the dungeon's quests not read yet, the route stays and says so"] = function(t)
+    local out, why = DF().Inside(ROUTE, function() return nil end, 7, false)
+    t.eq(labels(out), labels(ROUTE))
+    t.eq(why, DF().NOT_READ)
+    local _, whyNone = DF().Inside(ROUTE, function() return nil end, 7, true)
+    t.eq(whyNone, DF().NONE_HERE, "read, and none of yours: the other reason")
+end
+
 return tests
