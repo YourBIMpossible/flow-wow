@@ -54,4 +54,23 @@ tests["loot left: nothing grey left, nothing said"] = function(t)
     t.eq(said(c, "grey item"), 0)
 end
 
+tests["loot left: a skinner leaving loot is told a full corpse can't be skinned, once"] = function(t)
+    local c = boot()
+    if type(c.fireLootLeft) ~= "function" then t.ok(false, "no c.fireLootLeft") return end
+    c.setProfessions({ "Skinning" })
+    c.fireLootLeft({ { item = "item:2318", count = 2, quality = 1 } })
+    c.fireLootLeft({ { item = "item:2318", count = 1, quality = 1 } })
+    c.advance(0.1, 2)
+    t.eq(said(c, "can't be skinned"), 1, "told once")
+end
+
+tests["loot left: no Skinning, no skin warning"] = function(t)
+    local c = boot()
+    if type(c.fireLootLeft) ~= "function" then t.ok(false, "no c.fireLootLeft") return end
+    c.setProfessions({ "Mining" })
+    c.fireLootLeft(LEFT)
+    c.advance(0.1, 2)
+    t.eq(said(c, "skinned"), 0)
+end
+
 return tests

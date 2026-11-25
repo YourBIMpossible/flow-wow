@@ -28,4 +28,14 @@ tests["loot left: the line, one and many"] = function(t)
     t.eq(L().Line(nil), nil)
 end
 
+tests["loot left: skin warning only with Skinning and something left"] = function(t)
+    if type(L()) ~= "table" or type(L().SkinWarning) ~= "function" then t.ok(false, "no LootLeft.SkinWarning") return end
+    local left = { { item = "item:2318", count = 2, quality = 1 } }
+    t.eq(L().SkinWarning(left, { Skinning = true }), L().SKIN_WARNING)
+    t.eq(L().SkinWarning({}, { Skinning = true }), nil, "nothing left")
+    t.eq(L().SkinWarning(left, { Mining = true }), nil, "no Skinning")
+    t.eq(L().SkinWarning(left, nil), nil, "professions not read")
+    t.eq(L().SkinWarning(nil, { Skinning = true }), nil)
+end
+
 return tests
