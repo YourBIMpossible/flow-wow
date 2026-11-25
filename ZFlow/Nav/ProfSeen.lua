@@ -135,6 +135,11 @@ function ProfSeen.Reading(client, store)
     if not usable then return refuse(report, "the readings cannot be saved") end
     local e = entryOf(cur and cur[r.name])
     e.line = finite(r.profession) and r.profession or nil
+    -- C-50 (lead section 700): when this max was first read, so a trainer
+    -- list saved before it can be told stale (UI/ProfCard.lua). A max that
+    -- is new, or not read before, starts its time now; the same max keeps
+    -- its time. A reading with no time leaves it unknown.
+    if e.max ~= r.max or not finite(e.maxAt) then e.maxAt = now end
     e.skill, e.max, e.at = r.skill, r.max, now
     if not put(store, "char", ProfSeen.READINGS, r.name, e) then
         return refuse(report, "the readings cannot be saved")

@@ -113,4 +113,100 @@ return {
         local p = ns.ProfCard.Prompts(readings(), n, "Alliance")
         t.eq(p[1].text, "Cooking is at its cap (75/75). Trainer seen: Daryl Riknussun, and 1 more.")
     end,
+
+    -- Parity row C-50 (lead section 668), as Flow's Modules/Advisor/
+    -- Builtins.lua professions source (:304-358): the next rank, from a
+    -- trainer list the player opened, said before the cap when it can be
+    -- learned, and when your level has reached it but your skill has not.
+    -- The level and skill a rank needs are the trainer window's own numbers.
+    -- Fails before: only the cap is said.
+    ["next rank: can be learned before the cap, named with its trainer and cost"] = function(t)
+        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", seen = 200, rows = {
+            { name = "Mining", rank = "Journeyman", state = "available", cost = 500, level = 10, skill = 50 } } } }
+        local r = readings()
+        r.Mining.maxAt = 100
+        r.Mining.skill = 55
+        local p = ns.ProfCard.Prompts(r, npcs(), "Alliance", lists, 12)
+        local mining
+        for _, x in ipairs(p) do if x.id == "aps.prof.Mining" then mining = x end end
+        t.ok(mining ~= nil, "a prompt for Mining")
+        t.eq(mining and mining.text,
+            "Mining 55/75: you can learn Journeyman Mining now from Brombar Higgleby (" .. ns.Prices.Coin(500) .. ").")
+    end,
+
+    ["next rank: your level has reached it, your skill has not"] = function(t)
+        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", seen = 200, rows = {
+            { name = "Mining", rank = "Journeyman", state = "unavailable", cost = 500, level = 10, skill = 50 } } } }
+        local r = readings()
+        r.Mining.maxAt = 100
+        local p = ns.ProfCard.Prompts(r, npcs(), "Alliance", lists, 14)
+        local mining
+        for _, x in ipairs(p) do if x.id == "aps.prof.Mining" then mining = x end end
+        t.eq(mining and mining.text,
+            "Mining is 40, behind your level: Journeyman Mining needs 50, and you are past its level 10.")
+    end,
+
+    ["next rank: below its level, or no level or skill read, nothing is said"] = function(t)
+        local row = { name = "Mining", rank = "Journeyman", state = "unavailable", cost = 500, level = 10, skill = 50 }
+        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", seen = 200, rows = { row } } }
+        local function mining(level)
+            local r = readings()
+            r.Mining.maxAt = 100
+            for _, x in ipairs(ns.ProfCard.Prompts(r, npcs(), "Alliance", lists, level)) do
+                if x.id == "aps.prof.Mining" then return x end
+            end
+            return nil
+        end
+        t.eq(mining(8), nil, "below the rank's level: not behind")
+        t.eq(mining(nil), nil, "your level not read")
+        row.skill = nil
+        t.eq(mining(14), nil, "the skill it needs not read")
+        row.skill, row.level = 50, nil
+        t.eq(mining(14), nil, "the level it needs not read")
+    end,
+
+    ["next rank: at the cap the cap prompt is the one, with the rank's price as before"] = function(t)
+        local lists = { k = { npc = "Daryl Riknussun", profession = "Cooking", rows = {
+            { name = "Cooking", rank = "Journeyman", state = "available", cost = 500, level = 10, skill = 50 } } } }
+        local p = ns.ProfCard.Prompts(readings(), npcs(), "Alliance", lists, 12)
+        local cooking
+        for _, x in ipairs(p) do if x.id == "aps.prof.Cooking" then cooking = x end end
+        t.eq(cooking and cooking.text, "Cooking is at its cap (75/75). Trainer seen: Daryl Riknussun. Journeyman costs "
+            .. ns.Prices.Coin(500) .. ".")
+    end,
+
+    ["next rank: one prompt for each profession, and a known rank is no next rank"] = function(t)
+        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", seen = 200, rows = {
+            { name = "Mining", rank = "Journeyman", state = "known", cost = 500, level = 10, skill = 50 } } } }
+        local r = readings()
+        r.Mining.maxAt = 100
+        r.Mining.skill = 55
+        t.eq(#ns.ProfCard.Prompts(r, npcs(), "Alliance", lists, 12), 1, "only Cooking, at its cap")
+    end,
+
+    -- Zen-3's review of C-50, lead section 700 answer (a): a trainer list
+    -- saved before this profession's max was first read at its value is
+    -- stale (the rank may be learned since): no "ready", no "behind" from
+    -- it. Either time not known: none. Fails before: the stale Journeyman
+    -- row gives "you can learn Journeyman Mining now" at 80/150.
+    ["next rank: a list saved before the max rose is stale and says nothing"] = function(t)
+        local lists = { k = { npc = "Brombar Higgleby", profession = "Mining", seen = 100, rows = {
+            { name = "Mining", rank = "Journeyman", state = "available", cost = 500, level = 10, skill = 50 } } } }
+        local function mining(r)
+            for _, x in ipairs(ns.ProfCard.Prompts(r, npcs(), "Alliance", lists, 20)) do
+                if x.id == "aps.prof.Mining" then return x end
+            end
+            return nil
+        end
+        local r = readings()
+        r.Mining.skill, r.Mining.max, r.Mining.maxAt = 80, 150, 300
+        t.eq(mining(r), nil, "saved at 100, the 150 max first read at 300: stale")
+        lists.k.seen = 400
+        t.ok(mining(r) ~= nil, "a list saved after the max rose still gives the prompt")
+        r.Mining.maxAt = nil
+        t.eq(mining(r), nil, "the max's time not known: no prompt")
+        r.Mining.maxAt = 300
+        lists.k.seen = nil
+        t.eq(mining(r), nil, "the list's time not known: no prompt")
+    end,
 }
