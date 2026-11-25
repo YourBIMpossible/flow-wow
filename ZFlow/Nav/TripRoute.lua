@@ -93,6 +93,11 @@ T.WHY_OFF = "Routes are switched off in the settings."
 -- Not under "quest.route": that path is a setting itself, and a path may
 -- not sit under another setting's.
 T.PICKUP_SETTING = "quest.routePickups"
+-- FLOW-PARITY A1-24 (lead sections 693 and 697): the arrow walks the route
+-- planned by itself, as legacy Flow's arrow walks its plan (Nav.lua choose(),
+-- :3536-3575). On by default, as in Flow; off, the arrow keeps its own pick
+-- and the route is only shown on the map and in the Router.
+T.WALK_SETTING = "nav.routeWalk"
 T.NOT_HERE = "not on this map"
 T.NO_DISTANCE = "distance not known"
 T.DONE = "Route done."
@@ -527,6 +532,13 @@ function T.Declare(k, diag)
 
     local function client() return ctx and ctx.client or k.client end
 
+    local function walkOn()
+        local s = ctx and ctx.settings
+        if type(s) ~= "table" or type(s.get) ~= "function" then return true end
+        local ok, v = pcall(s.get, s, T.WALK_SETTING)
+        return not (ok and v == false)
+    end
+
     local function on()
         local s = ctx and ctx.settings
         if type(s) ~= "table" or type(s.get) ~= "function" then return true end
@@ -743,9 +755,10 @@ function T.Declare(k, diag)
             end
         end
         if not s then return nil end
-        -- Planned by itself: shown on the map and in the Router, but the arrow
-        -- keeps its own pick until the player plans with the word.
-        if route.auto then return nil end
+        -- Planned by itself: the arrow walks it too (A1-24), unless the
+        -- player turned that off; then it is only shown on the map and in
+        -- the Router, and the arrow keeps its own pick until the word.
+        if route.auto and not walkOn() then return nil end
         return { quest = s.quest, objective = s.objective, turnIn = s.turnIn, label = s.label,
                  detail = s.need or s.detail, need = s.need,
                  place = { map = s.place.map, x = s.place.x, y = s.place.y } }
@@ -846,6 +859,12 @@ function T.Declare(k, diag)
         label = "Walk a planned route with the arrow", group = "travel.route",
         help = "Shows when you plan a route with the route word or Plan the run: the quest arrow walks its stops in order.",
         synonyms = { "route", "quest", "dungeon", "run", "order", "plan" } })
+
+    k:Setting({ key = T.WALK_SETTING, scope = "account", type = "bool", default = true,
+        label = "The arrow walks the planned route", group = "travel.route",
+        help = "On: the arrow takes you to the planned route's stops in order, the route shown on the map."
+            .. " Off: the route is only shown, and the arrow picks your next quest step itself.",
+        synonyms = { "route", "arrow", "walk", "follow", "planned", "order" } })
 
     k:Setting({ key = T.PICKUP_SETTING, scope = "account", type = "bool", default = true,
         label = "Add quests to pick up on the way", group = "travel.route",
