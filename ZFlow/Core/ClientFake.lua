@@ -696,7 +696,13 @@ function ns.make.fakeClient(opts)
     --     "sweep", 0 "none", never set nil.
     --   h.anchor answers false, "no frame" for a name with no rect set
     --     (c.setFrameRect(name, rect)), as the client with no such frame.
+    --   c.setCooldownAnchorRefused(on): while on, h.anchor on a frame that
+    --     is there answers false, "refused" (the client turned the SetPoint
+    --     down), the record counts it in refused, and the face is left with
+    --     no place and no anchor, as on the real client, which clears the
+    --     old points before it asks.
     c.cooldownFaces = {}
+    function c.setCooldownAnchorRefused(on) s.cooldownAnchorRefused = on and true or nil end
     function c.cooldownFace(spec)
         if s.noFrames then return nil end
         spec = type(spec) == "table" and spec or {}
@@ -709,6 +715,11 @@ function ns.make.fakeClient(opts)
         end
         function h.anchor(point, to, relPoint, x, y)
             if type(to) ~= "string" or c.frameRect(to) == nil then return false, "no frame" end
+            if s.cooldownAnchorRefused then
+                rec.refused = (rec.refused or 0) + 1
+                rec.point, rec.anchor = nil, nil
+                return false, "refused"
+            end
             rec.anchor = { point = point, to = to, relPoint = relPoint, x = x, y = y }
             rec.point = nil
             return true

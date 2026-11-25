@@ -200,6 +200,51 @@ tests["cooldown face: only the face is placed, shown or hidden; the frame it is 
     t.eq(#calls(face, "SetPoint"), before, "and the face stays where it was")
 end
 
+-- Twin's review of 79b3143e (lead section 638): the client turns the
+-- SetPoint down (it raises), and h.anchor says so; the named frame still
+-- gets no call. Red before for the fake half only: the real client already
+-- answered "refused", untested.
+tests["cooldown face: a SetPoint the client turns down is answered as refused"] = function(t)
+    local env, made = world()
+    local h = ns.make.client(env).cooldownFace({})
+    t.ok(type(h) == "table", "a handle")
+    if type(h) ~= "table" then return end
+    local face, other = made[1], env["Other Button"]
+    local asked = 0
+    rawset(face, "SetPoint", function()
+        asked = asked + 1
+        error("made-up refusal")
+    end)
+    local ok, why = h.anchor("LEFT", "Other Button", "RIGHT", 6, 0)
+    t.eq(ok, false, "not set")
+    t.eq(why, "refused", "and it says the client turned it down")
+    t.eq(asked, 1, "the face was what the client was asked to place")
+    t.eq(#other.calls, 0, "the other frame got no call")
+end
+
+tests["cooldown face, fake: a test can make the next anchor be refused, and the record keeps it"] = function(t)
+    local c = ns.make.fakeClient()
+    t.ok(type(c.cooldownFace) == "function" and type(c.setCooldownAnchorRefused) == "function",
+        "the fake has the helper and the setter")
+    if type(c.cooldownFace) ~= "function" or type(c.setCooldownAnchorRefused) ~= "function" then return end
+    c.setFrameRect("Other Button", { l = 0, r = 10, b = 0, t = 10 })
+    local h = c.cooldownFace({})
+    local rec = c.cooldownFaces[1]
+    h.place({ "CENTER", "CENTER", 0, 0 })
+    c.setCooldownAnchorRefused(true)
+    local ok, why = h.anchor("LEFT", "Other Button", "RIGHT", 6, 0)
+    t.eq(ok, false)
+    t.eq(why, "refused")
+    t.eq(rec.refused, 1, "the record counts the refusal")
+    t.eq(rec.anchor, nil, "and the face is not set against the frame")
+    c.setCooldownAnchorRefused(false)
+    t.eq(h.anchor("LEFT", "Other Button", "RIGHT", 6, 0), true, "switched off again: it is set")
+    t.eq(rec.refused, 1, "no more refusals counted")
+    local no, reason = h.anchor("LEFT", "No Such Frame", "RIGHT", 6, 0)
+    t.eq(no, false)
+    t.eq(reason, "no frame", "no frame is still told apart from refused")
+end
+
 tests["cooldown face: a client that cannot make a frame gives no face"] = function(t)
     local env = world()
     env.CreateFrame = nil
