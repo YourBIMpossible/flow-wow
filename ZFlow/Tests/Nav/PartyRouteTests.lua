@@ -214,4 +214,31 @@ tests["party route: the members' progress from B-41 is fed in"] = function(t)
     t.eq(kept[1].label, "Boars")
 end
 
+-- B-42 CHANGES-1 (lead section 856): on the party route ("combined") every
+-- quest step, turn-in and party step is kept, as Flow's PartyHelp.lua
+-- H.QuestsOnly (:406-415); only "theirs" keeps by a member's quests. Fails
+-- before: a joined member who lacks your quest cut your step.
+tests["party route B-42: on the party route your quest step stays when a member lacks it"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setPlayerName("Bo")
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    local api = P().Declare(k, d)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    api.Progress("Al", PROG.Al)
+    c.fire("CHAT_MSG_ADDON", ns.id.commPrefix, P().JoinMsg(true, ns.id.commVersion), "PARTY", "Al")
+    api.SetScope("combined")
+    local kept = api.Filter({
+        { quest = 12, objective = 1, label = "Wolves" },
+        { quest = 13, turnIn = true, label = "Hand in" },
+        { label = "Party stop", party = true },
+        { label = "Sell junk" },
+    })
+    local labels = {}
+    for i, s in ipairs(kept) do labels[i] = s.label end
+    t.eq(labels, { "Wolves", "Hand in", "Party stop" })
+end
+
 return tests
