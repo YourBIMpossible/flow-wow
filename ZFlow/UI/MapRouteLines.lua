@@ -127,7 +127,7 @@ end
 function MRL.Dash(ax, ay, bx, by)
     local dx, dy = bx - ax, by - ay
     local len = math.sqrt(dx * dx + dy * dy)
-    if not (len > 0) then return {} end
+    if len ~= len or len <= 0 then return {} end
     local out = {}
     local step = MRL.DASH + MRL.GAP
     local t = 0
