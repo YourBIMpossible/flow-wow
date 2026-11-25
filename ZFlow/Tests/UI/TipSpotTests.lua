@@ -1,7 +1,7 @@
 local _, ns = ...
 -- F-20 (lead sections 788, 790): "Tooltips where WoW shows them", as Flow's
--- switch (Modules/Settings.lua:743; Core.lua:317-318 ns.TipsAtGameSpot,
--- :335-340 ns.Tip: GameTooltip_SetDefaultAnchor when on). On by default,
+-- switch (at Flow b657e6e5: Modules/Settings.lua:745; Core.lua:236
+-- ns.TipsAtGameSpot, :256-257 ns.Tip: GameTooltip_SetDefaultAnchor when on). On by default,
 -- as Flow (section 563). A setting row in the windows group, a pure answer
 -- for where a tooltip goes, and the answer handed to the client
 -- (client.setTipSpot, a CLIENT NEED: Core/Client.lua's SetOwner calls ask

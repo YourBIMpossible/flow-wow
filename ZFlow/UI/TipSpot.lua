@@ -1,7 +1,7 @@
 local _, ns = ...
 -- F-20 (lead sections 788, 790): "Tooltips where WoW shows them", as
--- Flow's switch (Modules/Settings.lua:743; Core.lua:317-318
--- ns.TipsAtGameSpot, :335-340 ns.Tip, which calls
+-- Flow's switch (at Flow b657e6e5: Modules/Settings.lua:745, the row;
+-- Core.lua:236 ns.TipsAtGameSpot; :256-257 ns.Tip, which calls
 -- GameTooltip_SetDefaultAnchor when it is on). On by default, as Flow
 -- (section 563): this add-on's tooltips then show where the game shows its
 -- own (the corner the player or another add-on chose), not beside the
