@@ -274,6 +274,8 @@ function Flights.Declare(k)
             board = { map = last.board.map, x = last.board.x, y = last.board.y },
             there = { cont = last.there.cont, wx = last.there.wx, wy = last.there.wy },
             points = last.points and points(last.points) or nil,
+            -- Lead section 497: whether the time of the leg is your own.
+            learned = last.learned == true,
         }
     end
 
