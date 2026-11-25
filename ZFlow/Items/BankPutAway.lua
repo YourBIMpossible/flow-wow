@@ -166,7 +166,8 @@ end
 function P.Of(input)
     if type(input) ~= "table" then return nil, P.NOT_WORTH end
     local stacks = whole(input.stacks) and input.stacks or 0
-    local out = whole(input.out) and input.out or nil
+    local out
+    if whole(input.out) then out = input.out end
     if not P.Worth(stacks, out, input.nearlyFull) then return nil, P.NOT_WORTH end
     local text = P.Text(stacks, out)
     local label = P.LABEL
@@ -178,9 +179,9 @@ function P.Of(input)
         stacks = stacks, out = out,
         items = type(input.items) == "table" and input.items or {},
         radius = P.RADIUS, optional = true, weight = P.WEIGHT,
-        partial = whole(input.partial) and input.partial > 0 and input.partial or nil,
-        unread = whole(input.unread) and input.unread > 0 and input.unread or nil,
     }
+    if whole(input.partial) and input.partial > 0 then step.partial = input.partial end
+    if whole(input.unread) and input.unread > 0 then step.unread = input.unread end
     local near = input.near
     if type(near) == "table" and near.kind == P.SERVICE and near.map ~= nil and share(near.x) and share(near.y) then
         step.place = { cont = near.cont, map = near.map, x = near.x, y = near.y }
