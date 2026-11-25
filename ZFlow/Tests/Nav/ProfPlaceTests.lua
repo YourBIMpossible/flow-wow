@@ -280,18 +280,69 @@ local function clientOf(db, zones, clock)
     }
 end
 
+-- Asks for the places, then lets the reader work (as its owner does, a part
+-- a frame) until it has no more to do, and gives what it has then.
+local function settle(reader, client)
+    reader.places(client)
+    for _ = 1, 200 do
+        if type(reader.work) ~= "function" or not reader.work(client) then break end
+    end
+    return reader.places(client)
+end
+
 tests["prof place: Questie is scanned once and the answer kept, however often it is asked"] = function(t)
     if not has(t) then return end
     local count, clock = {}, { t = 100 }
     local db, zones = questie(NPCS, nil, count)
     local reader, client = PP().Questie(), clientOf(db, zones, clock)
-    local first = reader.places(client)
+    local first = settle(reader, client)
     t.eq(first and first.banker and #first.banker, 1, "the scan's answer")
     for i = 1, 50 do
         clock.t = 100 + i
-        t.eq(reader.places(client), first, "the same answer, kept")
+        t.eq(settle(reader, client), first, "the same answer, kept")
     end
     t.eq(count.scans, 1, "one pass over Questie's NPCs for all of that")
+end
+
+-- Lead section 564 (no hitch): asking never reads Questie itself; the work
+-- is done a part at a time by reader.work, PP.STEP NPCs a call at most.
+tests["prof place: asking reads nothing; the scan is done a part a call, and only once asked for"] = function(t)
+    if not has(t) then return end
+    local step = PP().STEP
+    t.ok(type(step) == "number" and step >= 1, "PP.STEP says how many NPCs a call")
+    if type(step) ~= "number" or step < 1 then return end
+    local npcs, reads = {}, 0
+    for id = 1, step * 2 + 1 do npcs[id] = { name = "Nobody " .. id } end
+    npcs[step * 2 + 1] = { name = "Late Banker", npcFlags = 256, spawns = { [14] = { { 50, 50 } } } }
+    local db = { NPCPointers = {} }
+    for id in pairs(npcs) do db.NPCPointers[id] = true end
+    function db.QueryNPCSingle(id, field)
+        if field == "subName" then reads = reads + 1 end
+        return npcs[id] and npcs[id][field]
+    end
+    local zones = {}
+    function zones.GetUiMapIdByAreaId(a) return AREAS[a] end
+    local reader, client = PP().Questie(), clientOf(db, zones, { t = 100 })
+    t.ok(type(reader.work) == "function", "the reader has work to be called a frame at a time")
+    if type(reader.work) ~= "function" then return end
+    t.eq(reader.work(client), false, "not asked for yet: no work")
+    t.eq(reads, 0, "and nothing read")
+    t.eq(reader.places(client), nil, "asked: no answer yet")
+    t.eq(reads, 0, "asking reads nothing itself")
+    local most, calls = 0, 0
+    while calls < 20 do
+        local was = reads
+        local more = reader.work(client)
+        calls = calls + 1
+        if reads - was > most then most = reads - was end
+        if reader.places(client) ~= nil or not more then break end
+    end
+    t.ok(most <= step, "no call went through more than PP.STEP NPCs: " .. most)
+    t.eq(reads, step * 2 + 1, "every NPC was gone through once")
+    t.ok(calls >= 3, "over three calls or more: " .. calls)
+    local found = reader.places(client)
+    t.eq(found and found.banker and #found.banker, 1, "the answer is whole: the last NPC is in it")
+    t.eq(reader.work(client), false, "done: no more work")
 end
 
 tests["prof place: Questie absent gives nothing; an empty answer is retried within bounds"] = function(t)
@@ -303,24 +354,24 @@ tests["prof place: Questie absent gives nothing; an empty answer is retried with
     local count = {}
     local db, zones = questie({ [1] = { name = "Nobody" } }, nil, count)
     local client = clientOf(db, zones, clock)
-    reader.places(client)
+    settle(reader, client)
     t.eq(count.scans, 1, "asked once it is there")
     clock.t = 105
-    reader.places(client)
+    settle(reader, client)
     t.eq(count.scans, 1, "not again within the wait")
     for i = 1, 40 do
         clock.t = 105 + i * 11
-        reader.places(client)
-        reader.places(client)
+        settle(reader, client)
+        settle(reader, client)
     end
     t.eq(count.scans, PP().TRIES, "then no more than the tries in all, however long it is asked")
     -- It arrives late, within the tries: its answer is used and kept.
     local late, lateCount, lateClock = PP().Questie(), {}, { t = 100 }
     local empty, emptyZones = questie({ [1] = { name = "Nobody" } }, nil, lateCount)
-    late.places(clientOf(empty, emptyZones, lateClock))
+    settle(late, clientOf(empty, emptyZones, lateClock))
     lateClock.t = 120
     local full, fullZones = questie(NPCS, nil, lateCount)
-    local got = late.places(clientOf(full, fullZones, lateClock))
+    local got = settle(late, clientOf(full, fullZones, lateClock))
     t.eq(got and got.auction and #got.auction, 1, "the later answer has the places")
 end
 
@@ -329,7 +380,7 @@ tests["prof place: a client with no time still stops asking after the tries"] = 
     local count, clock = {}, { t = 0 }
     local db, zones = questie({ [1] = { name = "Nobody" } }, nil, count)
     local reader, client = PP().Questie(), clientOf(db, zones, clock)
-    for _ = 1, 30 do reader.places(client) end
+    for _ = 1, 30 do settle(reader, client) end
     t.eq(count.scans, PP().TRIES, "the tries come in a row, and end")
 end
 
