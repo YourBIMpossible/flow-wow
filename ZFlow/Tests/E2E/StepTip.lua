@@ -68,11 +68,11 @@ tests["step tip e2e: a pickup step has its level, XP and the quest's words"] = f
     c.advance(5, 20)
     t.eq(lines(addon, 802), {
         "|cffffff00Level 9|r: about your level: full XP",
-        "XP: about 575 (full XP)",
         "Bring me 8 boar ribs.",
+        "XP: about 575 (full XP)",
     })
     local cut = lines(addon, 803)
-    t.eq(cut and cut[3], long:sub(1, 257) .. "...", "long words are cut, as Flow")
+    t.eq(cut and cut[2], long:sub(1, 257) .. "...", "long words are cut, as Flow")
 end
 
 tests["step tip e2e: a quest not in the log has no lines"] = function(t)

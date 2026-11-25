@@ -28,7 +28,12 @@ local _, ns = ...
 --   ST.Also(stops, quest, yardsTo) -> the labels of the other stops within
 --     ST.ALSO_YARDS (yardsTo(place) -> yards or nil), each quest once
 --     (R-06: one stop per objective named the quest twice)
---   ST.Lines(info) -> lines; info = { level, mine, objectives, also }
+--   ST.Text(d) -> Questie's words for a quest (a string or a list of
+--     them), cut at ST.TEXT_MAX as Flow's questText (Nav.lua:3244-3249,
+--     :3299-3303), or nil
+--   ST.Lines(info) -> lines; info = { level, mine, objectives, text, also }
+-- R-07: a pickup step (the quest not in your log yet) gets the level, the
+-- quest's words and the XP too, as Flow's N:FillTooltip gives any step.
 -- Module "stepTip" provides Lines(quest) -> lines or nil.
 ns.Nav = ns.Nav or {}
 local N = ns.Nav
@@ -51,6 +56,7 @@ ST.XP = "XP: about %d (%s)"
 ST.DONE = "|cff66e666  %s|r"
 ST.TODO = "  %s"
 ST.ALSO = "Also here"
+ST.TEXT_MAX = 260
 local DECAY = { [6] = 0.8, [7] = 0.6, [8] = 0.4, [9] = 0.2 }
 
 local function whole(v)
@@ -118,12 +124,27 @@ function ST.Also(stops, quest, yardsTo)
     return out
 end
 
+function ST.Text(d)
+    if type(d) == "table" then
+        local parts = {}
+        for _, p in ipairs(d) do
+            if type(p) == "string" and p ~= "" then parts[#parts + 1] = p end
+        end
+        d = table.concat(parts, " ")
+    end
+    if type(d) ~= "string" or d == "" then return nil end
+    if #d > ST.TEXT_MAX then d = d:sub(1, ST.TEXT_MAX - 3) .. "..." end
+    return d
+end
+
 function ST.Lines(info)
     local out = {}
     if type(info) ~= "table" then return out end
     local level = ST.LevelLine(info.level, info.mine)
     if level then out[#out + 1] = level end
     for _, l in ipairs(ST.ObjectiveLines(info.objectives)) do out[#out + 1] = l end
+    local text = ST.Text(info.text)
+    if text then out[#out + 1] = text end
     local xp, note = ST.Xp(info.level, info.mine)
     if xp then out[#out + 1] = ST.XP:format(xp, note) end
     local also = type(info.also) == "table" and info.also or {}
@@ -154,6 +175,18 @@ function ST.Declare(k)
         return nil
     end
 
+    -- Questie's words for the quest (its description, else its objectives
+    -- text), as Flow's questText.
+    local function questWords(quest)
+        local db = ask("questieModule", "QuestieDB")
+        if type(db) ~= "table" or type(db.GetQuest) ~= "function" then return nil end
+        local ok, q = pcall(db.GetQuest, quest)
+        if not ok or type(q) ~= "table" then return nil end
+        local d = q.Description
+        if d == nil then d = q.objectivesText end
+        return d
+    end
+
     local function yards(a, b)
         if type(a) ~= "table" or type(b) ~= "table" or a.map ~= b.map then return nil end
         local size = ask("mapSize", a.map)
@@ -178,10 +211,12 @@ function ST.Declare(k)
         for _, r in ipairs(N.QuestLogRows and N.QuestLogRows(ctx.client) or {}) do
             if r.id == quest then row = r break end
         end
-        if not row then return nil end
-        local lines = ST.Lines({ level = questLevel(quest), mine = ask("level"),
-                                 objectives = row.objectives, also = alsoHere(quest) })
-        return #lines > 0 and lines or nil
+        local objectives = nil
+        if row then objectives = row.objectives end
+        local lines = ST.Lines({ level = questLevel(quest), mine = ask("level"), objectives = objectives,
+                                 text = questWords(quest), also = alsoHere(quest) })
+        if #lines == 0 then return nil end
+        return lines
     end
 
     k:Module({
