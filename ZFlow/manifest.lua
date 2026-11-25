@@ -240,6 +240,7 @@ return {
     "Rotation/Queue.lua",
     "UI/RotationQueue.lua",
     "Items/Banker.lua",
+    "Items/BankerRows.lua",
     "Items/Posting.lua",
     "Items/Trader.lua",
     "Nav/Try.lua",
