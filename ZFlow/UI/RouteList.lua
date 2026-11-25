@@ -26,10 +26,10 @@
 --
 -- QUEST NEEDS (parity row C-14, lead section 603): a stop of a quest whose
 -- Questie data says so gets "(escort)" or "(group of N)" after its words,
--- and an escort's note leads its second line. Read through Questie's own
--- QueryQuestSingle(id, "triggerEnd" | "suggestedGroup"). As Flow
--- Modules/Quests/QuestNeeds.lua Q.EscortNote and Q.ApplyNeed (tag after the
--- name, note first), with Flow's escort words. Flow's per-quest table
+-- read through Questie's own QueryQuestSingle(id, "triggerEnd" |
+-- "suggestedGroup"). As Flow Modules/Quests/QuestNeeds.lua Q.ApplyNeed (tag
+-- after the name). Flow's hand-written escort note (Q.EscortNote) is not
+-- carried: no cited Forever source backs it (lead section 620, 611/619). Flow's per-quest table
 -- (where / note / tool / item, questNeed 98430) is not carried: a table of
 -- quest IDs waits for a ruling. "group of N" is Questie's suggested group,
 -- which Flow did not show.
@@ -68,8 +68,7 @@ RL.WIDTH = 300
 RL.HEIGHT = 420
 RL.TONE_NOW = "good"
 RL.TONE_BLOCKED = "bad"
--- Flow's words (Q.EscortNote), with no giver name.
-RL.ESCORT_NOTE = "Escort quest: if another player is escorting the giver, they're away for a few minutes. Wait by their spot, or come back later."
+-- Tags from Questie's quest fields (Flow Q.ApplyNeed).
 RL.ESCORT = "escort"
 RL.GROUP = "group of %d"
 RL.TAGS = "%s (%s)"
@@ -122,19 +121,18 @@ end
 
 function RL.Needs(raw)
     if type(raw) ~= "table" then return nil end
-    local tags, note = {}, nil
+    local tags = {}
     local te = raw.triggerEnd
     local text = type(te) == "table" and te[1]
     if type(text) == "string" and text:lower():find("escort", 1, true) then
         tags[#tags + 1] = RL.ESCORT
-        note = RL.ESCORT_NOTE
     end
     local g = raw.suggestedGroup
     if type(g) == "number" and g == g and g >= 2 and g < 100 then
         tags[#tags + 1] = RL.GROUP:format(math.floor(g))
     end
     if #tags == 0 then return nil end
-    return tags, note
+    return tags, nil
 end
 
 local function withNeeds(row, quest, needOf)

@@ -315,12 +315,13 @@ end
 
 -- Parity row C-14 (lead section 603): what is worth knowing about a quest
 -- before you walk to it, from Questie's quest data (Flow
--- Modules/Quests/QuestNeeds.lua Q.EscortNote / Q.ApplyNeed). Fails before:
+-- Modules/Quests/QuestNeeds.lua Q.ApplyNeed). Fails before:
 -- there is no RL.Needs and RL.Rows takes no needs.
-tests["route list needs: an escort objective tags escort, with Flow's note"] = function(t)
+tests["route list needs: an escort objective tags escort, with no note"] = function(t)
     local tags, note = RL().Needs({ triggerEnd = { "Escort Perith Stormhoof out of Palemane Rock" } })
     t.eq(tags, { "escort" })
-    t.eq(note, RL().ESCORT_NOTE)
+    t.eq(note, nil, "Flow's hand-written escort note is not carried (section 620)")
+    t.eq(RL().ESCORT_NOTE, nil)
 end
 
 tests["route list needs: a suggested group of 2 or more tags it"] = function(t)
