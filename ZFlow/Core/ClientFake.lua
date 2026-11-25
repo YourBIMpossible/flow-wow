@@ -5226,3 +5226,27 @@ do
         return c
     end
 end
+
+-- § D-26 (Rotation/Audit.lua; lead section 746): one CLIENT NEED, stubbed
+-- here only. Core/Client.lua does not have it yet.
+--   c.onKeyPress(fn) -> cancel: fn() at each press of the rotation key.
+--   c.pressKey() plays one press: calls every fn not cancelled.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local fns = {}
+        function c.onKeyPress(fn)
+            if type(fn) ~= "function" then return nil end
+            local entry = { fn = fn }
+            fns[#fns + 1] = entry
+            return function() entry.cancelled = true end
+        end
+        function c.pressKey()
+            for _, e in ipairs(fns) do
+                if not e.cancelled then e.fn() end
+            end
+        end
+        return c
+    end
+end
