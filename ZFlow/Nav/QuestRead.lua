@@ -29,6 +29,8 @@ local _, ns = ...
 --   opts.learned (optional, S43): a function giving the player's own
 --   learned quest spots (Nav/QuestSpots.lua, account QS.PATH); where
 --   Questie gives no place on this map they are used (QS.Merge).
+--   opts.trip (optional, A1-24): a function giving the trip route module
+--   of the caller's kernel; its AutoStep() takes the quest step's place.
 --   The log and the places are read again only after refresh(), when the
 --   player's map changes, and now and then while Questie is not ready.
 ns.Nav = ns.Nav or {}
@@ -271,6 +273,7 @@ end
 function N.QuestWatch(client, opts)
     local zoneFirst = type(opts) == "table" and type(opts.zoneFirst) == "function" and opts.zoneFirst or nil
     local learned = type(opts) == "table" and type(opts.learned) == "function" and opts.learned or nil
+    local tripOf = type(opts) == "table" and type(opts.trip) == "function" and opts.trip or nil
     local Q = N.QuestSource
     local rows, places, map
     local stale, waited, since = true, 0, 0
@@ -323,7 +326,11 @@ function N.QuestWatch(client, opts)
         -- A1-24 (lead section 739): the route planned by itself takes this,
         -- the quest arrow's own pick's place in the step chain, when the
         -- player has it walked (Nav/TripRoute.lua AutoStep).
-        local trip = ns.tripRoute
+        local trip
+        if tripOf then
+            local okT, v = pcall(tripOf)
+            if okT then trip = v end
+        end
         if type(trip) == "table" and type(trip.AutoStep) == "function" then
             local okA, auto = pcall(trip.AutoStep)
             if okA and type(auto) == "table" then

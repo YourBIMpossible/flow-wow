@@ -580,6 +580,12 @@ function Arrow.Start(k, diag, own)
     -- there is no waypoint. Read-only; nil when that file is not loaded.
     local quests = N.QuestWatch and N.QuestSource
         and N.QuestWatch(client, { zoneFirst = function() return Arrow.ZoneFirstOn(k) end,
+            -- A1-24: the route planned by itself, from this kernel's own
+            -- trip route module (lead item 28), not a file-wide one.
+            trip = function()
+                if not k.use then return nil end
+                return k.use("tripRoute")
+            end,
             -- S43: the spots this player learned, where Questie gives none.
             learned = function()
                 local QS = N.QuestSpots
