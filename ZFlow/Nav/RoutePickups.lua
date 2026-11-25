@@ -288,11 +288,12 @@ function P.Read(client, here, log, opts)
                faction = ask(client, "faction") },
         done = function(id) return ask(client, "questDone", id) end,
         -- A2-17: names for the reason a pick-up is held (Questie's quest
-        -- name, the game's spell name). Whether a spell is known by its id
-        -- has no client read yet (a CLIENT NEED), so a spell need holds
-        -- nothing until there is one.
+        -- name, the game's spell name), and whether a spell is known: the
+        -- client's own spell read (c.spell(id).known: C_SpellBook.IsSpellKnown,
+        -- else IsPlayerSpell; nil when it cannot say, which holds nothing).
         questName = function(id) return quick(db, id, "name") end,
         spellName = function(id) return ask(client, "spellName", id) end,
+        spellKnown = function(id) local s = ask(client, "spell", id) if type(s) == "table" then return s.known end return nil end,
         low = low,
         grouped = ask(client, "grouped"), holdOn = holdOn(), lowOn = lowOn(),
         battlegrounds = battlegroundsOn(),
