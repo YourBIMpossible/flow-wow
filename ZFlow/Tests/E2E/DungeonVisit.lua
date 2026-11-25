@@ -88,9 +88,10 @@ tests["dungeon word: inside, the name, your quests done or not, what to pick up,
     t.ok(has(lines, ns.id.title .. ": The Deadmines: 1 of its quests in your log: Red Silk (not done)"),
         "the name and the quest in your log: " .. tostring(lines[1]))
     t.ok(has(lines, "  Not in your log (1): Collecting Memories (Gryan)"), "the one to pick up: " .. tostring(lines[2]))
-    t.ok(has(lines, "  No boss killed yet this visit."), "no kill yet: " .. tostring(lines[3]))
-    t.ok(has(lines, "  Last run here: time not known yet."), "no run timed yet: " .. tostring(lines[4]))
-    t.eq(#lines, 4)
+    t.ok(has(lines, "  " .. tostring(ns.DungeonVisit.EARLIER)), "R-03, an earlier quest may come first")
+    t.ok(has(lines, "  No boss killed yet this visit."), "no kill yet: " .. tostring(lines[4]))
+    t.ok(has(lines, "  Last run here: time not known yet."), "no run timed yet: " .. tostring(lines[5]))
+    t.eq(#lines, 5)
     t.eq(addon.problems:count(), base, "no new problem")
 end
 
@@ -146,7 +147,10 @@ tests["dungeon word: the lines, pure"] = function(t)
         { { name = "Boss One" }, { id = 5 } }, true)
     t.eq(lines[1], "Test Keep: 2 of its quests in your log: A (done, hand it in), B (not done)")
     t.eq(lines[2], "Not in your log (7): Quest 1 (Giver); Quest 2; Quest 3; Quest 4; Quest 5; Quest 6; and 1 more")
-    t.eq(lines[3], "Bosses killed this visit (2): Boss One, a boss")
+    -- R-03 (lead section 777): Flow's third line when some are not in your
+    -- log (Modules/Nav/Dungeons.lua D.EnterLines :1144), in our own words.
+    t.eq(lines[3], "One of these may need an earlier quest done first: go back for it, or ask your group to share it.")
+    t.eq(lines[4], "Bosses killed this visit (2): Boss One, a boss")
     t.eq(V.KillLine({ { name = "Boss One" } }, false), V.NO_REPORT)
     local have, miss = V.Quests({ groups = {
         { id = "log", rows = { { id = 2, name = "Zed" }, { id = 1, name = "Abe" } } },
@@ -220,6 +224,7 @@ tests["dungeon entering: walking in says your quests for it, once"] = function(t
     walkIn(c)
     t.eq(times(c, ns.id.title .. IN_LOG), 1, "the quests in your log")
     t.eq(times(c, PICK_UP), 1, "the ones to pick up")
+    t.eq(times(c, "  " .. tostring(ns.DungeonVisit.EARLIER)), 1, "R-03: an earlier quest may come first")
     c.fire("ZONE_CHANGED_NEW_AREA"); c.fire("QUEST_LOG_UPDATE")
     c.advance(1, 5)
     t.eq(times(c, ns.id.title .. IN_LOG), 1, "not said again inside")

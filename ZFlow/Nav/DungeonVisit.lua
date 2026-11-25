@@ -10,7 +10,8 @@
 --   on entering        (B-47, section 490 item 3) the quest lines of that
 --                      summary are said once when you enter a dungeon: one
 --                      line for the quests in your log, one for the ones to
---                      pick up. Nothing is said for a dungeon with no quest
+--                      pick up and, with those, that one may need an
+--                      earlier quest first (R-03). Nothing is said for a dungeon with no quest
 --                      for you, or with the dungeon tracker setting off
 --                      (UI/DungeonTracker.lua T.SETTING). They are not said
 --                      again on a reload inside the same run.
@@ -150,6 +151,9 @@ V.QUEST_DONE = "done, hand it in"
 V.QUEST_OPEN = "not done"
 V.NOT_IN_LOG = "Not in your log (%d): %s"
 V.MORE = "; and %d more"
+-- R-03 (lead section 777): Flow's third line when some quests are not in
+-- your log (Modules/Nav/Dungeons.lua D.EnterLines :1144), our own words.
+V.EARLIER = "One of these may need an earlier quest done first: go back for it, or ask your group to share it."
 V.MAX = 6
 V.KILLS = "Bosses killed this visit (%d): %s"
 V.KILLS_WING = "Bosses killed this visit (%d of %d in this wing): %s"
@@ -251,6 +255,7 @@ function V.QuestLines(name, have, missing, max)
         local line = V.NOT_IN_LOG:format(#missing, table.concat(said, "; "))
         if #missing > max then line = line .. V.MORE:format(#missing - max) end
         out[#out + 1] = line
+        out[#out + 1] = V.EARLIER
     end
     return out
 end
