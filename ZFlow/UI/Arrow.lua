@@ -483,6 +483,20 @@ function Arrow.HasQuestie(k)
     return ok and m ~= nil
 end
 
+-- Parity row A1-28 (lead section 794): Hide this step on a route step also
+-- keeps that quest step off the next route, saved per character by
+-- Nav/HiddenSteps.lua. Without that file it does nothing, and Hide this step
+-- only skips, as before. Answers whether the step was kept hidden.
+function Arrow.KeepHidden(step, store)
+    local HS = ns.Nav and ns.Nav.HiddenSteps
+    if type(HS) ~= "table" or type(HS.Hide) ~= "function" or type(HS.KeyOf) ~= "function" then return false end
+    if type(step) ~= "table" then return false end
+    local okKey, key = pcall(HS.KeyOf, step)
+    if not okKey or key == nil then return false end
+    local ok, done = pcall(HS.Hide, store, key, step.label)
+    return ok and done == true
+end
+
 -- The why step for the quest arrow, or nil when the player chose not to see
 -- it. quests: the N.QuestWatch the step was asked of (nil: not loaded).
 function Arrow.WhyStep(k, quests, prof)
@@ -1286,6 +1300,17 @@ function Arrow.Start(k, diag, own)
     end
     function routeChoose(action)
         if action.hide == "route" then
+            -- The step being skipped is read first, so it can be kept hidden.
+            -- (A route planned by itself answers through AutoStep, A1-24.)
+            local step = nil
+            for _, ask in ipairs({ "Step", "AutoStep" }) do
+                local current = using("tripRoute", ask)
+                if step == nil and current then
+                    local okStep, got = pcall(current)
+                    if okStep and type(got) == "table" then step = got end
+                end
+            end
+            if step then Arrow.KeepHidden(step, k.store) end
             run("the route", using("tripRoute", "Skip"))
         elseif action.hide == "errand" then
             run("the errand stop", using("errand", "Clear"))

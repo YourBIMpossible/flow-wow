@@ -43,7 +43,8 @@ local _, ns = ...
 -- when on the way (N.RoutePlan's optional rule, TN-2), else listed as
 -- skipped. A pick-up stop drops out once its quest is in the log. Why
 -- there are none (no Questie) is one line under the route.
---   T.Plan(rows, places, here, legs, pickups, note)
+--   T.Plan(rows, places, here, legs, pickups, note, store)
+--     store (optional): the steps hidden there stay off (T.Unhidden, A1-28)
 --   T.Need(text, done) -> line or nil   (S43, lead section 391 item 4) how
 --     many of the thing an objective still needs, read from the quest log's
 --     own objective text ("Gnoll Paw: 4/8" -> "You still need 4 of Gnoll
@@ -284,6 +285,18 @@ function T.Stops(rows, places, here)
         end
     end
     return stops, left
+end
+
+-- Parity row A1-28 (lead section 794): the steps the player hid from the
+-- arrow's menu stay off the route. The list is kept by Nav/HiddenSteps.lua;
+-- while that file is not loaded, or it fails, every step stays, so a fault
+-- there never empties the route.
+function T.Unhidden(stops, store)
+    local HS = N.HiddenSteps
+    if type(HS) ~= "table" or type(HS.Filter) ~= "function" or store == nil then return stops end
+    local ok, kept = pcall(HS.Filter, stops, store)
+    if ok and type(kept) == "table" then return kept end
+    return stops
 end
 
 -- S34 (lead dispatch section 395 item 2): a leg's seconds. A leg is in
@@ -575,10 +588,11 @@ function T.Shown(route, n)
     return out
 end
 
-function T.Plan(rows, places, here, legs, pickups, note)
+function T.Plan(rows, places, here, legs, pickups, note, store)
     here = type(here) == "table" and here or {}
     if here.map == nil then return nil, T.WHY_NO_MAP end
     local stops, left = T.Stops(rows, places, here)
+    stops = T.Unhidden(stops, store)
     pickups = type(pickups) == "table" and pickups or {}
     if #stops == 0 and #pickups == 0 then return nil, T.WHY_NONE end
     local w, h, yards = scale(here)
@@ -1079,6 +1093,9 @@ function T.Declare(k, diag)
             end
             pickups, note = RP.Read(c, here, log, { low = T.ModeFlags(mode()).low })
         end
+        -- A1-28: the steps the player hid stay off (T.Unhidden).
+        local store
+        if ctx then store = ctx.store end
         local function extrasOf(town)
             local extras = {}
             for _, p in ipairs(town) do extras[#extras + 1] = p end
@@ -1090,7 +1107,7 @@ function T.Declare(k, diag)
         -- one is chosen is the route planned again with its stop in. One
         -- more plan for each route word, never one a frame.
         local town, aside = townStops(c, here, nil)
-        local r, why = T.Plan(rows, places or {}, here, legs, extrasOf(town), note)
+        local r, why = T.Plan(rows, places or {}, here, legs, extrasOf(town), note, store)
         if not r then return nil, why, note end
         -- A route planned by the player: the one planned by itself may come
         -- back once this one ends.
@@ -1101,7 +1118,7 @@ function T.Declare(k, diag)
             if type(p) == "table" and p.kind == "hearth" then hasInn = true end
         end
         if hasInn then
-            local again = T.Plan(rows, places or {}, here, legs, extrasOf(withInn), note)
+            local again = T.Plan(rows, places or {}, here, legs, extrasOf(withInn), note, store)
             if again then r, aside = again, asideInn end
         end
         for _, a in ipairs(aside or {}) do
