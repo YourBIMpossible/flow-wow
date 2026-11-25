@@ -17,11 +17,8 @@
 --   (the predecessor's rule: no line to a stop you are not walking to next).
 --   Your waypoint (client.waypoint, the one the arrow points at in green):
 --   a green line from you to it, clipped at the map's edge the same way.
--- Nothing is drawn when no line falls on the shown map. The lines have
--- their own setting, MRL.SETTING (on at first; lead section 519 slice 2,
--- S3-05): off, no line is drawn, and the route list, the numbers and the
--- zone card stay. The list's setting (RL.SETTING, UI/RouteList.lua) no
--- longer turns the lines off.
+-- Nothing is drawn when no line falls on the shown map. The setting
+-- RL.SETTING (UI/RouteList.lua) turns it off with the list and the marks.
 --
 -- LOOK ONLY: nothing is moved, targeted, cast, clicked or sent.
 --
@@ -42,9 +39,6 @@ local MRL = {}
 ns.MapRouteLines = MRL
 
 MRL.NAME = "mapRouteLines"
-MRL.SETTING = "nav.mapLines"
-MRL.LABEL = "Show route lines on the map"
-MRL.HELP = "Draws your route on the world map: a line from you to the next stop and on through the stops after it, and a green line to your own waypoint. Off hides only these lines: the route list beside the quest log, the numbered stops and the zone card stay."
 MRL.EVERY = 0.25
 MRL.FIRST_ALPHA, MRL.REST_ALPHA = 0.8, 0.45
 -- The predecessor's standard palette (Modules/Theme.lua): "distance" for
@@ -140,12 +134,11 @@ function MRL.Declare(k)
     local ctx, handle
     local drawn, lastSig = false, nil
 
-    -- Off only when the lines' own setting says false; a read that fails
-    -- is not off.
     local function on()
+        local RL = ns.RouteList
         local s = ctx and ctx.settings
-        if type(s) ~= "table" or type(s.get) ~= "function" then return true end
-        local ok, v = pcall(s.get, s, MRL.SETTING)
+        if not RL or type(s) ~= "table" or type(s.get) ~= "function" then return true end
+        local ok, v = pcall(s.get, s, RL.SETTING)
         return not (ok and v == false)
     end
 
@@ -194,10 +187,6 @@ function MRL.Declare(k)
         if ok then lastSig = sig else lastSig = nil end
         return lines
     end
-
-    k:Setting({ key = MRL.SETTING, scope = "account", type = "bool", default = true,
-        label = MRL.LABEL, group = "travel.route", help = MRL.HELP,
-        synonyms = { "route", "lines", "line", "path", "trail", "map", "world map", "waypoint" } })
 
     k:Module({
         name = MRL.NAME,

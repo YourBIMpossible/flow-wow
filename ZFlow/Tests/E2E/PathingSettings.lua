@@ -1,21 +1,23 @@
 local _, ns = ...
--- Pathing settings end to end (lead section 519 slice 2, audit S3-05), on
--- the whole add-on loaded on a fake client. One setting used to hide the
--- route list, the numbers and zone card on the map AND the lines on the
--- world map. Now the lines have their own row, the minimap pin of the
--- waypoint has a row, and the words of each row say what it hides. Both
--- new rows are on at first, so a saved account with neither key plays as
--- before.
+-- Pathing settings end to end (lead sections 519, 532 and 543, slice 2,
+-- audit S3-05), on the whole add-on loaded on a fake client. The words are
+-- the design spec, word for word (from-muse
+-- MUSE-TO-CLAUDE-SLICE-2-SETTINGS.md): the help of the route row says it
+-- hides the map trail too; the minimap pin of the waypoint has a row; the
+-- key of the route marker has a row; the row of the profession arrow names
+-- every step it covers. The row for the map trail itself belongs to slice
+-- 3, not here. Both new rows are on at first, so a saved account with
+-- neither key plays as before.
 -- Look only: nothing is moved, targeted or clicked. Made-up places. Not
 -- tested in game.
 --
--- Red before the code: no row "nav.mapLines" and none "nav.waypointPin";
--- the route setting off also clears the lines; its help says nothing of
--- the lines; the row of the profession arrow names the trainer only.
+-- Red before the code: no row "nav.waypointPin" and none "nav.minimapPin";
+-- the help of the route row says nothing of the trail; the row of the
+-- profession arrow names the trainer only.
 local tests = {}
 
 local PANEL = "nav.routePanel"
-local LINES = "nav.mapLines"
+local MARKER = "nav.minimapPin"
 local PIN = "nav.waypointPin"
 local PROF = "nav.profArrow"
 
@@ -90,26 +92,20 @@ local function declaredTimes(addon, key)
     return n
 end
 
-tests["pathing settings: the map lines have their own row, on at first, and it says what it hides"] = function(t)
-    local _, addon = boot()
-    local row = rowOf(addon, LINES)
-    t.ok(row ~= nil, LINES .. " is a declared row")
-    if not row then return end
-    t.eq(row.scope, "account")
-    t.eq(row.type, "bool")
-    t.eq(row.default, true, "on at first")
-    t.eq(addon.settings:get(LINES), true, "read as on with nothing saved")
-    t.eq(row.label, "Show route lines on the map")
-    t.ok(holds(row.help, "lines"), "the help names the lines: " .. tostring(row.help))
-    t.ok(holds(row.help, "world map"), "the help says where: " .. tostring(row.help))
-    t.ok(holds(row.help, "list"), "the help says the list stays: " .. tostring(row.help))
-    t.ok(addon.Settings.Topics.Find(row.group) ~= nil, "it names a topic of the one list: " .. tostring(row.group))
-    t.ok(type(row.synonyms) == "table" and #row.synonyms > 0, "it lists synonyms")
-    t.eq(declaredTimes(addon, LINES), 1, "declared once")
-    t.eq(ns.MapRouteLines.SETTING, LINES, "the lines module names its own setting")
-end
+local PANEL_HELP = 'Shows the stops of your route in order beside the quest log while it is open, and numbers '
+    .. 'them on the world map with a card for the zone. Turning it off hides the list, the map pins, the zone '
+    .. 'card and the map trail together. To hide only the trail, turn off "Show route lines on the map" instead.'
+local PIN_LABEL = "Show your waypoint on the minimap"
+local PIN_HELP = "Puts a green dot on the minimap for a waypoint you set yourself, so you can see it without "
+    .. "opening the map."
+local MARKER_LABEL = "Show the route marker on the minimap"
+local MARKER_HELP = "Shows one dot on the minimap for your current step. Turning it off hides the dot; the arrow "
+    .. "still points the way."
+local PROF_LABEL = "Profession arrow"
+local PROF_HELP = "Shows a second, purple arrow for your profession steps: gathering in an area, smelting or "
+    .. "crafting at a station, learning at a trainer, or buying from a vendor."
 
-tests["pathing settings: the waypoint minimap pin has a row, on at first, and it says what it hides"] = function(t)
+tests["pathing settings: the waypoint minimap pin has a row, on at first, in the spec's words"] = function(t)
     local _, addon = boot()
     local row = rowOf(addon, PIN)
     t.ok(row ~= nil, PIN .. " is a declared row")
@@ -118,92 +114,70 @@ tests["pathing settings: the waypoint minimap pin has a row, on at first, and it
     t.eq(row.type, "bool")
     t.eq(row.default, true, "on at first, as before there was a row")
     t.eq(addon.settings:get(PIN), true, "read as on with nothing saved")
-    t.ok(holds(row.label, "waypoint"), "the label names the waypoint: " .. tostring(row.label))
-    t.ok(holds(row.label, "minimap"), "the label names the minimap: " .. tostring(row.label))
-    t.ok(holds(row.help, "pin"), "the help names the pin: " .. tostring(row.help))
-    t.ok(holds(row.help, "only"), "the help says only the pin goes: " .. tostring(row.help))
+    t.eq(row.label, PIN_LABEL)
+    t.eq(row.help, PIN_HELP)
     t.ok(addon.Settings.Topics.Find(row.group) ~= nil, "it names a topic of the one list: " .. tostring(row.group))
-    t.ok(type(row.synonyms) == "table" and #row.synonyms > 0, "it lists synonyms")
     t.eq(declaredTimes(addon, PIN), 1, "declared once")
     t.eq(ns.MinimapPin.SETTING, PIN, "the pin module names its own setting")
 end
 
+tests["pathing settings: the key of the route marker has a row, on at first, in the spec's words"] = function(t)
+    local _, addon = boot()
+    local row = rowOf(addon, MARKER)
+    t.ok(row ~= nil, MARKER .. " is a declared row")
+    if not row then return end
+    t.eq(row.scope, "account")
+    t.eq(row.type, "bool")
+    t.eq(row.default, true, "on at first")
+    t.eq(addon.settings:get(MARKER), true, "read as on with nothing saved")
+    t.eq(row.label, MARKER_LABEL)
+    t.eq(row.help, MARKER_HELP)
+    -- The sentence about the colour of the step comes with the slice that draws it.
+    t.ok(not holds(row.help, "colour"), "no word of the colour yet: " .. tostring(row.help))
+    t.ok(addon.Settings.Topics.Find(row.group) ~= nil, "it names a topic of the one list: " .. tostring(row.group))
+    t.eq(declaredTimes(addon, MARKER), 1, "declared once")
+end
+
 tests["pathing settings: a saved account with neither new key shows the list, the lines and the pin"] = function(t)
-    local c, addon = boot({})
-    t.eq(listShown(c), true, "the route list is shown beside the quest log")
-    t.eq(linesShown(c), true, "the lines are drawn on the world map")
-    t.eq(pinShown(c), true, "the waypoint pin is on the minimap")
-    t.eq(addon.settings:get(PANEL), true, "the route setting is on, as before")
-    t.eq(addon.settings:get(PROF), true, "the profession arrow is on, as before")
+    local c, addon = boot()
+    t.eq(addon.settings:get(PANEL), true)
+    t.eq(listShown(c), true, "the route list")
+    t.eq(linesShown(c), true, "the lines on the world map")
+    t.eq(pinShown(c), true, "the minimap pin of the waypoint")
 end
 
-tests["pathing settings: the map lines off hides the lines and keeps the list and the pin"] = function(t)
+tests["pathing settings: the route setting off hides the list and the map trail together"] = function(t)
     local c, addon = boot()
     local before = addon.problems:count()
-    t.eq(linesShown(c), true, "on: the lines are drawn")
-    local ok = addon.settings:set(LINES, false)
-    t.ok(ok, "the row can be switched off")
+    t.ok(addon.settings:set(PANEL, false), "the row can be switched off")
     step(c)
-    t.eq(linesShown(c), false, "off: no line on the world map")
-    t.eq(listShown(c), true, "off: the route list is still shown")
-    t.eq(pinShown(c), true, "off: the minimap pin is still shown")
-    addon.settings:set(LINES, true)
-    step(c)
-    t.eq(linesShown(c), true, "on again: the lines are back")
-    t.eq(addon.problems:count(), before, "no problem was counted")
-end
-
-tests["pathing settings: the map lines saved off draws no line from the start"] = function(t)
-    local c, addon = boot({ settings = { nav = { mapLines = false } } })
-    t.eq(addon.settings:get(LINES), false, "the saved choice is read")
-    t.eq(linesShown(c), false, "no line on the world map")
-    t.eq(listShown(c), true, "the route list is shown")
-end
-
-tests["pathing settings: the route setting off hides the list and leaves the lines to their own row"] = function(t)
-    local c, addon = boot()
-    local before = addon.problems:count()
-    t.eq(listShown(c), true, "on: the list is shown")
-    addon.settings:set(PANEL, false)
-    step(c)
-    t.eq(listShown(c), false, "off: the route list is hidden")
-    t.eq(linesShown(c), true, "off: the lines stay, their own row is on")
-    t.eq(pinShown(c), true, "off: the minimap pin stays")
-    addon.settings:set(LINES, false)
-    step(c)
-    t.eq(linesShown(c), false, "both off: no lines either")
+    t.eq(listShown(c), false, "off: the list goes")
+    t.eq(linesShown(c), false, "off: the map trail goes with it")
+    t.eq(pinShown(c), true, "off: the minimap pin of the waypoint stays")
     addon.settings:set(PANEL, true)
     step(c)
-    t.eq(listShown(c), true, "the list is back")
-    t.eq(linesShown(c), false, "and the lines stay off with their own row")
+    t.eq(listShown(c), true, "on again: the list is back")
+    t.eq(linesShown(c), true, "on again: the trail is back")
     t.eq(addon.problems:count(), before, "no problem was counted")
 end
 
-tests["pathing settings: the route setting saved off still draws the lines"] = function(t)
-    local c = boot({ settings = { nav = { routePanel = false } } })
-    t.eq(listShown(c), false, "no route list")
-    t.eq(linesShown(c), true, "the lines are drawn")
-end
-
-tests["pathing settings: the help of the route row says what it hides and where the lines went"] = function(t)
+tests["pathing settings: the help of the route row is the spec's and says the trail goes too"] = function(t)
     local _, addon = boot()
     local row = rowOf(addon, PANEL)
     t.ok(row ~= nil, PANEL .. " is a declared row")
     if not row then return end
     t.eq(row.default, true, "still on at first")
     t.eq(row.scope, "account", "still saved for the account")
-    t.ok(holds(row.help, "quest log"), "the list beside the quest log: " .. tostring(row.help))
-    t.ok(holds(row.help, "card"), "the zone card: " .. tostring(row.help))
-    t.ok(holds(row.help, "lines"), "it mentions the lines: " .. tostring(row.help))
-    t.ok(holds(row.help, "show route lines on the map"), "it names the row the lines have: " .. tostring(row.help))
+    t.eq(row.label, "Show the route beside the quest log and on the map", "the label is as it was")
+    t.eq(row.help, PANEL_HELP)
+    t.ok(holds(row.help, "map trail"), "it mentions the trail")
 end
 
 tests["pathing settings: the minimap pin off hides only that pin; on shows it again"] = function(t)
     local c, addon = boot()
     local before = addon.problems:count()
     t.eq(pinShown(c), true, "on: the pin is shown")
-    local ok = addon.settings:set(PIN, false)
-    t.ok(ok, "the row can be switched off")
+    t.ok(addon.settings:set(PIN, false), "the row can be switched off")
     step(c)
     t.eq(pinShown(c), false, "off: the pin is hidden")
     t.eq(linesShown(c), true, "off: the lines on the world map stay")
@@ -223,7 +197,17 @@ tests["pathing settings: the minimap pin saved off makes no pin"] = function(t)
     t.eq(linesShown(c), true, "the lines are drawn")
 end
 
-tests["pathing settings: the row of the profession arrow names every step it covers"] = function(t)
+tests["pathing settings: the route marker row off leaves the waypoint pin, the list and the lines"] = function(t)
+    local c, addon = boot()
+    t.ok(addon.settings:set(MARKER, false), "the row can be switched off")
+    step(c)
+    t.eq(addon.settings:get(MARKER), false, "the choice is kept")
+    t.eq(pinShown(c), true, "the pin of the waypoint belongs to another row")
+    t.eq(listShown(c), true, "the route list stays")
+    t.eq(linesShown(c), true, "the lines stay")
+end
+
+tests["pathing settings: the row of the profession arrow is the spec's and names every step it covers"] = function(t)
     local _, addon = boot()
     local row = rowOf(addon, PROF)
     t.ok(row ~= nil, PROF .. " is a declared row")
@@ -231,12 +215,16 @@ tests["pathing settings: the row of the profession arrow names every step it cov
     t.eq(row.default, true, "still on at first")
     t.eq(row.scope, "account", "still saved for the account")
     t.eq(row.group, "travel.arrow", "still filed with the arrow")
-    local words = tostring(row.label) .. " " .. tostring(row.help)
-    for _, word in ipairs({ "trainer", "gather", "craft", "buy" }) do
-        t.ok(holds(words, word), "the row says " .. word .. ": " .. words)
+    t.eq(row.label, PROF_LABEL)
+    t.eq(row.help, PROF_HELP)
+    -- The sentence about sitting behind and sliding out comes with the echo.
+    t.ok(not holds(row.help, "slides"), "no word of the slide yet")
+    local said = {}
+    for _, word in ipairs(type(row.synonyms) == "table" and row.synonyms or {}) do said[word] = true end
+    for _, word in ipairs({ "profession", "trainer", "arrow", "gather", "craft", "buy", "smelt", "skill cap" }) do
+        t.ok(said[word] == true, "a synonym: " .. word)
     end
-    t.ok(row.label ~= "Profession trainer arrow", "the label is not the trainer alone")
-    t.ok(type(row.help) == "string" and row.help ~= "", "the row has help")
+    t.ok(said["needle"] ~= true, "the needle is gone")
 end
 
 return tests

@@ -129,17 +129,9 @@ tests["module: the map closed or the setting off clears the lines"] = function(t
     h.c.setWorldMap(1)
     h.c.advance(1, 8)
     t.eq(set.shown, true)
-    -- Lead section 519 slice 2: the list's setting no longer clears the
-    -- lines; their own setting does.
     h.k.settings:set(RL().SETTING, false)
     h.c.advance(1, 8)
-    t.eq(set.shown, true, "the list's setting leaves the lines")
-    h.k.settings:set(MRL().SETTING, false)
-    h.c.advance(1, 8)
-    t.eq(set.shown, false, "the lines' own setting clears them")
-    h.k.settings:set(MRL().SETTING, true)
-    h.c.advance(1, 8)
-    t.eq(set.shown, true, "and back")
+    t.eq(set.shown, false)
 end
 
 return tests
