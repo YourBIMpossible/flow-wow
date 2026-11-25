@@ -319,3 +319,5 @@ tests["flow fight: the assistant read, pure"] = function(t)
     t.eq(D.Assistant({}), nil, "no such read")
     t.eq(D.Assistant(nil), nil)
 end
+
+return tests
