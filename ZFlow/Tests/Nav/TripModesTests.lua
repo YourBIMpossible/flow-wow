@@ -82,4 +82,49 @@ tests["steps shown: the first n of the route, or all"] = function(t)
     t.eq(T().Shown(nil, 2), nil)
 end
 
+-- A1-29 (lead section 646): sort by XP, from the player's own Questie
+-- (QuestXP:GetQuestLogRewardXP). A made-up module; no Questie data here.
+local function fakeXp(values)
+    local mod = {}
+    function mod.GetQuestLogRewardXP(self, id)
+        if self ~= mod then error("called without self") end
+        if values[id] == "raise" then error("no data") end
+        return values[id]
+    end
+    return mod
+end
+
+tests["sort by XP: a quest's XP from Questie; 0, nil or an error is not known"] = function(t)
+    local xpOf = T().XpOf(fakeXp({ [1] = 450, [2] = 0, [4] = "raise" }))
+    t.eq(xpOf(1), 450)
+    t.eq(xpOf(2), nil, "0: not known")
+    t.eq(xpOf(3), nil, "no entry")
+    t.eq(xpOf(4), nil, "a read that raises")
+    t.eq(xpOf(nil), nil)
+    t.eq(T().XpOf(nil)(1), nil, "no Questie module")
+end
+
+tests["sort by XP: most XP first; quests not known keep their order after them"] = function(t)
+    local stops = {
+        stop("Near, unknown", 0.5, 0.5, { quest = 9 }),
+        stop("Small", 0.6, 0.5, { quest = 1 }),
+        stop("Town stop", 0.7, 0.5, { kind = "sell" }),
+        stop("Big", 0.8, 0.5, { quest = 2 }),
+        stop("Big again", 0.9, 0.5, { quest = 2, objective = 2 }),
+    }
+    local out = T().SortXp(stops, function(id) return ({ [1] = 100, [2] = 900 })[id] end)
+    t.eq(out[1].label, "Big")
+    t.eq(out[2].label, "Big again", "the same quest's stops stay in their order")
+    t.eq(out[3].label, "Small")
+    t.eq(out[4].label, "Near, unknown", "not known: after the known ones, in planned order")
+    t.eq(out[5].label, "Town stop")
+end
+
+tests["sort by XP: the word's choice, distance unless xp"] = function(t)
+    t.eq(T().SortOf("xp"), "xp")
+    t.eq(T().SortOf("distance"), "distance")
+    t.eq(T().SortOf(nil), "distance")
+    t.eq(T().SortOf("gold"), "distance")
+end
+
 return tests
