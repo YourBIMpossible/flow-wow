@@ -215,9 +215,11 @@ local pack = {
             .. "needs a check in the game client. Nothing copied from proprietary data.",
     },
 
+    -- trees: the talent tree names the game gives (GetTalentTabInfo), as in
+    -- this pack's talentBuilds trees list below.
     roles = {
-        dps  = { name = "Shadow", evidence = GUESS },
-        heal = { name = "Holy", evidence = GUESS },
+        dps  = { name = "Shadow", evidence = GUESS, trees = { "Shadow" } },
+        heal = { name = "Holy", evidence = GUESS, trees = { "Discipline", "Holy" } },
     },
 
     -- G31: the spec recommended while levelling alone, and why. Written for

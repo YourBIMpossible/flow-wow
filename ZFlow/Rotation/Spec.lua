@@ -108,13 +108,26 @@ end
 -- role. Only words: the rotation reads none of this, so what the key casts
 -- is unchanged. Talents are read as the client gives them (each tree's
 -- name and points spent: CLIENT NEED talentTrees), and a tree is matched
--- to a role by the pack's own name for that role. No talent table is
--- written here.
+-- to a role by the role's trees in the pack (the game's tree names), else
+-- the pack's own name for that role. A tree no role holds names no role.
 --
 --   Sp.FromTalents(pack, trees) -> role, tree name, points; or nil
 --   Sp.Source(pack, chosen, trees) -> { role, from, talents, tree, points }
 --     from: "setting", "talents" or "default"
 --   Sp.SourceLines(pack, chosen, trees) -> lines
+-- Does a role row hold the tree? The row's own trees (the game's tree
+-- names, Rotation/Pack.lua), else the pack's name for the role.
+local function treeIn(row, name, tree)
+    local want = tree:lower()
+    if type(row.trees) == "table" then
+        for _, t in ipairs(row.trees) do
+            if type(t) == "string" and t:lower() == want then return true end
+        end
+        return false
+    end
+    return name ~= nil and name:lower() == want
+end
+
 function Sp.FromTalents(pack, trees)
     if type(pack) ~= "table" or type(pack.roles) ~= "table" or type(trees) ~= "table" then return nil end
     local best, bestPoints, tie = nil, 0, false
@@ -130,8 +143,8 @@ function Sp.FromTalents(pack, trees)
     -- An even split says nothing about which way the build leans.
     if best == nil or tie then return nil end
     for _, role in ipairs({ "dps", "heal", "tank" }) do
-        local _, name = partOf(pack, role)
-        if name ~= nil and name:lower() == best:lower() then return role, name, bestPoints end
+        local row, name = partOf(pack, role)
+        if row ~= nil and treeIn(row, name, best) then return role, best, bestPoints end
     end
     return nil
 end
