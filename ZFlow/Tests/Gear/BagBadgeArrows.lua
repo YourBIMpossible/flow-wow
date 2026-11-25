@@ -142,9 +142,9 @@ tests["bag arrows: the module draws them and off draws none; nothing is equipped
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     local P = BB().Piece
     t.eq(c.bagMarks(), {
-        { bag = 0, slot = 1, text = P("dps", "down") .. P("tank", "down") },
-        { bag = 0, slot = 2, text = P("dps", "up") .. P("tank", "up") },
-    })
+        { bag = 0, slot = 1, text = P("dps", "down") },
+        { bag = 0, slot = 2, text = P("dps", "up") },
+    }, "no role chosen, no tank sign: dps only")
     t.eq(k.settings:set(BB().SETTING, false), true)
     c.fire("BAG_UPDATE_DELAYED")
     t.eq(c.bagMarks(), {})

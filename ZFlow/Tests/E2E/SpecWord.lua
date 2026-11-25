@@ -251,14 +251,15 @@ end
 
 local DPS, TANK = "Upgrade for your head piece (+8, dps)", "Upgrade for your head piece (+4.8, tank)"
 
-tests["spec e2e: no role chosen - the tooltip has a verdict for every role"] = function(t)
+tests["spec e2e: no role chosen - the tooltip has the active role's verdict only (lead section 561)"] = function(t)
     local c = boot({ class = "WARRIOR", level = 10 })
     gearUp(c)
     local lines = hover(c, STRONG)
-    t.ok(at(lines, DPS) ~= nil and at(lines, TANK) ~= nil, table.concat(lines, " | "))
+    t.eq(lines[1], DPS, "no tank sign: dps")
+    t.eq(at(lines, TANK), nil, table.concat(lines, " | "))
 end
 
-tests["spec e2e: the role word drives the tooltip verdict, and none brings every role back"] = function(t)
+tests["spec e2e: the role word drives the tooltip verdict, and none goes back to the active role"] = function(t)
     local c = boot({ class = "WARRIOR", level = 10 })
     gearUp(c)
     said(c, "role tank")
@@ -271,7 +272,8 @@ tests["spec e2e: the role word drives the tooltip verdict, and none brings every
     t.eq(at(lines, TANK), nil, "no verdict for a role not chosen: " .. table.concat(lines, " | "))
     said(c, "role none")
     lines = hover(c, STRONG)
-    t.ok(at(lines, DPS) ~= nil and at(lines, TANK) ~= nil, "none: " .. table.concat(lines, " | "))
+    t.eq(lines[1], DPS, "none, no tank sign: dps")
+    t.eq(at(lines, TANK), nil, "none: " .. table.concat(lines, " | "))
 end
 
 tests["spec e2e: a role the pack has no weights for - the tooltip keeps every role"] = function(t)

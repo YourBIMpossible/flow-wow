@@ -214,7 +214,7 @@ tests["gear tooltip: hovering gear adds its lines to the tooltip, coloured by to
     local k = start(c)
     t.eq(k:ModuleState(M.NAME), "started")
     local added = c.hover(HELM)
-    t.eq(texts(added), { "Upgrade for your head piece (+4, dps)", "Upgrade for your head piece (+12, tank)" })
+    t.eq(texts(added), { "Upgrade for your head piece (+4, dps)" }, "no role chosen, no tank sign: dps (lead section 561)")
     t.eq({ added[1].r, added[1].g, added[1].b }, M.COLOUR.good)
     added = c.hover(PLATE)
     t.eq(texts(added), { "Can't use: " .. ns.GearUsable.REASON.unmet .. ": Plate" })
@@ -334,7 +334,7 @@ end
 tests["gear tooltip G15: a non-weapon, even one with a speed read, adds no speed line"] = function(t)
     local c = weaponClient()
     start(c)
-    t.eq(texts(c.hover(HELM)), { "Upgrade for your head piece (+4, dps)", "Upgrade for your head piece (+12, tank)" })
+    t.eq(texts(c.hover(HELM)), { "Upgrade for your head piece (+4, dps)" })
 end
 
 tests["gear tooltip G15: a weapon whose speed is not read adds no speed line"] = function(t)

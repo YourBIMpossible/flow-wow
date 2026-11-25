@@ -72,3 +72,43 @@ function V.Lines(gear, who)
     return lines, { result = result, use = use, unmapped = shapes.unmapped, ignored = shapes.ignored,
                     weights = evidence }
 end
+
+-- The active role (owner's report, lead section 561): gear is judged for
+-- one role, never "any role that gains". Legacy Flow Modules/Spec.lua
+-- 181-199 (ns.ResolveRole): the role chosen (spec.role) first, then the
+-- talents, then the class's levelling role ("dps" for every class). No
+-- talents are read in this client (Rotation/Role.lua), so a tank's own
+-- sign stands in for them: Righteous Fury up, or Bear Form / Dire Bear
+-- Form. Nothing else: "dps".
+--   role, from = GearRole.Active(chosen, signs)   pure; from is "chosen",
+--     "sign" or "class"; signs = { tank = true } when a tank sign is up
+--   role, from = GearRole.Read(client, chosen)    reads the signs
+local GR = {}
+ns.GearRole = GR
+
+GR.ROLES = { dps = true, heal = true, tank = true }
+GR.DEFAULT = "dps"
+GR.TANK_BUFFS = { "Righteous Fury" }
+GR.TANK_FORMS = { ["Bear Form"] = true, ["Dire Bear Form"] = true }
+
+function GR.Active(chosen, signs)
+    if type(chosen) == "string" and GR.ROLES[chosen] then return chosen, "chosen" end
+    if type(signs) == "table" and signs.tank == true then return "tank", "sign" end
+    return GR.DEFAULT, "class"
+end
+
+function GR.Read(client, chosen)
+    if type(chosen) == "string" and GR.ROLES[chosen] then return chosen, "chosen" end
+    local tank = false
+    if type(client) == "table" then
+        if type(client.unitBuff) == "function" then
+            local ok, up = pcall(client.unitBuff, "player", GR.TANK_BUFFS)
+            if ok and up == true then tank = true end
+        end
+        if not tank and type(client.formName) == "function" then
+            local ok, name = pcall(client.formName)
+            if ok and type(name) == "string" and GR.TANK_FORMS[name] then tank = true end
+        end
+    end
+    return GR.Active(chosen, { tank = tank })
+end

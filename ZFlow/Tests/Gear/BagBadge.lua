@@ -115,11 +115,11 @@ tests["bag badge: the module draws on login and bag changes; off draws none"] = 
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     t.eq(k:ModuleState(BB().NAME), "started")
-    local weak = { bag = 0, slot = 1, text = P("dps", "down") .. P("tank", "down") }
+    local weak = { bag = 0, slot = 1, text = P("dps", "down") }
     t.eq(c.bagMarks(), { weak }, "drawn at login")
     c.setBagItems(bags(WEAK, STRONG))
     c.fire("BAG_UPDATE_DELAYED")
-    t.eq(c.bagMarks(), { weak, { bag = 0, slot = 2, text = P("dps", "up") .. P("tank", "up") } }, "no role chosen")
+    t.eq(c.bagMarks(), { weak, { bag = 0, slot = 2, text = P("dps", "up") } }, "no role chosen, no tank sign: dps only")
     t.eq(k.settings:set(BB().SETTING, false), true)
     c.fire("BAG_UPDATE_DELAYED")
     t.eq(c.bagMarks(), {})

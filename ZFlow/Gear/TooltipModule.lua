@@ -377,7 +377,7 @@ function M.Declare(k, packs, diag)
                 if ctx.settings:get(M.SETTING) ~= true or type(add) ~= "function" then return end
                 -- The role always (the speed line names its preference);
                 -- the score lines only with their setting on.
-                local opts = { role = ctx.settings:get(M.ROLE) }
+                local opts = { role = (ns.GearRole.Read(ctx.client, ctx.settings:get(M.ROLE))) }
                 if ctx.settings:get(M.SCORE_SETTING) == true then opts.score = true end
                 -- Every line is worked out before the first is added, so an
                 -- error leaves the tooltip as the game made it.

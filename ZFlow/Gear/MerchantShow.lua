@@ -30,6 +30,7 @@ ns.GearMerchantShow = M
 
 M.NAME = "gearMerchantShow"
 M.SETTING = "gear.merchantMarks"
+M.ROLE = "spec.role"           -- Rotation/Role.lua's setting
 M.ID = "gear.merchant."      -- prompt ids: this and the line number
 M.PRIORITY = 1
 
@@ -74,7 +75,8 @@ function M.Declare(k, packs)
             ctx.bus:on(M.NAME, "MERCHANT_SHOW", function()
                 clear(advisor)
                 if ctx.settings:get(M.SETTING) ~= true or type(advisor) ~= "table" then return end
-                local ok, marks, info = pcall(ns.GearMerchantMarks.Marks, ctx.client, packs or ns.Packs)
+                local ok, marks, info = pcall(ns.GearMerchantMarks.Marks, ctx.client, packs or ns.Packs,
+                    ctx.settings:get(M.ROLE))
                 if not ok then
                     errors = errors + 1
                     local text = tostring(marks)
