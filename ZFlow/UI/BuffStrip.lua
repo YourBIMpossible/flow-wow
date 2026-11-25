@@ -50,6 +50,15 @@ B.SOON_TEXT = "Runs out soon. Cast it again."
 B.GONE = "ran out"
 B.GONE_TEXT = "Cast it again."
 B.LABEL = "Show your class buffs and their time left"
+-- Owner's report (lead section 561 item 6): "I have no idea what these are
+-- or why they're there." The strip says what it is in one line the first
+-- time it shows (this session only; B.EXPLAINED keeps that it was said),
+-- and it can be closed: closing it switches the setting off and one chat
+-- line says how to turn it back on.
+B.ABOUT = "Your own class buffs and the time each has left. Close this to switch it off."
+B.CLOSED = "\"%s\" is switched off. To show it again, open the settings (%s settings) and turn on \"%s\" under Combat."
+B.EXPLAINED = "layout.explained.buffStrip"
+B.ABOUT_ROWS = 2     -- rows of room for the one line, which may wrap
 B.HELP = "A small strip under your player frame lists your own class buffs with the time left, and names one that ran out so you can cast it again."
 
 local function finite(v)
@@ -86,8 +95,12 @@ function B.Rows(names, buffs, gone)
     return out
 end
 
-function B.Children(rows)
+-- about: the one line that says what the strip is, or nil.
+function B.Children(rows, about)
     local kids = { { kind = "header", key = "header", title = B.HEADER } }
+    if type(about) == "string" and about ~= "" then
+        kids[#kids + 1] = { kind = "line", key = "about", text = about, wrap = true }
+    end
     for i, r in ipairs(type(rows) == "table" and rows or {}) do
         local line = { kind = "line", key = "buff" .. i, text = tostring(r.name) }
         if r.gone then
@@ -101,8 +114,10 @@ function B.Children(rows)
     return kids
 end
 
-function B.Height(rows)
-    return B.HEAD + (type(rows) == "table" and #rows or 0) * B.ROW
+function B.Height(rows, about)
+    local n = type(rows) == "table" and #rows or 0
+    if type(about) == "string" and about ~= "" then n = n + B.ABOUT_ROWS end
+    return B.HEAD + n * B.ROW
 end
 
 -- Under the frame, left edges in line. nil when the frame or the screen is
@@ -121,6 +136,7 @@ end
 function B.Declare(k)
     local api = {}
     local ctx, handle, rows
+    local about            -- nil: not looked up yet; false: said before; else the line
     local seen, gone = {}, {}
 
     local function ask(name, ...)
@@ -184,7 +200,18 @@ function B.Declare(k)
                 local ok, why = k.store:set("account", B.PATH, { point = { at[1], at[2], at[3], at[4] } })
                 if not ok then k.problems:add(B.NAME, "place", tostring(why)) end
             end,
-            onClose = function() end,
+            -- Closed by the player: the setting goes off, so it stays
+            -- closed, and one line says how to get it back.
+            onClose = function()
+                local ok, why = ctx.settings:set(B.SETTING, false)
+                if ok == false then
+                    k.problems:add(B.NAME, "close", tostring(why))
+                    return
+                end
+                if type(c.print) == "function" then
+                    c.print(id.title .. ": " .. B.CLOSED:format(B.HEADER, tostring(id.slash), B.LABEL))
+                end
+            end,
             failed = function(err) k.problems:add(B.NAME, "draw", tostring(err)) end,
         })
         if not handle then
@@ -202,9 +229,18 @@ function B.Declare(k)
         if type(list) ~= "table" or type(buffs) ~= "table" or ask("dead") == true then return hide() end
         rows = B.Rows(list, buffs, track(list, buffs, ask("now")))
         if #rows == 0 then return hide() end
-        local height = B.Height(rows)
+        -- The first time it shows it says what it is, for this session.
+        if about == nil then
+            about = false
+            local okE, said = pcall(k.store.get, k.store, "account", B.EXPLAINED)
+            if okE and said ~= true then
+                about = B.ABOUT
+                pcall(k.store.set, k.store, "account", B.EXPLAINED, true)
+            end
+        end
+        local height = B.Height(rows, about)
         local tree, why = ns.Kit.Window({ id = B.ID, title = (k.id or ns.id).title .. ": " .. B.HEADER,
-            width = B.WIDTH, height = height, closable = false, escape = false, children = B.Children(rows) })
+            width = B.WIDTH, height = height, closable = true, escape = false, children = B.Children(rows, about) })
         if not tree then
             k.problems:add(B.NAME, "tree", tostring(why))
             return

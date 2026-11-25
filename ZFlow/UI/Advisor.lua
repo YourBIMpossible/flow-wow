@@ -73,6 +73,11 @@ Advisor.DEFAULT_POINT = { "TOPRIGHT", "TOPRIGHT", -220, -200 }
 -- Its title is the add-on's own (lead sections 340/341): Advisor.Title(id),
 -- also the plain panel's first line. Advisor.TITLE is the words after it.
 Advisor.TITLE = "Advice"
+-- Owner's report (lead section 561 item 6): the panel says what it is in
+-- one line the first time it shows (this session only; Advisor.EXPLAINED
+-- keeps that it was said).
+Advisor.ABOUT = "Tips for right now, such as gear to repair or a spell to learn. It shows only when there is one."
+Advisor.EXPLAINED = "layout.explained.advisor"
 Advisor.KIT_ID = "Advisor"
 Advisor.KIT_WIDTH = 320
 -- G32: the panel opened on purpose.
@@ -111,7 +116,8 @@ end
 -- each text, top to bottom. A line that is no text is left out, so it
 -- cannot cost the window. Nothing in it can be pressed. Escape does not
 -- close it: advice should not go with every Escape.
-function Advisor.View(lines, title)
+-- about: the one line that says what the panel is, first, or nil.
+function Advisor.View(lines, title, about)
     if type(title) ~= "string" or title == "" then title = Advisor.Title() end
     -- Lead section 408: the title stands in the title bar only (no header
     -- part repeats it), a long line wraps and is never cut, and the window
@@ -120,6 +126,9 @@ function Advisor.View(lines, title)
         width = Advisor.KIT_WIDTH, point = Advisor.DEFAULT_POINT,
         escape = false, fit = true }
     local kids = view.children
+    if type(about) == "string" and about:find("%S") then
+        kids[#kids + 1] = { kind = "line", key = "about", text = about, wrap = true }
+    end
     if type(lines) == "table" then
         for i = 1, #lines do
             local text = lines[i]
@@ -141,6 +150,7 @@ function Advisor.Declare(k, diag)
     -- host: the kit window with the plain panel behind it (UI/KitHost.lua).
     -- closed: the player closed the window; a new prompt opens it again.
     local host, ctx, cancelWatch
+    local about            -- nil: not looked up yet; false: said before; else the line
     local closed = false
     -- asked: the player opened the panel on purpose (G32); the window then
     -- shows with no prompt and is not held back. Closing it ends the ask.
@@ -186,9 +196,21 @@ function Advisor.Declare(k, diag)
         end
         -- The plain panel has no title of its own: the title is its first line.
         local title = Advisor.Title(k.id or ns.id)
+        -- The first time it shows it says what it is, for this session.
+        if about == nil then
+            about = false
+            if ctx and ctx.store then
+                local okE, said = pcall(ctx.store.get, ctx.store, "account", Advisor.EXPLAINED)
+                if okE and said ~= true then
+                    about = Advisor.ABOUT
+                    pcall(ctx.store.set, ctx.store, "account", Advisor.EXPLAINED, true)
+                end
+            end
+        end
         local rows = { title }
-        for i = 1, #lines do rows[i + 1] = lines[i] end
-        host.draw(Advisor.View(lines, title), rows)
+        if about then rows[#rows + 1] = about end
+        for i = 1, #lines do rows[#rows + 1] = lines[i] end
+        host.draw(Advisor.View(lines, title, about or nil), rows)
         if not closed then host.show(true) end
     end
 
