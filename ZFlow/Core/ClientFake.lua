@@ -5296,3 +5296,96 @@ do
         return c
     end
 end
+
+-- § lease rows (lead sections 659, 662, 677, 679, 682, 692, 693): the fakes
+-- for the reads Core/Client.lua now has. One block, as section 663 says;
+-- other branches' end blocks for the same reads are kept at merge.
+--   c.setGossipOptions(list|nil)       gossipOptions()
+--   hideGameTracker(on), hideQuestieTracker(on) -> true, "done" |
+--     false, "lockdown" (combatLockdown() not false); c.trackerHidden(which)
+--   inputBox(prompt, fn) -> true; c.typeInputBox(text) accepts it
+--   onBoughtBack(fn); c.fireBoughtBack(link)
+--   onLootLeft(fn); c.fireLootLeft(items)
+--   itemIdByName(name) from the setItemInfo rows, any case
+--   onCraftStarted(fn) -> cancel; c.craftStarted(id, count, name)
+--   c.setQuestRewardXp(map|nil)        questRewardXp(questId)
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local gossip, trackers, inputFn, xp = nil, {}, nil, nil
+        local bought, looted, crafted = {}, {}, {}
+        local function copy(list) local out = {} for i = 1, #list do out[i] = list[i] end return out end
+        function c.setGossipOptions(list) gossip = list end
+        function c.gossipOptions()
+            if type(gossip) ~= "table" then return nil end
+            local out = {}
+            for i, o in ipairs(gossip) do out[i] = { id = o.id, name = o.name } end
+            return out
+        end
+        local function hide(which, on)
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            trackers[which] = on == true
+            return true, "done"
+        end
+        function c.hideGameTracker(on) return hide("game", on) end
+        function c.hideQuestieTracker(on) return hide("questie", on) end
+        function c.trackerHidden(which) return trackers[which] == true end
+        function c.inputBox(_, fn)
+            if type(fn) ~= "function" then return nil end
+            inputFn = fn
+            return true
+        end
+        function c.typeInputBox(text)
+            local fn = inputFn
+            inputFn = nil
+            if fn then fn(text) end
+        end
+        function c.onBoughtBack(fn)
+            if type(fn) ~= "function" then return nil end
+            bought[#bought + 1] = fn
+            return true
+        end
+        function c.fireBoughtBack(link) for _, fn in ipairs(copy(bought)) do fn(link) end end
+        function c.onLootLeft(fn)
+            if type(fn) ~= "function" then return nil end
+            looted[#looted + 1] = fn
+            return true
+        end
+        function c.fireLootLeft(items) for _, fn in ipairs(copy(looted)) do fn(items) end end
+        local rows = nil
+        local setItemInfo = c.setItemInfo
+        function c.setItemInfo(map)
+            rows = map
+            return setItemInfo(map)
+        end
+        function c.itemIdByName(name)
+            if type(name) ~= "string" or type(rows) ~= "table" then return nil end
+            local want = name:lower()
+            for id, row in pairs(rows) do
+                if type(row) == "table" and type(row.name) == "string" and row.name:lower() == want then return id end
+            end
+            return nil
+        end
+        function c.onCraftStarted(fn)
+            if type(fn) ~= "function" then return nil end
+            crafted[#crafted + 1] = fn
+            return function()
+                for i = #crafted, 1, -1 do
+                    if crafted[i] == fn then table.remove(crafted, i) end
+                end
+            end
+        end
+        function c.craftStarted(id, count, name)
+            for _, fn in ipairs(copy(crafted)) do fn(id, count, name) end
+        end
+        function c.setQuestRewardXp(map) xp = map end
+        function c.questRewardXp(questId)
+            if type(xp) ~= "table" then return nil end
+            local n = xp[questId]
+            if type(n) ~= "number" or n <= 0 then return nil end
+            return n
+        end
+        return c
+    end
+end
