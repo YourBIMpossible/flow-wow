@@ -766,13 +766,23 @@ end
 --     each (subName, npcFlags). found = { trainer = { [profession] =
 --     { { name, map, x, y, side } } }, banker = { ... }, auction = { ... } },
 --     at most PP.SPOTS places an NPC; n = how many places in all.
+--   PP.ScanStart(db) -> pass or nil; PP.ScanStep(pass, zones, count) ->
+--     done: the same pass a part at a time, count NPCs a call. pass.found
+--     and pass.n are the answer once done.
 --   PP.Questie() -> reader: the cost control, kept by its one owner
 --     (Nav/ProfFeed.lua) for the session.
---     reader.places(client) -> found or nil. One scan, and its answer is
---       kept. An answer with no place (Questie still loading) is asked
---       again no sooner than PP.RETRY seconds later and PP.TRIES times in
---       all, then kept as it is. A client with no time (now() 0) has
---       nothing to wait by: its tries come in a row and still end.
+--     reader.places(client) -> found or nil. It reads nothing itself: it
+--       gives the kept answer, or says the answer is wanted.
+--     reader.work(client) -> is there more to do? The scan, a part a call
+--       (lead section 564: no hitch; the predecessor went through 300
+--       NPCs a frame too): the first call of a pass lists the NPCs, each
+--       later one goes through PP.STEP of them. Its owner calls it once a
+--       frame and never in combat. Nothing is done before places() was
+--       asked. One pass, and its answer is kept. A pass with no place
+--       (Questie still loading) is done again no sooner than PP.RETRY
+--       seconds later and PP.TRIES times in all, then kept as it is. A
+--       client with no time (now() 0) has nothing to wait by: its tries
+--       come in a row and still end.
 --     reader.ids(client, prof, read) -> read()'s list, kept PP.RETRY
 --       seconds, so the saved nodes are not gone through on every update.
 --     reader.spots(client, ids, map) -> { { map, x, y } }: the places of
@@ -808,6 +818,8 @@ PP.TRAINER_TITLE = "^(.-) Trainer$"
 PP.FLAG = { banker = 256, auction = 4096 }
 PP.FLAG_NAME = { banker = "BANKER", auction = "AUCTIONEER" }
 PP.TRIES, PP.RETRY = 6, 10
+-- NPCs gone through in one call of reader.work (one frame).
+PP.STEP = 300
 -- Places kept for one NPC, and for one object on one map.
 PP.SPOTS, PP.NODE_SPOTS = 8, 400
 
@@ -1056,10 +1068,8 @@ local function flagged(mask, flag)
     return math.floor(mask / flag) % 2 == 1
 end
 
-function PP.Scan(db, zones)
-    local found = { trainer = {}, banker = {}, auction = {} }
-    local n = 0
-    if type(db) ~= "table" or type(db.NPCPointers) ~= "table" then return found, n end
+function PP.ScanStart(db)
+    if type(db) ~= "table" or type(db.NPCPointers) ~= "table" then return nil end
     local bits = {}
     for kind, name in pairs(PP.FLAG_NAME) do
         local own = type(db.npcFlags) == "table" and db.npcFlags[name] or nil
@@ -1070,7 +1080,17 @@ function PP.Scan(db, zones)
         if type(id) == "number" then ids[#ids + 1] = id end
     end
     table.sort(ids)
-    for _, id in ipairs(ids) do
+    return { db = db, ids = ids, at = 0, bits = bits, n = 0,
+             found = { trainer = {}, banker = {}, auction = {} } }
+end
+
+function PP.ScanStep(pass, zones, count)
+    if type(pass) ~= "table" or type(pass.ids) ~= "table" then return true end
+    local db, ids, bits, found = pass.db, pass.ids, pass.bits, pass.found
+    local last = #ids
+    if finite(count) and count >= 1 and pass.at + count < last then last = pass.at + math.floor(count) end
+    for at = pass.at + 1, last do
+        local id = ids[at]
         local lists = {}
         local sub = call(db.QueryNPCSingle, id, "subName")
         if type(sub) == "string" then
@@ -1095,12 +1115,20 @@ function PP.Scan(db, zones)
             for _, spot in ipairs(spots) do
                 for _, list in ipairs(lists) do
                     list[#list + 1] = { name = name, map = spot.map, x = spot.x, y = spot.y, side = side }
-                    n = n + 1
+                    pass.n = pass.n + 1
                 end
             end
         end
     end
-    return found, n
+    pass.at = last
+    return last >= #ids
+end
+
+function PP.Scan(db, zones)
+    local pass = PP.ScanStart(db)
+    if not pass then return { trainer = {}, banker = {}, auction = {} }, 0 end
+    PP.ScanStep(pass, zones, nil)
+    return pass.found, pass.n
 end
 
 -- The client's time, or nil when it has none (now() answers 0).
@@ -1123,19 +1151,29 @@ function PP.Questie()
     local state = { tries = 0 }
     local objects = {}
 
-    function reader.places(client)
+    local wanted, pass
+
+    function reader.places()
         if found then return found end
-        local now = nowOf(client)
-        if not due(state, now) then return nil end
-        local db = ask(client, "questieModule", "QuestieDB")
-        -- Questie not there, or its list of NPCs not built yet: nothing to
-        -- go through, and no try is used up.
-        if type(db) ~= "table" or type(db.NPCPointers) ~= "table" then return nil end
-        local got, n = PP.Scan(db, ask(client, "questieModule", "ZoneDB"))
+        wanted = true
+        return nil
+    end
+
+    function reader.work(client)
+        if found or not wanted then return false end
+        if not pass then
+            if not due(state, nowOf(client)) then return false end
+            -- Questie not there, or its list of NPCs not built yet: nothing
+            -- to go through, and no try is used up.
+            pass = PP.ScanStart(ask(client, "questieModule", "QuestieDB"))
+            return pass ~= nil
+        end
+        if not PP.ScanStep(pass, ask(client, "questieModule", "ZoneDB"), PP.STEP) then return true end
         state.tries = state.tries + 1
-        state.last = now
-        if n > 0 or state.tries >= PP.TRIES then found = got end
-        return got
+        state.last = nowOf(client)
+        if pass.n > 0 or state.tries >= PP.TRIES then found = pass.found end
+        pass = nil
+        return false
     end
 
     -- read() -> the object ids of a profession, asked again no sooner than

@@ -111,6 +111,9 @@ F.HERE = { craft = true, make_part = true }
 F.PIN_KIND = "new"
 F.PIN_ROLE = "profession"
 F.PIN_EVERY = 1
+-- How often the reader of the player Questie is given a part of its work
+-- (N.ProfPlace.Questie, reader.work): each frame, and never in combat.
+F.SCAN_EVERY = 0.01
 
 -- Said under a step in words when no place is known for it; by the kind
 -- of place (Nav/ProfStep.lua N.ProfPlace.KIND). %s: the profession.
@@ -599,7 +602,16 @@ function F.Declare(k, diag)
         name = F.NAME,
         needs = { "client", "store", "settings" },
         provides = { Step = api.step, Off = api.off, Lines = api.lines },
-        ticks = { { every = F.PIN_EVERY, when = "always", run = function() api.pin() end } },
+        ticks = {
+            { every = F.PIN_EVERY, when = "always", run = function() api.pin() end },
+            -- Lead section 564: the Questie read is spread over frames and
+            -- waits for combat to end. With nothing wanted it does nothing.
+            { every = F.SCAN_EVERY, when = "outOfCombat", run = function()
+                if ctx and type(questie) == "table" and type(questie.work) == "function" then
+                    questie.work(ctx.client)
+                end
+            end },
+        },
         start = function(c) ctx = c end,
         stop = function()
             clearPin()
