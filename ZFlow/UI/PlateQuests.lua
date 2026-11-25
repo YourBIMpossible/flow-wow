@@ -250,7 +250,8 @@ function PQ.TipLines(list, titles)
     local out, at = {}, {}
     for _, e in ipairs(type(list) == "table" and list or {}) do
         if type(e) == "table" and type(e.label) == "string" then
-            local name = type(titles) == "table" and titles[e.quest] or nil
+            local name
+            if type(titles) == "table" then name = titles[e.quest] end
             name = type(name) == "string" and name ~= "" and name or ("quest " .. tostring(e.quest))
             local i = at[e.quest]
             if i == nil then
