@@ -200,4 +200,46 @@ tests["plate quests: the setting row is on by default and filed under nameplates
     end
 end
 
+-- Parity row C-21 (lead section 603): hovering a quest mob, the game's
+-- tooltip gets a line naming the quest and the count left (Flow
+-- Modules/QuestMarks.lua TipLine, there for profession drops), from the
+-- same data the plate mark uses. The hovered creature comes from
+-- client.unitCreature (a CLIENT NEED; the fake has it).
+-- Fails before: nothing listens to the unit tooltip.
+local function tipLines(c, unit)
+    local out = {}
+    for _, l in ipairs(c.showUnitTooltip(unit)) do out[#out + 1] = l.text end
+    return out
+end
+
+tests["plate quests: hovering a quest mob - the tooltip names the quest and the count"] = function(t)
+    local c = boot()
+    c.setUnitCreature("mouseover", VERMIN)
+    t.eq(tipLines(c, "mouseover"), { ns.id.title .. ": Camp 3/8" })
+    c.setUnitCreature("mouseover", GNOLL)
+    t.eq(tipLines(c, "mouseover"), { ns.id.title .. ": Camp 0/5" }, "the mob that drops the item")
+end
+
+tests["plate quests: hovering - no line for other mobs, finished objectives or marks off"] = function(t)
+    local c, addon = boot()
+    c.setUnitCreature("mouseover", 9999)
+    t.eq(tipLines(c, "mouseover"), {}, "not a quest mob")
+    c.setUnitCreature("mouseover", nil)
+    t.eq(tipLines(c, "mouseover"), {}, "creature not known")
+    c.setUnitCreature("mouseover", VERMIN)
+    c.setQuestLog(log("8/8", true))
+    logChanged(c)
+    t.eq(tipLines(c, "mouseover"), {}, "objective done")
+    c.setQuestLog(log("3/8"))
+    logChanged(c)
+    addon.settings:set(ns.PlateQuests.OFF, true)
+    t.eq(tipLines(c, "mouseover"), {}, "quest marks switched off")
+end
+
+tests["plate quests: hovering a plate unit uses the plate's creature"] = function(t)
+    local c = boot()
+    mob(c, "nameplate1", VERMIN)
+    t.eq(tipLines(c, "nameplate1"), { ns.id.title .. ": Camp 3/8" })
+end
+
 return tests
