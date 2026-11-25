@@ -194,8 +194,9 @@ function Q.AuctionBuys(rows, itemOf, ahPrice, vendorSells)
         if type(r) == "table" and r.complete ~= true and r.failed ~= true and type(r.title) == "string"
             and type(r.objectives) == "table" then
             for i, o in ipairs(r.objectives) do
-                local name = type(o) == "table" and o.done ~= true and Q.ObjectiveItem(o.text) or nil
-                local left = name and leftOf(o.text) or nil
+                local name, left
+                if type(o) == "table" and o.done ~= true then name = Q.ObjectiveItem(o.text) end
+                if name then left = leftOf(o.text) end
                 local okId, id = false, nil
                 if left then okId, id = pcall(itemOf, r.id, i) end
                 if okId and type(id) == "number" and not seen[id] then
@@ -292,7 +293,8 @@ function Q.Declare(k)
             local function ahPrice(id)
                 local AL = ns.AuctionLog
                 local e = AL and AL.Read(ctx.store, client, id)
-                local h = type(e) == "table" and e.h or nil
+                local h
+                if type(e) == "table" then h = e.h end
                 return type(h) == "table" and #h >= 2 and h[#h] or nil
             end
             local function vendorSells(id)
