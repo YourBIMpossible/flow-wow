@@ -191,6 +191,12 @@ function N.TravelVia(step, ways, skipped)
         and step.hint == nil then
         local out = {}
         for key, v in pairs(step) do out[key] = v end
+        -- Owner, lead section 619: a learn step with a line of its own
+        -- (the level the spell needs) is said as it is, no place added.
+        if type(learn.hint) == "string" and learn.hint ~= "" then
+            out.hint = learn.hint
+            return out
+        end
         local where = learn.detail
         if type(where) ~= "string" or where == "" then where = Travel.LEARN_AT end
         out.hint = Travel.LEARN:format(learn.label, where)
