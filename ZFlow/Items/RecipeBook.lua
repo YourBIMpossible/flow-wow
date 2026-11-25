@@ -322,6 +322,49 @@ function RecipeBook.Recipes(k)
     return out
 end
 
+-- E-46 (FLOW-PARITY; lead section 683): the reagents of the recipes saved
+-- here, added to out as Disposition's professionMaterial reads
+-- context.materials: out[key] = { { prof, what = recipe name }, ... }. As
+-- Flow's Modules/Items/Reagents.lua (R:UsedBy: each profession once, with
+-- the first recipe that uses it) read by Modules/Items/Disposition.lua:
+-- 274-305. A profession out already names for that item is not added again,
+-- so a plan's use (with its need) is kept as it is. Recipes are taken by
+-- name, sorted. nil when the store cannot be read.
+--   RecipeBook.Materials(store, out) -> out
+function RecipeBook.Materials(store, out)
+    if type(store) ~= "table" or type(store.get) ~= "function" then return nil end
+    local ok, book = pcall(store.get, store, "char", RecipeBook.PATH)
+    if not ok then return nil end
+    if type(out) ~= "table" then out = {} end
+    if type(book) ~= "table" then return out end
+    local names = {}
+    for name in pairs(book) do
+        if type(name) == "string" then names[#names + 1] = name end
+    end
+    table.sort(names)
+    for _, name in ipairs(names) do
+        local e = book[name]
+        if type(e) == "table" and type(e.profession) == "string" and e.profession ~= "" and type(e.mats) == "table" then
+            for item in pairs(e.mats) do
+                local key = ns.Items.Key(item)
+                if key ~= nil then
+                    local uses = out[key]
+                    if type(uses) ~= "table" then
+                        uses = {}
+                        out[key] = uses
+                    end
+                    local named = false
+                    for _, u in ipairs(uses) do
+                        if type(u) == "table" and u.prof == e.profession then named = true end
+                    end
+                    if not named then uses[#uses + 1] = { prof = e.profession, what = name } end
+                end
+            end
+        end
+    end
+    return out
+end
+
 function RecipeBook.For(k, item)
     local key = ns.Items.Key(item)
     if key == nil then return nil end

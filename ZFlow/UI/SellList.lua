@@ -231,6 +231,12 @@ function SellList.Listing(client, store, grants, r)
         local ok, mats = pcall(ns.ProfPlan.Materials, client, store)
         if ok and type(mats) == "table" then context.materials = mats end
     end
+    -- E-46 (lead section 683): the reagents of the recipes learned in this
+    -- player's own profession windows are kept too, as Flow's Reagents.lua.
+    if type(ns.RecipeBook) == "table" and type(ns.RecipeBook.Materials) == "function" then
+        local ok, mats = pcall(ns.RecipeBook.Materials, store, context.materials)
+        if ok and type(mats) == "table" then context.materials = mats end
+    end
     -- Lead section 418 item 4: gathered goods of a profession the player
     -- has (by item class and subclass) are kept too.
     if type(ns.ProfPlan) == "table" and type(ns.ProfPlan.Gathered) == "function" then
