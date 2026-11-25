@@ -110,7 +110,8 @@ function BI.Read(client)
     if type(stacks) ~= "table" then return nil end
     local items, seen = {}, {}
     for _, st in ipairs(stacks) do
-        local id = type(st) == "table" and ns.Items.Id(st.item) or nil
+        local id
+        if type(st) == "table" then id = ns.Items.Id(st.item) end
         if id and not seen[id] and (st.count == nil or (type(st.count) == "number" and st.count > 0)) then
             seen[id] = true
             local kind, fit = BI.Kind(ask(client, "itemLines", id))
