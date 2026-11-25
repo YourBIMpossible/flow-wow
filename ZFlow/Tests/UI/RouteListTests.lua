@@ -313,4 +313,51 @@ tests["no frames: nothing is drawn and nothing breaks"] = function(t)
     t.eq(h.map.Shown(), false)
 end
 
+-- Parity row C-13 (lead section 600): the quest's level beside its name,
+-- "[16]", coloured for its level against yours, as Flow
+-- Modules/Quests/QuestLevels.lua QL.Tier / QL.Tag. Red before: no
+-- RL.LevelTag, no RL.LEVELS setting.
+tests["levels: the tag and its colour for a level against yours"] = function(t)
+    t.eq(RL().LevelTag(16, 16, true), " |cffffff00[16]|r", "about your level: yellow")
+    t.eq(RL().LevelTag(21, 16, true), " |cffff3030[21]|r", "5 or more above: red")
+    t.eq(RL().LevelTag(19, 16, true), " |cffff8040[19]|r", "3 or 4 above: orange")
+    t.eq(RL().LevelTag(13, 16, true), " |cff40c040[13]|r", "3 to 5 below: green")
+    t.eq(RL().LevelTag(8, 16, true), " |cff9aa04a[8]|r", "6 to 9 below: olive")
+    t.eq(RL().LevelTag(6, 16, true), " |cff808080[6]|r", "10 or more below: grey")
+    t.eq(RL().LevelTag(16, 16, false), " [16]", "plain")
+    t.eq(RL().LevelTag(16, nil, true), " [16]", "your level not read: plain")
+    t.eq(RL().LevelTag(nil, 16, true), "", "no level: no tag")
+    t.eq(RL().LevelTag(0 / 0, 16, true), "", "not a level: no tag")
+end
+
+tests["levels: each quest's name in the rows carries its tag"] = function(t)
+    local lv = { [11] = 16, [12] = 21, [13] = 13, [14] = 8 }
+    local rows = RL().Rows(view(), HERE, function(q) return lv[q] and RL().LevelTag(lv[q], 16, false) or "" end)
+    t.eq(rows[1].sub, "For the quest Boar Trouble [16]")
+    t.eq(rows[2].sub, "A Letter Home [21], Lost Tools [13]. Give them to Marshal Dunn")
+    t.eq(rows[3].text, "Wolves at the Gate [8]")
+    t.eq(rows[4].text, "Turn in Old Debts", "no level known: no tag")
+end
+
+tests["levels: a setting, on at first; the window shows the level from Questie"] = function(t)
+    local h = start({ view = view() })
+    t.eq(h.k.settings:get(RL().LEVELS), true, "on at first")
+    local row = h.k.settings:row(RL().LEVELS)
+    t.ok(row ~= nil and row.label == "Show quest levels in the route list", "its settings row")
+    h.c.setLevel(16)
+    h.c.setQuestieModule("QuestieDB", { QueryQuestSingle = function(id, key)
+        if key == "questLevel" and id == 11 then return 16 end
+        return nil
+    end })
+    h.c.setQuestLogFrame(BOX)
+    h.api.Refresh()
+    local sub
+    for _, p in ipairs(window(h) and window(h).parts or {}) do if p.key == "current" then sub = p.sub end end
+    t.ok(type(sub) == "string" and sub:find("Boar Trouble |cffffff00[16]|r", 1, true) ~= nil, "the tag: " .. tostring(sub))
+    h.k.settings:set(RL().LEVELS, false)
+    h.api.Refresh()
+    for _, p in ipairs(window(h) and window(h).parts or {}) do if p.key == "current" then sub = p.sub end end
+    t.ok(type(sub) == "string" and sub:find("[16]", 1, true) == nil, "off: no tag: " .. tostring(sub))
+end
+
 return tests
