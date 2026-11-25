@@ -103,6 +103,14 @@ local function ask(client, read, ...)
     return client[read](...)
 end
 
+-- The role to check for: the chosen one, else the levelling role (dps), as
+-- Flow's ns:LevelingRole (Gear/Verdict.lua GearRole.Active).
+local function active(role)
+    local G = ns.GearRole
+    if type(G) == "table" and type(G.Active) == "function" then return (G.Active(role)) end
+    return role
+end
+
 local function chosen(role)
     return type(role) == "string" and role ~= ""
 end
@@ -275,7 +283,7 @@ function U.Declare(k, packs, diag)
         local advisor = ctx.use("advisor")
         if type(advisor) ~= "table" then return end
         if ctx.settings:get(U.SETTING) ~= true then return clear(advisor) end
-        local ok, rows = pcall(U.Check, ctx.client, packs or ns.Packs, ctx.settings:get(U.ROLE))
+        local ok, rows = pcall(U.Check, ctx.client, packs or ns.Packs, active(ctx.settings:get(U.ROLE)))
         if not ok then
             problem("bag upgrades", rows)
             return clear(advisor)
@@ -310,7 +318,7 @@ function U.Declare(k, packs, diag)
         if word == "check" then
             local role = nil
             if type(k.settings) == "table" then role = k.settings:get(U.ROLE) end
-            local ok, rows, why = pcall(U.Check, k.client, packs or ns.Packs, role)
+            local ok, rows, why = pcall(U.Check, k.client, packs or ns.Packs, active(role))
             if not ok then
                 problem("check", rows)
                 say({ "The bag upgrade check failed: " .. tostring(rows) })
