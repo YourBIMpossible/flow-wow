@@ -13,11 +13,19 @@ local _, ns = ...
 -- Nav/DungeonRead.lua reads them, their first giver's spawns placed by
 -- ZoneDB. Of the candidates on this map the P.MAX nearest are kept.
 --
+-- Class quests (row A2-04, the rule of legacy Flow's Goals.lua
+-- addClassQuests): a quest whose requiredClasses (Questie
+-- Database/QuestieDB.lua:1533, a class bitmask, bit n - 1 for class n) names
+-- only the player's class is a pick-up even outside the level window, once
+-- its required level is reached; it is always kept and marked classQuest.
+--
 -- Pure:
+--   P.IsClassQuest(q, me) -> true when q is for me.classId alone
 --   P.Candidate(q, ctx) -> true | false, why
 --     q in the shape S.State takes; ctx = { level, log = { [id] = true },
 --     done(id) -> true | false | nil (not known), me (S.Eligible) }
---   P.Nearest(list, here, max) -> the max nearest of list on here.map
+--   P.Nearest(list, here, max) -> every classQuest item on here.map first,
+--     then the max nearest of the rest
 -- Client reads: P.Read(client, here, log) -> list or nil, why.
 -- Not tested in game.
 ns.Nav = ns.Nav or {}
@@ -29,6 +37,7 @@ N.RoutePickups = P
 P.MAX = 8        -- pick-ups offered at most
 P.BELOW = 5      -- quests up to 5 levels below the player count
 P.LABEL = "Pick up: %s (%s)"
+P.CLASS_LABEL = "Pick up your class quest: %s (%s)"
 P.GIVER = "quest giver"
 P.SKIPPED = "skipped: more than " .. N.DETOUR .. " yd off the way"
 P.WHY_NO_QUESTIE = "No quests to pick up added: Questie is not loaded."
@@ -51,6 +60,11 @@ local function inReach(level, reqLevel, qLevel, low)
     return true
 end
 
+function P.IsClassQuest(q, me)
+    if type(q) ~= "table" or type(me) ~= "table" or type(me.classId) ~= "number" then return false end
+    return tonumber(q.requiredClasses) == 2 ^ (me.classId - 1)
+end
+
 function P.Candidate(q, ctx)
     if type(q) ~= "table" or type(ctx) ~= "table" then return false, "not known" end
     local log = list(ctx.log)
@@ -61,8 +75,12 @@ function P.Candidate(q, ctx)
     for _, ex in ipairs(list(q.exclusiveTo)) do
         if log[ex] or done(ex) == true then return false, "ruled out by a quest you did" end
     end
-    local ok, why = inReach(tonumber(ctx.level) or 0, q.requiredLevel, q.level, ctx.low)
-    if not ok then return false, why end
+    local level = tonumber(ctx.level) or 0
+    local ok, why = inReach(level, q.requiredLevel, q.level, ctx.low)
+    if not ok then
+        local req = tonumber(q.requiredLevel)
+        if not P.IsClassQuest(q, ctx.me) or (req and req > level) then return false, why end
+    end
     for _, id in ipairs(list(q.preQuestGroup)) do
         if done(id) == false then return false, "an earlier quest first" end
     end
@@ -84,21 +102,26 @@ function P.Nearest(items, here, max)
         w, h = here.size.w, here.size.h
     end
     local canMeasure = finite(here.x) and finite(here.y)
-    local out = {}
+    local out, cls = {}, {}
     for _, it in ipairs(list(items)) do
         local p = type(it) == "table" and it.place
         if type(p) == "table" and p.map == here.map and finite(p.x) and finite(p.y) then
             local dx = canMeasure and (p.x - here.x) * w or 0
             local dy = canMeasure and (p.y - here.y) * h or 0
-            out[#out + 1] = { item = it, d = dx * dx + dy * dy }
+            local into = out
+            if it.classQuest == true then into = cls end
+            into[#into + 1] = { item = it, d = dx * dx + dy * dy }
         end
     end
-    table.sort(out, function(a, b)
+    local function nearer(a, b)
         if a.d ~= b.d then return a.d < b.d end
         return (tonumber(a.item.quest) or 0) < (tonumber(b.item.quest) or 0)
-    end)
+    end
+    table.sort(out, nearer)
+    table.sort(cls, nearer)
     local kept = {}
-    for i = 1, math.min(#out, tonumber(max) or P.MAX) do kept[i] = out[i].item end
+    for _, c in ipairs(cls) do kept[#kept + 1] = c.item end
+    for i = 1, math.min(#out, tonumber(max) or P.MAX) do kept[#kept + 1] = out[i].item end
     return kept
 end
 
@@ -174,8 +197,15 @@ function P.Read(client, here, log, opts)
     }
     local found, areaMap, npcs = {}, {}, {}
     for id in pairs(db.QuestPointers) do
-        if type(id) == "number" and not ctx.log[id]
-            and inReach(level, quick(db, id, "requiredLevel"), quick(db, id, "questLevel"), low) then
+        local reach = false
+        if type(id) == "number" and not ctx.log[id] then
+            local req = quick(db, id, "requiredLevel")
+            reach = inReach(level, req, quick(db, id, "questLevel"), low)
+            if not reach and not (tonumber(req) and tonumber(req) > level) then
+                reach = P.IsClassQuest({ requiredClasses = quick(db, id, "requiredClasses") }, ctx.me)
+            end
+        end
+        if reach then
             local ok, qt = pcall(db.GetQuest, id)
             local starts = ok and type(qt) == "table" and type(qt.Starts) == "table" and qt.Starts or nil
             local giver = starts and type(starts.NPC) == "table" and starts.NPC[1] or nil
@@ -197,8 +227,13 @@ function P.Read(client, here, log, opts)
                         giverFaction = type(npc.friendlyToFaction) == "string" and npc.friendlyToFaction or nil }
                     if type(qt.name) == "string" and P.Candidate(q, ctx) then
                         local who = type(npc.name) == "string" and npc.name ~= "" and npc.name or P.GIVER
-                        found[#found + 1] = { kind = "pickup", quest = id, label = P.LABEL:format(qt.name, who),
-                                              place = place }
+                        local item = { kind = "pickup", quest = id, label = P.LABEL:format(qt.name, who),
+                                       place = place }
+                        if P.IsClassQuest(q, ctx.me) then
+                            item.classQuest = true
+                            item.label = P.CLASS_LABEL:format(qt.name, who)
+                        end
+                        found[#found + 1] = item
                     end
                 end
             end

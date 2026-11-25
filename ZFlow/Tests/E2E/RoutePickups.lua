@@ -20,6 +20,12 @@ local function questie()
                   Starts = { NPC = { 9201 } } },
         [605] = { Id = 605, name = "Second Part", level = 18, requiredLevel = 12, preQuestSingle = { 699 },
                   Starts = { NPC = { 9201 } } },
+        [607] = { Id = 607, name = "Old Oath", level = 10, requiredLevel = 10, requiredClasses = 1,
+                  Starts = { NPC = { 9201 } } },
+        [608] = { Id = 608, name = "Holy Oath", level = 10, requiredLevel = 10, requiredClasses = 2,
+                  Starts = { NPC = { 9201 } } },
+        [609] = { Id = 609, name = "Later Oath", level = 10, requiredLevel = 10, requiredClasses = 1,
+                  preQuestSingle = { 699 }, Starts = { NPC = { 9201 } } },
         [606] = { Id = 606, name = "Too High", level = 26, requiredLevel = 25, Starts = { NPC = { 9201 } } },
     }
     local npcs = {
@@ -125,6 +131,15 @@ tests["route pickups: the setting row is there"] = function(t)
     local row = addon.settings:row(ns.Nav.TripRoute.PICKUP_SETTING)
     t.eq(row and row.group, "travel.route")
     t.eq(row and row.default, true)
+end
+
+tests["route pickups: the player's class quest below the window is offered, others' are not"] = function(t)
+    local c = boot()
+    c.slashes[ns.id.slash]("route")
+    c.advance(1, 5)
+    t.ok(said(c, "Pick up your class quest: Old Oath (Marshal)") ~= nil, "the class quest")
+    t.ok(said(c, "Holy Oath") == nil, "another class's quest is not offered")
+    t.ok(said(c, "Later Oath") == nil, "a class quest waiting on an earlier quest is not offered")
 end
 
 return tests
