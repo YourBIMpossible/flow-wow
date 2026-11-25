@@ -82,7 +82,7 @@ Travel.FAR = "On another continent: no boat or zeppelin learned yet"
 -- "Learn <spell> (<where>)".
 Travel.LEARN = "%s (%s)"
 -- Where a travel spell with no place of its own is learned.
-Travel.LEARN_AT = "from your class trainer" -- as N.TRAVEL_FROM (section 618)
+Travel.LEARN_AT = "your class trainer"
 -- S45: the ways asked of other modules, in no order of their own (the
 -- order is N.TravelVia's). module: its name for k.use; key: its field in ways.
 Travel.WAYS = { { module = "crossings", key = "crossing" }, { module = "flights", key = "flight" } }
@@ -261,7 +261,7 @@ function Travel.Declare(k, diag)
         local ways = { cont = type(zone) == "table" and zone.cont or nil }
         ways.far = type(target) == "table" and target.cont or nil
 
-        local okSpell, spell = pcall(N.TravelSpellStepFrom, target, client, ctx.store)
+        local okSpell, spell = pcall(N.TravelSpellStepFrom, target, client)
         if okSpell then ways.spell = spell end
         local okHearth, hearth = pcall(N.HearthStepFrom, target, client, ctx.store)
         if okHearth then ways.hearth = hearth end

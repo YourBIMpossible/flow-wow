@@ -238,6 +238,7 @@ local function arrow(opts)
     c.setClass("DRUID")
     c.setFaction("Horde")
     c.setSpellId("Teleport: Moonglade", 18960)
+    c.setMapName(1450, "Moonglade")
     c.setSpell(18960, { known = true })
     c.questLog = function() return { wolves() } end
     local spawn = opts.quest or { 40, 50, 50 }

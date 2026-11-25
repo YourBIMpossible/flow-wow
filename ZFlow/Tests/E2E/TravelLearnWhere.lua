@@ -37,10 +37,10 @@ local function start(opts)
     c.setZone(1, here); c.setPosition(here, 0.5, 0.5); c.setFacing(0)
     c.setMapSize(1411, 1000, 500); c.setMapCont(1411, 1)
     c.setMapSize(MOONGLADE, 1000, 1000); c.setMapCont(MOONGLADE, 1)
+    if opts.mapName ~= false then c.setMapName(MOONGLADE, opts.mapName or "Moonglade") end
     c.setMapCorners(1411, { cont = 1, ox = 0, oy = 0, ex = 1000, ey = 0, sx = 0, sy = 500 })
     c.setMapCorners(MOONGLADE, { cont = 1, ox = 5000, oy = 0, ex = 6000, ey = 0, sx = 5000, sy = 1000 })
     c.setClass(opts.class or "DRUID"); c.setFaction("Horde"); c.setLevel(20)
-    if opts.lists then c.setSaved(ns.id.charDB, { learned = { trainerLists = opts.lists } }) end
     if opts.known ~= nil then
         c.setSpellId(TELEPORT, TELEPORT_ID)
         c.setSpell(TELEPORT_ID, { known = opts.known })
@@ -59,7 +59,9 @@ local function has(lines, text)
     return false
 end
 
-local LEARN = Travel.LEARN and Travel.LEARN:format("Learn " .. TELEPORT, ns.Nav.TRAVEL_FROM or "?")
+-- Owner, lead section 619: the line names the level the spell needs (a
+-- cited fact) and no place it is learned at (not verified yet).
+local LEARN = TELEPORT .. " needs level 10"
 
 -- Fails before: the line under the quest is the no-flight line; the spell
 -- is never named.
@@ -99,14 +101,17 @@ tests["travel learn where: in Moonglade already, no learn line"] = function(t)
     t.ok(not has(a.lines, LEARN), "no learn line")
 end
 
--- Section 618: the level only once the player's own trainer window listed
--- the spell (the saved trainer lists). Fails before: the typed level 10.
-tests["travel learn where: the level is the one the player's trainer listed"] = function(t)
-    local lists = { k = { npc = "Turak Runetotem", shown = { available = true, unavailable = true, known = true },
-        complete = true, rows = { { name = TELEPORT, state = "unavailable", level = 14 } } } }
-    local c = start({ known = false, lists = lists })
-    local want = Travel.LEARN:format("Learn " .. TELEPORT, ns.Nav.TRAVEL_FROM_LEVEL:format(14))
-    t.ok(has(c.arrows[1].lines, want), "the recorded level: " .. want)
+-- Section 619: map 1450 is taken for Moonglade only when the client names
+-- it so. Fails before: the spell is tied to 1450 whatever the client says.
+tests["travel learn where: no spell line when the client does not name map 1450 Moonglade"] = function(t)
+    for _, name in ipairs({ false, "Somewhere Else" }) do
+        local c = start({ known = false, mapName = name })
+        local a = c.arrows[1]
+        t.ok(not has(a.lines, LEARN), "no learn line: " .. tostring(name))
+        t.ok(has(a.lines, Flights.NONE), "the no-flight line instead")
+        local c2 = start({ known = true, mapName = name })
+        t.ok(c2.arrows[1].lines[1] ~= "Cast " .. TELEPORT, "and no cast: " .. tostring(name))
+    end
 end
 
 return tests

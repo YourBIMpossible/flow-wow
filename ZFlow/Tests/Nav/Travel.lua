@@ -173,6 +173,7 @@ local function start(opts)
     c.setClass("DRUID")
     c.setFaction("Horde")
     if opts.pin then c.setWaypoint(opts.pin.map, opts.pin.x, opts.pin.y) end
+    c.setMapName(1450, "Moonglade")
     if opts.knows ~= "unknown" then
         c.setSpellId(SPELL, 18960)
         c.setSpell(18960, { known = opts.knows ~= false })
@@ -334,6 +335,14 @@ tests["travel: look only - nothing casts, talks, flies or clicks for you"] = fun
         t.ok(not (n:find("cast") or n:find("click") or n:find("use") or n:find("take") or n:find("fly")),
             "no acting function: " .. n)
     end
+end
+
+-- Owner, lead section 619: a learn step with a line of its own (the level
+-- the spell needs) is said as it is, with no place added.
+tests["travel via: a spell to learn with its own line is said as it is"] = function(t)
+    local learn = { label = "Learn " .. SPELL, text = true, spell = SPELL, learn = true,
+                    hint = SPELL .. " needs level 10" }
+    t.eq(N.TravelVia(boars(), { spell = learn }, false).hint, SPELL .. " needs level 10")
 end
 
 return tests
