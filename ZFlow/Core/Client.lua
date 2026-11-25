@@ -6948,7 +6948,7 @@ function ns.make.client(env)
             method(b, "SetScript", "OnEnter", function()
                 local tip = env.GameTooltip
                 if tip == nil or d.title == nil then return end
-                method(tip, "SetOwner", b, "ANCHOR_RIGHT")
+                placeTip(tip, b, "ANCHOR_RIGHT")
                 method(tip, "SetText", d.title)
                 for _, line in ipairs(d.tip) do
                     method(tip, "AddLine", line, 1, 1, 1, true)
