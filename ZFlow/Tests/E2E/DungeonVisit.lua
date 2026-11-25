@@ -427,4 +427,32 @@ tests["dungeon timing: the steps and the words, pure"] = function(t)
     t.eq({ V.Step({}, nil, 100) }, { {}, false })
 end
 
+-- R-02 (lead section 777; Plexy's notes): a quest whose hand-in is not
+-- known keeps that note in the chat list (DungeonRead's R.DONE_UNKNOWN on
+-- the pane row), and a log not read says so instead of "0 of its quests".
+-- Fails before: V.Quests dropped the note; the unread log read as empty.
+tests["dungeon visit R-02: a hand-in not known keeps its note in the list"] = function(t)
+    local V = ns.DungeonVisit
+    local R = ns.DungeonRead
+    local pane = { groups = { { id = "pickup", rows = { { id = 7, name = "Old Debt", note = R.DONE_UNKNOWN } } } } }
+    local _, missing = V.Quests(pane, {}, {})
+    t.eq(missing[1] and missing[1].unknown, true)
+    local lines = V.QuestLines("Deadmines", {}, missing)
+    t.ok(lines[2] and lines[2]:find(R.DONE_UNKNOWN, 1, true) ~= nil, tostring(lines[2]))
+end
+
+tests["dungeon visit R-02: a log not read says so, not none of its quests"] = function(t)
+    local c, addon = boot()
+    c.setQuestLog(nil)
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(0.2, 2)
+    local api = addon.dungeonVisit
+    t.ok(type(api) == "table" and type(api.Lines) == "function", "the visit api")
+    if type(api) ~= "table" or type(api.Lines) ~= "function" then return end
+    local out = api.Lines()
+    local all = table.concat(type(out) == "table" and out or {}, "\n")
+    t.ok(all:find(ns.DungeonRead.WHY_NO_LOG[1], 1, true) ~= nil, all)
+    t.eq(all:find("0 of its quests", 1, true), nil, all)
+end
+
 return tests

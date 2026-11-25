@@ -202,7 +202,14 @@ function V.Quests(pane, quests, log)
                     if type(q) == "table" and type(q.giverName) == "string" and q.giverName ~= "" then
                         from = q.giverName
                     end
-                    missing[#missing + 1] = { name = tostring(r.name), from = from }
+                    -- R-02: a hand-in not known keeps its note (DungeonRead).
+                    local R = ns.DungeonRead
+                    local unknown = nil
+                    if type(r.note) == "string" and type(R) == "table" and type(R.DONE_UNKNOWN) == "string"
+                        and r.note:find(R.DONE_UNKNOWN, 1, true) then
+                        unknown = true
+                    end
+                    missing[#missing + 1] = { name = tostring(r.name), from = from, unknown = unknown }
                 end
             end
         end
@@ -251,6 +258,9 @@ function V.QuestLines(name, have, missing, max)
             local m = missing[i]
             said[i] = m.name
             if m.from then said[i] = m.name .. " (" .. m.from .. ")" end
+            if m.unknown and type(ns.DungeonRead) == "table" then
+                said[i] = said[i] .. " (" .. tostring(ns.DungeonRead.DONE_UNKNOWN) .. ")"
+            end
         end
         local line = V.NOT_IN_LOG:format(#missing, table.concat(said, "; "))
         if #missing > max then line = line .. V.MORE:format(#missing - max) end
