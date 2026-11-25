@@ -14,6 +14,13 @@ local _, ns = ...
 --   A slot whose quality was not read is not counted.
 -- "loot window", not "corpse": the client cannot tell a corpse from a
 -- skinning or chest window (Core/Client.lua, lootWindow).
+--
+-- E-44: with Skinning, anything left in the window means the corpse cannot be
+-- skinned yet: the game lets you skin a corpse only once nothing is left on
+-- it (Flow Modules/Items/LootFilter.lua:18-22, L.SkinWarning :63-68). Said
+-- once per session, worded for a corpse "if" it was one (see above).
+--   text = LootLeft.SkinWarning(items, professions)   pure: nil unless both
+-- professions: client.professions() ({ [name] = true }, nil when not read).
 -- Not tested in game.
 
 local LootLeft = {}
@@ -35,8 +42,17 @@ function LootLeft.Line(n)
     return string.format("left %d grey item%s in the loot window.", n, n == 1 and "" or "s")
 end
 
+LootLeft.SKIN_WARNING = "if that was a corpse you mean to skin, take everything first: "
+    .. "the game lets you skin a corpse only once nothing is left on it, so it can't be skinned yet."
+
+function LootLeft.SkinWarning(items, professions)
+    if type(items) ~= "table" or #items == 0 then return nil end
+    if type(professions) ~= "table" or professions.Skinning ~= true then return nil end
+    return LootLeft.SKIN_WARNING
+end
+
 function LootLeft.Declare(k)
-    local told = false
+    local told, skinTold = false, false
     k:Module({
         name = LootLeft.NAME,
         needs = { "client" },
@@ -44,6 +60,15 @@ function LootLeft.Declare(k)
             local on = ctx.client.onLootLeft
             if type(on) ~= "function" then return end
             on(function(items)
+                if not skinTold and type(ctx.client.professions) == "function" then
+                    local okP, profs = pcall(ctx.client.professions)
+                    local warn
+                    if okP then warn = LootLeft.SkinWarning(items, profs) end
+                    if warn then
+                        skinTold = true
+                        ctx.client.print(k.id.title .. ": " .. warn)
+                    end
+                end
                 if told then return end
                 local line = LootLeft.Line(LootLeft.Junk(items))
                 if not line then return end
