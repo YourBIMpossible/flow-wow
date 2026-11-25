@@ -196,6 +196,7 @@ tests["window buttons: the lines say each state, and why one was not made"] = fu
         "button on the merchant window: not made (its window is protected); window there, protected.",
         "button on the profession window: off; window not there.",
         "button on the bank window: off; window not there.",
+        "button on the " .. W.WINDOWS[5].says .. ": off; window not there.",
     })
     local _, _, off = start()
     t.eq(off.lines(), {
@@ -203,6 +204,7 @@ tests["window buttons: the lines say each state, and why one was not made"] = fu
         "button on the merchant window: off; window there, not protected.",
         "button on the profession window: off; window not there.",
         "button on the bank window: off; window not there.",
+        "button on the " .. W.WINDOWS[5].says .. ": off; window not there.",
     })
 end
 
@@ -214,6 +216,7 @@ tests["window buttons: the lines say what the window is, and whether a shown but
         "button on the merchant window: shown; window there, open, not protected; button can be seen.",
         "button on the profession window: off; window not there.",
         "button on the bank window: off; window not there.",
+        "button on the " .. W.WINDOWS[5].says .. ": off; window not there.",
     })
     c.setWindow("MerchantFrame", { shown = false })
     t.eq(api.lines()[2],

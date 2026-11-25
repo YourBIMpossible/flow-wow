@@ -126,7 +126,7 @@ return {
     end,
 
     ["rows: the addon's own kernel has them"] = function(t)
-        t.eq(R.made, 5)
+        t.eq(R.made, 6, "five buttons rows (F-29: the talent window) and the intro")
         t.ok(ns.settings:row("ui.intro") ~= nil, "ui.intro")
         t.ok(ns.settings:row("buttons.worldMap") ~= nil, "buttons.worldMap")
         t.ok(ns.settings:row("buttons.merchant") ~= nil, "buttons.merchant")

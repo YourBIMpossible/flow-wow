@@ -84,4 +84,19 @@ tests["window buttons F-29: a talent window that loads late gets its button when
     t.eq(api.state().talents, "shown")
 end
 
+-- Lazy's nit (section 824): the talent window's add-on loading twice (or
+-- any add-on loading after the button is made) makes no second button.
+tests["window buttons F-29: ADDON_LOADED twice makes one button"] = function(t)
+    if not win("talents") then return t.ok(false, "no talents entry") end
+    local c = start({})
+    c.setWindow("PlayerSpellsFrame", {})
+    c.fire("ADDON_LOADED", "Blizzard_PlayerSpells")
+    c.fire("ADDON_LOADED", "Blizzard_PlayerSpells")
+    local n = 0
+    for _, h in ipairs(c.windowButtons or {}) do
+        if h.frame == "PlayerSpellsFrame" then n = n + 1 end
+    end
+    t.eq(n, 1, "one button on the talent window")
+end
+
 return tests
