@@ -216,7 +216,8 @@ tests["flow button: holds the planned spell, its icon that spell's"] = function(
     t.eq({ a.type, a.spell }, { "spell", "Power Word: Fortitude" }, "the click casts the planned spell")
     t.eq(h.slots[1].icon, "tex:Power Word: Fortitude")
     t.eq(empty(c, FLOW), false, "the face shows the icon")
-    t.eq(tip(c, FLOW), "Flow button. Casts Power Word: Fortitude when you click it.")
+    t.eq(tip(c, FLOW), "Flow button. Casts Power Word: Fortitude when you click it. " .. FB.SizeLine(1),
+        "F-34: ends with its size")
     t.eq(h.shown, true)
     noBindsNoMacros(t, c)
 end
