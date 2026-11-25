@@ -108,6 +108,18 @@ tests["forget: the places word forgets the one named and says so"] = function(t)
     t.ok(c.saved(ns.id.charDB).learned.places.services["Creature-0-1-2-3-222-0"] ~= nil)
 end
 
+-- Lead section 831 (Lazy CHANGES-1): through the slash line itself, the
+-- "nothing matched" reply keeps the player's own case. NEEDS
+-- lead-patches/diag-raw-rest.patch (Core/Diag.lua, lead-only), which hands
+-- each word the rest as typed; without it the reply is title case and this
+-- check fails.
+tests["forget: through the slash line, a place not found keeps the case typed"] = function(t)
+    local c = boot({}, { learned = { places = { services = places() } } })
+    run(c, "places forget NoBody HERE")
+    t.ok(said(c, "no learned place called NoBody HERE;") ~= nil,
+        "the name as typed: " .. tostring(c.printed and c.printed[#c.printed]))
+end
+
 tests["forget: the spots word forgets one quest's spot and says so"] = function(t)
     local book = { [100] = { [1] = { { map = 1, x = 0.1, y = 0.1, n = 1 } }, [0] = { { map = 1, x = 0.3, y = 0.3, n = 1 } } } }
     local c = boot({ learned = { places = { questSpots = book } } })
