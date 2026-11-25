@@ -56,7 +56,7 @@ B.LABEL = "Show your class buffs and their time left"
 -- switches the setting off and one chat line says how to turn it back on,
 -- by the click and by the word.
 B.ABOUT = "Your own class buffs and the time each has left. Close this to switch it off."
-B.CLOSED = "\"%s\" is switched off. To show it again, left-click the Flow button on your minimap (or type %s"
+B.CLOSED = "\"%s\" is switched off. To show it again, left-click the minimap button (or type %s"
     .. " settings) and turn on \"%s\" under Combat."
 B.ABOUT_ROWS = 2     -- rows of room for the one line, which may wrap
 B.HELP = "A small strip under your player frame lists your own class buffs with the time left, and names one that ran out so you can cast it again."
