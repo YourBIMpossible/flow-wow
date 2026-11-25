@@ -253,7 +253,10 @@ tests["bag upgrades module: a prompt per upgrade, at most three, best first; gon
     c.setBagItems(bags(TOUGH, STRONG))
     local k, advisor, api = start(c)
     t.eq(k:ModuleState(U().NAME), "started")
-    t.eq(advisor.List(), {}, "no role chosen: no prompt")
+    t.eq(texts(advisor), {
+        "Equip " .. STRONG .. " from your bags: +7.3 for dps over your head piece (first-guess weights)",
+        "Equip " .. TOUGH .. " from your bags: +0.8 for dps over your head piece (first-guess weights)",
+    }, "no role chosen: the levelling role, dps, as Flow's LevelingRole")
     k.settings:set("spec.role", "dps")
     c.fire("BAG_UPDATE_DELAYED")
     t.eq(texts(advisor), {

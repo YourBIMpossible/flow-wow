@@ -124,11 +124,11 @@ tests["bag upgrades: no line for what is not known to be a wearable upgrade"] = 
     t.eq(c.equipCalls, 0)
 end
 
-tests["bag upgrades: no role chosen - no line, and the word says why"] = function(t)
+tests["bag upgrades: no role chosen - the levelling role, dps, as Flow does"] = function(t)
     local c, addon, base = boot({ bag = bags(STRONG) })
-    t.eq(prompts(addon), {})
-    t.eq(said(c, "gear check"),
-         { line("Bag upgrades cannot be checked: choose a role (say " .. ns.id.slash .. " role).") })
+    t.eq(prompts(addon), { STRONG_LINE })
+    t.eq(said(c, "gear check"), { line("Upgrades in your bags, for dps:"), line(STRONG_LINE) })
+    t.eq(c.equipCalls, 0, "nothing was equipped")
     t.eq(addon.problems:count(), base, "no new problem")
 end
 
