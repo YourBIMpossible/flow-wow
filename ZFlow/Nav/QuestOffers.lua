@@ -21,7 +21,8 @@ local _, ns = ...
 -- changing), quests done or in your log. When Questie could not be asked
 -- (not loaded yet), the talk is kept and tried again a few times.
 --
---   QO.Note(list, id, onOffer, now, npc) -> "dropped" | "back" | nil   (pure)
+--   QO.Note(list, id, onOffer, now, npc) -> "pause" | "day" | "back" | nil
+--     (pure; an entry is { firstAt, hiddenAt, npc }, Flow's own shape)
 --   QO.Dropped(list, id, now) -> bool                                   (pure)
 --   QO.Declare(k, diag) -> api
 --     api.dropped(id)  true while the quest is dropped
@@ -43,7 +44,13 @@ QO.NAME = "questOffers"
 QO.PATH = "learned.facts.notOffered"
 QO.WORD = "offers"
 QO.EVENTS = { "GOSSIP_SHOW", "QUEST_GREETING" }
-QO.HIDE = 86400   -- seconds a quest stays dropped after a talk without it
+-- Lead section 806 (section 563): as Flow's Q.NoteOffer and Q:Offered
+-- (Modules/Quests/QuestData.lua:342-344, :362-373, :421-430 at origin/local
+-- 4ce93c83). One talk without the quest drops it for QO.PAUSE; a talk
+-- without it again, at least QO.GAP after the first, drops it for QO.HIDE.
+QO.PAUSE = 600    -- seconds a quest stays dropped after one talk without it
+QO.GAP = 60       -- the second talk must be at least this long after the first
+QO.HIDE = 86400   -- seconds a quest stays dropped once a second talk agrees
 QO.QUIET = 5      -- seconds after an accept or hand-in when the list is changing
 QO.RETRY = 10     -- seconds between tries of a talk Questie could not judge
 QO.TRIES = 3      -- tries before such a talk is given up
@@ -60,20 +67,16 @@ local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
 end
 
--- When the quest was dropped: our own entry, or Flow's imported one.
-local function since(e)
-    if type(e) ~= "table" then return nil end
-    if finite(e.at) then return e.at end
-    if finite(e.hiddenAt) then return e.hiddenAt end
-    if finite(e.firstAt) then return e.firstAt end
-    return nil
-end
-
+-- (Entries are Flow's shape, so the list the import brings over reads as
+-- it is: firstAt, the first talk without the quest; hiddenAt, the talk that
+-- dropped it for a day.)
 function QO.Dropped(list, id, now)
     if type(list) ~= "table" or not finite(now) then return false end
-    local at = since(list[id])
-    if at == nil then return false end
-    return now - at < QO.HIDE
+    local e = list[id]
+    if type(e) ~= "table" then return false end
+    if finite(e.hiddenAt) and now - e.hiddenAt < QO.HIDE then return true end
+    if finite(e.firstAt) and now - e.firstAt < QO.PAUSE then return true end
+    return false
 end
 
 function QO.Note(list, id, onOffer, now, npc)
@@ -83,9 +86,19 @@ function QO.Note(list, id, onOffer, now, npc)
         list[id] = nil
         return "back"
     end
-    if QO.Dropped(list, id, now) then return nil end
-    list[id] = { at = now, npc = npc }
-    return "dropped"
+    if not finite(now) then return nil end
+    local e = list[id]
+    if type(e) ~= "table" or not finite(e.firstAt) then
+        list[id] = { firstAt = now, npc = npc }
+        return "pause"
+    end
+    if finite(e.hiddenAt) and now - e.hiddenAt < QO.HIDE then return nil end
+    if now - e.firstAt >= QO.GAP then
+        e.hiddenAt = now
+        if npc ~= nil then e.npc = npc end
+        return "day"
+    end
+    return nil
 end
 
 local function tableOr(v)
