@@ -347,11 +347,12 @@ return {
         local own = { 0.9, 0.1, 0.9 }
         local P = N.ARROW_PALETTE.standard
         local E = N.ECHO_PALETTE
-        colour(t, E.far[1], E.far[2], E.far[3], { 90 / 255, 51 / 255, 145 / 255 }, "echo far purple")
-        colour(t, E.mid[1], E.mid[2], E.mid[3], { 155 / 255, 93 / 255, 229 / 255 }, "echo mid purple")
-        colour(t, E.near[1], E.near[2], E.near[3], { 217 / 255, 168 / 255, 1 }, "echo near purple")
-        colour(t, E.away[1], E.away[2], E.away[3], { 138 / 255, 132 / 255, 160 / 255 }, "echo away grey")
-        colour(t, E.here[1], E.here[2], E.here[3], { 240 / 255, 217 / 255, 1 }, "echo here")
+        -- Lead section 529: Muse's profession purples (RC.PROFESSION).
+        colour(t, E.far[1], E.far[2], E.far[3], { 123 / 255, 75 / 255, 166 / 255 }, "echo far purple")
+        colour(t, E.mid[1], E.mid[2], E.mid[3], { 143 / 255, 64 / 255, 202 / 255 }, "echo mid purple")
+        colour(t, E.near[1], E.near[2], E.near[3], { 163 / 255, 53 / 255, 238 / 255 }, "echo near purple")
+        colour(t, E.away[1], E.away[2], E.away[3], { 123 / 255, 75 / 255, 166 / 255 }, "echo away: the dim far purple")
+        colour(t, E.here[1], E.here[2], E.here[3], { 163 / 255, 53 / 255, 238 / 255 }, "echo here: the bright near purple")
         local r, g, b, a = N.ArrowPaint(L.prof, "zone", 40, nil, own)
         colour(t, r, g, b, E.near, "bright purple at 40 yd, not the activity's colour"); t.eq(a, N.ECHO_ALPHA, "at the echo's alpha")
         r, g, b = N.ArrowPaint(L.prof, "zone", 600, nil, own); colour(t, r, g, b, E.far, "dim purple at 600 yd")

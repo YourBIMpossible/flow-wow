@@ -190,8 +190,12 @@ end
 -- The echo's own colours: one purple family, dim far to bright near, the
 -- brightest at its own step, greyed in another zone. Never one flat colour
 -- (owner, lead section 476). Fixed: not a palette choice yet.
-N.ECHO_PALETTE = { away = rgb("8A84A0"), far = rgb("5A3391"), mid = rgb("9B5DE5"),
-                   near = rgb("D9A8FF"), here = rgb("F0D9FF") }
+-- Lead section 529: aligned to Muse's profession purples, RC.PROFESSION
+-- (Nav/RouteColor.lua): far 7B4BA6 to near A335EE, mid half way, so the
+-- echo and a profession map line show the same purple at the same distance.
+-- Another zone is the dim far purple, its own step the bright near one.
+N.ECHO_PALETTE = { away = rgb("7B4BA6"), far = rgb("7B4BA6"), mid = rgb("8F40CA"),
+                   near = rgb("A335EE"), here = rgb("A335EE") }
 
 local function mix(a, b, t)
     return a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t
