@@ -238,6 +238,11 @@ C.ON_YOU = { heal = true, emergency = true, buff = true }
 -- raid member, focus, mouseover) is never cast on: help for another player
 -- is only shown (look = true, Rotation/Group.lua), never put on the key.
 C.UNITS = { player = true, pet = true, target = true }
+-- Parity row D-24 (lead section 711): a group buff or a cure from
+-- Rotation/Group.lua, out of a fight, on its party member. No other kind
+-- may name a party unit, and no raid unit is ever taken.
+C.GROUP_KINDS = { groupBuff = true, dispel = true }
+C.PARTY = { party1 = true, party2 = true, party3 = true, party4 = true }
 C.ATTACK = { ["Attack"] = true, ["Auto Attack"] = true }
 -- Section 249 (CT-1): the one name the key casts the swing by. A suggestion
 -- or a slot may say "Auto Attack" (the rows name either); the secure button
@@ -282,6 +287,12 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     -- P-PARTY: a look-only suggestion (look = true: for another player) is
     -- never put on the key. The key holds what it holds with no suggestion.
     if type(suggestion) == "table" and suggestion.look == true then suggestion = nil end
+    -- D-24: a unit that is no one's but a group buff's or cure's party
+    -- member is refused: the key holds its plan.
+    if type(suggestion) == "table" and type(suggestion.unit) == "string" and not C.UNITS[suggestion.unit]
+        and not (C.GROUP_KINDS[suggestion.kind] and C.PARTY[suggestion.unit]) then
+        if suggestion.unit:find("^party") or suggestion.unit:find("^raid") then suggestion = nil end
+    end
 
     local button = {}
     local spell, source = spellOf(suggestion), "suggestion"
@@ -296,6 +307,7 @@ function C.Attributes(suggestion, plan, applied, lockdown, form)
     elseif spell then
         kind = "spell"
         unit = C.UNITS[suggestion.unit] and suggestion.unit or (C.ON_YOU[suggestion.kind] and "player") or nil
+        if C.GROUP_KINDS[suggestion.kind] and C.PARTY[suggestion.unit] then unit = suggestion.unit end
     elseif itemOf(suggestion) then
         -- Section 226 (CF-30): an item (Well Fed food) is used by its id on
         -- the player's press. Section 246 (N63-E): through the secure item

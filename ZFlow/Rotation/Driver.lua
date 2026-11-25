@@ -758,7 +758,7 @@ function D.Read(client, pack, ids, role, extra)
             return nil
         end
         -- P-PARTY: your group and its setting (Rotation/Group.lua).
-        if field == "party" or field == "groupOn" then
+        if field == "party" or field == "groupOn" or field == "groupKey" or field == "lockdownRead" then
             if type(ns.PartyGroup) ~= "table" then return nil end
             return ns.PartyGroup.Read(client, field, { pack = pack, ids = ids })
         end

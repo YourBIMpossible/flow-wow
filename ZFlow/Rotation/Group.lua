@@ -6,9 +6,15 @@ local _, ns = ...
 -- Modules/Rotation/Engine.lua E:GroupBuff and E:Dispel (there the target
 -- button cast them).
 --
--- Look only. The suggestion names the party unit and the spell, with
--- look = true and the player's name in `member`; Rotation/Cast.lua never
--- puts a look-only suggestion on the key, so nothing is cast on anyone.
+-- Look only, but for one case (parity row D-24, lead sections 704 and 711,
+-- as Flow's Engine.lua :1153 GroupBuff and :1359 Dispel): out of a fight
+-- (inCombat a plain false), with the lock a plain false (lockdownRead) and
+-- the setting G.KEY_SETTING on, the suggestion goes on the key: kind
+-- "groupBuff" or "dispel", unit "party1".."party4", no look. Rotation/
+-- Cast.lua takes a party unit for those two kinds only, set out of a fight
+-- like every row. In a fight, with the lock on or not read, or the setting
+-- off, it stays look-only (look = true), and Cast.lua never puts that on
+-- the key.
 -- The name is shown on the icon's caption only (UI/RotationIcon.lua): it is
 -- never in a reason, a trace note or a diag line, and never saved.
 --
@@ -42,6 +48,9 @@ local R = ns.Rotation
 G.NAME = "partyGroup"
 -- The key Flow's import writes (Import/FromFlow.lua, rotation.groupBuffs).
 G.SETTING = "rotation.groupBuffs"
+-- D-24: group buffs and cures on the key, out of a fight. On as made, as
+-- Flow's (its key cast them).
+G.KEY_SETTING = "rotation.groupKey"
 G.KEEP = 1
 G.REBUFF = 30
 -- Who comes first: the tank, then the healer, then everyone else (Flow's ORDER).
@@ -269,6 +278,17 @@ function G.Read(client, field, known)
         if not ctx or type(ctx.settings) ~= "table" then return nil end
         return ctx.settings:get(G.SETTING) ~= false
     end
+    -- D-24: the key setting, and the lock as the client says it.
+    if field == "groupKey" then
+        if not ctx or type(ctx.settings) ~= "table" then return nil end
+        return ctx.settings:get(G.KEY_SETTING) ~= false
+    end
+    if field == "lockdownRead" then
+        if type(client.combatLockdown) ~= "function" then return nil end
+        local ok, v = pcall(client.combatLockdown)
+        if ok and type(v) == "boolean" then return v end
+        return nil
+    end
     if field ~= "party" then return nil end
     if type(client.party) ~= "function" then return nil end
     if ctx and type(ctx.settings) == "table" and ctx.settings:get(G.SETTING) == false then return nil end
@@ -335,7 +355,16 @@ local function ordered(party)
     return out
 end
 
-local function pick(spell, m, reason)
+-- D-24: on the key only out of a fight with the lock off and the setting
+-- on, for a party unit; else look-only. cure: the need is a removal.
+local KEY_UNITS = { party1 = true, party2 = true, party3 = true, party4 = true }
+local function pick(spell, m, reason, s, cure)
+    if type(s) == "table" and s.inCombat == false and s.lockdownRead == false and s.groupKey == true
+        and KEY_UNITS[m.unit] then
+        local kind = "groupBuff"
+        if cure then kind = "dispel" end
+        return { spell = spell, kind = kind, unit = m.unit, member = m.name, reason = reason }
+    end
     return { spell = spell, kind = "group", look = true, unit = m.unit, member = m.name, reason = reason }
 end
 
@@ -478,7 +507,8 @@ function G.Step(s, pack, prefs)
     local far, farCount = nil, 0
     for _, need in ipairs(needs) do
         if need.reach == true then
-            return pick(need.spell, { unit = need.unit, name = need.member }, G.NeedLine(need))
+            return pick(need.spell, { unit = need.unit, name = need.member }, G.NeedLine(need), s,
+                need.need == "cure")
         end
         farCount = farCount + 1
         if far == nil then far = need end
@@ -508,6 +538,12 @@ function G.Declare(k)
             help = "Out of a fight, names a party member who is missing one of your buffs, or has something "
                 .. "on them your spells can remove, with the spell. It casts nothing; your key is unchanged.",
             group = "party", synonyms = { "group", "party", "buffs", "blessing", "mark of the wild", "fortitude", "cure" },
+        }, {
+            key = G.KEY_SETTING, scope = "account", type = "bool", default = true,
+            label = "Cast group buffs and cures on the key",
+            help = "Out of a fight, the buff or cure named for a party member goes on your key, cast on them when "
+                .. "you press it. In a fight it is only named. Raid members are only named.",
+            group = "party", synonyms = { "group", "party", "buffs", "cure", "key", "cast" },
         } },
         start = function(c)
             ctx = c
