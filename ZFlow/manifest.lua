@@ -36,6 +36,8 @@ return {
         "Core/Sound.lua",
         "UI/MoveGuides.lua",
         "Core/Facts.lua",
+        -- FLOW-PARITY F-04: the self-test word, which asks each guarded read once; it only reads (after Diag).
+        "Core/SelfTest.lua",
         "Core/InviteAdvice.lua",
         "UI/Export.lua",
         "Items/PriceChart.lua",
