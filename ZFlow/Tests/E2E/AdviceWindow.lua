@@ -96,18 +96,22 @@ tests["advice window: the window is as tall as its lines"] = function(t)
     local w = window(c)
     if type(w) ~= "table" then t.ok(false, "no window") return end
     -- Lead section 564 R8: the first time it shows, a row under the title
-    -- says what the panel is (a section part); it counts one row.
-    local rows = 0
-    for _, p in ipairs(lineParts(w)) do rows = rows + (p.rows or 1) end
-    for _, p in ipairs(w.parts) do
-        if p.kind == "section" then rows = rows + 1 end
+    -- says what the panel is (a section part); it counts one row, for as
+    -- long as it is there.
+    local function rowsOf(win)
+        local n = 0
+        for _, p in ipairs(lineParts(win)) do n = n + (p.rows or 1) end
+        for _, p in ipairs(win.parts) do
+            if p.kind == "section" then n = n + 1 end
+        end
+        return n
     end
+    local rows = rowsOf(w)
     t.eq(#lineParts(w), 1, "one line")
     t.eq(w.height, fitted(rows), "one line: no empty space under it")
     addon.advisor.Add("test.other", "Repair your gear.", 0)
     local two = window(c)
-    local rows2 = 0
-    for _, p in ipairs(lineParts(two)) do rows2 = rows2 + (p.rows or 1) end
+    local rows2 = rowsOf(two)
     t.eq(rows2, rows + 1)
     t.eq(two.height, fitted(rows2), "it grows with a second line")
     addon.advisor.Remove("test.other")
