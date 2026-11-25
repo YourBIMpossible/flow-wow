@@ -51,8 +51,8 @@ ns.MinimapPin = Pin
 
 Pin.NAME = "minimapPin"
 Pin.SETTING = "nav.waypointPin"
-Pin.LABEL = "Show your waypoint on the minimap"
-Pin.HELP = "Puts a green dot on the minimap for a waypoint you set yourself, so you can see it without opening the map."
+Pin.LABEL = "Show your waypoint or the next step on the minimap"
+Pin.HELP = "Puts a dot on the minimap for a waypoint you set yourself or, without one, the step the arrow points at, so you can see it without opening the map."
 Pin.OFF = "turned off"
 Pin.NONE = "no waypoint"   -- nothing to pin: no waypoint, and the arrow points nowhere
 Pin.EVERY = 0.1        -- seconds between looks. A first guess.
