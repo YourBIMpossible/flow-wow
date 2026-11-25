@@ -212,6 +212,7 @@ return {
         "UI/SettingsOptions.lua",
         "UI/Rows.lua",
         "UI/Intro.lua",
+        "UI/LoginIntro.lua",
         "UI/WindowButtons.lua",
         "Nav/ArrowMenuRows.lua",
         "UI/ArrowMenu.lua",
