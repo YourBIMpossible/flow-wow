@@ -261,4 +261,98 @@ tests["advisor panel: Watch is reached through needs and is the addon's own"] = 
     t.eq(ns.Advisor.Watch, ns.advisor.Watch, "Advisor.Watch is the addon's own")
 end
 
+-- Parity row C-44 (lead section 660): an advice row carries how pressing it
+-- is. As Flow's Modules/Advisor/Advisor.lua (Adv.Urgency): three levels,
+-- said by whoever adds the prompt; here "info", "soon" and "now" (Flow's
+-- later, soon, now). Data only: the colour is drawn by another lane.
+-- Fails before: Add takes no level and a row has none.
+local function levelOf(api, id)
+    for _, row in ipairs(api.List()) do
+        if row.id == id then return A.Urgency(row), row.urgency end
+    end
+    return nil
+end
+
+tests["advisor urgency: a prompt added with no level is info, and its row is as it always was"] = function(t)
+    local _, _, api = start()
+    t.eq(api.Add("plain", "Sell your grey items.", 1), true)
+    t.eq(api.List(), { { id = "plain", text = "Sell your grey items.", priority = 1 } }, "no new field on the row")
+    t.eq(levelOf(api, "plain"), "info")
+end
+
+tests["advisor urgency: info said outright is the same as none"] = function(t)
+    local _, _, api = start()
+    t.eq(api.Add("plain", "Sell your grey items.", 1, "info"), true)
+    local level, kept = levelOf(api, "plain")
+    t.eq(level, "info")
+    t.eq(kept, nil, "info is not kept on the row")
+end
+
+tests["advisor urgency: soon is carried on the row"] = function(t)
+    local _, _, api = start()
+    t.eq(api.Add("bags", "Your bags are nearly full.", 5, "soon"), true)
+    local level, kept = levelOf(api, "bags")
+    t.eq(level, "soon")
+    t.eq(kept, "soon")
+end
+
+tests["advisor urgency: now is carried on the row"] = function(t)
+    local _, _, api = start()
+    t.eq(api.Add("cap", "Your Mining is at its cap: train the next rank.", 5, "now"), true)
+    t.eq(levelOf(api, "cap"), "now")
+end
+
+tests["advisor urgency: a level that is none of the three is refused and changes nothing"] = function(t)
+    local _, _, api = start()
+    for _, bad in ipairs({ "later", "red", "", 3, true }) do
+        local ok, why = api.Add("x", "A line.", 1, bad)
+        t.eq(ok, false, "refused: " .. tostring(bad))
+        t.ok(type(why) == "string" and why ~= "", "with a reason")
+    end
+    t.eq(api.List(), {}, "nothing was added")
+    api.Add("x", "A line.", 1, "soon")
+    t.eq(api.Add("x", "Another line.", 1, "purple"), false)
+    t.eq(api.List()[1].text, "A line.", "the prompt is as it was")
+    t.eq(levelOf(api, "x"), "soon")
+end
+
+tests["advisor urgency: adding the same prompt again replaces its level"] = function(t)
+    local _, _, api = start()
+    api.Add("cap", "Your Mining is 10 points under its cap.", 5, "soon")
+    api.Add("cap", "Your Mining is at its cap.", 5, "now")
+    t.eq(levelOf(api, "cap"), "now")
+    api.Add("cap", "Your Mining is fine.", 5)
+    local level, kept = levelOf(api, "cap")
+    t.eq(level, "info", "no level said: info again")
+    t.eq(kept, nil)
+    t.eq(#api.List(), 1, "still one row")
+end
+
+tests["advisor urgency: the level does not change the order, which is the priority's"] = function(t)
+    local _, _, api = start()
+    api.Add("low", "Low.", 1, "now")
+    api.Add("high", "High.", 9)
+    t.eq(api.List()[1].id, "high")
+    t.eq(api.List()[2].id, "low")
+end
+
+tests["advisor urgency: the pure rule reads a row, and anything else is info"] = function(t)
+    t.eq(A.Urgency({ urgency = "now" }), "now")
+    t.eq(A.Urgency({ urgency = "soon" }), "soon")
+    t.eq(A.Urgency({ urgency = "info" }), "info")
+    t.eq(A.Urgency({}), "info")
+    t.eq(A.Urgency({ urgency = "later" }), "info", "a word that is no level")
+    t.eq(A.Urgency(nil), "info")
+    t.eq(A.LEVELS, { "info", "soon", "now" }, "the three levels, least pressing first")
+end
+
+tests["advisor urgency: the window's line carries the level, for whoever draws its colour"] = function(t)
+    local view = A.View({ "First.", "Second.", "Third." }, "Advice", nil, { nil, "soon", "now" })
+    t.eq(view.children[1].urgency, nil, "info: the line as it always was")
+    t.eq(view.children[2].urgency, "soon")
+    t.eq(view.children[3].urgency, "now")
+    local plain = A.View({ "First." }, "Advice")
+    t.eq(plain.children[1], { kind = "line", key = "prompt1", text = "First.", wrap = true }, "no levels given")
+end
+
 return tests

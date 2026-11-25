@@ -13,16 +13,29 @@
 -- nothing more.
 --
 -- The API (fixed; other modules code against it):
---   Advisor.Add(id, text, priority) -> true | false, reason
+--   Advisor.Add(id, text, priority[, urgency]) -> true | false, reason
 --     id        non-empty string, the caller's own name for the prompt
 --               ("l6c.repair"). Adding an id that is there replaces its
 --               text and priority; it never makes a second line.
 --     text      non-empty string, one line as the player reads it
 --     priority  number, higher shows first; nil is 0. Equal priorities
 --               keep the order they were first added in.
+--     urgency   how pressing it is (parity row C-44), one of
+--               Advisor.LEVELS: "info" (worth doing, nothing is lost by
+--               waiting), "soon" (close to a limit) or "now" (the player
+--               is losing something until it is done). nil is "info". As
+--               Flow's Modules/Advisor/Advisor.lua (Adv.URGENCY: later,
+--               soon, now): whoever adds the prompt says it. Flow also
+--               made a prompt "soon" from its importance alone; priorities
+--               here are an order, not an importance, so nothing is
+--               guessed from them. It never changes the order. Data only:
+--               the colour is the drawing lane's.
 --     Bad arguments are refused with a reason and change nothing.
 --   Advisor.Remove(id) -> true when the prompt was there, else false
 --   Advisor.List()     -> copies, in shown order: { { id, text, priority }, ... }
+--               A row said to be "soon" or "now" also has urgency; an
+--               "info" row has no such field.
+--   Advisor.Urgency(row) -> "info" | "soon" | "now"   pure: a row's level
 --   Advisor.Watch(fn)  -> cancel | nil (N68). fn(id, text) is told when a
 --               prompt id that was not there is added: a rule that turned
 --               true. A replaced text is not new; a prompt removed and added
@@ -78,6 +91,16 @@ Advisor.TITLE = "Advice"
 -- section 578 point A). A section row, so it is never read as one of the
 -- prompts; the plain panel the window falls back to does not carry it.
 Advisor.ABOUT = "Things worth doing now, such as a repair."
+-- Parity row C-44: how pressing a prompt is, least pressing first.
+Advisor.LEVELS = { "info", "soon", "now" }
+local LEVEL = {}
+for _, level in ipairs(Advisor.LEVELS) do LEVEL[level] = true end
+
+function Advisor.Urgency(row)
+    local u = type(row) == "table" and row.urgency or nil
+    if u ~= nil and LEVEL[u] then return u end
+    return Advisor.LEVELS[1]
+end
 Advisor.KIT_ID = "Advisor"
 Advisor.KIT_WIDTH = 320
 -- G32: the panel opened on purpose.
@@ -117,7 +140,9 @@ end
 -- cannot cost the window. Nothing in it can be pressed. Escape does not
 -- close it: advice should not go with every Escape.
 -- about: the one line that says what the panel is, first, or nil.
-function Advisor.View(lines, title, about)
+-- levels: { [i] = "soon" | "now" } for lines[i], or nil (C-44): put on the
+-- line as urgency, for whoever draws its colour. An "info" line has none.
+function Advisor.View(lines, title, about, levels)
     if type(title) ~= "string" or title == "" then title = Advisor.Title() end
     -- Lead section 408: the title stands in the title bar only (no header
     -- part repeats it), a long line wraps and is never cut, and the window
@@ -133,7 +158,10 @@ function Advisor.View(lines, title, about)
         for i = 1, #lines do
             local text = lines[i]
             if type(text) == "string" and text:find("%S") then
-                kids[#kids + 1] = { kind = "line", key = "prompt" .. i, text = text, wrap = true }
+                local line = { kind = "line", key = "prompt" .. i, text = text, wrap = true }
+                local level = type(levels) == "table" and levels[i] or nil
+                if level ~= nil and level ~= Advisor.LEVELS[1] and LEVEL[level] then line.urgency = level end
+                kids[#kids + 1] = line
             end
         end
     end
@@ -188,7 +216,11 @@ function Advisor.Declare(k, diag)
         end
         local list = sorted()
         local lines = {}
-        for i = 1, math.min(#list, Advisor.MAX_SHOWN) do lines[i] = list[i].text end
+        local levels = {}
+        for i = 1, math.min(#list, Advisor.MAX_SHOWN) do
+            lines[i] = list[i].text
+            levels[i] = list[i].urgency
+        end
         if #list == 0 then lines[1] = Advisor.NONE end
         if #list > Advisor.MAX_SHOWN then
             lines[#lines + 1] = "and " .. (#list - Advisor.MAX_SHOWN) .. " more"
@@ -198,7 +230,7 @@ function Advisor.Declare(k, diag)
         local rows = { title }
         for i = 1, #lines do rows[#rows + 1] = lines[i] end
         -- Every time it shows it says what it is (section 578 point A).
-        host.draw(Advisor.View(lines, title, Advisor.ABOUT), rows)
+        host.draw(Advisor.View(lines, title, Advisor.ABOUT, levels), rows)
         if not closed then host.show(true) end
     end
 
@@ -209,7 +241,7 @@ function Advisor.Declare(k, diag)
         return nil
     end
 
-    function api.Add(id, text, priority)
+    function api.Add(id, text, priority, urgency)
         local problem = checkId(id)
         if problem then return false, problem end
         if type(text) ~= "string" or not text:find("%S") then
@@ -217,13 +249,19 @@ function Advisor.Declare(k, diag)
         end
         if priority == nil then priority = 0 end
         if not isFinite(priority) then return false, "the priority must be a number" end
+        if urgency ~= nil and not (type(urgency) == "string" and LEVEL[urgency]) then
+            return false, "the urgency must be info, soon or now"
+        end
+        -- "info" is the level of a prompt that says none: not kept.
+        if urgency == Advisor.LEVELS[1] then urgency = nil end
         local at = find(id)
         if at then
             entries[at].text = text
             entries[at].priority = priority
+            entries[at].urgency = urgency
         else
             seq = seq + 1
-            entries[#entries + 1] = { id = id, text = text, priority = priority, seq = seq }
+            entries[#entries + 1] = { id = id, text = text, priority = priority, urgency = urgency, seq = seq }
             -- A new prompt opens a window the player closed; a replaced
             -- text does not.
             closed = false
@@ -261,7 +299,7 @@ function Advisor.Declare(k, diag)
     function api.List()
         local out = {}
         for i, e in ipairs(sorted()) do
-            out[i] = { id = e.id, text = e.text, priority = e.priority }
+            out[i] = { id = e.id, text = e.text, priority = e.priority, urgency = e.urgency }
         end
         return out
     end
