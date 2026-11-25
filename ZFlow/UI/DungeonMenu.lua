@@ -33,7 +33,9 @@
 local _, ns = ...
 
 local M = {}
-ns.DungeonMenu = M
+-- ns.DungeonMenu is Nav/DungeonMenu.lua's (B-53, the arrow menu's section);
+-- this window's table has its own name so neither hides the other.
+ns.DungeonMenuWindow = M
 
 M.NAME = "dungeonMenu"
 M.ID = "dungeonMenu"

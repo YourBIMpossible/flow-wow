@@ -8,7 +8,7 @@
 local _, ns = ...
 local tests = {}
 
-local M = ns.DungeonMenu
+local M = ns.DungeonMenuWindow
 local ID = "dungeonMenu"
 local DM, SFK = 1581, 209
 
