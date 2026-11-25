@@ -25,7 +25,9 @@ T["data: no level is typed into the travel spells (section 618)"] = function(t)
     for i, s in ipairs(N.TRAVEL_SPELLS) do
         for key, v in pairs(s) do
             if type(v) == "number" then t.eq(key, "map", "row " .. i .. ": only the map is a number")
-            elseif type(v) == "string" then t.eq(v:find("%d"), nil, "row " .. i .. " " .. key .. ": no number typed in: " .. v) end
+            elseif type(v) == "string" then
+                t.eq(v:find("%d"), nil, "row " .. i .. " " .. key .. ": no number typed in: " .. v)
+            end
         end
         t.eq(s.from, nil, "row " .. i .. ": no typed where-from")
     end
@@ -69,8 +71,8 @@ T["trainer record: the level a saved trainer list gives the spell"] = function(t
     t.eq(N.TravelSpellLevel(lists, "Teleport: Moonglade"), 10)
     t.eq(N.TravelSpellLevel(lists, "Hibernate"), nil, "not listed: no level")
     t.eq(N.TravelSpellLevel(nil, "Teleport: Moonglade"), nil)
-    t.eq(N.TravelSpellLevel({ x = { rows = { { name = "Teleport: Moonglade", level = 0 } } } }, "Teleport: Moonglade"),
-        nil, "no plain level: none")
+    local zero = { x = { rows = { { name = "Teleport: Moonglade", level = 0 } } } }
+    t.eq(N.TravelSpellLevel(zero, "Teleport: Moonglade"), nil, "no plain level: none")
 end
 
 T["known not said: no step, never taken as known"] = function(t)
