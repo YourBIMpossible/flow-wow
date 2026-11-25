@@ -41,9 +41,11 @@
 -- drawing lane's). As Flow's Modules/Advisor/Advisor.lua:83-112: a row the
 -- player hid is not shown, the hidden ones can be listed, and one can be
 -- brought back; kept for the character.
---   Advisor.KeyOf(id) -> key or nil   pure: the id with each run of digits
---               as "#", so "train.2" stays hidden as "train.3" (Flow made
---               its key from the text the same way).
+--   Advisor.KeyOf(id) -> key or nil   pure: the id with each dot-part
+--               that is all digits as "#", so "train.2" stays hidden as
+--               "train.3"; digits inside a word stay ("l6c.repair"). Lead
+--               section 671. Flow made its key from the text, with every
+--               digit run out; an id's digits inside a word are its name.
 --   Advisor.Hide(id)    -> true | false, reason   the prompt of that id,
 --               which must be there and not hidden. Nothing is hidden
 --               before the module starts, past Advisor.MAX_HIDDEN keys, or
@@ -124,7 +126,13 @@ Advisor.UNSAVED = "what is hidden could not be saved, so nothing was changed."
 
 function Advisor.KeyOf(id)
     if type(id) ~= "string" or id == "" then return nil end
-    return (id:gsub("%d+", "#"))
+    -- Split on dots, keeping empty parts, and put back with dots.
+    local parts = {}
+    for part in (id .. "."):gmatch("([^.]*)%.") do
+        if part:find("^%d+$") then part = "#" end
+        parts[#parts + 1] = part
+    end
+    return table.concat(parts, ".")
 end
 
 -- Parity row C-44: how pressing a prompt is, least pressing first.
@@ -257,11 +265,13 @@ function Advisor.Declare(k, diag)
     local function render()
         if not host then return end
         if #entries == 0 and not asked then closed = false end
-        if not enabled() or (not asked and (#entries == 0 or held())) then
+        -- C-46 (lead section 671): with every prompt hidden there is
+        -- nothing to show, the same as with none.
+        local list = sorted()
+        if not enabled() or (not asked and (#list == 0 or held())) then
             host.show(false)
             return
         end
-        local list = sorted()
         local lines = {}
         local levels = {}
         for i = 1, math.min(#list, Advisor.MAX_SHOWN) do

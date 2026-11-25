@@ -375,6 +375,8 @@ tests["advisor hide: the key of a prompt ignores its numbers"] = function(t)
     t.ok(A.KeyOf("train.2") ~= A.KeyOf("bags.2"), "another prompt, another key")
     t.eq(A.KeyOf(""), nil)
     t.eq(A.KeyOf(7), nil)
+    t.eq(A.KeyOf("a.12.b.3x"), "a.#.b.3x", "only a dot-part that is all digits")
+    t.eq(A.KeyOf("42"), "#")
 end
 
 tests["advisor hide: a hidden row leaves the list and the panel, and is listed as hidden"] = function(t)
