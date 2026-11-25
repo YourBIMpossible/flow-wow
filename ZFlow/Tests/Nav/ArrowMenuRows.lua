@@ -24,7 +24,8 @@ tests["arrow menu rows: an ordered list, each with key, words, enabled-when and 
     for i, e in ipairs(R().ENTRIES) do
         keys[i] = e.key
         t.ok(type(e.text) == "string" and e.text ~= "", e.key .. ": words")
-        t.ok(e.when == "always" or e.when == "outOfFight", e.key .. ": enabled-when")
+        -- "waypoint": greyed with no waypoint set (the rows test below).
+        t.ok(e.when == "always" or e.when == "outOfFight" or e.when == "waypoint", e.key .. ": enabled-when")
         t.eq(type(e.action), "table", e.key .. ": an action")
     end
     t.eq(keys, { "windows.advice", "windows.setup", "windows.banker", "route.zoneFirst", "style.distance",
