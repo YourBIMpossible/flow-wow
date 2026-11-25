@@ -104,15 +104,30 @@ local function labelMax()
     return N and N.Waypoint and N.Waypoint.LABEL_MAX or 40
 end
 
+-- Does the table of names (Nav/WeaponMasterNames.lua) have this master
+-- WITHOUT the wanted kind? Only then is a master left out: one the table
+-- does not name, no table, or no kind read leaves nobody out.
+local function listedWithout(name, subclassID)
+    if subclassID == nil then return false end
+    local N = ns.Nav
+    local list = type(N) == "table" and N.WeaponMasterNames or nil
+    local row = type(list) == "table" and list[name] or nil
+    if type(row) ~= "table" or type(row.skills) ~= "table" then return false end
+    return row.skills[subclassID] ~= true
+end
+
 -- The nearest saved weapon master on the map of `here`, by shares of the
--- map; a tie goes to the lower name.
-local function nearest(here, npcs)
+-- map; a tie goes to the lower name. One the table has without the wanted
+-- kind is passed over (Zen's review, lead section 616): a master the
+-- table has without the kind is never pointed at, visited or not.
+local function nearest(here, npcs, subclassID)
     if type(here) ~= "table" or here.map == nil or not (share(here.x) and share(here.y)) then return nil end
     if type(npcs) ~= "table" then return nil end
     local best, bestName, bestD
     for name, e in pairs(npcs) do
         if type(name) == "string" and type(e) == "table" and type(e.roles) == "table"
-            and e.roles.weaponMaster == true and e.map == here.map and share(e.x) and share(e.y) then
+            and e.roles.weaponMaster == true and e.map == here.map and share(e.x) and share(e.y)
+            and not listedWithout(name, subclassID) then
             local dx, dy = e.x - here.x, e.y - here.y
             local d = dx * dx + dy * dy
             if bestD == nil or d < bestD or (d == bestD and name < bestName) then
@@ -136,7 +151,7 @@ function WM.Of(wanted, here, npcs)
     if type(wanted) ~= "table" or not text(wanted.skill) then return nil end
     local step = { kind = WM.KIND, label = WM.LABEL, skill = wanted.skill, subclassID = wanted.subclassID,
                    radius = WM.RADIUS }
-    local found = nearest(here, npcs)
+    local found = nearest(here, npcs, wanted.subclassID)
     if found then point(step, found) end
     return step
 end
