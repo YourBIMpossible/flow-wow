@@ -96,6 +96,11 @@ local function sells(d)
     return n == nil or n > 0
 end
 
+local function listOf(v)
+    if type(v) == "table" then return v end
+    return {}
+end
+
 local function row(e, extra)
     local r = { key = e.key, name = nameOf(e), count = e.count, quality = e.quality }
     for k, v in pairs(extra) do r[k] = v end
@@ -105,7 +110,7 @@ end
 
 function BR.SellRows(bags, bank)
     local out, kept, inBank = {}, {}, {}
-    for _, e in ipairs(type(bags) == "table" and bags or {}) do
+    for _, e in ipairs(listOf(bags)) do
         if type(e) == "table" and type(e.decision) == "table" then
             local d = e.decision
             if d.action == "keep" and BR.KEPT[d.rule or ""] then
@@ -115,7 +120,7 @@ function BR.SellRows(bags, bank)
             end
         end
     end
-    for _, e in ipairs(type(bank) == "table" and bank or {}) do
+    for _, e in ipairs(listOf(bank)) do
         if type(e) == "table" and type(e.decision) == "table" and e.decision.action ~= "keep" and sells(e.decision) then
             inBank[#inBank + 1] = row(e, { bank = true, reason = sellReason(e.decision) or BR.NO_REASON })
         end
@@ -128,7 +133,7 @@ end
 
 function BR.SellNote(rows, atBank)
     local nBags, nKept, nBank = 0, 0, 0
-    for _, r in ipairs(type(rows) == "table" and rows or {}) do
+    for _, r in ipairs(listOf(rows)) do
         if r.bank then
             nBank = nBank + 1
         elseif r.kept then
