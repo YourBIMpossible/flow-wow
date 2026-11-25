@@ -225,6 +225,16 @@ end
 function MRL.Paint(kind, step, yards, palette, byDistance)
     local RC = ns.RouteColor
     if type(RC) ~= "table" or type(RC.Of) ~= "function" then
+        -- F-23 (section 828.2): the fallback route blue follows the
+        -- palette too (Nav/RoutePalette.lua, Flow's Shortest path blue).
+        local RP = ns.RoutePalette
+        if kind ~= "waypoint" and kind ~= "x" and type(RP) == "table" and type(RP.Color) == "function" then
+            local r, g, b = RP.Color(palette, "fallback")
+            if r ~= nil then
+                if kind == "first" then return r, g, b, MRL.FIRST_ALPHA end
+                return r, g, b, MRL.REST_ALPHA
+            end
+        end
         if kind == "waypoint" then return 0x1E / 255, 0xFF / 255, 0, MRL.FIRST_ALPHA end
         if kind == "x" then return 0xE6 / 255, 0x9F / 255, 0, MRL.FIRST_ALPHA end
         if kind == "first" then return 0, 0x70 / 255, 0xDD / 255, MRL.FIRST_ALPHA end

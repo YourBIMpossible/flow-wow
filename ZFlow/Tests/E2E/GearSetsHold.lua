@@ -311,4 +311,38 @@ for name, fn in pairs(tests) do
     end
 end
 
+-- C-42-keep (lead section 791; Flow's sets kept their pieces): an item in
+-- one of the game's own equipment sets (client.equipmentSets, read only) is
+-- held too: never offered at the merchant, kept naming the game set. It is
+-- matched by its item ID (the game gives a set's items as IDs). Fails
+-- before: only Z-Flow's own saved sets were held.
+tests["gear sets C-42-keep: a piece of a game equipment set is never offered at the merchant"] = function(t)
+    local c = start({ worn = WORN })
+    local before = visit(c)
+    t.ok(starts(before, "1 x Frayed Cloak: "), "no set yet: the grey cloak is offered: " .. joined(before))
+    c.setEquipmentSets({ { id = 1, name = "Tank", icon = 1, worn = false, items = { [15] = CLOAK } } })
+    local after = visit(c)
+    t.ok(not starts(after, "1 x Frayed Cloak: "), "the game set's piece is not offered: " .. joined(after))
+    t.ok(has(after, "Frayed Cloak: in your Tank set"), "kept, naming the game set: " .. joined(after))
+    c.setEquipmentSets(nil)
+    t.ok(starts(visit(c), "1 x Frayed Cloak: "), "the game's sets not read: nothing held for them")
+end
+
+-- C-42-keep CHANGES-1 (lead section 804): the client is passed in. This
+-- file's ns.GearSets is not the booted add-on's own table, so a lookup by
+-- the add-on's store finds no client from here; Facts takes it as an
+-- argument (the add-on's own callers still find theirs by their store).
+tests["gear sets C-42-keep: the facts name both kinds of set"] = function(t)
+    local Sets = ns.GearSets
+    local c, addon = start({ worn = WORN })
+    say(c, "set save tank")
+    c.setEquipmentSets({ { id = 1, name = "Pvp", items = { [16] = SWORD, [15] = CLOAK } } })
+    local facts = Sets.Facts(addon.store, c)
+    t.eq(facts and facts[CLOAK], { "tank", "Pvp" }, "your set, then the game's")
+    t.eq(facts and facts[SWORD], { "tank", "Pvp" })
+    c.setEquipmentSets({})
+    t.eq(Sets.Facts(addon.store, c)[CLOAK], { "tank" })
+    t.eq(addon.GearSets.Facts(addon.store)[SWORD], { "tank" }, "the add-on's own copy finds its client by its store")
+end
+
 return tests

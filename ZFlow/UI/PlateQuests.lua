@@ -30,6 +30,7 @@ local _, ns = ...
 --     kind "kill" | "drop"; from "questie" | "learned"
 --   PQ.Label(list) -> text | nil   each count once, at most PQ.MAX_LABELS
 --   PQ.PlatesNote(on, mobs, setting, told) -> true: say PQ.PLATES_OFF now
+--   PQ.TipLines(list, titles) -> { "<quest> <count>" ... } one per quest
 -- PQ.Declare(k, diag) -> api
 --   api.status() -> { on, source, inView, shown, mobs }
 --   api.lines()   what the word PQ.WORD prints
@@ -46,6 +47,15 @@ local _, ns = ...
 -- told whenever a quest had a kill or collect objective; here only when
 -- Questie gave creatures to mark, since without it there is no mark anyway.
 -- Read: client.gameSetting (Core/Client.lua, G59), already there.
+-- TOOLTIP (parity row C-21, lead section 603): hovering a creature in the
+-- index adds one line per quest to the game's unit tooltip, "<title>:
+-- <quest> <count>", from the same index the marks use, while the marks are
+-- on. Flow Modules/QuestMarks.lua TipLine adds such a line for profession
+-- drops ("Flow: loot Kodo Meat for Cooking, 0 -> 8"); the quest form is
+-- this row's. Reads: client.onUnitTooltip (there), client.unitCreature
+-- (CLIENT NEED: UnitGUID(unit) on any token, the id field as
+-- plateCreature; not in Core/Client.lua yet, so on the real client only a
+-- hovered nameplate unit gives a line), else client.plateCreature.
 -- Not tested in game.
 local PQ = {}
 ns.PlateQuests = PQ
@@ -373,6 +383,25 @@ function PQ.PlatesNote(on, mobs, setting, told)
     return on == true and type(mobs) == "number" and mobs > 0 and not told and tostring(setting) == "0"
 end
 
+function PQ.TipLines(list, titles)
+    local out, at = {}, {}
+    for _, e in ipairs(type(list) == "table" and list or {}) do
+        if type(e) == "table" and type(e.label) == "string" then
+            local name
+            if type(titles) == "table" then name = titles[e.quest] end
+            name = type(name) == "string" and name ~= "" and name or ("quest " .. tostring(e.quest))
+            local i = at[e.quest]
+            if i == nil then
+                out[#out + 1] = name .. " " .. e.label
+                at[e.quest] = #out
+            elseif not out[i]:find(" " .. e.label, 1, true) then
+                out[i] = out[i] .. " " .. e.label
+            end
+        end
+    end
+    return out
+end
+
 function PQ.Declare(k, diag)
     local api = {}
     local ctx
@@ -384,6 +413,8 @@ function PQ.Declare(k, diag)
     local cancelPlates, pending, cancelLook
     local wasOn = false
     local toldPlates = false  -- once a session: not cleared on stop
+    local titles = {}        -- [quest id] = title, from the last read
+    local cancelTip
 
     local function on() return ctx ~= nil and ctx.settings:get(PQ.OFF) ~= true end
 
@@ -539,6 +570,10 @@ function PQ.Declare(k, diag)
             index, source = {}, "no questie"
             return
         end
+        titles = {}
+        for _, row in ipairs(rows) do
+            if type(row) == "table" and row.id ~= nil then titles[row.id] = row.title end
+        end
         local ok, got = pcall(PQ.Index, rows, db, ctx.store:get("char", PQ.DROPS))
         -- C-19: the mobs that drop an item starting a quest you can take,
         -- read by a sliced pass (stepPass, a slice a frame, out of a fight);
@@ -588,6 +623,17 @@ function PQ.Declare(k, diag)
         end
     end
 
+    local function onTip(unit, add)
+        if not ctx or not on() or type(index) ~= "table" or type(add) ~= "function" then return end
+        local client = ctx.client
+        local id = ask(client, "unitCreature", unit)
+        if id == nil then id = ask(client, "plateCreature", unit) end
+        if id == nil then return end
+        for _, line in ipairs(PQ.TipLines(index[id], titles)) do
+            add(ns.id.title .. ": " .. line, PQ.COLOR[1], PQ.COLOR[2], PQ.COLOR[3])
+        end
+    end
+
     function api.status()
         local n, shown, mobs = 0, 0, 0
         for _ in pairs(inView) do n = n + 1 end
@@ -619,6 +665,7 @@ function PQ.Declare(k, diag)
         start = function(c)
             ctx = c
             cancelPlates = ask(c.client, "plates", onPlate)
+            cancelTip = ask(c.client, "onUnitTooltip", onTip)
             for _, event in ipairs(PQ.EVENTS) do c.bus:on(PQ.NAME, event, soon) end
             -- Lead section 274 PM-3: the settings tell no one of a change,
             -- so the switch alone is looked at every PQ.LOOK seconds (one
@@ -635,6 +682,8 @@ function PQ.Declare(k, diag)
         stop = function()
             if type(cancelPlates) == "function" then pcall(cancelPlates) end
             cancelPlates = nil
+            if type(cancelTip) == "function" then pcall(cancelTip) end
+            cancelTip = nil
             if type(pending) == "function" then pcall(pending) end
             pending = nil
             if type(cancelLook) == "function" then pcall(cancelLook) end
@@ -642,7 +691,7 @@ function PQ.Declare(k, diag)
             stopPass()
             pass, startsGot, logIndex, passKey = nil, nil, nil, nil
             hideAll()
-            inView, marks, shownOn, index, source = {}, {}, {}, nil, "none"
+            inView, marks, shownOn, index, source, titles = {}, {}, {}, nil, "none", {}
         end,
     })
 

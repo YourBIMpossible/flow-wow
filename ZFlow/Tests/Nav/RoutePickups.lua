@@ -181,4 +181,39 @@ tests["next steps: at most max, ties by quest id"] = function(t)
     t.eq(out[2].quest, 843)
 end
 
+-- Row A1-25b (lead section 820.2): the Everything route turns battleground
+-- quests on as if their row were ticked; other routes follow the row.
+tests["route pickups: the Everything route offers battleground quests, other routes follow the row"] = function(t)
+    local P = N.RoutePickups
+    t.eq(P.BattlegroundsOn({ battleground = true }), true, "Everything: on whatever the row says")
+    local B = N.BattlegroundQuests
+    local row = B.On()
+    t.eq(P.BattlegroundsOn({ battleground = false }), row == true, "other routes: the row")
+    t.eq(P.BattlegroundsOn(nil), row == true, "no route flags: the row")
+end
+
+-- A2-17 hook (lead sections 667, 680, 820.3): a pick-up an earlier quest or
+-- a spell still holds says which, in Nav/StepNeeds.lua words; a need the game
+-- cannot answer (SN.UNKNOWN) holds nothing and is never read as "not locked".
+tests["route pickups A2-17: the reason names the earlier quest or the spell"] = function(t)
+    local P = N.RoutePickups
+    local SN = N.StepNeeds
+    local names = { [600] = "Old Letters" }
+    local why, words
+    why, words = P.Candidate(q({ preQuestGroup = { 600 } }), ctx({
+        done = function(id) if id == 600 then return false end return nil end,
+        questName = function(id) return names[id] end }))
+    t.eq(why, false)
+    t.eq(words, SN.AFTER:format("Old Letters"), "after the earlier quest, by name")
+    why, words = P.Candidate(q({ requiredSpell = 5487 }), ctx({
+        spellKnown = function() return false end, spellName = function() return "Bear Form" end }))
+    t.eq(why, false)
+    t.eq(words, SN.LEARN:format("Bear Form"), "a spell the player does not know holds it, and says which")
+    t.eq((P.Candidate(q({ requiredSpell = 5487 }), ctx({ spellKnown = function() return nil end }))), true,
+        "a spell the game does not answer for holds nothing")
+    t.eq((P.Candidate(q({ preQuestGroup = { 600 } }), ctx())), true,
+        "an earlier quest not known holds nothing")
+    t.eq((P.Candidate(q({ requiredSpell = 5487 }), ctx({ spellKnown = function() return true end }))), true)
+end
+
 return tests

@@ -61,6 +61,7 @@ return {
         "Settings/Model.lua",
         "Settings/Topics.lua",
         "Settings/Rows.lua",
+        "Settings/GameSuggest.lua",
 
         -- Items
         "Items/Key.lua",
@@ -148,6 +149,8 @@ return {
         "Nav/ArrowLayout.lua",
         -- Pathing UI slice 1 (lead section 519): the one colour of a step at a distance (after ArrowLayout).
         "Nav/RouteColor.lua",
+        -- F-23 (section 828.2): the route and map colour of a role in a palette (after RouteColor).
+        "Nav/RoutePalette.lua",
         "Nav/Bearing.lua",
         "Nav/ArrowView.lua",
         "Nav/ArrowMotion.lua",
@@ -180,6 +183,7 @@ return {
         "Nav/QuestSource.lua",
         "Nav/QuestRead.lua",
         "Nav/AddonSources.lua",
+        "Nav/NearbyNodes.lua",
         "Nav/Rides.lua",
         "Nav/TravelSpells.lua",
         "Nav/TravelIcon.lua",
@@ -251,6 +255,7 @@ return {
     "UI/RotationQueue.lua",
     "Items/Banker.lua",
     "Items/BankerRows.lua",
+    "Items/TakeOutWhy.lua",
     "Items/Posting.lua",
     "Items/Trader.lua",
     "Items/TraderRows.lua",
@@ -266,6 +271,7 @@ return {
     -- N41 key controls and S23 click-casting check (P-KEYS slice B).
     "Rotation/KeyControls.lua",
     "UI/ClickCheck.lua",
+    "UI/TipSpot.lua",
     -- S15 click slots and S29 move handle (P-KEYS slice C).
     "UI/MoveHandle.lua",
     "Rotation/ClickSlots.lua",
@@ -311,6 +317,8 @@ return {
     "UI/SetupList.lua",
     -- P-TRIP (S43): quest spots learned from the player's own play (after QuestRead and Diag).
     "Nav/QuestSpots.lua",
+    -- F-new-4: forget one wrongly learned place or quest spot (after ServiceSeen, QuestSpots and Diag).
+    "Nav/LearnedForget.lua",
     -- P-TRIP (S39/S43/S40): quest routes and dungeon runs for the arrow (after RoutePlan, QuestSpots).
     "Nav/TripRoute.lua",
     "Nav/TrackerList.lua",
@@ -334,6 +342,8 @@ return {
     "UI/Chat.lua",
     -- G48 (P-TRIP): the party route over add-on messages (after TripRoute).
     "Nav/PartyRoute.lua",
+    -- B-41: party members exchange quest progress as add-on data (after PartyRoute).
+    "Nav/PartyProgress.lua",
     -- P-EVIDENCE+ (sections 252, 262): look-only capture fields saved under diag (after Diag).
     "Core/AutoEvidence.lua",
     -- P-TRIP slice 1: the trip list of stops for the route (after TripRoute, Errand, DungeonRead).
@@ -356,13 +366,19 @@ return {
     "Nav/InvitePrompt.lua",
     "Nav/RouteHover.lua",
     "Nav/StepDetail.lua",
+    -- A1-13 (lead section 825.2): the step card data (after StepDetail, whose rows it reuses).
+    "Nav/StepCard.lua",
     "Nav/InviteAccept.lua",
+    "Nav/DropLines.lua",
+    "Nav/HiddenSteps.lua",
     -- S41 (lead section 395 item 1): quest items in the bags, leftover and to buy (after QuestRead and the advisor).
     "Items/QuestBags.lua",
     -- R7 (sections 387, 388 b): spells to train, as advisor prompts (after the class packs and the advisor).
     "Spells/TrainAdvice.lua",
     -- C-61, C-49: talent points, the unlocked line and the spend prompt (after the advisor).
     "Spells/Talents.lua",
+    -- KNOW lane (C-62): the talents page, the pack levelling build talent by talent (after Kit, the packs, Spells/Talents).
+    "UI/TalentsWindow.lua",
     -- Lead section 375 item 7 (TN-1): the quest route's pick-ups (after RoutePlan, DungeonStates).
     "Nav/StepNeeds.lua",
     "Nav/BattlegroundQuests.lua",

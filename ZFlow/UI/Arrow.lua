@@ -483,6 +483,44 @@ function Arrow.HasQuestie(k)
     return ok and m ~= nil
 end
 
+-- Parity row A1-28 (lead section 794): Hide this step on a route step also
+-- keeps that quest step off the next route, saved per character by
+-- Nav/HiddenSteps.lua. Without that file it does nothing, and Hide this step
+-- only skips, as before. Answers whether the step was kept hidden.
+function Arrow.KeepHidden(step, store)
+    local HS = ns.Nav and ns.Nav.HiddenSteps
+    if type(HS) ~= "table" or type(HS.Hide) ~= "function" or type(HS.KeyOf) ~= "function" then return false end
+    if type(step) ~= "table" then return false end
+    local okKey, key = pcall(HS.KeyOf, step)
+    if not okKey or key == nil then return false end
+    local ok, done = pcall(HS.Hide, store, key, step.label)
+    return ok and done == true
+end
+
+-- Parity row A2-12 (lead section 794): a quest step with no place (words
+-- only, Nav/QuestSource.lua rule 3) also says which creatures dropped the
+-- thing it needs, from the player's own loot record, through
+-- Nav/DropLines.lua. Without that file, or with nothing recorded, the step is
+-- as before. book: the character's learned.drops; nameOf(item key) -> the
+-- item's plain name. Answers the step, or a copy with the lines added.
+function Arrow.DropWords(step, book, nameOf)
+    local DL = ns.Nav and ns.Nav.DropLines
+    if type(DL) ~= "table" or type(DL.Rows) ~= "function" or type(DL.Lines) ~= "function" then return step end
+    if type(step) ~= "table" or step.quest == nil or step.still ~= true or step.place ~= nil then return step end
+    if type(step.lines) ~= "table" or type(step.detail) ~= "string" then return step end
+    -- The objective names the thing: "Stringy Wolf Meat: 0/6".
+    local item = step.detail:match("^%s*(.-)%s*:%s*%d+%s*/%s*%d+%s*$")
+    if item == nil or item == "" then return step end
+    local ok, lines = pcall(function() return DL.Lines(DL.Rows(book, item, nameOf)) end)
+    if not ok or type(lines) ~= "table" or #lines == 0 then return step end
+    local copy = {}
+    for key, v in pairs(step) do copy[key] = v end
+    copy.lines = {}
+    for i = 1, #step.lines do copy.lines[i] = step.lines[i] end
+    for i = 1, #lines do copy.lines[#copy.lines + 1] = tostring(lines[i]) end
+    return copy
+end
+
 -- The why step for the quest arrow, or nil when the player chose not to see
 -- it. quests: the N.QuestWatch the step was asked of (nil: not loaded).
 function Arrow.WhyStep(k, quests, prof)
@@ -862,6 +900,28 @@ function Arrow.Start(k, diag, own)
         if type(guide) ~= "table" then
             if not playing then return nil end
             guide = {}
+        end
+        -- A2-12: a words-only quest step gets the drop lines; never the why line.
+        if not saying and type(guide.quest) == "table" and guide.quest.still == true then
+            local path = "learned.drops"
+            if ns.Drops and ns.Drops.PATH then path = ns.Drops.PATH end
+            local okBook, book = pcall(k.store.get, k.store, "char", path)
+            local names
+            if ns.ItemPresent and type(client) == "table" then names = ns.ItemPresent.Names(client.itemInfo) end
+            local function plainName(key)
+                if not names then return nil end
+                return ns.ItemPresent.Plain(names(key))
+            end
+            if okBook and type(book) == "table" then
+                local worded = Arrow.DropWords(guide.quest, book, plainName)
+                if worded ~= guide.quest then
+                    -- A copy: the guide handed in (a preview, a test's) is not changed.
+                    local copy = {}
+                    for key, v in pairs(guide) do copy[key] = v end
+                    copy.quest = worded
+                    guide = copy
+                end
+            end
         end
         heading = placeOf(guide.quest)
         -- R7: the step's family, by the ViewState rule (qs.family, else
@@ -1286,6 +1346,17 @@ function Arrow.Start(k, diag, own)
     end
     function routeChoose(action)
         if action.hide == "route" then
+            -- The step being skipped is read first, so it can be kept hidden.
+            -- (A route planned by itself answers through AutoStep, A1-24.)
+            local step = nil
+            for _, ask in ipairs({ "Step", "AutoStep" }) do
+                local current = using("tripRoute", ask)
+                if step == nil and current then
+                    local okStep, got = pcall(current)
+                    if okStep and type(got) == "table" then step = got end
+                end
+            end
+            if step then Arrow.KeepHidden(step, k.store) end
             run("the route", using("tripRoute", "Skip"))
         elseif action.hide == "errand" then
             run("the errand stop", using("errand", "Clear"))

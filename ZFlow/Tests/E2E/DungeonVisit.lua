@@ -427,4 +427,86 @@ tests["dungeon timing: the steps and the words, pure"] = function(t)
     t.eq({ V.Step({}, nil, 100) }, { {}, false })
 end
 
+-- R-02 (lead section 777; Plexy's notes): a quest whose hand-in is not
+-- known keeps that note in the chat list (DungeonRead's R.DONE_UNKNOWN on
+-- the pane row), and a log not read says so instead of "0 of its quests".
+-- Fails before: V.Quests dropped the note; the unread log read as empty.
+tests["dungeon visit R-02: a hand-in not known keeps its note in the list"] = function(t)
+    local V = ns.DungeonVisit
+    local R = ns.DungeonRead
+    local pane = { groups = { { id = "pickup", rows = { { id = 7, name = "Old Debt", note = R.DONE_UNKNOWN } } } } }
+    local _, missing = V.Quests(pane, {}, {})
+    t.eq(missing[1] and missing[1].unknown, true)
+    local lines = V.QuestLines("Deadmines", {}, missing)
+    t.ok(lines[2] and lines[2]:find(R.DONE_UNKNOWN, 1, true) ~= nil, tostring(lines[2]))
+end
+
+tests["dungeon visit R-02: a log not read says so, not none of its quests"] = function(t)
+    local c, addon = boot()
+    c.setQuestLog(nil)
+    c.fire("QUEST_LOG_UPDATE")
+    c.advance(0.2, 2)
+    local api = addon.dungeonVisit
+    t.ok(type(api) == "table" and type(api.Lines) == "function", "the visit api")
+    if type(api) ~= "table" or type(api.Lines) ~= "function" then return end
+    local out = api.Lines()
+    local all = table.concat(type(out) == "table" and out or {}, "\n")
+    t.ok(all:find(ns.DungeonRead.WHY_NO_LOG[1], 1, true) ~= nil, all)
+    t.eq(all:find("0 of its quests", 1, true), nil, all)
+end
+
+-- R-04 (lead section 777; Plexy's note): a quest you pick up inside the
+-- dungeon is listed too, as Flow's run lines ("Starts inside:", Modules/
+-- Nav/Dungeons.lua D.QuestLines :1519-1537; D.EnterSplit :1110-1125 counts
+-- every quest not in your log). Fails before: the "inside" group was
+-- dropped from the visit's list.
+tests["dungeon visit R-04: a quest picked up inside is listed, marked so"] = function(t)
+    local V = ns.DungeonVisit
+    local pane = { groups = {
+        { id = "pickup", rows = { { id = 7, name = "Red Silk" } } },
+        { id = "inside", rows = { { id = 8, name = "The Defias Brotherhood" } } },
+    } }
+    local _, missing = V.Quests(pane, {}, {})
+    t.eq(#missing, 2)
+    local inside
+    for _, m in ipairs(missing) do
+        if m.name == "The Defias Brotherhood" then inside = m end
+    end
+    t.eq(inside and inside.inside, true)
+    local lines = V.QuestLines("Deadmines", {}, missing)
+    t.ok(lines[2] and lines[2]:find("The Defias Brotherhood (" .. V.STARTS_INSIDE .. ")", 1, true) ~= nil,
+        tostring(lines[2]))
+end
+
+-- R-05 (lead section 777; Plexy's note): a running average of your runs of
+-- each dungeon, as Flow's Modules/Nav/Dungeons.lua D.LearnTime (:398-406,
+-- the last 10 runs) behind its "About N min". The last run stays at
+-- dungeon.times as before (old saved data reads the same); the average is
+-- kept beside it at dungeon.average as { avg, n } (seconds), started from an
+-- old last time when there is one. One run: "Last run here: ..." as
+-- before; two or more: the average. Fails before: only the last was kept.
+tests["dungeon timing R-05: a running average of the last ten runs, as Flow's"] = function(t)
+    local V = ns.DungeonVisit
+    t.eq(V.KEEP, 10)
+    t.eq(V.Average(nil, 1800), { avg = 1800, n = 1 })
+    t.eq(V.Average({ avg = 1800, n = 1 }, 2400), { avg = 2100, n = 2 })
+    t.eq(V.Average({ avg = 1800, n = 10 }, 2400), { avg = 1860, n = 10 }, "ten at most")
+    t.eq(V.ReadAverage(1500), { avg = 1500, n = 1 }, "an old last time is one run")
+    t.eq(V.ReadAverage({ avg = 1500, n = 3 }), { avg = 1500, n = 3 })
+    t.eq(V.ReadAverage("x"), nil)
+    t.eq(V.AverageLine({ avg = 1500, n = 1 }), V.LastLine(1500), "one run: the last line, as before")
+    t.eq(V.AverageLine({ avg = 1500, n = 3 }), V.AVERAGE:format(V.TimeText(1500), 3))
+    t.eq(V.AverageLine(nil), V.LAST_UNKNOWN)
+end
+
+tests["dungeon timing R-05: runs are averaged and said; the last stays where it was"] = function(t)
+    local c, addon = boot({ clock = 1000, char = { dungeon = { times = { ["The Deadmines"] = 20 * 60 } } } })
+    runFor(c, 30 * 60, 1000)
+    t.eq(addon.store:get("char", "dungeon.times"), { ["The Deadmines"] = 30 * 60 }, "the last run, as before")
+    t.eq(addon.store:get("char", "dungeon.average"), { ["The Deadmines"] = { avg = 25 * 60, n = 2 } },
+        "started from the old last time, then this run")
+    walkIn(c)
+    t.ok(trackerHas(c, ns.DungeonVisit.AVERAGE:format(ns.DungeonVisit.TimeText(25 * 60), 2)), "the tracker says the average")
+end
+
 return tests

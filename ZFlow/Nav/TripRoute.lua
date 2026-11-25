@@ -43,7 +43,8 @@ local _, ns = ...
 -- when on the way (N.RoutePlan's optional rule, TN-2), else listed as
 -- skipped. A pick-up stop drops out once its quest is in the log. Why
 -- there are none (no Questie) is one line under the route.
---   T.Plan(rows, places, here, legs, pickups, note)
+--   T.Plan(rows, places, here, legs, pickups, note, store)
+--     store (optional): the steps hidden there stay off (T.Unhidden, A1-28)
 --   T.Need(text, done) -> line or nil   (S43, lead section 391 item 4) how
 --     many of the thing an objective still needs, read from the quest log's
 --     own objective text ("Gnoll Paw: 4/8" -> "You still need 4 of Gnoll
@@ -244,6 +245,26 @@ local function needOf(stop, rows)
     return nil
 end
 
+-- A1-13 (lead section 826): "do this next" from the step card. The n-th
+-- step shown from the one the route is at (gone steps are not shown, as
+-- View) moves to the front, as PartyRoute's api.First and Flow's N:Select
+-- (Modules/Nav/Nav.lua:4224 at b657e6e5). -> true when it moved.
+function T.First(stops, at, n)
+    if type(stops) ~= "table" or type(at) ~= "number" or type(n) ~= "number" or n <= 1 then return false end
+    local seen, from = 0, nil
+    for i = at, #stops do
+        local s = stops[i]
+        if type(s) == "table" and not s.gone then
+            seen = seen + 1
+            if seen == n then from = i break end
+        end
+    end
+    if from == nil then return false end
+    local s = table.remove(stops, from)
+    table.insert(stops, at, s)
+    return true
+end
+
 function T.Stops(rows, places, here)
     local Q = N.QuestSource
     local stops, left = {}, {}
@@ -284,6 +305,18 @@ function T.Stops(rows, places, here)
         end
     end
     return stops, left
+end
+
+-- Parity row A1-28 (lead section 794): the steps the player hid from the
+-- arrow's menu stay off the route. The list is kept by Nav/HiddenSteps.lua;
+-- while that file is not loaded, or it fails, every step stays, so a fault
+-- there never empties the route.
+function T.Unhidden(stops, store)
+    local HS = N.HiddenSteps
+    if type(HS) ~= "table" or type(HS.Filter) ~= "function" or store == nil then return stops end
+    local ok, kept = pcall(HS.Filter, stops, store)
+    if ok and type(kept) == "table" then return kept end
+    return stops
 end
 
 -- S34 (lead dispatch section 395 item 2): a leg's seconds. A leg is in
@@ -400,12 +433,16 @@ T.MORE = "... and %d more stops."
 T.MODE_SAID = {
     quests = "Route: the quests in your log only.",
     optimal = "Route: your quests, quests to pick up on the way and town stops.",
-    complete = "Route: everything, quests far below your level too.",
+    complete = "Route: everything, quests far below your level and battleground quests too.",
 }
+-- battleground (row A1-25b): Everything offers battleground quests as if
+-- their row were ticked, as legacy Flow's "complete" route did
+-- (b657e6e5:Modules/Nav/Nav.lua:1350,1354, lowQuests and battlegrounds on
+-- only for "complete"). Other routes leave it to the row.
 function T.ModeFlags(mode)
-    if mode == "quests" then return { pickups = false, town = false, low = false, hub = false } end
-    if mode == "complete" then return { pickups = true, town = true, low = true, hub = true } end
-    return { pickups = true, town = true, low = false, hub = true }
+    if mode == "quests" then return { pickups = false, town = false, low = false, hub = false, battleground = false } end
+    if mode == "complete" then return { pickups = true, town = true, low = true, hub = true, battleground = true } end
+    return { pickups = true, town = true, low = false, hub = true, battleground = false }
 end
 
 -- FLOW-PARITY A1-30: the hub tour first, a port of legacy Flow's
@@ -575,10 +612,11 @@ function T.Shown(route, n)
     return out
 end
 
-function T.Plan(rows, places, here, legs, pickups, note)
+function T.Plan(rows, places, here, legs, pickups, note, store)
     here = type(here) == "table" and here or {}
     if here.map == nil then return nil, T.WHY_NO_MAP end
     local stops, left = T.Stops(rows, places, here)
+    stops = T.Unhidden(stops, store)
     pickups = type(pickups) == "table" and pickups or {}
     if #stops == 0 and #pickups == 0 then return nil, T.WHY_NONE end
     local w, h, yards = scale(here)
@@ -889,6 +927,8 @@ function T.Declare(k, diag)
     local autoHeld, autoSig, autoAt, autoPos = false, nil, nil, nil
     -- Section 564 R6: what was last written to T.SAVED.
     local savedKey
+    -- Lead section 838 (b): how many times First moved a step (keepRoute's key).
+    local reordered = 0
 
     local function client() return ctx and ctx.client or k.client end
 
@@ -1077,8 +1117,12 @@ function T.Declare(k, diag)
             for _, row in ipairs(rows) do
                 if type(row) == "table" and row.id ~= nil then log[row.id] = true end
             end
-            pickups, note = RP.Read(c, here, log, { low = T.ModeFlags(mode()).low })
+            pickups, note = RP.Read(c, here, log, { low = T.ModeFlags(mode()).low,
+                battleground = T.ModeFlags(mode()).battleground })
         end
+        -- A1-28: the steps the player hid stay off (T.Unhidden).
+        local store
+        if ctx then store = ctx.store end
         local function extrasOf(town)
             local extras = {}
             for _, p in ipairs(town) do extras[#extras + 1] = p end
@@ -1090,7 +1134,7 @@ function T.Declare(k, diag)
         -- one is chosen is the route planned again with its stop in. One
         -- more plan for each route word, never one a frame.
         local town, aside = townStops(c, here, nil)
-        local r, why = T.Plan(rows, places or {}, here, legs, extrasOf(town), note)
+        local r, why = T.Plan(rows, places or {}, here, legs, extrasOf(town), note, store)
         if not r then return nil, why, note end
         -- A route planned by the player: the one planned by itself may come
         -- back once this one ends.
@@ -1101,7 +1145,7 @@ function T.Declare(k, diag)
             if type(p) == "table" and p.kind == "hearth" then hasInn = true end
         end
         if hasInn then
-            local again = T.Plan(rows, places or {}, here, legs, extrasOf(withInn), note)
+            local again = T.Plan(rows, places or {}, here, legs, extrasOf(withInn), note, store)
             if again then r, aside = again, asideInn end
         end
         for _, a in ipairs(aside or {}) do
@@ -1191,6 +1235,16 @@ function T.Declare(k, diag)
     local function settle()
         while route and route.stops[at] and route.stops[at].gone do at = at + 1 end
         if route and route.stops[at] == nil then route, at = nil, 1 end
+    end
+
+    -- A1-13: the n-th step shown goes first (T.First); the arrow follows it.
+    -- Lead section 838 (b): each move counts in keepRoute's key, so the new
+    -- order is saved at the next tick. Planning again rebuilds the order.
+    function api.First(n)
+        if not route then return false end
+        local moved = T.First(route.stops, at, n)
+        if moved then reordered = reordered + 1 end
+        return moved
     end
 
     function api.Skip()
@@ -1571,7 +1625,7 @@ function T.Declare(k, diag)
         for _, s in ipairs(route and route.stops or {}) do
             if s.gone then gone = gone + 1 end
         end
-        local key = tostring(route) .. "|" .. tostring(at) .. "|" .. gone
+        local key = tostring(route) .. "|" .. tostring(at) .. "|" .. gone .. "|" .. reordered
         if key == savedKey then return end
         local ok, done, why = pcall(ctx.store.set, ctx.store, "char", T.SAVED, T.Keep(route, at))
         if not ok then
@@ -1592,7 +1646,7 @@ function T.Declare(k, diag)
         label = "What the route includes", group = "travel.route",
         help = "My quests only: only the quests in your log. No pick-ups, no town stops, no hub tour."
             .. " Today's route: today's route, with nearby turn-ins and pick-ups first."
-            .. " Everything: today's route, plus pick-ups far below your level.",
+            .. " Everything: today's route, plus pick-ups far below your level and battleground quests.",
         synonyms = { "route", "mode", "includes", "quests", "everything", "pick" } })
     k:Setting({ key = T.SORT_KEY, scope = "account", type = "choice", choices = sortChoices,
         default = T.SORT_LABELS.distance, path = T.SORT_PATH,
@@ -1628,6 +1682,7 @@ function T.Declare(k, diag)
         name = T.NAME,
         needs = { "client", "store", "settings" },
         provides = { Step = api.Step, AutoStep = api.AutoStep, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
+                     First = api.First,
                      Lines = api.Lines, Current = api.Current, View = api.View },
         ticks = { { every = T.AUTO_EVERY, when = "always", run = function()
             auto()
