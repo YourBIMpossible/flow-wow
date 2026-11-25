@@ -121,7 +121,7 @@ tests["auction over disenchant: the bag item's tooltip says it, from the latest 
     local _, c, api = start(false)
     t.eq(api.hooked(), true)
     local text = find(c.showItemTooltip("item:15011"), "disenchant")
-    t.ok(text ~= nil and text:find("2g 50s", 1, true) ~= nil, tostring(text))
+    t.ok(text ~= nil and text:find(ns.Prices.Coin(25000), 1, true) ~= nil, tostring(text))
     t.ok(text ~= nil and text:find("if tradeable", 1, true) == nil, "bound false")
     t.eq(find(c.showItemTooltip("item:2589"), "disenchant"), nil, "cloth is not gear")
 end
