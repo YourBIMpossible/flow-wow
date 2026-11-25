@@ -255,8 +255,12 @@ tests["mapFlights module: a right click sets your waypoint on a master; again ta
     local p = pinNamed(h, "Home Post")
     t.eq(p and p.tip[#p.tip], MF.TIP_UNPOINT, "its tip says a right click takes it off")
     t.eq(c.mapPinSets[1].lines[1], nil, "nothing picked by a right click")
+    local n = #c.printed
     h.click("Home Post", "RightButton")
     t.eq(W.Get(slot), nil, "the same again: taken off")
+    t.eq(c.printed[n + 1], ns.id.title .. ": " .. MF.UNPOINTED:format("Home Post"),
+        "one chat line: the arrow is back on the route (section 795.2)")
+    t.eq(#c.printed, n + 1, "only one")
     h.click("Far Post", "RightButton")
     t.eq(W.Get(slot) and W.Get(slot).label, MF.PointLabel({ name = "Far Post" }))
     h.click("Home Post", "RightButton")
