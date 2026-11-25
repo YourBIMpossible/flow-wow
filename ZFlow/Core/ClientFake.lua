@@ -5301,7 +5301,7 @@ end
 -- § lease rows (lead sections 659, 662, 677, 679, 682, 692, 693): the fakes
 -- for the reads Core/Client.lua now has. One block, as section 663 says;
 -- other branches' end blocks for the same reads are kept at merge.
---   c.setGossipOptions(list|nil)       gossipOptions()
+--   c.setGossipOptions(list|nil)       gossipOptions(): id, name, icon, type
 --   hideGameTracker(on), hideQuestieTracker(on) -> true, "done" |
 --     showQuestWatch(on), showQuestieTracker(on): the same, turned around;
 --     false, "lockdown" (combatLockdown() not false); c.trackerHidden(which)
@@ -5322,7 +5322,7 @@ do
         function c.gossipOptions()
             if type(gossip) ~= "table" then return nil end
             local out = {}
-            for i, o in ipairs(gossip) do out[i] = { id = o.id, name = o.name } end
+            for i, o in ipairs(gossip) do out[i] = { id = o.id, name = o.name, icon = o.icon, type = o.type } end
             return out
         end
         local function hide(which, on)
@@ -5411,6 +5411,35 @@ do
         function c.setQueued(v) queued = v end
         function c.queued() return queued end
         function c.acceptGroup() c.groupAccepts = c.groupAccepts + 1 end
+        return c
+    end
+end
+
+-- The diagnostics' gossip lines, as the real client's c.gossipRawLines():
+-- one "id=<n> icon=<n> name=<text>" line per option set with
+-- c.setGossipOptions ("?" for a field not set); nil when none is set.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local set = c.setGossipOptions
+        local held = nil
+        function c.setGossipOptions(list)
+            held = list
+            set(list)
+        end
+        local function field(v)
+            if v == nil then return "?" end
+            return tostring(v)
+        end
+        function c.gossipRawLines()
+            if type(held) ~= "table" then return nil end
+            local out = {}
+            for i, o in ipairs(held) do
+                out[i] = "id=" .. field(o.id) .. " icon=" .. field(o.icon) .. " name=" .. field(o.name)
+            end
+            return out
+        end
         return c
     end
 end
