@@ -40,6 +40,8 @@ W.TABS = { "Quests", "Bosses", "Map" }
 W.SHOW_ON_MAP = "Show on map"
 -- P-TRIP (S40): hands the dungeon run (Nav/DungeonRead.lua R.Run) to the
 -- route (Nav/TripRoute.lua), which the quest arrow walks. Quests tab only.
+-- B-52: with "Get ready" steps before it (R.Ready) for training due, a
+-- repair and a bank the player has seen.
 W.PLAN_RUN = "Plan the run"
 W.NO_ROUTE = "Routes are not loaded."
 W.BOSS_LOOT = "learned.bossLoot"   -- account, UI/BossLoot.lua
@@ -121,6 +123,33 @@ function W.Declare(k, diag)
         view.said = wp and ("Waypoint set: " .. tostring(Wp.Text(wp)) .. ".") or (tostring(reason) .. ".")
     end
 
+    -- FLOW-PARITY B-52 (lead section 471, from lane B's route-b 464899f6):
+    -- "Get ready on the way". The steps to put before a run, read when the
+    -- button is pressed: training due (Nav/ClassTrainerStep.lua), a repair
+    -- while the gear is low (Nav/RepairStep.lua), and the nearest bank the
+    -- player has seen on this map (Nav/Errand.lua). A module that is not
+    -- loaded or a read that raises gives no step. Look only.
+    local function readySteps()
+        local function stepOf(name)
+            local m = k.use and k.use(name)
+            if type(m) ~= "table" or type(m.Step) ~= "function" then return nil end
+            local ok, v = pcall(m.Step)
+            if ok then return v end
+            return nil
+        end
+        -- The errand module is ns.Errand (Nav/Errand.lua), not under ns.Nav:
+        -- asked under the wrong name the bank was never found (White, lead
+        -- section 539).
+        local E = ns.Errand
+        local bank
+        if type(E) == "table" and type(E.Find) == "function" then
+            local ok, v = pcall(E.Find, "banker", client(), k.store)
+            if ok then bank = v end
+        end
+        if type(R.Ready) ~= "function" then return {} end
+        return R.Ready(stepOf("classTrainerStep"), stepOf("repairStep"), bank)
+    end
+
     local function planRun(d)
         local run, why = R.Run(st, client(), d and d.key)
         if not run then
@@ -131,6 +160,14 @@ function W.Declare(k, diag)
         if not trip or type(trip.Run) ~= "function" then
             view.said = W.NO_ROUTE
             return
+        end
+        -- B-52: the get-ready steps go first; the player does each.
+        local ready = readySteps()
+        if #ready > 0 then
+            local steps = {}
+            for _, s in ipairs(ready) do steps[#steps + 1] = s end
+            for _, s in ipairs(run.steps) do steps[#steps + 1] = s end
+            run.steps = steps
         end
         view.said = trip.Run(run)
     end
