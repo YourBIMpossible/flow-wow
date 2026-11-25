@@ -1137,13 +1137,15 @@ function Arrow.Start(k, diag, own)
         local professions
         local okProf, profOn = pcall(k.settings.get, k.settings, N.ProfFeed and N.ProfFeed.SETTING or "nav.professions")
         if okProf then professions = profOn end
-        -- Lead section 387, R3: the step, the kinds with a place already
-        -- seen (Nav/Errand.lua E.Find: saved data only), and the waypoint.
+        -- Lead section 387, R3: the step, the kinds with a place known
+        -- (Nav/Errand.lua E.Find), and the waypoint. Lead section 628: asked
+        -- with the module lookup, as the errand click asks, so a live row is
+        -- one the click can follow and a greyed row one it could not.
         local nearest = {}
         local E = ns.Errand
         if type(E) == "table" and type(E.Find) == "function" and type(M.NEAREST_KINDS) == "table" then
             for _, n in ipairs(M.NEAREST_KINDS) do
-                local okFind, place = pcall(E.Find, n.kind, client, k.store)
+                local okFind, place = pcall(E.Find, n.kind, client, k.store, k.use)
                 if okFind and type(place) == "table" then nearest[n.kind] = true end
             end
         end
