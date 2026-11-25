@@ -5,7 +5,7 @@ local _, ns = ...
 -- Trader.lua: T.Deals, the same rows its "Deal:" chat and tooltip lines
 -- come from, api.deals() this session). As Flow's Modules/Items/Trader.lua
 -- T:Fill (:510-546): a note above the list, up to T.ROWS (10) rows, the
--- most gain first, then "... and N more after these." Flow heads its list
+-- most gain first, then how many more there are. Flow heads its list
 -- with what the route has you buy (T.RouteNeeds); this client has no buy
 -- step yet, so that part waits for one.
 --
@@ -17,15 +17,15 @@ local _, ns = ...
 --
 --   TR.Rows(deals[, max]) -> rows, more   rows sorted by gain, then id
 --   TR.Note(n, followed) -> the line above the list
---   TR.Foot(more) -> "... and N more after these." or ""
+--   TR.Foot(more) -> "N more deal(s) not shown." or ""
 -- Not tested in game.
 local TR = {}
 ns.TraderRows = TR
 
 TR.ROWS = 10
-TR.MORE = "... and %d more after these."
+TR.MORE = "%d more deal(s) not shown."
 TR.NOT_FOLLOWED = "Your auction searches can't be followed on this client, so there are no deals to list."
-TR.NONE = "No deals in your searches this session. A deal is listed under a vendor's price, or at half an item's usual price or less."
+TR.NONE = "No deals in your searches this session: nothing priced under what a vendor pays, or at half its usual price."
 TR.SOME = "%d deal(s) from your searches this session. Buying is yours, in the auction window."
 
 local function number(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
@@ -33,7 +33,9 @@ local function number(v) return type(v) == "number" and v == v and v ~= math.hug
 function TR.Rows(deals, max)
     max = tonumber(max) or TR.ROWS
     local all = {}
-    for _, d in ipairs(type(deals) == "table" and deals or {}) do
+    local list = {}
+    if type(deals) == "table" then list = deals end
+    for _, d in ipairs(list) do
         if type(d) == "table" and type(d.id) == "number" and number(d.gain) then all[#all + 1] = d end
     end
     table.sort(all, function(x, y)

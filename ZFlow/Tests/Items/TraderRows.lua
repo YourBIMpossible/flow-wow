@@ -4,7 +4,7 @@ local _, ns = ...
 -- auction house's deals list, from the trader's deals (Items/Trader.lua
 -- T.Deals, the "Deal:" logic), as Flow's Modules/Items/Trader.lua T:Fill
 -- (:510-546): the note above the list, the rows (the most gain first), and
--- "... and N more after these." Pure; made-up deals. Not tested in game.
+-- how many more there are. Pure; made-up deals. Not tested in game.
 -- Fails before: no file.
 local tests = {}
 
@@ -29,7 +29,7 @@ tests["trader rows: the deals, the most gain first, then how many more"] = funct
     t.eq(rows[1].id, 1, "the most gain first")
     t.eq(rows[1].kind, "vendor")
     t.eq(rows[2].kind, "resell")
-    t.eq(TR().Foot(more), TR().MORE:format(2))
+    t.eq(TR().Foot(more), "2 more deal(s) not shown.", "our own words (section 757)")
     t.eq(TR().Foot(0), "")
     local mixed = { { id = 5, gain = 60, kind = "vendor", name = "B" }, { id = 4, gain = 90, kind = "resell", name = "A" },
                     "not a row", { id = 3, gain = 90, kind = "vendor", name = "C" } }
