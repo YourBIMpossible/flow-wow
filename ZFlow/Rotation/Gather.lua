@@ -27,6 +27,13 @@ local _, ns = ...
 --     out of a fight only; nothing while any gathering tracking is on (one
 --     tracking at a time: it never switches away from one the player chose);
 --     a spell not known, a profession not had, or a read not given: nothing.
+--   G.Self(snapshot, skip) -> { spell, unit = "player" } | nil   pure; the
+--     self button's offer (recovery R2, lead section 564; Flow 6d4ad1c7
+--     "gather:track"): G.Step's spell, when you are read as alive and the
+--     Flow button (skip = { spell }) does not hold it already. The
+--     rotation's "track" step is last, so with anything else to suggest it
+--     never showed; the self button shows it then (Rotation/FlowButton.lua
+--     refresh, after the self buffs). The player's click or key casts it.
 --   G.Declare(k) -> api    the module: the settings row, and the setting
 --                          read for G.Read.
 -- Not tested in game: the tracking and profession reads are first guesses.
@@ -133,6 +140,14 @@ function G.Step(s)
     return nil, "no gathering tracking to turn on"
 end
 
+function G.Self(s, skip)
+    if type(s) ~= "table" or s.dead ~= false then return nil end
+    local step = G.Step(s)
+    if type(step) ~= "table" or type(step.spell) ~= "string" then return nil end
+    if type(skip) == "table" and skip.spell == step.spell then return nil end
+    return { spell = step.spell, unit = "player" }
+end
+
 function G.Declare(k)
     local api = {}
     k:Module({
@@ -141,8 +156,9 @@ function G.Declare(k)
         settings = { {
             key = G.SETTING, scope = "char", type = "bool", default = true,
             label = "Offer gathering tracking",
-            help = "Out of a fight, the rotation icon offers Find Minerals or Find Herbs when you have the "
-                .. "profession and that tracking is off. It casts nothing by itself.",
+            help = "Out of a fight, the self button (or the Flow button, with nothing else to cast) offers "
+                .. "Find Minerals or Find Herbs when you have the profession and no tracking is on. "
+                .. "Your click or key casts it; nothing is cast by itself.",
             group = "professions", synonyms = { "tracking", "herbs", "minerals", "mining", "herbalism", "gather" },
         } },
         start = function(c) ctx = c end,
