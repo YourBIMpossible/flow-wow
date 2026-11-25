@@ -575,6 +575,12 @@ function FB.Declare(k)
             if setting(FB.SETTING) == true then shown = flowHold end
             local okPick, pick = pcall(FB.SelfPick, view.snapshot, pack(), shown)
             if okPick then selfHold = pick end
+            -- Recovery R2: no self buff to cast, so the gathering tracking
+            -- that is off (Rotation/Gather.lua G.Self; its guards hold).
+            if selfHold == nil and type(ns.Gather) == "table" then
+                local okTrack, track = pcall(ns.Gather.Self, view.snapshot, shown)
+                if okTrack then selfHold = track end
+            end
             selfWhy = "Nothing to cast now: every self buff you know is up or on the Flow button (seals, shouts and forms stay there)."
         end
         units.flow.want(setting(FB.SETTING) == true, flowHold, flowWhy)
