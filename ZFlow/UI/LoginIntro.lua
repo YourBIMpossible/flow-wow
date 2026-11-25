@@ -7,12 +7,13 @@ local _, ns = ...
 --
 -- When (Flow :184-207): at a login or a /reload, or the first world of the
 -- session; not at every loading screen. Not with the setting off, and not
--- for a new player whose arrow is not shown yet (UI/Reveal.lua, as Flow's
--- "no intro on the very first login"). The word plays it whenever asked.
--- What (Flow :36-62): the add-on's name and version, and one status line
--- of what it has to work with: the spells known (when read), the quest
--- database ("Questie linked" / "Questie starting up" / "no quest
--- database") and the steps planned (when any).
+-- for a new player whose arrow is not shown yet (UI/Reveal.lua; Flow skips
+-- the first login too). The word plays it whenever asked.
+-- What (Flow :36-62, in our own words): the add-on's name and version, and
+-- one status line: the spells known (when read), the quest data (from
+-- Questie, Questie still loading, or none) and the steps ahead on the
+-- route (when any). Read only when it plays, and only as things are: the
+-- route's View, never a new plan (lead section 757).
 -- How long (Flow :14-23): 3.2 s spinning then 1.4 s; the short one 1.0 s
 -- still then 0.6 s.
 --
@@ -36,7 +37,7 @@ LI.SHORT = "ui.splashShort"
 LI.WORD = "splash"
 LI.EVENT = "LOGIN_INTRO"
 LI.HELP = "play the login intro; splash on|off, splash short on|off"
-LI.SEP = "  ·  "
+LI.SEP = "; "
 
 function LI.ShouldShow(r)
     if type(r) ~= "table" or r.on ~= true then return false end
@@ -45,19 +46,19 @@ function LI.ShouldShow(r)
 end
 
 function LI.QuestWords(linked, installed)
-    if linked then return "Questie linked" end
-    if installed then return "Questie starting up" end
-    return "no quest database"
+    if linked then return "quests from Questie" end
+    if installed then return "Questie still loading" end
+    return "no quest data"
 end
 
 local function count(n) return type(n) == "number" and n == n and n >= 0 end
 
 function LI.Status(r)
-    r = type(r) == "table" and r or {}
+    if type(r) ~= "table" then r = {} end
     local bits = {}
-    if count(r.spells) then bits[#bits + 1] = r.spells .. " spells" end
+    if count(r.spells) then bits[#bits + 1] = r.spells .. " spells known" end
     bits[#bits + 1] = LI.QuestWords(r.linked == true, r.installed == true)
-    if count(r.steps) and r.steps > 0 then bits[#bits + 1] = r.steps .. " steps planned" end
+    if count(r.steps) and r.steps > 0 then bits[#bits + 1] = r.steps .. " steps ahead" end
     return table.concat(bits, LI.SEP)
 end
 
@@ -105,10 +106,12 @@ function LI.Declare(k, diag)
                 r.spells = n
             end
         end
+        -- The route as it is (TripRoute View, a copy); never Plan, which
+        -- builds a route (lead section 757).
         local route = k.use("tripRoute")
-        if type(route) == "table" and type(route.Plan) == "function" then
-            local ok, plan = pcall(route.Plan)
-            if ok and type(plan) == "table" then r.steps = #plan end
+        if type(route) == "table" and type(route.View) == "function" then
+            local ok, view = pcall(route.View)
+            if ok and type(view) == "table" and type(view.stops) == "table" then r.steps = #view.stops end
         end
         return r
     end
@@ -134,7 +137,7 @@ function LI.Declare(k, diag)
             key = LI.SETTING, scope = "account", type = "bool", default = true,
             label = "Play the intro at login",
             help = "At a login or a reload, a short intro says what " .. ns.id.title
-                .. " has to work with: your spells, your quest data, the steps planned.",
+                .. " has to work with: your spells, your quest data, the steps ahead.",
             group = "general.windows", synonyms = { "intro", "splash", "login", "hello" },
         }, {
             key = LI.SHORT, scope = "account", type = "bool", default = false,
@@ -172,7 +175,7 @@ function LI.Declare(k, diag)
                 ctx.settings:set(LI.SHORT, v)
                 local state = "off"
                 if v then state = "on" end
-                say("short, still intro " .. state .. ".")
+                say("intro, the short one: " .. state .. ".")
             else
                 api.Play()
             end
