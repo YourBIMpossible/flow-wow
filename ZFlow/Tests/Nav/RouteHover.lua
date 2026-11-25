@@ -49,9 +49,8 @@ tests["route hover: pointing sets it, says so once, and leaving clears it"] = fu
     t.eq(seen[3], false, "said as cleared")
     api.Hover({ map = 1429, x = 0 / 0, y = 0.5 })
     t.eq(api.Pointed(), nil, "a place that is not a number is none")
-    local p = api.Pointed()
     api.Hover(A)
-    p = api.Pointed()
+    local p = api.Pointed()
     p.x = 0.99
     t.eq(api.Pointed().x, 0.40, "a copy")
     t.eq(type(k.use(H().NAME).Hover), "function", "through its provides")
