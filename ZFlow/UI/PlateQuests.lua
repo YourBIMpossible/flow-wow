@@ -603,6 +603,8 @@ function PQ.Declare(k, diag)
             pending = nil
             if type(cancelLook) == "function" then pcall(cancelLook) end
             cancelLook = nil
+            stopPass()
+            pass, startsGot, logIndex = nil, nil, nil
             hideAll()
             inView, marks, shownOn, index, source = {}, {}, {}, nil, "none"
         end,
