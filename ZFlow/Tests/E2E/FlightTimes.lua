@@ -112,4 +112,44 @@ tests["flight times: each line names both ends"] = function(t)
         { T.HEADER, T.LINE:format("Stonegate", "Rivermouth", 90) })
 end
 
+-- Zen's review of 3538ccf9 (lead section 609): a time that could not be
+-- written is said as a problem, not lost without a word. The store is made
+-- to turn the write down (a made-up reason), then to raise.
+-- Fails before: the write's answer is not looked at, so nothing is said.
+local function timesPath()
+    local F = ns.Nav.Flights
+    return F and F.TIMES or "learned.flights.times"
+end
+
+tests["flight times e2e: a write the store turns down is said as a problem"] = function(t)
+    local c, addon = boot()
+    local real = addon.store.set
+    local asked = 0
+    addon.store.set = function(self, scope, path, value)
+        if path == timesPath() then
+            asked = asked + 1
+            return false, "made-up refusal"
+        end
+        return real(self, scope, path, value)
+    end
+    local before = addon.problems:count()
+    fly(c, 60)
+    addon.store.set = real
+    t.eq(asked, 1, "the time was handed to the store once")
+    t.eq(addon.problems:count(), before + 1, "and its refusal is one problem")
+end
+
+tests["flight times e2e: a write that raises is said as a problem too"] = function(t)
+    local c, addon = boot()
+    local real = addon.store.set
+    addon.store.set = function(self, scope, path, value)
+        if path == timesPath() then error("made-up failure") end
+        return real(self, scope, path, value)
+    end
+    local before = addon.problems:count()
+    fly(c, 60)
+    addon.store.set = real
+    t.ok(addon.problems:count() > before, "the failure is said")
+end
+
 return tests
