@@ -593,3 +593,5 @@ tests["self button size: the resize is saved and refused in a fight"] = function
     t.eq(api.resizeSelf(1), false, "in a fight: refused")
     t.eq(addon.store:get("account", "layout").buffButton.scale, 0.9, "unchanged")
 end
+
+return tests
