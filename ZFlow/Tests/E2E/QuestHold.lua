@@ -67,7 +67,7 @@ end
 tests["quest hold: the setting row defaults on"] = function(t)
     local _, addon = boot(false)
     t.eq(addon.settings:get(ns.Nav.QuestHold.SETTING), true)
-    t.eq(ns.Nav.QuestHold.On(), true)
+    t.eq(addon.use("questHold").On(), true)
 end
 
 tests["quest hold: solo, an elite pick-up is held; plain and unknown-tag ones are not"] = function(t)
@@ -87,17 +87,17 @@ end
 tests["quest hold: setting off, the elite pick-up is offered"] = function(t)
     local c, addon = boot(false)
     addon.settings:set(ns.Nav.QuestHold.SETTING, false)
-    t.eq(ns.Nav.QuestHold.On(), false)
+    t.eq(addon.use("questHold").On(), false)
     route(c)
     t.ok(said(c, "Pick up: Ogre Den (Marshal)") ~= nil, "off: not held")
 end
 
 tests["quest hold: solo, a hard quest in the log is held through the module"] = function(t)
-    boot(false)
-    local H = ns.Nav.QuestHold
-    t.eq((H.HeldNow({ level = 21, elite = false, myLevel = 18 })), true)
-    t.eq((H.HeldNow({ level = 18, elite = true, myLevel = 18 })), true)
-    t.eq((H.HeldNow({ level = 18, elite = nil, myLevel = 18 })), false)
+    local _, addon = boot(false)
+    local H = addon.use("questHold")
+    t.eq((H.Held({ level = 21, elite = false, myLevel = 18 })), true)
+    t.eq((H.Held({ level = 18, elite = true, myLevel = 18 })), true)
+    t.eq((H.Held({ level = 18, elite = nil, myLevel = 18 })), false)
 end
 
 return tests

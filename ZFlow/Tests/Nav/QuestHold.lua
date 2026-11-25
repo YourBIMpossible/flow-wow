@@ -41,9 +41,10 @@ tests["quest hold: setting off, nothing is held"] = function(t)
 end
 
 tests["quest hold: an unknown tag or level is not held"] = function(t)
-    t.eq((held({ elite = nil })), false)
-    t.eq((held({ level = nil, elite = nil })), false)
-    t.eq((held({ myLevel = nil, elite = true })), false)
+    local H = ns.Nav.QuestHold
+    t.eq((H.Held({ level = 18, myLevel = 18 })), false)
+    t.eq((H.Held({ elite = true, myLevel = 18 })), false)
+    t.eq((H.Held({ level = 18, elite = true })), false)
     t.eq((ns.Nav.QuestHold.Held(nil)), false)
 end
 
