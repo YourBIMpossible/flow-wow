@@ -5576,3 +5576,22 @@ do
         return c
     end
 end
+
+-- C-62 (UI/TalentsWindow.lua): the talents the player has, as the real
+-- client's talentRanks() is asked for: { [talent name] = rank }.
+-- c.setTalentRanks(map or nil); nil (as made): not known.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local ranks = nil
+        function c.setTalentRanks(map) ranks = map end
+        function c.talentRanks()
+            if type(ranks) ~= "table" then return nil end
+            local out = {}
+            for name, rank in pairs(ranks) do out[name] = rank end
+            return out
+        end
+        return c
+    end
+end
