@@ -3,7 +3,8 @@
 -- and this dungeon's quests in your log (Nav/DungeonRead.lua). It shows
 -- nothing outside an instance, with its setting off, or when the client
 -- took neither kill event (BossKills api.Reported): a tracker that can
--- never show a kill is not shown at all.
+-- never show a kill is not shown at all. Under the lists, one line says
+-- how long your last run of this dungeon took (B-56, Nav/DungeonVisit.lua).
 --
 -- Built from the kit's parts only (UI/Kit.lua, drawn by client.kitWindow):
 -- this file names no template, colour, font, size or picture (the quest
@@ -84,6 +85,20 @@ function T.Declare(k)
         end
     end
 
+    -- B-56 (lead section 490 item 4): one text line, the time of your last
+    -- run of this dungeon (Nav/DungeonVisit.lua), under the lists.
+    local function window(children)
+        local visit
+        if type(k.use) == "function" then visit = k.use("dungeonVisit") end
+        if type(visit) == "table" and type(visit.LastLine) == "function" then
+            local ok, line = pcall(visit.LastLine)
+            if ok and type(line) == "string" then
+                children[#children + 1] = { kind = "line", key = "lastRun", text = line }
+            end
+        end
+        return ns.Kit.Window({ id = T.ID, title = id.title .. ": " .. T.TITLE, children = children })
+    end
+
     local function tree(kills)
         local children = { { kind = "section", key = "kills", text = T.KILLS .. " (" .. #kills .. ")" } }
         if #kills == 0 then
@@ -113,7 +128,7 @@ function T.Declare(k)
             if pane.why then
                 -- A pane that waits (your level not known ...) says why.
                 children[#children + 1] = { kind = "line", key = "why", text = pane.why[1], sub = pane.why[2] }
-                return ns.Kit.Window({ id = T.ID, title = id.title .. ": " .. T.TITLE, children = children })
+                return window(children)
             end
             local mine = {}
             for _, g in ipairs(pane.groups or {}) do
@@ -129,7 +144,7 @@ function T.Declare(k)
                     sub = r.chain and (r.chain .. " · " .. T.QUEST_NEXT) or T.QUEST_NEXT }
             end
         end
-        return ns.Kit.Window({ id = T.ID, title = id.title .. ": " .. T.TITLE, children = children })
+        return window(children)
     end
 
     refresh = function()

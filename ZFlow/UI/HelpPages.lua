@@ -92,7 +92,8 @@ H.PAGES = {
             "It says which to pick up before you go in." },
       },
       words = {
-          { word = "dungeons", text = "Open the Dungeon Quests window" },
+          { word = "dungeons", text = "Open the Dungeon Quests window; with a dungeon's name, plan that run" },
+          { word = "dungeon", text = "Say the dungeon you are in: your quests for it and the bosses killed" },
       } },
     { id = "gear", title = "Gear",
       about = {
