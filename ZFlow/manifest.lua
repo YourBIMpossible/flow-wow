@@ -84,6 +84,7 @@ return {
         "Items/SellView.lua",
         "Items/SellThese.lua",
         "Items/PriceLookup.lua",
+        "Items/PriceList.lua",
 
         -- Gear
         "Gear/Score.lua",
