@@ -796,6 +796,12 @@ function Arrow.Start(k, diag, own)
                 local ok, with = pcall(questItems.With, step)
                 if ok and type(with) == "table" then step = with end
             end
+            -- A2-25 (Nav/MobHopStep.lua): a kill step points at the mob group being worked, then the next.
+            local mobHop = k.use and k.use("mobHopStep")
+            if step ~= nil and from == "your quests" and mobHop and type(mobHop.Refine) == "function" then
+                local okHop, hopped = pcall(mobHop.Refine, step)
+                if okHop and type(hopped) == "table" then step = hopped end
+            end
             -- A target past a path the player walked into a cave (G38,
             -- Nav/Trails.lua) is pointed at along that path, one point at a
             -- time. Reaching a trail point clears no waypoint.
