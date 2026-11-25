@@ -185,8 +185,9 @@ function PT.Declare(k, diag)
     local function unglow(unit)
         local g = glows[unit]
         glows[unit] = nil
-        local set = g and pulseSet()
-        if set then set.remove(g, 1) end
+        -- The set the glow joined (Zen-3's note, lead section 729), so add
+        -- and remove always pair, whatever the pulse's state is now.
+        if g and g.set then g.set.remove(g, 1) end
     end
 
     local function glow(unit, h, flash)
@@ -196,7 +197,7 @@ function PT.Declare(k, diag)
         end
         local set = pulseSet()
         if glows[unit] or not set then return end
-        local g = { setAlpha = function(a) h.alpha(a) end }
+        local g = { setAlpha = function(a) h.alpha(a) end, set = set }
         if set.add(g) then glows[unit] = g end
     end
 
