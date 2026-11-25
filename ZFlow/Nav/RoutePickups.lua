@@ -24,7 +24,8 @@ local _, ns = ...
 --   P.Candidate(q, ctx) -> true | false, why
 --     q in the shape S.State takes; ctx = { level, log = { [id] = true },
 --     done(id) -> true | false | nil (not known), me (S.Eligible),
---     grouped (true | false | nil), holdOn (false: the hold is off) };
+--     grouped (true | false | nil), holdOn (false: the hold is off),
+--     lowOn (true: low-level quests are kept, Nav/LowQuests.lua, A2-05) };
 --     q.elite: Questie's group (elite) tag, true | false | nil. Hard and
 --     elite quests are held while solo (Nav/QuestHold.lua, C-12).
 --   P.Nearest(list, here, max) -> every classQuest item on here.map first,
@@ -53,8 +54,8 @@ local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
 end
 
--- low (FLOW-PARITY A1-25, the "everything" route): quests far below your
--- level count too.
+-- low (FLOW-PARITY A1-25, the "everything" route) or the low-quests setting
+-- (ctx.lowOn, A2-05): quests far below your level count too.
 local function inReach(level, reqLevel, qLevel, low)
     if tonumber(reqLevel) and tonumber(reqLevel) > level then return false, "from level " .. reqLevel end
     local l = tonumber(qLevel)
@@ -79,7 +80,7 @@ function P.Candidate(q, ctx)
         if log[ex] or done(ex) == true then return false, "ruled out by a quest you did" end
     end
     local level = tonumber(ctx.level) or 0
-    local ok, why = inReach(level, q.requiredLevel, q.level, ctx.low)
+    local ok, why = inReach(level, q.requiredLevel, q.level, ctx.low == true or ctx.lowOn == true)
     if not ok then
         local req = tonumber(q.requiredLevel)
         if not P.IsClassQuest(q, ctx.me) or (req and req > level) then return false, why end
@@ -170,6 +171,12 @@ local function holdOn()
     return true
 end
 
+local function lowOn()
+    local low = N.LowQuests
+    if low and type(low.On) == "function" then return low.On() == true end
+    return false
+end
+
 local function mapOf(zones, area)
     if type(zones.GetUiMapIdByAreaId) ~= "function" then return nil end
     local ok, m = pcall(zones.GetUiMapIdByAreaId, area)
@@ -218,14 +225,14 @@ function P.Read(client, here, log, opts)
                faction = ask(client, "faction") },
         done = function(id) return ask(client, "questDone", id) end,
         low = low,
-        grouped = ask(client, "grouped"), holdOn = holdOn(),
+        grouped = ask(client, "grouped"), holdOn = holdOn(), lowOn = lowOn(),
     }
     local found, areaMap, npcs = {}, {}, {}
     for id in pairs(db.QuestPointers) do
         local reach = false
         if type(id) == "number" and not ctx.log[id] then
             local req = quick(db, id, "requiredLevel")
-            reach = inReach(level, req, quick(db, id, "questLevel"), low)
+            reach = inReach(level, req, quick(db, id, "questLevel"), low or ctx.lowOn == true)
             if not reach and not (tonumber(req) and tonumber(req) > level) then
                 reach = P.IsClassQuest({ requiredClasses = quick(db, id, "requiredClasses") }, ctx.me)
             end
