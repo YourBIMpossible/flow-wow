@@ -33,6 +33,7 @@ local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
     c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, {})
     local k = ns.Kernel({}, c)
     ns.Diag.Start(k)
     local current = opts.view
@@ -215,6 +216,39 @@ tests["click: a mark opens its step on the map's card; again gives the zone back
     t.eq(card.card.title, MR().NO_NAME)
     pins.click(99)
     t.eq(h.api.Opened(), nil, "a number with no mark opens nothing")
+end
+
+-- B-21 (lead section 788): "Point the arrow here" from the map. A right
+-- click on a step's mark sets your own waypoint there through Nav/
+-- Waypoint.lua W.SetAt (as Alt + click on the map), and a right click on
+-- the mark your waypoint is on takes it off (W.Clear), as B-12 does for a
+-- flight master. Flow has it in the mark's menu (Modules/Nav/
+-- MapOverlay.lua:193-208, M.PointHere). Fails before: a right click does
+-- nothing.
+tests["click: a right click points your waypoint at the step; again takes it off"] = function(t)
+    local h = start({ view = view() })
+    h.c.setWorldMap(1)
+    h.api.Refresh()
+    local pins = h.c.routePinSets[1]
+    if type(pins.click) ~= "function" then return t.ok(false, "no click") end
+    local W = ns.Nav.Waypoint
+    local slot = W.Slot(h.k.store)
+    t.eq(W.Get(slot), nil, "no waypoint first")
+    pins.click(3, "RightButton")
+    local wp = W.Get(slot)
+    t.eq(wp and wp.map, 1)
+    t.eq(wp and wp.x, 0.8)
+    t.eq(wp and wp.y, 0.6)
+    t.eq(wp and wp.label, MR().PointLabel(rows()[3]))
+    t.eq(h.api.Opened(), nil, "a right click opens no card")
+    pins.click(3, "RightButton")
+    t.eq(W.Get(slot), nil, "the same mark again: taken off")
+    pins.click(1, "RightButton")
+    pins.click(3, "RightButton")
+    t.eq(W.Get(slot) and W.Get(slot).x, 0.8, "another mark: moved there")
+    pins.click(99, "RightButton")
+    t.eq(W.Get(slot) and W.Get(slot).x, 0.8, "no such mark: nothing changes")
+    t.eq(MR().PointLabel({ n = 2, text = string.rep("a", 200) }), nil, "too long a label: none")
 end
 
 return tests

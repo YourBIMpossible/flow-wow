@@ -19,15 +19,21 @@
 -- Nav.lua:4325-4328): the map's card shows the step (MR.StepCard) instead
 -- of the zone, and a second click on the same mark gives the zone back.
 -- The click comes from the client's marks (routePins h.onClick, a CLIENT
--- NEED in Core/Client.lua: the mark's OnClick calls fn(n, button)). Flow's
--- right-click menu (go here next, point the arrow, hide) is not here.
+-- NEED in Core/Client.lua: the mark's OnClick calls fn(n, button)).
+-- B-21 (lead section 788): a right click points your own waypoint at the
+-- step (Nav/Waypoint.lua W.SetAt, as Alt + click on the map), and a right
+-- click on the mark your waypoint is on takes it off (W.Clear), as Flow's
+-- "Point the arrow here (your waypoint)" (MapOverlay.lua:193-208,
+-- M.PointHere). The rest of Flow's menu (go here next, hide) is not here.
 --
--- LOOK ONLY: nothing is moved, targeted, cast or sent; a click only
--- changes what the map's card says.
+-- LOOK ONLY: nothing is moved, targeted, cast or sent. A left click
+-- changes what the map's card says; a right click sets or clears your own
+-- waypoint (saved data only, nothing in the game changes).
 --
 --   MR.Pins(rows, map) -> pins   (pure) the marks for the shown map
 --   MR.Card(rows, map, info) -> card or nil   (pure) the zone card
 --   MR.StepCard(row) -> card or nil   (pure) one step's card
+--   MR.PointLabel(row) -> the waypoint's label, or nil when it would not do
 --   MR.Declare(k, diag) -> api   api.Refresh(), api.Shown(),
 --                                api.Click(n, button), api.Opened()
 -- Not tested in game.
@@ -113,6 +119,18 @@ function MR.StepCard(row)
     return { title = MR.PIN:format(row.n, tostring(row.text)), lines = lines }
 end
 
+-- The label your waypoint gets from a step: its words, when the waypoint
+-- can take them (Nav/Waypoint.lua: no "|", no control character, at most
+-- W.LABEL_MAX bytes); nil otherwise (the waypoint then has no label).
+function MR.PointLabel(row)
+    if type(row) ~= "table" or not isText(row.text) then return nil end
+    local W = ns.Nav and ns.Nav.Waypoint
+    local max = 40
+    if type(W) == "table" and type(W.LABEL_MAX) == "number" then max = W.LABEL_MAX end
+    if row.text:find("[%c|]") or #row.text > max then return nil end
+    return row.text
+end
+
 local function ask(client, name, ...)
     if type(client) ~= "table" or type(client[name]) ~= "function" then return nil end
     local ok, v = pcall(client[name], ...)
@@ -162,9 +180,28 @@ function MR.Declare(k, diag)
 
     -- A click on mark n: a left click opens its step, or closes it when it
     -- is the one open. Anything else does nothing.
+    -- B-21: your waypoint on the step of mark n, or off it when it is
+    -- already there.
+    local function point(row)
+        local W = ns.Nav and ns.Nav.Waypoint
+        local store = k.store
+        if ctx and ctx.store then store = ctx.store end
+        if type(W) ~= "table" or type(row.place) ~= "table" then return false end
+        local slot = W.Slot(store)
+        if not slot then return false end
+        local wp = W.Get(slot)
+        local p = row.place
+        if type(wp) == "table" and wp.map == p.map and math.abs(wp.x - p.x) < 0.005 and math.abs(wp.y - p.y) < 0.005 then
+            W.Clear(slot)
+            return true
+        end
+        return W.SetAt(slot, p.map, p.x, p.y, MR.PointLabel(row)) ~= nil
+    end
+
     function api.Click(n, button)
-        if button ~= nil and button ~= "LeftButton" then return false end
         if not drawn or onMapRows[n] == nil then return false end
+        if button == "RightButton" then return point(onMapRows[n]) end
+        if button ~= nil and button ~= "LeftButton" then return false end
         if opened == n then
             opened = nil
         else
@@ -230,7 +267,7 @@ function MR.Declare(k, diag)
 
     k:Module({
         name = MR.NAME,
-        needs = { "client", "settings" },
+        needs = { "client", "settings", "store" },
         ticks = { { every = MR.EVERY, when = "always", run = function() api.Refresh() end } },
         start = function(c) ctx = c end,
         stop = function()
