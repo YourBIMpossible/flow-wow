@@ -51,6 +51,27 @@ tests["dungeon mode: off the route the first choice is back on it; asking the gr
         counts = { done = 0, on = 0, missing = 0, inside = 0 } })), "back,ask,prep,cancel")
 end
 
+-- Lazy's note 2 (§611): per-quest rows only as handed in, from the
+-- player's log or Questie (the dungeon pane's rows); none are made up here.
+tests["dungeon mode: per-quest rows are listed grey after the counts, at most twelve"] = function(t)
+    local extra = {}
+    for i = 1, 14 do extra[i] = "Pick up: Q" .. i end
+    local items = M().Items({ name = "Test Mines", on = true, counts = { done = 0, on = 0, missing = 0, inside = 0 },
+        extra = extra })
+    local grey = {}
+    for _, it in ipairs(items) do
+        if it.disabled and it.text:find("^Pick up") then grey[#grey + 1] = it.text end
+    end
+    t.eq(#grey, 12)
+    t.eq(grey[12], "Pick up: Q12")
+    local more
+    for _, it in ipairs(items) do
+        if it.disabled and it.text == "... and 2 more." then more = true end
+    end
+    t.ok(more, "how many more")
+    t.eq(actions(M().Items({ name = "Test Mines", on = true, extra = { "Pick up: Q1" } })), "leave,prep,cancel")
+end
+
 tests["dungeon mode: no choices without a prepared run"] = function(t)
     t.eq(M().Items(nil), {})
     t.eq(M().Items({}), {})
