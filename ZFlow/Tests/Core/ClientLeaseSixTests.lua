@@ -121,7 +121,8 @@ return {
         local tab = { STONE, SWORD }
         env.GetNumBuybackItems = function() return #tab end
         env.GetBuybackItemLink = function(i) return tab[i] end
-        env.BuybackItem = function(i) table.remove(tab, i) end
+        local empties = true
+        env.BuybackItem = function(i) if empties then table.remove(tab, i) end end
         local c = ns.make.client(env)
         local got = {}
         t.eq(c.onBoughtBack(function(link) got[#got + 1] = link end), true)
@@ -130,6 +131,7 @@ return {
         t.eq(got, { SWORD }, "the slot is empty after the buy; the snapshot names it")
         env.fire("MERCHANT_UPDATE")
         tab[2] = SWORD
+        empties = false
         env.BuybackItem(2)
         t.eq(got, { SWORD, SWORD }, "not in the snapshot: the live read")
     end,

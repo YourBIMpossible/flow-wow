@@ -534,5 +534,16 @@ READS.rewardButtons = false
 -- G47 (lead section 397 item 15): who leads the group; read by
 -- Nav/FollowAdvice.lua only. Its name (UnitIsGroupLeader) is in Diag.NAMES.
 READS.groupLeader = false
+-- Lease rows (lead sections 659, 662, 677, 679, 682, 692, 693).
+READS.gossipOptions = false
+READS.itemIdByName = false
+READS.questRewardXp = false
+KIND.listen[#KIND.listen + 1] = "onBoughtBack"
+KIND.listen[#KIND.listen + 1] = "onLootLeft"
+KIND.listen[#KIND.listen + 1] = "onCraftStarted"
+KIND.show[#KIND.show + 1] = "inputBox"
+-- Hide or show a tracker frame, only on the player's own setting.
+KIND.act[#KIND.act + 1] = "hideGameTracker"
+KIND.act[#KIND.act + 1] = "hideQuestieTracker"
 
 return tests

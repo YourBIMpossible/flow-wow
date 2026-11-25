@@ -13661,6 +13661,289 @@ function ns.make.client(env)
         if not any then return nil end
         return out
     end
+    ---------------------------------------------------------------------
+    -- Lease rows (lead sections 659, 662, 677, 679, 682, 692, 693). Data and
+    -- API only; every game call through call() (pcall). Drawing is a MUSE
+    -- NEED. Not tested in game.
+    ---------------------------------------------------------------------
+
+    -- A2-27: the open NPC chat's options, { { id, name } } in the game's
+    -- order; a field the game leaves out (or hides) is left out. nil when
+    -- the read is missing or fails. C_GossipInfo.GetOptions(), each a
+    -- GossipOptionUIInfo (gossipOptionID, name); Flow reads o.name the same
+    -- way (flow-wow Modules/Nav/Places.lua:422-427).
+    function c.gossipOptions()
+        local g = env.C_GossipInfo
+        if type(g) ~= "table" then return nil end
+        local ok, list = call(g.GetOptions)
+        if not ok or type(list) ~= "table" then return nil end
+        local out = {}
+        for _, o in ipairs(list) do
+            if type(o) == "table" then
+                local row = {}
+                if type(o.gossipOptionID) == "number" and not hidden(o.gossipOptionID) then row.id = o.gossipOptionID end
+                if type(o.name) == "string" and not hidden(o.name) then row.name = o.name end
+                out[#out + 1] = row
+            end
+        end
+        return out
+    end
+
+    -- A2-21: the game's quest tracker and Questie's tracker, hidden or let
+    -- be (lead section 662). hide(true|false) -> true, "done" | false,
+    -- "lockdown" (in a fight, or the lock is not known; nothing kept).
+    -- A hide is accepted before the frame exists and applied when it is
+    -- found (each PLAYER_ENTERING_WORLD, ADDON_LOADED, PLAYER_REGEN_ENABLED),
+    -- and again each time the game or Questie shows it (a HookScript on its
+    -- OnShow; never replaced). Questie's saved settings are never written.
+    -- Frames: ObjectiveTrackerFrame, QuestWatchFrame or WatchFrame
+    -- (flow-wow Modules/Nav/RouteTracker.lua:62-64); Questie_BaseFrame
+    -- (the same file :293, :423).
+    local trackerWant, trackerHooked, trackerListening = {}, {}, false
+    local function trackerFrame(which)
+        local f
+        if which == "game" then
+            f = env.ObjectiveTrackerFrame or env.QuestWatchFrame or env.WatchFrame
+        else
+            f = env.Questie_BaseFrame
+        end
+        if type(f) ~= "table" then return nil end
+        return f
+    end
+    local function trackerApply(which)
+        if trackerWant[which] ~= true then return end
+        local f = trackerFrame(which)
+        if not f then return end
+        if trackerHooked[which] ~= f and type(f.HookScript) == "function" then
+            if pcall(f.HookScript, f, "OnShow", function() trackerApply(which) end) then trackerHooked[which] = f end
+        end
+        if c.combatLockdown() ~= false then return end
+        local okShown, shown = call(f.IsShown, f)
+        if okShown and shown then call(f.Hide, f) end
+    end
+    local function trackerHide(which, hide)
+        if c.combatLockdown() ~= false then return false, "lockdown" end
+        if not trackerListening then
+            trackerListening = true
+            for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "ADDON_LOADED", "PLAYER_REGEN_ENABLED" }) do
+                c.listen(event, function()
+                    trackerApply("game")
+                    trackerApply("questie")
+                end)
+            end
+        end
+        if hide == true then
+            trackerWant[which] = true
+            trackerApply(which)
+        else
+            trackerWant[which] = nil
+            local f = trackerFrame(which)
+            if f then call(f.Show, f) end
+        end
+        return true, "done"
+    end
+    function c.hideGameTracker(hide) return trackerHide("game", hide) end
+    function c.hideQuestieTracker(hide) return trackerHide("questie", hide) end
+
+    -- A1-40: a popup with one line to type in; fn(text) on Accept or Enter.
+    -- true when shown, nil when the popup calls are missing or refuse.
+    -- Only our own key in StaticPopupDialogs (replacing the table taints
+    -- every popup); the box is self.editBox or self.EditBox. As Flow's
+    -- waypoint box (flow-wow Modules/Nav/Waypoint.lua:217-232).
+    local INPUT_KEY = "ZF_INPUT"
+    if type(ns.id) == "table" and type(ns.id.framePrefix) == "string" then
+        INPUT_KEY = ns.id.framePrefix:upper() .. "_INPUT"
+    end
+    function c.inputBox(prompt, fn)
+        if type(fn) ~= "function" or type(env.StaticPopupDialogs) ~= "table" then return nil end
+        local function boxText(box)
+            if type(box) ~= "table" then return nil end
+            local ok, text = call(box.GetText, box)
+            if ok and type(text) == "string" then return text end
+            return nil
+        end
+        local function closeParent(self)
+            local okP, parent = call(self.GetParent, self)
+            if okP and type(parent) == "table" then call(parent.Hide, parent) end
+        end
+        local accept = env.ACCEPT
+        if type(accept) ~= "string" then accept = "Accept" end
+        local cancel = env.CANCEL
+        if type(cancel) ~= "string" then cancel = "Cancel" end
+        local okSet = pcall(function()
+            env.StaticPopupDialogs[INPUT_KEY] = {
+                text = tostring(prompt or ""),
+                button1 = accept, button2 = cancel,
+                hasEditBox = true, editBoxWidth = 260,
+                OnAccept = function(self)
+                    local box = self.editBox
+                    if box == nil then box = self.EditBox end
+                    local text = boxText(box)
+                    if text then pcall(fn, text) end
+                end,
+                EditBoxOnEnterPressed = function(self)
+                    local text = boxText(self)
+                    if text then pcall(fn, text) end
+                    closeParent(self)
+                end,
+                EditBoxOnEscapePressed = function(self) closeParent(self) end,
+                timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+            }
+        end)
+        if not okSet then return nil end
+        if not call(env.StaticPopup_Show, INPUT_KEY) then return nil end
+        return true
+    end
+
+    -- E-13 (lead section 677): fn(link) each time the player buys an item
+    -- back. A snapshot of the tab's links on MERCHANT_SHOW and
+    -- MERCHANT_UPDATE; the hook (hooksecurefunc BuybackItem, after the buy)
+    -- reads the snapshot first and falls back to a live
+    -- GetBuybackItemLink(slot). As Flow (flow-wow Modules/Items/Vendor.lua:
+    -- 700-705, 715-720). true when hooked, nil when the game lacks the calls.
+    local boughtFns, boughtSeen, boughtHooked = {}, {}, false
+    local function boughtSnapshot()
+        boughtSeen = {}
+        local ok, n = call(env.GetNumBuybackItems)
+        if not ok or type(n) ~= "number" or hidden(n) then return end
+        for i = 1, n do
+            local okL, link = call(env.GetBuybackItemLink, i)
+            if okL and type(link) == "string" and not hidden(link) then boughtSeen[i] = link end
+        end
+    end
+    function c.onBoughtBack(fn)
+        if type(fn) ~= "function" then return nil end
+        if not boughtHooked then
+            if type(env.hooksecurefunc) ~= "function" or type(env.BuybackItem) ~= "function" then return nil end
+            local okH = pcall(env.hooksecurefunc, "BuybackItem", function(slot)
+                local link = boughtSeen[slot]
+                if link == nil then
+                    local okL, live = call(env.GetBuybackItemLink, slot)
+                    if okL and type(live) == "string" and not hidden(live) then link = live end
+                end
+                if link == nil then return end
+                for _, f in ipairs({ unpack(boughtFns) }) do pcall(f, link) end
+            end)
+            if not okH then return nil end
+            boughtHooked = true
+            c.listen("MERCHANT_SHOW", boughtSnapshot)
+            c.listen("MERCHANT_UPDATE", boughtSnapshot)
+        end
+        boughtFns[#boughtFns + 1] = fn
+        return true
+    end
+
+    -- E-45 (lead section 679): fn(items) when the loot window closes, items
+    -- = what was left, each { item = link, count, quality }. The slots are
+    -- read while the window is open (LOOT_OPENED, LOOT_SLOT_CLEARED) and
+    -- reported at LOOT_CLOSED. GetNumLootItems, GetLootSlotInfo(i) ->
+    -- icon, name, quantity, currencyID, quality; GetLootSlotLink(i) (flow-wow
+    -- Modules/Items/LootFilter.lua:146-147, :183-184). A slot with no item
+    -- link (money) is left out; a read that fails leaves nothing known, and
+    -- nothing is reported.
+    local lootFns, lootLeft, lootListening = {}, nil, false
+    local function lootRead()
+        lootLeft = nil
+        local ok, n = call(env.GetNumLootItems)
+        if not ok or type(n) ~= "number" or hidden(n) then return end
+        local out = {}
+        for i = 1, n do
+            local okI, _, _, count, _, quality = call(env.GetLootSlotInfo, i)
+            local okL, link = call(env.GetLootSlotLink, i)
+            if not okI or not okL then return end
+            if type(link) == "string" and not hidden(link) then
+                local row = { item = link }
+                if type(count) == "number" and not hidden(count) then row.count = count end
+                if type(quality) == "number" and not hidden(quality) then row.quality = quality end
+                out[#out + 1] = row
+            end
+        end
+        lootLeft = out
+    end
+    function c.onLootLeft(fn)
+        if type(fn) ~= "function" then return nil end
+        if not lootListening then
+            lootListening = true
+            c.listen("LOOT_OPENED", lootRead)
+            c.listen("LOOT_SLOT_CLEARED", lootRead)
+            c.listen("LOOT_CLOSED", function()
+                local items = lootLeft
+                lootLeft = nil
+                if items == nil then return end
+                for _, f in ipairs({ unpack(lootFns) }) do pcall(f, items) end
+            end)
+        end
+        lootFns[#lootFns + 1] = fn
+        return true
+    end
+
+    -- E-42 (lead section 682): an item's id by its name, from the link
+    -- GetItemInfo(name) answers (C_Item.GetItemInfo where the game has it);
+    -- nil when the game has not seen the item or the read fails. Flow does
+    -- the same (flow-wow Modules/Items/Auction.lua:120).
+    function c.itemIdByName(name)
+        if type(name) ~= "string" or name == "" then return nil end
+        local fn = env.GetItemInfo
+        if type(env.C_Item) == "table" and type(env.C_Item.GetItemInfo) == "function" then fn = env.C_Item.GetItemInfo end
+        local ok, _, link = call(fn, name)
+        if not ok or type(link) ~= "string" or hidden(link) then return nil end
+        return tonumber(link:match("item:(%d+)"))
+    end
+
+    -- E-57 (lead section 692): fn(id, count, name) each time the game's own
+    -- craft call is made. Look only: hooksecurefunc on DoTradeSkill(index,
+    -- count) and on C_TradeSkillUI.CraftRecipe(recipeID, count); nothing is
+    -- called, nothing protected, no global replaced. id is the spell cast:
+    -- the "enchant:<spell>" of GetTradeSkillRecipeLink(index), or recipeID;
+    -- nil when it cannot be told. name: GetTradeSkillInfo(index)'s first
+    -- value, or C_TradeSkillUI.GetRecipeInfo(recipeID).name. As Flow
+    -- (flow-wow Modules/Crafting/CraftBar.lua:129-143). Returns a cancel,
+    -- or nil when neither call can be watched.
+    local craftFns, craftHooked = {}, false
+    local function craftTell(id, count, name)
+        for _, f in ipairs({ unpack(craftFns) }) do pcall(f, id, count, name) end
+    end
+    function c.onCraftStarted(fn)
+        if type(fn) ~= "function" then return nil end
+        if not craftHooked then
+            if type(env.hooksecurefunc) ~= "function" then return nil end
+            local any = false
+            if type(env.DoTradeSkill) == "function" and pcall(env.hooksecurefunc, "DoTradeSkill", function(index, count)
+                local id, name
+                local okL, link = call(env.GetTradeSkillRecipeLink, index)
+                if okL and type(link) == "string" and not hidden(link) then id = tonumber(link:match("enchant:(%d+)")) end
+                local okN, n = call(env.GetTradeSkillInfo, index)
+                if okN and type(n) == "string" and not hidden(n) then name = n end
+                craftTell(id, count, name)
+            end) then any = true end
+            local ui = env.C_TradeSkillUI
+            if type(ui) == "table" and type(ui.CraftRecipe) == "function"
+                and pcall(env.hooksecurefunc, ui, "CraftRecipe", function(recipeID, count)
+                    local id, name
+                    if type(recipeID) == "number" and not hidden(recipeID) then id = recipeID end
+                    local okI, info = call(ui.GetRecipeInfo, recipeID)
+                    if okI and type(info) == "table" and type(info.name) == "string" and not hidden(info.name) then name = info.name end
+                    craftTell(id, count, name)
+                end) then any = true end
+            if not any then return nil end
+            craftHooked = true
+        end
+        craftFns[#craftFns + 1] = fn
+        return function()
+            for i = #craftFns, 1, -1 do
+                if craftFns[i] == fn then table.remove(craftFns, i) end
+            end
+        end
+    end
+
+    -- A2-16 (lead section 693): the XP a logged quest rewards,
+    -- GetQuestLogRewardXP(questId), when above 0; else nil. As Flow
+    -- (flow-wow Modules/Nav/XpValue.lua:34-37).
+    function c.questRewardXp(questId)
+        local ok, xp = call(env.GetQuestLogRewardXP, questId)
+        if not ok or type(xp) ~= "number" or hidden(xp) or xp ~= xp or xp <= 0 then return nil end
+        return xp
+    end
     return c
 end
 
