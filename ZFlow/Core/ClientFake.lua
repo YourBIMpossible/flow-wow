@@ -3234,6 +3234,9 @@ function ns.make.fakeClient(opts)
         if type(spec.count) ~= "number" or spec.count < 1 then return nil end
         if c.combatLockdown() ~= false then return nil end
         local h = { spec = spec, slots = {}, shown = false, point = nil, given = {} }
+        -- h.size: each button's side on screen, in pixels (spec.size, else
+        -- the real client's 32); h.resize changes it, as SetSize would.
+        h.size = (type(spec.size) == "number" and spec.size > 0) and spec.size or 32
         for i = 1, spec.count do h.slots[i] = { attrs = {}, shown = false, icon = nil } end
         function h.set(i, attr, value)
             local slot = h.slots[i]
@@ -3271,6 +3274,12 @@ function ns.make.fakeClient(opts)
             if type(point) ~= "table" then return false, "refused" end
             if c.combatLockdown() ~= false then return false, "lockdown" end
             h.point = { point[1], point[2], point[3], point[4] }
+            return true
+        end
+        function h.resize(size)
+            if type(size) ~= "number" or size <= 0 then return false, "refused" end
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            h.size = size
             return true
         end
         c.clickRows[#c.clickRows + 1] = h

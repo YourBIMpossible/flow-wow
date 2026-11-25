@@ -293,6 +293,21 @@ tests["flow button: Ctrl + wheel resizes it out of a fight only, half to double,
     noBindsNoMacros(t, c)
 end
 
+-- Lazy F2 (lead section 551): one way to size. The wheel resizes the row
+-- to the rounded pixel size; nothing scales it on top, so the size on
+-- screen is 52 * scale once, never 52 * scale * scale.
+tests["flow button: the wheel sets the size on screen once, no scale on top"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no module"); return end
+    local c, addon = start({ on = true, account = { layout = { rotation = { scale = 1.5 } } } })
+    local h = rowOf(c, FLOW)
+    if not h then t.ok(false, "no Flow button"); return end
+    t.eq(h.size, math.floor(FB.SIZE * 1.5 + 0.5), "made at the saved size")
+    t.eq(c.wheelHandle(FLOW, 1), true)
+    t.eq(addon.settings:get(FB.SCALE), 1.6)
+    t.eq(h.size, math.floor(FB.SIZE * 1.6 + 0.5), "the row is the new size on screen")
+    t.eq(h.scale, nil, "no SetScale on top of the size")
+end
+
 tests["flow button: a reload keeps the size the player chose"] = function(t)
     if type(FB) ~= "table" then t.ok(false, "no module"); return end
     local c, addon = start({ on = true })
