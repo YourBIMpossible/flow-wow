@@ -5189,3 +5189,22 @@ do
         return c
     end
 end
+
+-- § D-12 (Rotation/BuffItemPick.lua; lead section 704): one CLIENT NEED,
+-- stubbed here only. Core/Client.lua does not have it yet.
+--   c.itemSpellName(item) -> the name of the item's use spell, or nil;
+--   c.setItemSpellName(id, name) sets it.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local names = {}
+        function c.setItemSpellName(id, name) names[id] = name end
+        function c.itemSpellName(item)
+            local id = item
+            if ns.Items and type(ns.Items.Id) == "function" then id = ns.Items.Id(item) or item end
+            return names[id]
+        end
+        return c
+    end
+end

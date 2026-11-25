@@ -266,6 +266,8 @@ return {
     "UI/MoveHandle.lua",
     "Rotation/ClickSlots.lua",
     -- Section 285 item 2b: the Flow button and the self button on screen.
+    -- FLOW-PARITY D-12: the buff item the self button holds (before FlowButton).
+    "Rotation/BuffItemPick.lua",
     "Rotation/FlowButton.lua",
     -- N1, N2, N20, N5 key actions (P-KEYS slice D).
     "Rotation/KeyActions.lua",
