@@ -5394,7 +5394,8 @@ do
 end
 
 -- § F-28 (Nav/InviteAccept.lua; lead sections 738 and 740): two CLIENT
--- NEEDs, stubbed here only. Core/Client.lua does not have them yet.
+-- NEEDs, stubbed here (Core/Client.lua has them since the batch-3 lead
+-- commit).
 --   c.queued() -> true while in a dungeon finder or battleground queue,
 --     false when not, nil when not known (GetLFGMode, GetBattlefieldStatus).
 --   c.acceptGroup() accepts the invite (AcceptGroup()); counted in

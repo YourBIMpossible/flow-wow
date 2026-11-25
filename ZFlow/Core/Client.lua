@@ -7141,6 +7141,56 @@ function ns.make.client(env)
         return yesNo(call(list.IsFriend, guid))
     end
 
+    -- Is the player in a dungeon finder or battleground queue? (F-28, the
+    -- lead's lease, section 740.) True when GetBattlefieldStatus(i) says
+    -- "queued" or "confirm" for a battleground slot, or GetLFGMode(category)
+    -- says a queue, role check or proposal is going on; false when one of
+    -- them answered and no queue is on; nil when neither answered. Needs a
+    -- game test: the categories are read from the LE_LFG_CATEGORY_* names.
+    local LFG_QUEUED = { queued = true, proposal = true, rolecheck = true, suspended = true }
+    function c.queued()
+        local known = false
+        if type(env.GetBattlefieldStatus) == "function" then
+            local okMax, max = call(env.GetMaxBattlefieldID)
+            if not okMax or type(max) ~= "number" or hidden(max) or max ~= max or max < 1 or max > 20 then
+                max = 3
+            end
+            for i = 1, max do
+                local ok, status = call(env.GetBattlefieldStatus, i)
+                if ok and type(status) == "string" and not hidden(status) then
+                    known = true
+                    if status == "queued" or status == "confirm" then return true end
+                end
+            end
+        end
+        if type(env.GetLFGMode) == "function" then
+            for _, name in ipairs({ "LE_LFG_CATEGORY_LFD", "LE_LFG_CATEGORY_RF", "LE_LFG_CATEGORY_SCENARIO" }) do
+                local cat = env[name]
+                if type(cat) == "number" then
+                    local ok, mode = call(env.GetLFGMode, cat)
+                    if ok then
+                        if mode == nil then
+                            known = true
+                        elseif type(mode) == "string" and not hidden(mode) then
+                            known = true
+                            if LFG_QUEUED[mode] then return true end
+                        end
+                    end
+                end
+            end
+        end
+        if known then return false end
+        return nil
+    end
+
+    -- Accepts the open group invite: AcceptGroup(). True when the call went
+    -- through, false when the game has no AcceptGroup or it errored (F-28).
+    -- Nothing else is done: the invite window is the game's own.
+    function c.acceptGroup()
+        local ok = call(env.AcceptGroup)
+        return ok == true
+    end
+
     -- How fast the player is moving, in yards a second: GetUnitSpeed(
     -- "player") (0 standing still), or nil when it cannot be read.
     function c.speed()
