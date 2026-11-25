@@ -46,13 +46,6 @@ Pin.SETTING = "nav.waypointPin"
 Pin.LABEL = "Show your waypoint on the minimap"
 Pin.HELP = "Puts a green dot on the minimap for a waypoint you set yourself, so you can see it without opening the map."
 Pin.OFF = "turned off"
--- The row of the route marker (the design spec for slice 2, section 4; lead
--- section 543): the key the Flow import already writes. Nothing reads it
--- yet: the one dot for the current step is drawn by a later slice, which
--- reads this key.
-Pin.MARKER = "nav.minimapPin"
-Pin.MARKER_LABEL = "Show the route marker on the minimap"
-Pin.MARKER_HELP = "Shows one dot on the minimap for your current step. Turning it off hides the dot; the arrow still points the way."
 Pin.EVERY = 0.1        -- seconds between looks. A first guess.
 Pin.SIZE = 12          -- how wide the pin is. A first guess.
 
@@ -129,11 +122,8 @@ function Pin.Declare(k)
         return look()
     end
     k:Setting({ key = Pin.SETTING, scope = "account", type = "bool", default = true,
-        label = Pin.LABEL, group = "travel.route", help = Pin.HELP,
+        label = Pin.LABEL, group = "travel.map", help = Pin.HELP,
         synonyms = { "waypoint", "minimap", "dot", "pin" } })
-    k:Setting({ key = Pin.MARKER, scope = "account", type = "bool", default = true,
-        label = Pin.MARKER_LABEL, group = "travel.route", help = Pin.MARKER_HELP,
-        synonyms = { "minimap", "dot", "marker", "pin", "route" } })
 
     -- Off only when the setting says false; a read that fails is not off.
     local function off(s)

@@ -3,15 +3,15 @@ local _, ns = ...
 -- audit S3-05), on the whole add-on loaded on a fake client. The words are
 -- the design spec, word for word (from-muse
 -- MUSE-TO-CLAUDE-SLICE-2-SETTINGS.md): the help of the route row says it
--- hides the map trail too; the minimap pin of the waypoint has a row; the
--- key of the route marker has a row; the row of the profession arrow names
--- every step it covers. The row for the map trail itself belongs to slice
+-- hides the map trail too; the minimap pin of the waypoint has a row, in
+-- the map and minimap group; the row of the profession arrow names every
+-- step it covers. The route marker key has no row yet (lead section 560). The row for the map trail itself belongs to slice
 -- 3, not here. Both new rows are on at first, so a saved account with
 -- neither key plays as before.
 -- Look only: nothing is moved, targeted or clicked. Made-up places. Not
 -- tested in game.
 --
--- Red before the code: no row "nav.waypointPin" and none "nav.minimapPin";
+-- Red before the code: no row "nav.waypointPin";
 -- the help of the route row says nothing of the trail; the row of the
 -- profession arrow names the trainer only.
 local tests = {}
@@ -98,9 +98,6 @@ local PANEL_HELP = 'Shows the stops of your route in order beside the quest log 
 local PIN_LABEL = "Show your waypoint on the minimap"
 local PIN_HELP = "Puts a green dot on the minimap for a waypoint you set yourself, so you can see it without "
     .. "opening the map."
-local MARKER_LABEL = "Show the route marker on the minimap"
-local MARKER_HELP = "Shows one dot on the minimap for your current step. Turning it off hides the dot; the arrow "
-    .. "still points the way."
 local PROF_LABEL = "Profession arrow"
 local PROF_HELP = "Shows a second, purple arrow for your profession steps: gathering in an area, smelting or "
     .. "crafting at a station, learning at a trainer, or buying from a vendor."
@@ -116,26 +113,13 @@ tests["pathing settings: the waypoint minimap pin has a row, on at first, in the
     t.eq(addon.settings:get(PIN), true, "read as on with nothing saved")
     t.eq(row.label, PIN_LABEL)
     t.eq(row.help, PIN_HELP)
+    t.eq(row.group, "travel.map", "filed with the map and minimap")
     t.ok(addon.Settings.Topics.Find(row.group) ~= nil, "it names a topic of the one list: " .. tostring(row.group))
     t.eq(declaredTimes(addon, PIN), 1, "declared once")
+    -- Lead section 560: the route marker's row waits for the slice that
+    -- draws the dot; its key has no row yet.
+    t.eq(rowOf(addon, MARKER), nil, "no row for " .. MARKER .. " yet")
     t.eq(ns.MinimapPin.SETTING, PIN, "the pin module names its own setting")
-end
-
-tests["pathing settings: the key of the route marker has a row, on at first, in the spec's words"] = function(t)
-    local _, addon = boot()
-    local row = rowOf(addon, MARKER)
-    t.ok(row ~= nil, MARKER .. " is a declared row")
-    if not row then return end
-    t.eq(row.scope, "account")
-    t.eq(row.type, "bool")
-    t.eq(row.default, true, "on at first")
-    t.eq(addon.settings:get(MARKER), true, "read as on with nothing saved")
-    t.eq(row.label, MARKER_LABEL)
-    t.eq(row.help, MARKER_HELP)
-    -- The sentence about the colour of the step comes with the slice that draws it.
-    t.ok(not holds(row.help, "colour"), "no word of the colour yet: " .. tostring(row.help))
-    t.ok(addon.Settings.Topics.Find(row.group) ~= nil, "it names a topic of the one list: " .. tostring(row.group))
-    t.eq(declaredTimes(addon, MARKER), 1, "declared once")
 end
 
 tests["pathing settings: a saved account with neither new key shows the list, the lines and the pin"] = function(t)
@@ -195,16 +179,6 @@ tests["pathing settings: the minimap pin saved off makes no pin"] = function(t)
     t.eq(addon.settings:get(PIN), false, "the saved choice is read")
     t.eq(pinShown(c), false, "no pin on the minimap")
     t.eq(linesShown(c), true, "the lines are drawn")
-end
-
-tests["pathing settings: the route marker row off leaves the waypoint pin, the list and the lines"] = function(t)
-    local c, addon = boot()
-    t.ok(addon.settings:set(MARKER, false), "the row can be switched off")
-    step(c)
-    t.eq(addon.settings:get(MARKER), false, "the choice is kept")
-    t.eq(pinShown(c), true, "the pin of the waypoint belongs to another row")
-    t.eq(listShown(c), true, "the route list stays")
-    t.eq(linesShown(c), true, "the lines stay")
 end
 
 tests["pathing settings: the row of the profession arrow is the spec's and names every step it covers"] = function(t)

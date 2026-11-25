@@ -45,6 +45,8 @@ T.LIST = {
         { id = "arrow", name = "The arrow" },
         { id = "route", name = "The way there" },
         { id = "flights", name = "Flights and crossings" },
+        -- Lead section 560: the map and minimap rows of the pathing package.
+        { id = "map", name = "The map and minimap" },
     } },
     { id = "combat", name = "Combat and Class", sections = {
         { id = "rotation", name = "Next spell" },
