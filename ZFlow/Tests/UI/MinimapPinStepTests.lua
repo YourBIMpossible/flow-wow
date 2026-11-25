@@ -43,4 +43,16 @@ tests["minimap pin step: an old caller with no step still pins nothing without a
     t.eq(r.reason, Pin.NONE)
 end
 
+-- Builder 1's review (A2-23): the report says what the pin stands for, so
+-- the drawing lane can colour it as Flow did (MinimapPin.lua :397-398: your
+-- waypoint or a party member you follow green, a route step the route's).
+tests["minimap pin step: the report says waypoint or step; a followed member is a waypoint"] = function(t)
+    local c = client()
+    local step = { map = MAP, x = 0.52, y = 0.47 }
+    t.eq(Pin.Update(c, nil, {}, step).source, "step", "the arrow's step")
+    t.eq(Pin.Update(c, nil, {}, step, true).source, "waypoint", "a party member you follow")
+    local _, src = Pin.Target(step, nil)
+    t.eq(src, "waypoint", "your own waypoint")
+end
+
 return tests
