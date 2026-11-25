@@ -55,11 +55,22 @@ tests["travel via: a spell to learn is no shortcut; where to learn it is said un
     t.eq(step, boars(), "the chosen step is not changed")
 end
 
--- Parity B-32: with no place of its own, the class trainer (legacy
--- Modules/Nav/TravelSpells.lua:89).
-tests["travel via: a spell to learn with no place of its own is learned at the class trainer"] = function(t)
+-- Lead section 632: a learn step with no line and no place of its own
+-- says nothing about where it is learned; no place is guessed (legacy
+-- Flow's "your class trainer" is not verified).
+tests["travel via: a spell to learn with no line and no place of its own claims no place"] = function(t)
     local learn = { label = "Learn " .. SPELL, text = true, spell = SPELL, learn = true }
-    t.eq(N.TravelVia(boars(), { spell = learn }, false).hint, "Learn " .. SPELL .. " (" .. T.LEARN_AT .. ")")
+    local step = boars()
+    local out, how = N.TravelVia(step, { spell = learn }, false)
+    t.eq(how, nil)
+    t.eq(out.hint, nil, "no learn line")
+    t.eq(out, boars(), "the step as it was")
+    t.eq(T.LEARN_AT, nil, "no such words are kept")
+    local hinted = N.TravelVia(boars(), { spell = learn, flightHint = "No flight learned to there yet" }, false)
+    t.eq(hinted.hint, "No flight learned to there yet", "the flight's line is not held back by it")
+    local placed = { label = "Learn " .. SPELL, text = true, spell = SPELL, learn = true, detail = "a place it gave" }
+    t.eq(N.TravelVia(boars(), { spell = placed }, false).hint, "Learn " .. SPELL .. " (a place it gave)",
+        "a place the step itself gives is still said")
 end
 
 tests["travel via: the learn line gives way to a real way and walking, and comes before the no-flight line"] = function(t)
