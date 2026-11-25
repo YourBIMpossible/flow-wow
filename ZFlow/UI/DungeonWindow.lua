@@ -191,7 +191,13 @@ function W.Declare(k, diag)
             return false
         end
         -- B-52: the get-ready steps go first; the player does each.
-        local ready, words = readySteps()
+        -- B-50: "Get ready on the way" can be turned off on the dungeon
+        -- route's menu (Nav/DungeonRun.lua); on unless it is.
+        local runs = k.use and k.use("dungeonRun")
+        local ready, words = {}, {}
+        if not (type(runs) == "table" and type(runs.PrepOn) == "function" and runs.PrepOn() == false) then
+            ready, words = readySteps()
+        end
         if #ready > 0 then
             local steps = {}
             for _, s in ipairs(ready) do steps[#steps + 1] = s end
@@ -205,6 +211,10 @@ function W.Declare(k, diag)
             run.left = left
         end
         view.said = trip.Run(run)
+        -- B-50: the run is prepared; the line under the arrow says it.
+        if type(runs) == "table" and type(runs.Prepared) == "function" then
+            pcall(runs.Prepared, d.key, d.name, wing, #run.steps)
+        end
         return true
     end
 
@@ -481,7 +491,24 @@ function W.Declare(k, diag)
         name = W.NAME,
         needs = { "client", "store", "sched" },
         provides = { Open = api.Open, Close = api.Close, Shown = api.Shown, PlanNamed = api.PlanNamed },
-        start = function(c) ctx = c end,
+        start = function(c)
+            ctx = c
+            -- B-50: "Back on the dungeon route" and "Get ready" plan the
+            -- prepared run again through this window's planner.
+            local runs = k.use and k.use("dungeonRun")
+            if type(runs) == "table" and type(runs.SetPlanner) == "function" then
+                runs.SetPlanner(function(key, wing)
+                    if not (st and st.state == "ready" and type(st.byKey) == "table") then return nil end
+                    local d = st.byKey[key]
+                    if not d or not planRun(d, wing) then return nil end
+                    local tr = k.use and k.use("tripRoute")
+                    local cur
+                    if tr and type(tr.Current) == "function" then cur = tr.Current() end
+                    if type(cur) == "table" and type(cur.stops) == "table" then return #cur.stops end
+                    return nil
+                end)
+            end
+        end,
         stop = function()
             if cancelStep then cancelStep() end
             cancelStep = nil
