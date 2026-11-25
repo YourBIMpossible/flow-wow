@@ -355,7 +355,10 @@ end
 -- first; "complete": everything, pick-ups far below your level too. Each
 -- mode only sets the switches this route already has.
 T.MODES = { "quests", "optimal", "complete" }
-T.MODE_PATH = "nav.routeMode"     -- account, the word's choice
+-- Lead section 713: a Settings row's place must start with settings. (Core/
+-- Settings.lua); these are the rows' own places, read and written by the
+-- route word, the rows, the route menu and the store watch alike.
+T.MODE_PATH = "settings.nav.routeMode"   -- account
 -- Lead section 651 (Muse's MUSE-TO-WHITE-ROUTE-MODES.md): the same choice
 -- as a Settings row and in the route menu. The Settings kit shows a choice
 -- by its saved value, so the saved value is the words the player reads;
@@ -441,7 +444,7 @@ end
 -- (QuestXP:GetQuestLogRewardXP(questId), Questie 12.12.0
 -- Database/QuestXP/QuestieXP.lua:93, read through client.questieModule;
 -- no XP data ships here). 0, nil or a read that raises is not known.
-T.SORT_PATH = "nav.routeSort"     -- account: "xp" or "distance"
+T.SORT_PATH = "settings.nav.routeSort"   -- account
 T.SORT_SAID = {
     xp = "Route: the quests worth the most XP first (from Questie); the rest by distance after them.",
     distance = "Route: shortest walk first.",
@@ -488,7 +491,8 @@ function T.XpOf(mod)
 end
 
 -- FLOW-PARITY A2-15: near steps first, the rule of legacy Flow's
--- Modules/Nav/NearFirst.lua (F.Multiplier, :46-52): a stop up to NEAR_YARDS
+-- Modules/Nav/NearFirst.lua on ref origin/buff-fishing-prof-path (it is not
+-- on origin/HEAD d78839f7; F.Multiplier, :46-52): a stop up to NEAR_YARDS
 -- away counts as it is; beyond, it counts NEAR_SPAN yards for one more
 -- time, at most NEAR_MAX times. Flow's tuning, not a game fact. As in Flow
 -- (F.Applies, :36-43) it reweighs the XP order only: shortest first already
@@ -530,7 +534,7 @@ end
 
 -- FLOW-PARITY A1-29: how many steps show. The first n of the route (nil:
 -- all) and how many more there are.
-T.SHOWN_PATH = "nav.routeShown"   -- account, the word's choice
+T.SHOWN_PATH = "settings.nav.routeShown" -- account
 T.SHOWN_KEY = "nav.routeShown"
 T.SHOWN_ALL = "All"
 T.SHOWN_CHOICES = { "5", "10", "15", "20", T.SHOWN_ALL }
