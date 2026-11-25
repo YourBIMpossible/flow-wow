@@ -241,4 +241,16 @@ tests["party route B-42: on the party route your quest step stays when a member 
     t.eq(labels, { "Wolves", "Hand in", "Party stop" })
 end
 
+-- B-42 CHANGES-1 (lead section 861): a quest's pick-up is not a party route
+-- step, as Flow's H.QuestsOnly drops "pickup:<id>" (PartyHelp.lua:409;
+-- Focus.lua:48, :436-438). Fails before: it was kept by its quest id.
+tests["party route B-42: on the party route a quest pick-up is left out"] = function(t)
+    local kept = P().QuestsOnly({
+        { kind = "pickup", quest = 14, label = "Pick up" },
+        { quest = 12, objective = 1, label = "Wolves" },
+    })
+    t.eq(#kept, 1)
+    t.eq(kept[1] and kept[1].label, "Wolves")
+end
+
 return tests
