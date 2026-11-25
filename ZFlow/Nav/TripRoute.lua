@@ -66,6 +66,18 @@ T.ARRIVE_YARDS = 10      -- a run stop is reached this close
 T.ARRIVE_SHARE = 0.01    -- the same when the map's size is not known
 T.AREA_MAX = 8           -- N43: points of a stop's spot kept as its area
 T.REREAD = 1             -- seconds between looks at the quest log
+-- Owner's report (lead section 562 item 7): "There's no route on the map."
+-- As in Flow (Modules/Nav/Nav.lua choose(): the plan is made by itself and
+-- made again when the steps change, every 8 s once you moved 30 yards, and
+-- every 60 s), the quest route is planned by itself from the quest log,
+-- with no word. It is planned again at each login, so it is there after a
+-- restart too; nothing of it is saved. It is shown on the map and in the
+-- Router (View). The arrow keeps its own pick until the player plans with
+-- the route word (see the module's auto()).
+T.AUTO_EVERY = 2         -- seconds between looks for a new plan
+T.AUTO_SOON = 8          -- seconds: no sooner than this, and only once you moved
+T.AUTO_MOVED = 30        -- yards moved that count (Flow's 30)
+T.AUTO_LATE = 60         -- seconds: planned again at the latest (Flow's 60)
 
 T.WHY_NO_MAP = "Your map is not known yet; try again in a moment."
 T.WHY_NO_LOG = "Your quest log could not be read."
@@ -434,10 +446,33 @@ local function runLegs(stops, client)
     return yards
 end
 
+-- The quest log as far as the route's steps go: each quest, whether it is
+-- complete or failed, and which objectives are done. Counts going up do not
+-- change it: a step is planned the same until its objective is done.
+function T.LogSignature(rows)
+    if type(rows) ~= "table" then return nil end
+    local parts = {}
+    for _, row in ipairs(rows) do
+        if type(row) == "table" and row.id ~= nil then
+            local done = {}
+            for i, o in ipairs(type(row.objectives) == "table" and row.objectives or {}) do
+                done[i] = (type(o) == "table" and o.done == true) and "1" or "0"
+            end
+            parts[#parts + 1] = tostring(row.id) .. (row.complete == true and "c" or "")
+                .. (row.failed == true and "f" or "") .. ":" .. table.concat(done)
+        end
+    end
+    table.sort(parts)
+    return table.concat(parts, ";")
+end
+
 function T.Declare(k, diag)
     local api = {}
     local ctx
     local route, at, readAt = nil, 1, nil
+    -- Section 562 item 7: the route planned by itself. held: the player said
+    -- "route off" (this session); the plan's log, time and place.
+    local autoHeld, autoSig, autoAt, autoPos = false, nil, nil, nil
 
     local function client() return ctx and ctx.client or k.client end
 
@@ -525,6 +560,9 @@ function T.Declare(k, diag)
         end
         local r, why = T.Plan(rows, places or {}, here, legs, pickups, note)
         if not r then return nil, why, note end
+        -- A route planned by the player: the one planned by itself may come
+        -- back once this one ends.
+        autoHeld = false
         route, at, readAt = r, 1, ask(c, "now")
         return r
     end
@@ -556,6 +594,8 @@ function T.Declare(k, diag)
 
     function api.Off()
         route, at = nil, 1
+        -- Said off by the player: not planned again by itself this session.
+        autoHeld = true
     end
 
     -- The first stop from at on that is not gone; the route ends past the last.
@@ -649,6 +689,9 @@ function T.Declare(k, diag)
             end
         end
         if not s then return nil end
+        -- Planned by itself: shown on the map and in the Router, but the arrow
+        -- keeps its own pick until the player plans with the word.
+        if route.auto then return nil end
         return { quest = s.quest, objective = s.objective, turnIn = s.turnIn, label = s.label,
                  detail = s.need or s.detail, need = s.need,
                  place = { map = s.place.map, x = s.place.x, y = s.place.y } }
@@ -661,7 +704,8 @@ function T.Declare(k, diag)
 
     -- G48 (Nav/PartyRoute.lua): a copy of the stops still to walk, or nil.
     function api.Current()
-        if not route then return nil end
+        -- Planned by itself: not walked, so not the route the others follow.
+        if not route or route.auto then return nil end
         local stops = {}
         for i = at, #route.stops do
             local s = route.stops[i]
@@ -716,7 +760,9 @@ function T.Declare(k, diag)
             if api.Skip() then say(api.Lines()) else say({ T.DONE }) end
             return
         end
-        if word == "new" or not route then
+        -- The route planned by itself is planned again by the word, as one the
+        -- arrow walks.
+        if word == "new" or not route or route.auto then
             local r, why, note = api.Plan()
             if not r then
                 -- One line with nothing planned (Tests/E2E/TripEdges.lua): why
@@ -752,11 +798,67 @@ function T.Declare(k, diag)
         help = "Acts when you plan a quest route with the route word: quests you can take now whose giver stands on this map (from Questie) are added as stops when on the way, else listed as skipped. Nothing is accepted for you.",
         synonyms = { "route", "pick", "pickup", "giver", "new", "quest" } })
 
+    -- Section 562 item 7: the route on the map with no word. The routes'
+    -- setting and the Router's (nav.routePanel, which also shows the map
+    -- lines) must both be on. A route the player planned, or a dungeon run,
+    -- is never replaced.
+    local function panelOn()
+        local RL, s = ns.RouteList, ctx and ctx.settings
+        if type(RL) ~= "table" or type(s) ~= "table" or type(s.get) ~= "function" then return true end
+        local ok, v = pcall(s.get, s, RL.SETTING)
+        if ok and v == false then return false end
+        return true
+    end
+
+    local function movedFar(here)
+        if type(autoPos) ~= "table" or type(here) ~= "table" or here.map ~= autoPos.map then return true end
+        if not finite(here.x) or not finite(here.y) then return false end
+        local w, h = scale(here)
+        local dx, dy = (here.x - autoPos.x) * w, (here.y - autoPos.y) * h
+        return math.sqrt(dx * dx + dy * dy) >= T.AUTO_MOVED
+    end
+
+    local function auto()
+        if not ctx then return end
+        if route and not route.auto then return end
+        if autoHeld or not on() or not panelOn() then
+            if route and route.auto then route, at = nil, 1 end
+            return
+        end
+        local c = client()
+        local rows = N.QuestLogRows(c)
+        if rows == nil then return end
+        local sig = T.LogSignature(rows)
+        local now = ask(c, "now")
+        local here = hereNow()
+        local due = sig ~= autoSig
+        if not due and finite(now) and finite(autoAt) and now >= autoAt then
+            local since = now - autoAt
+            if since >= T.AUTO_LATE then
+                due = true
+            elseif since >= T.AUTO_SOON then
+                -- Nothing planned yet (Questie loading, no place known): asked
+                -- again; else only once you moved.
+                due = route == nil or movedFar(here)
+            end
+        end
+        if not due then return end
+        autoSig, autoAt = sig, now
+        autoPos = { map = here.map, x = here.x, y = here.y }
+        local r = api.Plan()
+        if r then
+            r.auto = true
+        elseif route and route.auto then
+            route, at = nil, 1
+        end
+    end
+
     k:Module({
         name = T.NAME,
         needs = { "client", "store", "settings" },
         provides = { Step = api.Step, Plan = api.Plan, Run = api.Run, Skip = api.Skip, Off = api.Off,
                      Lines = api.Lines, Current = api.Current, View = api.View },
+        ticks = { { every = T.AUTO_EVERY, when = "always", run = function() auto() end } },
         start = function(c) ctx = c end,
         stop = function() route, at = nil, 1 end,
     })
