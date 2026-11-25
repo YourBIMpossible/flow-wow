@@ -390,10 +390,12 @@ function M.Declare(k, packs, diag)
                 if ctx.settings:get(M.SETTING) ~= true or type(add) ~= "function" then return end
                 -- The role always (the speed line names its preference);
                 -- the score lines only with their setting on.
-                -- The verdict for the role gear is judged for (GearRole), the
+                -- The verdict for the role gear is judged for (GearRole). A
+                -- role chosen: its line alone (G31). None chosen: dps, the
                 -- other roles' lines dimmed, as Flow's Score.lua greys them.
                 local chosen = ctx.settings:get(M.ROLE)
-                local opts = { role = (ns.GearRole.Active(chosen)), dim = true, speedRole = chosen or false }
+                local role, from = ns.GearRole.Active(chosen)
+                local opts = { role = role, dim = from ~= "chosen", speedRole = chosen or false }
                 if ctx.settings:get(M.SCORE_SETTING) == true then opts.score = true end
                 -- Every line is worked out before the first is added, so an
                 -- error leaves the tooltip as the game made it.
