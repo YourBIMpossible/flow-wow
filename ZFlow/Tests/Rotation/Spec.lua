@@ -284,6 +284,32 @@ tests["spec talents: no points, a tie, no read or a tree the pack has no part fo
     t.eq(Sp.FromTalents(pack(), { { name = 5, points = "x" } }), nil)
 end
 
+-- Real packs: the game's tree names, which are not the pack's role names
+-- (review CHANGES-2). Names as GetTalentTabInfo gives them.
+tests["spec talents: a real pack - a Warrior with 31 points in Fury reads damage"] = function(t)
+    local warrior = ns.Packs.WARRIOR
+    local role, tree, points = Sp.FromTalents(warrior, {
+        { name = "Arms", points = 0 }, { name = "Fury", points = 31 }, { name = "Protection", points = 0 },
+    })
+    t.eq(role, "dps")
+    t.eq(tree, "Fury")
+    t.eq(points, 31)
+    role = Sp.FromTalents(warrior, {
+        { name = "Arms", points = 5 }, { name = "Fury", points = 0 }, { name = "Protection", points = 21 },
+    })
+    t.eq(role, "tank")
+end
+
+tests["spec talents: a real pack - Feral Combat reads no role, tank or damage by gear and form"] = function(t)
+    local druid = ns.Packs.DRUID
+    t.eq(Sp.FromTalents(druid, {
+        { name = "Balance", points = 0 }, { name = "Feral Combat", points = 31 }, { name = "Restoration", points = 0 },
+    }), nil)
+    t.eq(Sp.FromTalents(druid, {
+        { name = "Balance", points = 0 }, { name = "Feral Combat", points = 5 }, { name = "Restoration", points = 21 },
+    }), "heal")
+end
+
 tests["spec source: your setting wins, then talents, then the recommendation"] = function(t)
     local s = Sp.Source(pack(), "tank", trees(6, 0))
     t.eq(s.role, "tank")
