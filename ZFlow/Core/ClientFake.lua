@@ -5208,3 +5208,21 @@ do
         return c
     end
 end
+
+-- § D-03 (Rotation/Driver.lua; lead section 712): one CLIENT NEED,
+-- stubbed here only. Core/Client.lua does not have it yet.
+--   c.assistantSpell() -> the name of the spell the game's one-button
+--     assistant offers now, or nil: C_AssistedCombat.GetActionSpell() (a
+--     spell id, warcraft.wiki.gg API C_AssistedCombat.GetActionSpell, the
+--     forever flavour from 1.60.1), named by the client's spell read.
+--   c.setAssistantSpell(name or nil) sets it; nil (as made): none.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local spell = nil
+        function c.setAssistantSpell(v) spell = v end
+        function c.assistantSpell() return spell end
+        return c
+    end
+end
