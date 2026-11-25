@@ -311,6 +311,17 @@ KIND.act[#KIND.act + 1] = "shareQuest"
 READS.unspentTalents = false
 READS.actionSpells = false
 READS.talentRanks = false
+-- Batch 4 lead patches. C-42 (Gear/Sets.lua): the saved equipment sets,
+-- read only. F-32: the click bindings and the frames under the mouse,
+-- read only. None is asked by the capture.
+READS.equipmentSets = false
+READS.clickBindings = false
+READS.mouseFoci = false
+-- F-20: hands in the tooltip spot function; asks the game nothing.
+KIND.tool[#KIND.tool + 1] = "setTipSpot"
+-- A1-13 (ACTING): picks a quest in the game's own quest log, only on the
+-- player's own click on the step card's "Quest log" action. Never the capture.
+KIND.act[#KIND.act + 1] = "selectQuest"
 
 -- The reads the merged features use (Rotation, Nav and UI/Arrow.lua).
 local FEATURE = {

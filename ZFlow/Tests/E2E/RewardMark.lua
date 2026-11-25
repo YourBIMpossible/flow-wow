@@ -360,9 +360,9 @@ tests["reward ask: the role is named by its word, not its key"] = function(t)
         local board = { chosen = role, choices = { { index = 1, roles = { [role] = "upgrade" } } } }
         return RM.AskLine(board, function() return "Helm" end, role)
     end
-    t.eq(line("dps"), RM.ASK .. " Helm is the best upgrade for damage.")
-    t.eq(line("heal"), RM.ASK .. " Helm is the best upgrade for healing.")
-    t.eq(line("tank"), RM.ASK .. " Helm is the best upgrade for tanking.")
+    t.eq(line("dps"), RM.ASK .. " " .. RM.ASK_BEST:format("Helm", ns.RotationRole.WORDS.dps))
+    t.eq(line("heal"), RM.ASK .. " " .. RM.ASK_BEST:format("Helm", ns.RotationRole.WORDS.heal))
+    t.eq(line("tank"), RM.ASK .. " " .. RM.ASK_BEST:format("Helm", ns.RotationRole.WORDS.tank))
     t.eq(line("dps"):find("for dps", 1, true), nil, "never the key")
     t.eq(line("odd"), RM.ASK, "a role with no word: no best line")
 end

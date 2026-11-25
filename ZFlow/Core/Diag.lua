@@ -1437,6 +1437,18 @@ end
 -- timing mark's name: ctx.bus:emit(Diag.MARK_EVENT, "NAME").
 Diag.MARK_EVENT = "diag:mark"
 
+-- Lead section 818.3: a slash line split into its word and the rest.
+-- -> word (lower-cased), the rest lower-cased (what every word matches on),
+-- the rest as typed (for a reply that names what the player wrote). Lua's
+-- lower() keeps every byte in place, so both rests are the same span.
+function Diag.Split(rest)
+    local typed = tostring(rest)
+    local word, more = typed:lower():match("^%s*(%S+)%s*(.-)%s*$")
+    if word == nil then return nil, nil, nil end
+    local _, raw = typed:match("^%s*(%S+)%s*(.-)%s*$")
+    return word, more, raw
+end
+
 function Diag.Start(k)
     local client, id = k.client, k.id
 
@@ -1772,18 +1784,20 @@ function Diag.Start(k)
     end
 
     client.slash(id.bindingHeader, id.slash, function(rest)
-        local text = tostring(rest):lower()
-        local word, more = text:match("^%s*(%S+)%s*(.-)%s*$")
+        local word, more, raw = Diag.Split(rest)
         -- A word that only starts with diag is read as diag, as it always
         -- was ("diagclear" clears).
         if word and not commands[word] and commands.diag and word:find("^diag") then
-            word, more = "diag", word:sub(5) .. " " .. more
+            local rawWord = tostring(rest):match("^%s*(%S+)") or ""
+            word, more, raw = "diag", word:sub(5) .. " " .. more, rawWord:sub(5) .. " " .. raw
         end
         if word and commands[word] then
             -- A word runs under a pcall: one that raises is a "diag"
             -- problem under the word and one line here. It never ends the
-            -- slash command.
-            local ok, problem = pcall(commands[word], more)
+            -- slash command. It gets the rest lower-cased, for matching,
+            -- and (a second argument a word may leave unread) the rest as
+            -- typed, for replies that name what the player wrote.
+            local ok, problem = pcall(commands[word], more, raw)
             if not ok then
                 k.problems:add("diag", word, problem)
                 client.print(id.title .. ": the " .. word .. " command failed; it is kept as a problem.")

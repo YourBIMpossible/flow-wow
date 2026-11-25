@@ -10,9 +10,9 @@ local function T() return ns.Nav.TripRoute end
 local function P() return ns.Nav.RoutePickups end
 
 tests["route modes: quests only, the optimal route, or everything"] = function(t)
-    t.eq(T().ModeFlags("quests"), { pickups = false, town = false, low = false, hub = false })
-    t.eq(T().ModeFlags("optimal"), { pickups = true, town = true, low = false, hub = true })
-    t.eq(T().ModeFlags("complete"), { pickups = true, town = true, low = true, hub = true })
+    t.eq(T().ModeFlags("quests"), { pickups = false, town = false, low = false, hub = false, battleground = false })
+    t.eq(T().ModeFlags("optimal"), { pickups = true, town = true, low = false, hub = true, battleground = false })
+    t.eq(T().ModeFlags("complete"), { pickups = true, town = true, low = true, hub = true, battleground = true })
     t.eq(T().ModeFlags(nil), T().ModeFlags("optimal"), "no choice: the optimal route")
     t.eq(T().ModeFlags("fly"), T().ModeFlags("optimal"))
 end

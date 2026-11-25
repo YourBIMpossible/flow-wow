@@ -102,6 +102,9 @@ R.WHY_BUILDING = { "Reading Questie's dungeon quests.",
     "This takes a moment the first time; the list fills in by itself." }
 R.WHY_NO_LEVEL = { "Your level is not known yet.",
     "It is read when you log in; open this again in a moment." }
+-- R-02 (lead section 777): a quest log not read is not an empty one.
+R.WHY_NO_LOG = { "Your quest log is not read yet.",
+    "Which of these quests you have is not known; open this again in a moment." }
 R.WHY_NO_IDS = { "Questie gave no quest list.",
     "Update or re-enable the Questie add-on; type the slash command with diag to see what it offers." }
 R.WHY_LOOT_UNPLACED = { "Boss loot was seen, but not where.",
@@ -620,7 +623,9 @@ function R.Pane(st, client, key, wing)
     local level = tonumber(ask(client, "level"))
     if not level then return waiting(R.WHY_NO_LEVEL, d.name) end
     local log, rows = {}, ask(client, "questLog")
-    for _, row in ipairs(type(rows) == "table" and rows or {}) do
+    -- R-02: not read is not empty: wait and say so (as the level above).
+    if type(rows) ~= "table" then return waiting(R.WHY_NO_LOG, d.name) end
+    for _, row in ipairs(rows) do
         if type(row) == "table" and type(row.id) == "number" then log[row.id] = true end
     end
     local unknown = {}

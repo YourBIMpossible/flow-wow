@@ -2104,6 +2104,42 @@ function ns.make.client(env)
         return pcall(fn, obj, ...)
     end
 
+    -- F-20 (UI/TipSpot.lua): where a tooltip goes. c.setTipSpot(fn) keeps
+    -- fn(anchor) -> "GAME" | anchor; every tooltip the client shows is
+    -- placed by placeTip(tip, owner, anchor), which asks it (under pcall;
+    -- no fn, an error or no text answer -> the anchor as given). "GAME"
+    -- puts the tip where the game puts its own, by
+    -- GameTooltip_SetDefaultAnchor(tip, owner), when the client has it;
+    -- else SetOwner(owner, answer). An "ANCHOR_NONE" tip is placed by its
+    -- caller's own SetPoint, so it is not asked about and stays as it is.
+    -- Returns as method(tip, "SetOwner", ...) does: true when placed.
+    -- First guess, not seen on 16001: GameTooltip_SetDefaultAnchor(tip,
+    -- owner) exists and owns the tip to owner as SetOwner does.
+    -- One local only (placeTip): this function is near Lua 5.1's limit of
+    -- 200 locals.
+    local placeTip
+    do
+        local spot = nil
+        function c.setTipSpot(fn)
+            if type(fn) == "function" then spot = fn end
+            return true
+        end
+        placeTip = function(tip, owner, anchor)
+            local where = anchor
+            if spot ~= nil and anchor ~= "ANCHOR_NONE" then
+                local ok, said = pcall(spot, anchor)
+                if ok and type(said) == "string" then where = said end
+            end
+            if where == "GAME" then
+                if type(env.GameTooltip_SetDefaultAnchor) == "function" then
+                    return (pcall(env.GameTooltip_SetDefaultAnchor, tip, owner))
+                end
+                where = anchor
+            end
+            return method(tip, "SetOwner", owner, where)
+        end
+    end
+
     -- The version text the client read from this addon's TOC, or nil.
     -- GetAddOnMetadata (C_AddOns or bare) is a first guess on 16001.
     -- Docs (warcraft.wiki.gg, API C_AddOns.GetAddOnMetadata): value =
@@ -2639,14 +2675,19 @@ function ns.make.client(env)
     end
 
     -- G59 ACTS: the two writes behind the game options, called only by
-    -- UI/GameOptions.lua on the player own choice (the settings page or the
+    -- UI/GameOptions.lua and Settings/GameSuggest.lua on the player own choice (the settings page or the
     -- setting word). Nothing else may call them. Only the two settings the
     -- options use can be written; any other name is refused before the game
     -- is asked. Docs (warcraft.wiki.gg): C_CVar.SetCVar(name, value) answers
     -- whether it took; the older SetCVar(name, value) answers nothing.
     -- LoggingCombat(on) turns the combat log file on or off. Needs game test
     -- on 16001: each write, and a write in a fight.
-    local GAME_SETTINGS = { cameraDistanceMaxZoomFactor = true, showTimestamps = true }
+    -- F-14 (lead section 828.4): also the suggested game settings that
+    -- Settings/GameSuggest.lua sets on the player click. No key binding,
+    -- no graphics or video setting.
+    local GAME_SETTINGS = { cameraDistanceMaxZoomFactor = true, showTimestamps = true,
+        autoLootDefault = true, nameplateShowEnemies = true, instantQuestText = true,
+        autoSelfCast = true, statusText = true }
     function c.setGameSetting(name, v)
         if type(name) ~= "string" or not GAME_SETTINGS[name] then return nil, "notAllowed" end
         if type(v) ~= "string" then return nil, "bad" end
@@ -3820,7 +3861,7 @@ function ns.make.client(env)
                 method(tip, "Hide")
                 return
             end
-            method(tip, "SetOwner", f, "ANCHOR_RIGHT")
+            placeTip(tip, f, "ANCHOR_RIGHT")
             method(tip, "ClearLines")
             method(tip, "AddLine", out[1], 1, 1, 1)
             for i = 2, #out do method(tip, "AddLine", out[i], 0.8, 0.8, 0.8, true) end
@@ -3970,7 +4011,7 @@ function ns.make.client(env)
             method(b, "SetScript", "OnEnter", function()
                 local tip = env.GameTooltip
                 if tip == nil then return end
-                if not method(tip, "SetOwner", b, "ANCHOR_RIGHT") then return end
+                if not placeTip(tip, b, "ANCHOR_RIGHT") then return end
                 method(tip, "SetText", spec.tip)
                 method(tip, "Show")
             end)
@@ -6867,6 +6908,14 @@ function ns.make.client(env)
     --       hides any made before past their count; a pin or line not placed
     --       by plain numbers is skipped.
     --   h.clear()   hides them all
+    --   h.onClick(fn) -> true: a click on a dot calls fn(pin.name, button)
+    --       (B-10). Each dot is a small Button (it was a bare texture,
+    --       which takes no mouse) holding its colour texture; its OnEnter
+    --       shows pin.title, then each line of pin.tip, in GameTooltip
+    --       owned by the dot, and OnLeave hides it (B-11).
+    -- First guesses, not seen on 16001: Button RegisterForClicks
+    -- ("LeftButtonUp", "RightButtonUp"), OnClick's button argument, a
+    -- Button made on a frame that itself takes no mouse still taking clicks.
     -- All first guesses, not seen on 1.60.1: WorldMapFrame, its
     -- ScrollContainer.Child canvas (named in RESEARCH-worldmap-button.md),
     -- IsShown, GetMapID, CreateLine, SetStartPoint, SetEndPoint,
@@ -6884,6 +6933,39 @@ function ns.make.client(env)
         method(host, "SetAllPoints", canvas)
         local dots, lines = {}, {}
         local nDots, nLines = 0, 0
+        local clickFns = {}
+        -- One dot: a Button with its colour texture, clickable, with a
+        -- tooltip. false when the client will not make one.
+        local function makeDot()
+            local okB, b = call(env.CreateFrame, "Button", nil, host)
+            if not okB or b == nil then return false end
+            local d = { button = b, tip = {} }
+            local okT, tex = method(b, "CreateTexture", nil, "OVERLAY")
+            if okT and tex ~= nil then
+                method(tex, "SetAllPoints", b)
+                d.tex = tex
+            end
+            method(b, "RegisterForClicks", "LeftButtonUp", "RightButtonUp")
+            method(b, "SetScript", "OnClick", function(_, button)
+                if d.name == nil then return end
+                for _, fn in ipairs(clickFns) do pcall(fn, d.name, button) end
+            end)
+            method(b, "SetScript", "OnEnter", function()
+                local tip = env.GameTooltip
+                if tip == nil or d.title == nil then return end
+                placeTip(tip, b, "ANCHOR_RIGHT")
+                method(tip, "SetText", d.title)
+                for _, line in ipairs(d.tip) do
+                    method(tip, "AddLine", line, 1, 1, 1, true)
+                end
+                method(tip, "Show")
+            end)
+            method(b, "SetScript", "OnLeave", function()
+                local tip = env.GameTooltip
+                if tip ~= nil then method(tip, "Hide") end
+            end)
+            return d
+        end
         local COLOUR = {
             from = { 0.3, 1, 0.4 }, to = { 0.3, 1, 0.4 },
             have = { 1, 0.82, 0 }, new = { 0.6, 0.6, 0.6 },
@@ -6891,6 +6973,10 @@ function ns.make.client(env)
         local function plain(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
 
         local h = {}
+        function h.onClick(fn)
+            if type(fn) == "function" then clickFns[#clickFns + 1] = fn end
+            return true
+        end
         function h.map()
             local okS, shown = method(wm, "IsShown")
             if not okS or shown ~= true then return nil end
@@ -6899,7 +6985,7 @@ function ns.make.client(env)
             return map
         end
         function h.clear()
-            for i = 1, nDots do if dots[i] then method(dots[i], "Hide") end end
+            for i = 1, nDots do if dots[i] then method(dots[i].button, "Hide") end end
             for i = 1, nLines do if lines[i] then method(lines[i], "Hide") end end
             nDots, nLines = 0, 0
         end
@@ -6917,21 +7003,27 @@ function ns.make.client(env)
                     n = n + 1
                     local d = dots[n]
                     if d == nil then
-                        local okT, made = method(host, "CreateTexture", nil, "OVERLAY")
-                        d = okT and made or false
+                        d = makeDot()
                         dots[n] = d
                     end
                     if d then
                         local col = COLOUR[p.role or ""] or COLOUR[p.kind or ""] or COLOUR.new
-                        method(d, "SetSize", 10, 10)
-                        method(d, "SetColorTexture", col[1], col[2], col[3], 1)
-                        method(d, "ClearAllPoints")
-                        method(d, "SetPoint", "CENTER", canvas, "TOPLEFT", p.x * w, -p.y * ht)
-                        method(d, "Show")
+                        d.name, d.title, d.tip = p.name, nil, {}
+                        if type(p.title) == "string" then d.title = p.title end
+                        if type(p.tip) == "table" then
+                            for _, line in ipairs(p.tip) do
+                                if type(line) == "string" then d.tip[#d.tip + 1] = line end
+                            end
+                        end
+                        method(d.button, "SetSize", 10, 10)
+                        if d.tex then method(d.tex, "SetColorTexture", col[1], col[2], col[3], 1) end
+                        method(d.button, "ClearAllPoints")
+                        method(d.button, "SetPoint", "CENTER", canvas, "TOPLEFT", p.x * w, -p.y * ht)
+                        method(d.button, "Show")
                     end
                 end
             end
-            for i = n + 1, nDots do if dots[i] then method(dots[i], "Hide") end end
+            for i = n + 1, nDots do if dots[i] then method(dots[i].button, "Hide") end end
             nDots = n
             local m = 0
             for _, l in ipairs(type(segs) == "table" and segs or {}) do
@@ -7821,7 +7913,7 @@ function ns.make.client(env)
                 tipped = false
                 return
             end
-            method(tip, "SetOwner", f, "ANCHOR_BOTTOM")
+            placeTip(tip, f, "ANCHOR_BOTTOM")
             method(tip, "ClearLines")
             for i, line in ipairs(lines) do
                 if i == 1 then method(tip, "AddLine", tostring(line), 1, 1, 1)
@@ -9340,7 +9432,7 @@ function ns.make.client(env)
         local hooked = method(f, "HookScript", "OnEnter", function()
             local okT, text = pcall(spec.text)
             if not okT or type(text) ~= "string" or text == "" then return end
-            method(tip, "SetOwner", f, "ANCHOR_RIGHT")
+            placeTip(tip, f, "ANCHOR_RIGHT")
             method(tip, "SetText", text)
             method(tip, "Show")
         end)
@@ -10160,7 +10252,7 @@ function ns.make.client(env)
                     method(b, "SetScript", "OnEnter", function()
                         local gt = env.GameTooltip
                         if gt == nil or #tip == 0 then return end
-                        method(gt, "SetOwner", b, "ANCHOR_TOPLEFT")
+                        placeTip(gt, b, "ANCHOR_TOPLEFT")
                         for i, line in ipairs(tip) do
                             if i == 1 then
                                 method(gt, "AddLine", line, 1, 0.82, 0)
@@ -11185,7 +11277,7 @@ function ns.make.client(env)
             local function tipShow(owner, text)
                 local tip = env.GameTooltip
                 if tip == nil then return end
-                method(tip, "SetOwner", owner, "ANCHOR_RIGHT")
+                placeTip(tip, owner, "ANCHOR_RIGHT")
                 method(tip, "SetText", text)
                 method(tip, "Show")
             end
@@ -11219,7 +11311,7 @@ function ns.make.client(env)
                         if tip ~= nil then
                             local link = item
                             if type(item) == "number" then link = "item:" .. item end
-                            method(tip, "SetOwner", f, "ANCHOR_NONE")
+                            placeTip(tip, f, "ANCHOR_NONE")
                             method(tip, "ClearAllPoints")
                             method(tip, "SetPoint", "TOPLEFT", f, "TOPRIGHT", size.gapSmall, 0)
                             method(tip, "SetHyperlink", link)
@@ -12921,7 +13013,7 @@ function ns.make.client(env)
         method(b, "SetScript", "OnEnter", function(self)
             local tip = env.GameTooltip
             if tip == nil or type(lines) ~= "table" then return end
-            method(tip, "SetOwner", self, "ANCHOR_LEFT")
+            placeTip(tip, self, "ANCHOR_LEFT")
             for _, line in ipairs(lines) do method(tip, "AddLine", tostring(line), 1, 1, 1) end
             method(tip, "Show")
         end)
@@ -13334,6 +13426,10 @@ function ns.make.client(env)
     --       the mark; text, sub the tooltip's lines; now marks the stop
     --       the arrow points at. Marks past the count are hidden.
     --   h.clear()   hides them all
+    --   h.onClick(fn) -> true: a click on a mark calls fn(n, button), n
+    --       the number drawn on it (B-19). First guesses, not seen on
+    --       16001: RegisterForClicks("LeftButtonUp", "RightButtonUp") and
+    --       OnClick's button argument.
     -- The canvas's own scale is not read (as c.mapPins): the marks may
     -- draw small or large when the map is zoomed.
     function c.routePins()
@@ -13347,6 +13443,7 @@ function ns.make.client(env)
         method(host, "SetFrameStrata", "HIGH")
         local marks, count = {}, 0
         local SIZE = 22
+        local clickFns = {}
 
         local function make()
             local okB, b = call(env.CreateFrame, "Button", nil, host)
@@ -13364,10 +13461,15 @@ function ns.make.client(env)
                 method(fs, "SetPoint", "CENTER", b, "CENTER", 0, 0)
                 m.label = fs
             end
+            method(b, "RegisterForClicks", "LeftButtonUp", "RightButtonUp")
+            method(b, "SetScript", "OnClick", function(_, button)
+                if m.n == nil then return end
+                for _, fn in ipairs(clickFns) do pcall(fn, m.n, button) end
+            end)
             method(b, "SetScript", "OnEnter", function()
                 local tip = env.GameTooltip
                 if tip == nil or m.text == nil then return end
-                method(tip, "SetOwner", b, "ANCHOR_RIGHT")
+                placeTip(tip, b, "ANCHOR_RIGHT")
                 method(tip, "SetText", m.text)
                 if m.sub ~= nil then method(tip, "AddLine", m.sub, 1, 1, 1, true) end
                 method(tip, "Show")
@@ -13380,6 +13482,10 @@ function ns.make.client(env)
         end
 
         local h = {}
+        function h.onClick(fn)
+            if type(fn) == "function" then clickFns[#clickFns + 1] = fn end
+            return true
+        end
         function h.map()
             local okS, shown = method(wm, "IsShown")
             if not okS or shown ~= true then return nil end
@@ -13408,6 +13514,7 @@ function ns.make.client(env)
                         marks[n] = m
                     end
                     if m then
+                        m.n = p.n
                         m.text = type(p.text) == "string" and p.text or nil
                         m.sub = type(p.sub) == "string" and p.sub ~= "" and p.sub or nil
                         if m.disc then
@@ -13842,6 +13949,29 @@ function ns.make.client(env)
         return true
     end
 
+    -- A1-13 (Nav/StepCard.lua, lead section 826): the step card's "Quest
+    -- log" action picks the quest in the game's own quest log, as Flow's
+    -- N:OpenInGame (Modules/Nav/Nav.lua:4282-4288 at b657e6e5). First
+    -- guesses, not seen in game on 16001: C_QuestLog.SetSelectedQuest(id),
+    -- else SelectQuestLogEntry(index) with the quest's place in the log.
+    -- The log window is not opened here (the player opens it; opening it
+    -- from add-on code would taint it).
+    --   c.selectQuest(id) -> true, or false and why: "bad" (not a number),
+    --     "noCall" (neither call), "notInLog", "raised"
+    function c.selectQuest(id)
+        if type(id) ~= "number" then return false, "bad" end
+        local group = env.C_QuestLog
+        if type(group) == "table" and type(group.SetSelectedQuest) == "function" then
+            if pcall(group.SetSelectedQuest, id) then return true end
+            return false, "raised"
+        end
+        if type(env.SelectQuestLogEntry) ~= "function" then return false, "noCall" end
+        local index = questLogIndex(id)
+        if index == nil then return false, "notInLog" end
+        if pcall(env.SelectQuestLogEntry, index) then return true end
+        return false, "raised"
+    end
+
     -- KNOW lane reads (lead section 487, Zen's lease). Only reads: nothing
     -- is cast, clicked, placed or sent. First guesses from classic's call
     -- names; none was seen in game on 16001.
@@ -14205,6 +14335,107 @@ function ns.make.client(env)
         local ok, xp = call(env.GetQuestLogRewardXP, questId)
         if not ok or type(xp) ~= "number" or hidden(xp) or xp ~= xp or xp <= 0 then return nil end
         return xp
+    end
+
+    -- C-42 (Gear/Sets.lua, lead section 789): the player's saved equipment
+    -- sets, read only (nothing here makes, saves or equips a set).
+    --   c.equipmentSets() -> { { id, name, icon, worn, items = { [slot] =
+    --     itemID } } }, or nil when the client has no C_EquipmentSet or
+    --     will not list the sets.
+    -- First guesses, not seen on 16001: C_EquipmentSet.GetEquipmentSetIDs()
+    -- -> { setID, ... }; GetEquipmentSetInfo(setID) -> name, iconFileID,
+    -- setID, isEquipped, ...; GetItemIDs(setID) -> { [slot] = itemID }
+    -- (slot 1 to 19; an empty slot is 0 or nil, skipped). A set whose
+    -- name will not read is skipped; a secret icon or worn is left out.
+    function c.equipmentSets()
+        local es = env.C_EquipmentSet
+        if type(es) ~= "table" then return nil end
+        local okI, ids = call(es.GetEquipmentSetIDs)
+        if not okI or type(ids) ~= "table" then return nil end
+        local out = {}
+        for _, id in ipairs(ids) do
+            if type(id) == "number" and not hidden(id) then
+                local okS, name, icon, _, worn = call(es.GetEquipmentSetInfo, id)
+                if okS and type(name) == "string" and not hidden(name) then
+                    local e = { id = id, name = name, items = {} }
+                    if icon ~= nil and not hidden(icon) then e.icon = icon end
+                    if worn ~= nil and not hidden(worn) then e.worn = worn == true end
+                    local okG, items = call(es.GetItemIDs, id)
+                    if okG and type(items) == "table" then
+                        for slot, item in pairs(items) do
+                            if type(slot) == "number" and type(item) == "number"
+                                and not hidden(item) and item > 0 then
+                                e.items[slot] = item
+                            end
+                        end
+                    end
+                    out[#out + 1] = e
+                end
+            end
+        end
+        return out
+    end
+
+    -- F-32 (UI/ClickCheck.lua): the game's click bindings on unit frames,
+    -- and what is under the mouse. Read only.
+    --   c.clickBindings() -> { { type, actionID, button, modifiers } }, or
+    --     nil when the client has no C_ClickBindings or will not say.
+    --     First guess, not seen on 16001: C_ClickBindings.GetProfileInfo()
+    --     -> { ClickBindingInfo }, each { type, actionID, button,
+    --     modifiers }. A row that is not a table is skipped; a secret
+    --     field is left out.
+    --   c.mouseFoci() -> { frame name, ... } under the mouse, or nil when
+    --     the client has neither GetMouseFoci nor GetMouseFocus. First
+    --     guesses, not seen on 16001: GetMouseFoci() -> { frame, ... } (the
+    --     newer clients'), else GetMouseFocus() -> frame (the older); each
+    --     frame's GetDebugName(), else GetName(), under pcall. A frame with
+    --     no name that reads is skipped.
+    function c.clickBindings()
+        local cb = env.C_ClickBindings
+        if type(cb) ~= "table" then return nil end
+        local ok, list = call(cb.GetProfileInfo)
+        if not ok or type(list) ~= "table" then return nil end
+        local out = {}
+        for _, b in ipairs(list) do
+            if type(b) == "table" then
+                local row = {}
+                for _, key in ipairs({ "type", "actionID", "button", "modifiers" }) do
+                    local okV, v = pcall(function() return b[key] end)
+                    if okV and v ~= nil and not hidden(v) then row[key] = v end
+                end
+                out[#out + 1] = row
+            end
+        end
+        return out
+    end
+
+    function c.mouseFoci()
+        local function focusName(f)
+            if f == nil then return nil end
+            local okD, name = method(f, "GetDebugName")
+            if okD and type(name) == "string" and not hidden(name) and name ~= "" then return name end
+            local okN, plain = method(f, "GetName")
+            if okN and type(plain) == "string" and not hidden(plain) and plain ~= "" then return plain end
+            return nil
+        end
+        local frames
+        if type(env.GetMouseFoci) == "function" then
+            local ok, list = call(env.GetMouseFoci)
+            if not ok or type(list) ~= "table" then return nil end
+            frames = list
+        elseif type(env.GetMouseFocus) == "function" then
+            local ok, f = call(env.GetMouseFocus)
+            if not ok then return nil end
+            frames = { f }
+        else
+            return nil
+        end
+        local out = {}
+        for _, f in ipairs(frames) do
+            local name = focusName(f)
+            if name ~= nil then out[#out + 1] = name end
+        end
+        return out
     end
     return c
 end

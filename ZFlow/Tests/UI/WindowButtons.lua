@@ -75,19 +75,20 @@ local function buttonOn(c, frame)
     return nil
 end
 
-tests["window buttons: four windows, each with its own row"] = function(t)
-    t.eq(#W.WINDOWS, 4)
+tests["window buttons: five windows, each with its own row"] = function(t)
+    t.eq(#W.WINDOWS, 5)
     local seen = {}
     for _, win in ipairs(W.WINDOWS) do seen[win.frame] = win.setting end
     t.eq(seen, { WorldMapFrame = "buttons.worldMap", MerchantFrame = "buttons.merchant",
-        TradeSkillFrame = "buttons.profession", BankFrame = "buttons.bank" })
+        TradeSkillFrame = "buttons.profession", BankFrame = "buttons.bank",
+        PlayerSpellsFrame = "buttons.talents" })
 end
 
 tests["window buttons: off by default - no button is made"] = function(t)
     local k, c, api = start()
     t.eq((k:ModuleState(W.NAME)), "started")
     t.eq(#c.windowButtons, 0, "no button")
-    t.eq(api.state(), { worldMap = "off", merchant = "off", profession = "off", bank = "off" })
+    t.eq(api.state(), { worldMap = "off", merchant = "off", profession = "off", bank = "off", talents = "off" })
     t.ok(type(ns.windowButtons) == "table", "the addon's own is declared")
 end
 
@@ -121,7 +122,7 @@ tests["window buttons: a missing window and a protected one get no button, each 
     local _, c, api = start({ on = { worldMap = true, merchant = true },
         windows = { MerchantFrame = { protected = true } } })
     t.eq(#c.windowButtons, 0, "none")
-    t.eq(api.state(), { worldMap = "not made", merchant = "not made", profession = "off", bank = "off" })
+    t.eq(api.state(), { worldMap = "not made", merchant = "not made", profession = "off", bank = "off", talents = "off" })
     t.eq(api.reasons(), { worldMap = "no window", merchant = "its window is protected" })
 end
 
@@ -195,6 +196,7 @@ tests["window buttons: the lines say each state, and why one was not made"] = fu
         "button on the merchant window: not made (its window is protected); window there, protected.",
         "button on the profession window: off; window not there.",
         "button on the bank window: off; window not there.",
+        "button on the " .. W.WINDOWS[5].says .. ": off; window not there.",
     })
     local _, _, off = start()
     t.eq(off.lines(), {
@@ -202,6 +204,7 @@ tests["window buttons: the lines say each state, and why one was not made"] = fu
         "button on the merchant window: off; window there, not protected.",
         "button on the profession window: off; window not there.",
         "button on the bank window: off; window not there.",
+        "button on the " .. W.WINDOWS[5].says .. ": off; window not there.",
     })
 end
 
@@ -213,6 +216,7 @@ tests["window buttons: the lines say what the window is, and whether a shown but
         "button on the merchant window: shown; window there, open, not protected; button can be seen.",
         "button on the profession window: off; window not there.",
         "button on the bank window: off; window not there.",
+        "button on the " .. W.WINDOWS[5].says .. ": off; window not there.",
     })
     c.setWindow("MerchantFrame", { shown = false })
     t.eq(api.lines()[2],

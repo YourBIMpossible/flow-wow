@@ -46,6 +46,7 @@ Import\Stored.lua
 Settings\Model.lua
 Settings\Topics.lua
 Settings\Rows.lua
+Settings\GameSuggest.lua
 Items\Key.lua
 Items\Resources.lua
 Items\TooltipHave.lua
@@ -119,6 +120,7 @@ Classes\Warlock.lua
 Rotation\GroupTip.lua
 Nav\ArrowLayout.lua
 Nav\RouteColor.lua
+Nav\RoutePalette.lua
 Nav\Bearing.lua
 Nav\ArrowView.lua
 Nav\ArrowMotion.lua
@@ -150,6 +152,7 @@ Nav\WeaponMasterSeen.lua
 Nav\QuestSource.lua
 Nav\QuestRead.lua
 Nav\AddonSources.lua
+Nav\NearbyNodes.lua
 Nav\Rides.lua
 Nav\TravelSpells.lua
 Nav\TravelIcon.lua
@@ -214,6 +217,7 @@ Rotation\Queue.lua
 UI\RotationQueue.lua
 Items\Banker.lua
 Items\BankerRows.lua
+Items\TakeOutWhy.lua
 Items\Posting.lua
 Items\Trader.lua
 Items\TraderRows.lua
@@ -224,6 +228,7 @@ Rotation\Mouseover.lua
 Rotation\CareKeys.lua
 Rotation\KeyControls.lua
 UI\ClickCheck.lua
+UI\TipSpot.lua
 UI\MoveHandle.lua
 Rotation\ClickSlots.lua
 Rotation\BuffItemPick.lua
@@ -250,6 +255,7 @@ UI\HoverBind.lua
 UI\HelpPages.lua
 UI\SetupList.lua
 Nav\QuestSpots.lua
+Nav\LearnedForget.lua
 Nav\TripRoute.lua
 Nav\TrackerList.lua
 Nav\ZoneLeft.lua
@@ -264,6 +270,7 @@ Nav\Nodes.lua
 Nav\NodeRest.lua
 UI\Chat.lua
 Nav\PartyRoute.lua
+Nav\PartyProgress.lua
 Core\AutoEvidence.lua
 Nav\Trip.lua
 UI\RouteTracker.lua
@@ -277,10 +284,14 @@ Nav\TravelAdvice.lua
 Nav\InvitePrompt.lua
 Nav\RouteHover.lua
 Nav\StepDetail.lua
+Nav\StepCard.lua
 Nav\InviteAccept.lua
+Nav\DropLines.lua
+Nav\HiddenSteps.lua
 Items\QuestBags.lua
 Spells\TrainAdvice.lua
 Spells\Talents.lua
+UI\TalentsWindow.lua
 Nav\StepNeeds.lua
 Nav\BattlegroundQuests.lua
 Nav\RoutePickups.lua

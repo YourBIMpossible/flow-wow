@@ -48,6 +48,9 @@ local function boot(opts)
     c.setClass("WARRIOR"); c.setRaceId(1); c.setFaction("Alliance"); c.setLevel(18)
     for _, id in ipairs({ 101, 103, 201 }) do c.setQuestDone(id, false) end
     c.setZone(1, 1436); c.setPosition(1436, 0.5, 0.5)
+    -- R-02 (batch 4): a quest log not read makes the pane wait; this kit
+    -- reads an empty one.
+    c.setQuestLog({})
     local db, zones = questie()
     c.setQuestieModule("QuestieDB", db); c.setQuestieModule("ZoneDB", zones)
     local k = ns.Kernel({}, c)

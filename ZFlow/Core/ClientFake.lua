@@ -3631,6 +3631,13 @@ function ns.make.fakeClient(opts)
         end
         function c.setPlateCreature(unit, id) creatures[unit] = id end
         function c.setPlateCreatureFails(on) s.plateCreatureFails = on and true or nil end
+        -- C-21 (lead section 603) STUB for a CLIENT NEED the real client
+        -- lacks: c.unitCreature(unit) -> npc id of any unit token
+        -- ("mouseover", "target", ...), as plateCreature reads a plate's
+        -- (UnitGUID, the GUID's id field). c.setUnitCreature(unit, id).
+        local anyUnit = {}
+        function c.setUnitCreature(unit, id) anyUnit[unit] = id end
+        function c.unitCreature(unit) return anyUnit[unit] end
         function c.plateCreature(unit)
             if s.plateCreatureFails then error("plate creature read failed (test)") end
             if not isPlate(unit) then return nil end
@@ -5411,6 +5418,179 @@ do
         function c.setQueued(v) queued = v end
         function c.queued() return queued end
         function c.acceptGroup() c.groupAccepts = c.groupAccepts + 1 end
+        return c
+    end
+end
+
+-- § B-10 (Nav/MapFlights.lua): a click on a flight master's pin of the
+-- world map. h.onClick(fn) keeps fn(name, button), as the real mapPins
+-- handle does (Core/Client.lua: the pin's OnClick calls it with the
+-- pin's name); h.click(name, button) clicks it ("LeftButton" when not given).
+-- (B-11 needs no hook: the pins carry their own title and tip lines.)
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local mapPins = c.mapPins
+        function c.mapPins(...)
+            local h = mapPins(...)
+            if type(h) ~= "table" then return h end
+            local clicks = {}
+            function h.onClick(fn)
+                if type(fn) == "function" then clicks[#clicks + 1] = fn end
+                return true
+            end
+            function h.click(name, button)
+                for _, fn in ipairs(clicks) do fn(name, button or "LeftButton") end
+            end
+            return h
+        end
+        return c
+    end
+end
+
+-- § B-19 (UI/MapRoute.lua): a click on a route mark of the world map.
+-- h.onClick(fn) keeps fn(n, button) as the real routePins handle does
+-- (Core/Client.lua: the mark's OnClick calls it with the mark's number);
+-- h.click(n, button) clicks mark n ("LeftButton" when not given).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local routePins = c.routePins
+        function c.routePins(...)
+            local h = routePins(...)
+            if type(h) ~= "table" then return h end
+            local clicks = {}
+            function h.onClick(fn)
+                if type(fn) == "function" then clicks[#clicks + 1] = fn end
+                return true
+            end
+            function h.click(n, button)
+                for _, fn in ipairs(clicks) do fn(n, button or "LeftButton") end
+            end
+            return h
+        end
+        return c
+    end
+end
+
+-- § C-42 (Gear/Sets.lua; lead section 789): one CLIENT NEED, stubbed here
+-- (Core/Client.lua has it too).
+--   c.equipmentSets() -> { { id, name, icon, worn, items = { [slot] =
+--     itemID } } } or nil (not read): C_EquipmentSet.GetEquipmentSetIDs,
+--     GetEquipmentSetInfo (name, icon, setID, isEquipped) and GetItemIDs.
+--     Read only: the fake has no call that makes, saves or equips a set.
+--   c.setEquipmentSets(list) sets it (nil as made: not read).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local sets = nil
+        function c.setEquipmentSets(list) sets = list end
+        function c.equipmentSets()
+            if type(sets) ~= "table" then return nil end
+            local out = {}
+            for i, e in ipairs(sets) do
+                local items = {}
+                for slot, id in pairs(e.items or {}) do items[slot] = id end
+                out[i] = { id = e.id, name = e.name, icon = e.icon, worn = e.worn, items = items }
+            end
+            return out
+        end
+        return c
+    end
+end
+
+-- § F-32 (UI/ClickCheck.lua): the game's click bindings on unit frames and
+-- what is under the mouse, as the real client has them (Core/Client.lua:
+-- c.clickBindings() -> { { type, actionID, button, modifiers } } from
+-- C_ClickBindings.GetProfileInfo, nil when the client has none to read;
+-- c.mouseFoci() -> { frame name, ... } from GetMouseFoci, nil when not
+-- read). Both answer nil (not known) until set.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local bindings, foci = nil, nil
+        function c.setClickBindings(list) bindings = list end
+        function c.setMouseFoci(list) foci = list end
+        function c.clickBindings()
+            if type(bindings) ~= "table" then return nil end
+            local out = {}
+            for i, b in ipairs(bindings) do
+                out[i] = { type = b.type, actionID = b.actionID, button = b.button, modifiers = b.modifiers }
+            end
+            return out
+        end
+        function c.mouseFoci()
+            if type(foci) ~= "table" then return nil end
+            local out = {}
+            for i, n in ipairs(foci) do out[i] = n end
+            return out
+        end
+        return c
+    end
+end
+
+-- § F-20 (UI/TipSpot.lua): where a tooltip goes. c.setTipSpot(fn) keeps
+-- fn(anchor) -> "GAME" | anchor, as the real client does (Core/Client.lua:
+-- each SetOwner asks it through placeTip, and on "GAME" calls
+-- GameTooltip_SetDefaultAnchor(tip, owner) instead); c.tipSpot(anchor)
+-- asks it (the anchor itself when nothing was handed in).
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local where = nil
+        function c.setTipSpot(fn)
+            if type(fn) == "function" then where = fn end
+            return true
+        end
+        function c.tipSpot(anchor)
+            if where == nil then return anchor end
+            return where(anchor)
+        end
+        return c
+    end
+end
+
+-- C-62 (UI/TalentsWindow.lua): the talents the player has, as the real
+-- client's talentRanks() is asked for: { [talent name] = rank }.
+-- c.setTalentRanks(map or nil); nil (as made): not known.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local ranks = nil
+        function c.setTalentRanks(map) ranks = map end
+        function c.talentRanks()
+            if type(ranks) ~= "table" then return nil end
+            local out = {}
+            for name, rank in pairs(ranks) do out[name] = rank end
+            return out
+        end
+        return c
+    end
+end
+
+-- § A1-13 (Nav/StepCard.lua): c.selectQuest(id), as the real client's
+-- (C_QuestLog.SetSelectedQuest, else SelectQuestLogEntry): true, or false
+-- and why. c.selectedQuest() says which quest was picked last;
+-- c.setSelectQuestCall(false) makes the call absent ("noCall").
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local picked, present = nil, true
+        function c.setSelectQuestCall(on) present = on ~= false end
+        function c.selectedQuest() return picked end
+        function c.selectQuest(id)
+            if type(id) ~= "number" then return false, "bad" end
+            if not present then return false, "noCall" end
+            picked = id
+            return true
+        end
         return c
     end
 end

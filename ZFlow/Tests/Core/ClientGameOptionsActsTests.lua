@@ -53,7 +53,7 @@ tests["c.setGameSetting: any other name is refused and the game is not asked"] =
     local fn, calls = recorder(true)
     local c = client({ C_CVar = { SetCVar = fn }, SetCVar = fn })
     if type(c.setGameSetting) ~= "function" then t.ok(false, "c.setGameSetting"); return end
-    for _, name in ipairs({ "autoLootDefault", "Sound_EnableAllSound", "", "CAMERADISTANCEMAXZOOMFACTOR" }) do
+    for _, name in ipairs({ "gxApi", "Sound_EnableAllSound", "", "CAMERADISTANCEMAXZOOMFACTOR", "AUTOLOOTDEFAULT" }) do
         t.eq({ c.setGameSetting(name, "1") }, { nil, "notAllowed" }, name)
     end
     t.eq({ c.setGameSetting(nil, "1") }, { nil, "notAllowed" }, "no name")
@@ -137,6 +137,21 @@ tests["c.setGameSetting and c.setCombatLogFile: refused in a fight, the game is 
     local unknown = ns.make.client({ C_CVar = { SetCVar = fn }, LoggingCombat = log })
     t.eq({ unknown.setGameSetting("showTimestamps", "none") }, { nil, "combat" }, "not known: refused")
     t.eq({ unknown.setCombatLogFile(true) }, { nil, "combat" }, "not known: refused")
+end
+
+tests["c.setGameSetting: the F-14 suggested settings go to C_CVar.SetCVar, else SetCVar"] = function(t)
+    local names = { "autoLootDefault", "nameplateShowEnemies", "instantQuestText", "autoSelfCast", "statusText" }
+    local fn, calls = recorder(true)
+    local c = client({ C_CVar = { SetCVar = fn } })
+    if type(c.setGameSetting) ~= "function" then t.ok(false, "c.setGameSetting"); return end
+    for _, name in ipairs(names) do t.eq({ c.setGameSetting(name, "1") }, { true }, name) end
+    t.eq(#calls, #names, "each asked once")
+    local old, oldCalls = recorder(nil)
+    local c2 = client({ SetCVar = old })
+    t.eq({ c2.setGameSetting("autoLootDefault", "1") }, { true }, "the older call")
+    t.eq(oldCalls, { { "autoLootDefault", "1" } })
+    local c3 = client({ InCombatLockdown = function() return true end, C_CVar = { SetCVar = fn } })
+    t.eq({ c3.setGameSetting("autoLootDefault", "1") }, { nil, "combat" }, "not in a fight")
 end
 
 return tests

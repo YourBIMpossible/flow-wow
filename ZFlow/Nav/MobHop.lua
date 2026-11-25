@@ -22,6 +22,9 @@ local _, ns = ...
 --       (yards from the place before), or nil without a place or size
 --   MH.MoveOn(f) -> true, "done" | "left" | "idle", or false
 --       f = { done, yardsIn, now, since (entered), busy (last fight or loot) }
+--       yardsIn is yards from the player to the NEAREST spot in the group,
+--       not to its middle, as Flow H.YardsTo measures (AreaHop.lua:81-88);
+--       the arrow caller must measure it the same way.
 --   MH.Plan(spawns, zones, here, size) -> ordered groups on here.map
 --   Module "mobHop": Plan(npcId) -> ordered groups, or nil and a reason
 ns.Nav = ns.Nav or {}

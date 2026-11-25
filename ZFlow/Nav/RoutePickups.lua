@@ -104,6 +104,16 @@ function P.Candidate(q, ctx)
     end
     local bg = N.BattlegroundQuests
     if bg and bg.Is(q) and ctx.battlegrounds ~= true then return false, P.WHY_BATTLEGROUND end
+    -- A2-17 (lead sections 667, 680): an earlier quest or a spell that still
+    -- holds the quest is named, in Nav/StepNeeds.lua's words ("after Old
+    -- Letters", "after you learn Bear Form"). A need the game cannot answer
+    -- (SN.Why's SN.UNKNOWN) adds nothing and holds nothing: the checks below
+    -- then decide, as before, and nothing reads that nil as "not locked".
+    local needs = N.StepNeeds
+    if needs and type(needs.Why) == "function" then
+        local okWhy, need = pcall(needs.Why, q, ctx)
+        if okWhy and type(need) == "table" and type(need.text) == "string" then return false, need.text end
+    end
     for _, id in ipairs(list(q.preQuestGroup)) do
         if done(id) == false then return false, "an earlier quest first" end
     end
@@ -230,6 +240,15 @@ local function battlegroundsOn()
     return false
 end
 
+-- Row A1-25b: the Everything route (opts.battleground, T.ModeFlags) offers
+-- battleground quests whatever their row says, as legacy Flow's "complete"
+-- route did (b657e6e5:Modules/Nav/Nav.lua:1354); any other route follows
+-- the row (A2-06).
+function P.BattlegroundsOn(opts)
+    if type(opts) == "table" and opts.battleground == true then return true end
+    return battlegroundsOn() == true
+end
+
 local function mapOf(zones, area)
     if type(zones.GetUiMapIdByAreaId) ~= "function" then return nil end
     local ok, m = pcall(zones.GetUiMapIdByAreaId, area)
@@ -277,9 +296,16 @@ function P.Read(client, here, log, opts)
         me = { raceId = ask(client, "raceId"), classId = class and S.CLASS_ID[class] or nil,
                faction = ask(client, "faction") },
         done = function(id) return ask(client, "questDone", id) end,
+        -- A2-17: names for the reason a pick-up is held (Questie's quest
+        -- name, the game's spell name), and whether a spell is known: the
+        -- client's own spell read (c.spell(id).known: C_SpellBook.IsSpellKnown,
+        -- else IsPlayerSpell; nil when it cannot say, which holds nothing).
+        questName = function(id) return quick(db, id, "name") end,
+        spellName = function(id) return ask(client, "spellName", id) end,
+        spellKnown = function(id) local s = ask(client, "spell", id) if type(s) == "table" then return s.known end return nil end,
         low = low,
         grouped = ask(client, "grouped"), holdOn = holdOn(), lowOn = lowOn(),
-        battlegrounds = battlegroundsOn(),
+        battlegrounds = P.BattlegroundsOn(opts),
     }
     local found, areaMap, npcs = {}, {}, {}
     for id in pairs(db.QuestPointers) do
