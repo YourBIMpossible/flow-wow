@@ -388,6 +388,9 @@ function MF.Declare(k)
             if type(handle.onClick) == "function" then
                 pcall(handle.onClick, function(name, button) api.click(name, button) end)
             end
+            if type(handle.onMapDown) == "function" then
+                pcall(handle.onMapDown, function(onPin) api.mapDown(onPin) end)
+            end
         end
         local okMap, map = pcall(handle.map)
         if not okMap or map == nil then clear() return nil end
@@ -461,6 +464,17 @@ function MF.Declare(k)
     end
 
     function api.picked() return sel.from end
+
+    -- R-10: a mouse button down on the map, off the pins, clears the pick
+    -- (Flow's GLOBAL_MOUSE_DOWN, MapFlights.lua:590-597, MF.ClearPick). On a
+    -- pin, its own click decides. The handle calls it (onMapDown, a CLIENT
+    -- NEED: the map's scroll area under the mouse, onPin when a pin is).
+    function api.mapDown(onPin)
+        if onPin == true or sel.from == nil then return false end
+        sel = {}
+        api.draw()
+        return true
+    end
 
     k:Setting({ key = MF.SETTING, scope = "account", type = "bool", default = false, group = "travel.flights", synonyms = { "flight", "map", "pins", "taxi" },
         label = MF.ROW_LABEL, help = MF.ROW_HELP })
