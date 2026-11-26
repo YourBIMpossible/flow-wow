@@ -71,11 +71,20 @@ function TW.StepFor(name, _, view, rows)
     return nil
 end
 
--- The reason of the first claim that holds some of key in the bank (as
--- Reservations.HeldIn counts the bank: from.bank, or an unseen bank's
--- share), worded by its activity.
+-- The reason of the first claim that holds some of key in the bank, worded
+-- by its activity, and how many every claim on key holds there, summed as
+-- Reservations.HeldIn sums them (from.bank, plus an unseen bank's share;
+-- E-19 join CHANGES-3).
+local function reasonOf(c)
+    local act = c.activity
+    if type(act) == "string" and TW.REASONS[act] then return TW.REASONS[act] end
+    if type(act) == "string" and act ~= "" then return TW.HELD_FOR:format(act) end
+    return TW.HELD_FOR:format(TW.SOMETHING)
+end
+
 function TW.HoldFor(key, grants)
     if key == nil or type(grants) ~= "table" then return nil end
+    local reason, total = nil, 0
     for _, g in ipairs(grants) do
         local c = nil
         if type(g) == "table" then c = g.claim end
@@ -86,14 +95,13 @@ function TW.HoldFor(key, grants)
                 n = n + math.max(0, c.amount - (tonumber(g.got) or 0))
             end
             if n > 0 then
-                local act = c.activity
-                if type(act) == "string" and TW.REASONS[act] then return TW.REASONS[act], n end
-                if type(act) == "string" and act ~= "" then return TW.HELD_FOR:format(act), n end
-                return TW.HELD_FOR:format(TW.SOMETHING), n
+                if reason == nil then reason = reasonOf(c) end
+                total = total + n
             end
         end
     end
-    return nil
+    if reason == nil then return nil end
+    return reason, total
 end
 
 function TW.Fill(bank, view, rows, grants)
