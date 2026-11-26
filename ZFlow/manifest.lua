@@ -448,5 +448,6 @@ return {
     "Nav/WhereNext.lua",
     -- FLOW-PARITY A2-24: the notice for a zone with no quests in your level range, data only (after WhereNext, ZoneLeft).
     "Nav/ZoneNotice.lua",
+    "Items/BankTakeOut.lua", -- E-19: the bank take out list, data only (after HaveTip, Reservations, BankList, Banker).
     },
 }
