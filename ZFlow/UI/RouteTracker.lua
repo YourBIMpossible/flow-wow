@@ -124,7 +124,8 @@ local function labelOf(r)
 end
 
 function RT.Children(rows, item, more, plan, onRow)
-    local icons = ns.Kit and ns.Kit.look and ns.Kit.look.icon or {}
+    local icons = {}
+    if ns.Kit and ns.Kit.look and type(ns.Kit.look.icon) == "table" then icons = ns.Kit.look.icon end
     local kids = { { kind = "header", key = "header", title = RT.HEADER } }
     if type(rows) ~= "table" or #rows == 0 then
         kids[#kids + 1] = { kind = "empty", key = "empty", text = RT.EMPTY[1], how = RT.EMPTY[2] }
