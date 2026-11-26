@@ -317,6 +317,9 @@ READS.talentRanks = false
 READS.equipmentSets = false
 READS.clickBindings = false
 READS.mouseFoci = false
+-- Batch 5: D-new-7 (Rotation/Spec.lua) talent tree names and points, read
+-- only; not asked by the capture.
+READS.talentTrees = false
 -- F-20: hands in the tooltip spot function; asks the game nothing.
 KIND.tool[#KIND.tool + 1] = "setTipSpot"
 -- A1-13 (ACTING): picks a quest in the game's own quest log, only on the

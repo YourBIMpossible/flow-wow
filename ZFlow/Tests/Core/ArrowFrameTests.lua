@@ -407,7 +407,8 @@ return {
         end
         local h = ns.make.client(e).arrow({ level = 6 })
         t.ok(h ~= nil)
-        t.eq(n, 3, "a text frame was asked for")
+        -- 3: the text frame; 4: the A1-22 text hit (lead patch a122-client-proftext-hit)
+        t.eq(n, 4, "a text frame and the text hit were asked for")
         local label = (rawget(made[1], "made") or {})[1]
         t.ok(label ~= nil, "the label falls back to the placed frame")
         if label == nil then return end
