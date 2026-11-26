@@ -620,6 +620,15 @@ function Arrow.Start(k, diag, own)
     -- layout. shaped: its handle holds lines. moved: the one-time move to
     -- the modern arrow was looked at.
     local drawn, shaped, moved = "modern", false, false
+    -- B-13, B-14: the world map switches' menu rows (Nav/MapToggles.lua),
+    -- or none.
+    local function mapRows()
+        local MT = k.use and k.use("mapToggles")
+        if type(MT) ~= "table" or type(MT.MenuItems) ~= "function" then return {} end
+        local ok, rows = pcall(MT.MenuItems)
+        if ok and type(rows) == "table" then return rows end
+        return {}
+    end
     local function canShapes()
         local q = handles and handles.quest
         return q ~= nil and type(q.shapes) == "function"
@@ -1257,7 +1266,7 @@ function Arrow.Start(k, diag, own)
                  styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback,
                  party = party, step = { name = stepName, from = from, open = drawer ~= nil },
                  nearest = nearest, waypoint = waypoint, professions = professions,
-                 travel = travel }
+                 travel = travel, mapToggles = mapRows() }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.
@@ -1496,6 +1505,15 @@ function Arrow.Start(k, diag, own)
             -- Parity B-30: Walk there instead (Nav/Travel.lua).
             run("walking", using("travel", "Walk"))
             relayout()
+        elseif action.mapToggle ~= nil then
+            -- B-13, B-14: the world map switches (Nav/MapToggles.lua).
+            local toggle = using("mapToggles", "Toggle")
+            if toggle then
+                local ok, err = pcall(toggle, action.mapToggle)
+                if not ok then k.problems:add("arrow", "mapToggle", err) end
+            else
+                say("the world map switches are not ready.")
+            end
         elseif action.wayPrompt then
             -- Parity A1-40: "Set a waypoint..." opens the waypoint box
             -- (Nav/WayWords.lua api.Prompt); its own line says why when
