@@ -206,6 +206,7 @@ Items\ProfRecipes.lua
 Items\Goals.lua
 UI\Arrow.lua
 UI\MinimapPin.lua
+UI\MinimapBezel.lua
 UI\RotationIcon.lua
 UI\InfoBar.lua
 Rotation\Pulse.lua
@@ -332,6 +333,7 @@ Items\AuctionWatch.lua
 Gear\BagBadge.lua
 Nav\FollowAdvice.lua
 UI\RouteArea.lua
+UI\ProfessionDot.lua
 UI\MapRouteLines.lua
 Nav\MapToggles.lua
 UI\KeyBindingNames.lua
