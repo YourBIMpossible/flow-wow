@@ -42,10 +42,11 @@ PD.SIZE = 12       -- how wide the dot is, as the waypoint pin. A first guess.
 PD.ON_ICON = 6     -- the dot's middle this close (minimap units) to the
                    -- minimap's middle sits on the character icon: half
                    -- the dot. A first guess.
-PD.ARRIVE_AT = 24  -- yards: the reach for a step with no radius of its
-                   -- own — the arrow's own at-point (Nav/ArrowView.lua).
-
 local N = ns.Nav
+-- yards: the reach for a step with no radius of its own, the arrow's own
+-- at-point, read once here as the slice 4 files do.
+local at = 24
+if N and N.AT_POINT then at = N.AT_POINT end
 
 local function ask(client, read, ...)
     if type(client) ~= "table" or type(client[read]) ~= "function" then return nil end
@@ -105,9 +106,9 @@ function PD.Update(client, step, state, palette)
     -- with no radius of its own.
     local arrived = false
     if type(pin.distance) == "number" then
-        local reach = PD.ARRIVE_AT
+        local reach = at
         if type(step.radius) == "number" and step.radius > 0 then reach = step.radius end
-        arrived = pin.distance <= reach
+        arrived = pin.distance < reach
     end
     if type(h.hollow) == "function" then
         local onIcon = pin.x * pin.x + pin.y * pin.y <= PD.ON_ICON * PD.ON_ICON
