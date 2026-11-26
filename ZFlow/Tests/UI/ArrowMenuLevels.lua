@@ -117,7 +117,7 @@ return {
         for i, r in ipairs(layout) do keys[i] = r.title and "#" .. r.text or r.key end
         t.eq(keys, { "#" .. T.MENU.layout, "restack", "separate", "reset", M.BACK })
         local show = M.Level(items, { "show" })
-        t.eq(#show, 9, "Professions tick (lead section 382), Buttons and Flow windows (lead section 387 R3)")
+        t.eq(#show, 10, "Professions tick (lead section 382), Buttons and Flow windows (lead section 387 R3), World map (B-13, B-14)")
         t.eq(rowAt(show, "show.prof").checked, true)
         local style = M.Level(items, { "style" })
         t.eq(rowAt(style, "style.modern").checked, true)
