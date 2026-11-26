@@ -13,18 +13,20 @@ local _, ns = ...
 --
 --   DealsPanel.Parts(deals, coin) -> kit parts (pure)
 --   DealsPanel.EmptyText() -> the no-deals line
---   DealsPanel.Declare(k) -> api   (api.parts(), api.on())
+--   DealsPanel.Declare(k) -> api   (api.parts(), api.on(), api.open(), api.follow())
 --   ns.use(DealsPanel.NAME) -> { Parts, On }
 --     Parts: the panel's parts now, or nil while the trader's switch
 --     (trader.off) says nothing — the tab is not shown then.
 --     On: whether the tab is shown at all; it follows the trader.
 --
--- CLIENT NEED (the lead's): a tab on Blizzard's auction house frame
--- with a panel this module fills — shown while On() holds, its parts
--- taken from Parts() when the tab opens and whenever the deals change.
--- (The client already draws on that frame for the deal tooltip line.)
--- Until the tab lands, these parts are the panel, ready to be handed
--- over; nothing else draws them.
+-- On the auction house: a Deals button on AuctionFrame (client.windowButton,
+-- made once Blizzard_AuctionUI has loaded), shown while On() holds. Not a
+-- real tab: Blizzard's tab code (PanelTemplates_SetNumTabs and the tab
+-- click) runs over AuctionFrame's own tabs and panels by number, and an
+-- added tab would be in that loop. The click opens the Deals window (a
+-- kit window beside the auction frame) filled from Parts(); it is filled
+-- again on each click and each time the auction house opens. Trader has
+-- no deals-changed signal, so an open window is not refilled between.
 --
 -- Reads: the trader module through ctx.use, the trader.off setting.
 -- Not tested in game.
@@ -34,6 +36,11 @@ ns.DealsPanel = DP
 DP.NAME = "dealsPanel"
 DP.ID = "dealsPanel"
 DP.HEADER = "Deals"
+DP.FRAME = "AuctionFrame"
+DP.BUTTON_POINT = { "TOPRIGHT", "TOPRIGHT", -70, -14 }
+DP.BUTTON_TIP = "This session's auction deals (look only)"
+DP.WIDTH, DP.HEIGHT = 320, 360
+DP.POINT = { "TOPLEFT", "TOPLEFT", 860, -104 }
 
 -- Items/Trader.lua loads after this file, so the trader's table is read
 -- when a function runs, never at load.
@@ -112,12 +119,84 @@ function DP.Declare(k)
         return DP.Parts(deals, ns.Prices.Coin)
     end
 
+    local button, handle
+
+    local function window(kids)
+        local cl = ctx and ctx.client
+        if not cl or type(cl.kitWindow) ~= "function" then return end
+        local id = k.id or ns.id
+        local tree, why = ns.Kit.Window({ id = DP.ID, title = tostring(id.title) .. ": " .. DP.HEADER,
+            children = kids, width = DP.WIDTH, height = DP.HEIGHT, point = DP.POINT })
+        if not tree then
+            k.problems:add(DP.NAME, "tree", tostring(why))
+            return
+        end
+        if handle then
+            handle.update(tree)
+        else
+            handle = cl.kitWindow(DP.ID, tree, {
+                name = tostring(id.framePrefix) .. "Deals",
+                point = DP.POINT, width = DP.WIDTH, height = DP.HEIGHT,
+                failed = function(err) k.problems:add(DP.NAME, "draw", tostring(err)) end,
+            })
+            if not handle then
+                k.problems:add(DP.NAME, "window", "the client could not draw the window")
+                return
+            end
+        end
+        handle.show(true)
+    end
+
+    -- Opens (or refills) the Deals window. True when it was drawn.
+    function api.open()
+        local kids = api.parts()
+        if not kids then return false end
+        window(kids)
+        return handle ~= nil
+    end
+
+    -- The button follows On(); a refused one is tried again later.
+    local function follow()
+        if not ctx then return end
+        local cl = ctx.client
+        if not button and type(cl.windowButton) == "function" then
+            local id = k.id or ns.id
+            local ok, h = pcall(cl.windowButton, DP.FRAME, { name = tostring(id.framePrefix) .. "DealsButton",
+                text = DP.HEADER, point = DP.BUTTON_POINT, tip = DP.BUTTON_TIP })
+            if ok and type(h) == "table" then
+                button = h
+                h.onClick(function() api.open() end,
+                    function(err) k.problems:add(DP.NAME, "button", tostring(err)) end)
+            end
+        end
+        local on = api.on()
+        if button then button.show(on) end
+        if not on and handle and handle.shown() then handle.close() end
+    end
+    function api.follow() follow() end
+
     k:Module({
         name = DP.NAME,
-        needs = { "settings" },
+        needs = { "settings", "client", "bus" },
         provides = { Parts = function() return api.parts() end, On = function() return api.on() end },
-        start = function(c) ctx = c end,
-        stop = function() ctx = nil end,
+        start = function(c)
+            ctx = c
+            follow()
+            ctx.bus:on(DP.NAME, "ADDON_LOADED", follow)
+            ctx.bus:on(DP.NAME, "PLAYER_REGEN_ENABLED", follow)
+            ctx.bus:on(DP.NAME, "AUCTION_HOUSE_SHOW", function()
+                follow()
+                if handle and handle.shown() then api.open() end
+            end)
+            ctx.bus:on(DP.NAME, "AUCTION_HOUSE_CLOSED", function()
+                if handle and handle.shown() then handle.close() end
+            end)
+        end,
+        stop = function()
+            if button then pcall(button.show, false) end
+            if handle and handle.shown() then handle.close() end
+            ctx = nil
+        end,
     })
     return api
 end

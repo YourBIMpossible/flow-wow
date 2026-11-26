@@ -352,6 +352,11 @@ function M.Declare(k, diag)
         local card = SC.Card(step, f)
         if not card then return false end
         current = { step = step, facts = f, key = key }
+        -- The tooltip of the row or button that opened the card would sit
+        -- over it: hidden, when a Z-Flow frame owns it.
+        if type(c.hideTooltip) == "function" and k.id and type(k.id.framePrefix) == "string" then
+            pcall(c.hideTooltip, k.id.framePrefix)
+        end
         return draw(card, anchor)
     end
 
