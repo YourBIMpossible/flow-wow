@@ -49,6 +49,21 @@ ns.MapFlights = MF
 MF.SETTING = "nav.mapFlights"
 MF.SAME = 250           -- yards (Flow: MF.SAME)
 MF.LINE_REACH = 14      -- pixels on screen: this near a line is "on it" (Flow: MF.LINE_REACH)
+-- R-11 (MUSE-TO-CLAUDE-FLIGHTLINES, agreed): the pick lines' look.
+MF.LINE_THIN = 2        -- a line's thickness, as drawn before R-11
+MF.LINE_BOLD = 4        -- the hovered line's: exactly double
+MF.LINE_ALPHA = 0.8     -- a line's alpha; the hovered one is 1
+MF.DASH_ON = 0.04       -- a can't line's dash, as a share of its own length
+MF.DASH_OFF = 0.02      -- and the gap between dashes
+MF.NOT_KNOWN = "no flight time yet"   -- until A1-32 learns the times
+MF.HOVER_EVERY = 0.1    -- seconds between hover looks
+-- The lines' colours, from the agreed spec's hex: can = solid green,
+-- can't = dashed red (red AND dashed: never colour-only). The
+-- colour-blind pair is the slice-1 near green and vermillion.
+MF.LINE_COLOURS = {
+    standard = { can = { 0x66 / 255, 1, 0x66 / 255 }, cant = { 0xE8 / 255, 0x44 / 255, 0x3A / 255 } },
+    colourBlind = { can = { 0, 0x9E / 255, 0x73 / 255 }, cant = { 0xD5 / 255, 0x5E / 255, 0 } },
+}
 
 local function finite(v)
     return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -223,6 +238,61 @@ function MF.Links(pins, pickedName)
     return out
 end
 
+-- A flight time as it is said on a line's label: 1m 40s, or 45s.
+function MF.TimeText(seconds)
+    if not finite(seconds) or seconds < 0 then return nil end
+    local s = math.floor(seconds)
+    if s >= 60 then return string.format("%dm %ds", math.floor(s / 60), s % 60) end
+    return string.format("%ds", s)
+end
+
+-- A pick line's label: "<Destination> · <time>", or the not-known
+-- words until the line carries a learned time (A1-32).
+function MF.LabelText(line)
+    if type(line) ~= "table" or line.to == nil then return nil end
+    local when = MF.TimeText(line.time) or MF.NOT_KNOWN
+    return tostring(line.to) .. " · " .. when
+end
+
+-- R-11: the pick lines with their look (the drawing reads the style
+-- fields; client.mapPins draws them). lines: as MF.Links gives;
+-- hovered: the destination name under the mouse, or nil; palette:
+-- the arrow's palette word. A line with no can (the next step's
+-- flight line) passes through untouched, in the client's own look.
+-- The rows given are not changed.
+function MF.Styled(lines, hovered, palette)
+    local out = {}
+    if type(lines) ~= "table" then return out end
+    local key = "standard"
+    local RC = ns.RouteColor
+    if type(RC) == "table" and type(RC.PaletteKey) == "function" then
+        key = RC.PaletteKey(palette)
+    elseif palette == "colourblind" or palette == "colorblind" then
+        key = "colourBlind"
+    end
+    local colours = MF.LINE_COLOURS[key] or MF.LINE_COLOURS.standard
+    for i, l in ipairs(lines) do
+        local row = {}
+        if type(l) == "table" then
+            for k2, v in pairs(l) do row[k2] = v end
+        end
+        if type(l) == "table" and l.can ~= nil then
+            local col = colours.cant
+            if l.can then col = colours.can end
+            row.r, row.g, row.b = col[1], col[2], col[3]
+            if not l.can then row.dashOn, row.dashOff = MF.DASH_ON, MF.DASH_OFF end
+            if hovered ~= nil and l.to == hovered then
+                row.width, row.a = MF.LINE_BOLD, 1
+                row.label = MF.LabelText(l)
+            else
+                row.width, row.a = MF.LINE_THIN, MF.LINE_ALPHA
+            end
+        end
+        out[i] = row
+    end
+    return out
+end
+
 function MF.RoleLabel(role)
     if role == "from" then return "Fly from here" end
     if role == "to" then return "Land here: next step" end
@@ -286,7 +356,7 @@ function MF.FlightText(a, b, flown, estimate, fmt)
     end
     if finite(flown) then return route .. ": " .. fmt(flown) .. " (your last flight)", true end
     if finite(estimate) then return route .. ": about " .. fmt(estimate), true end
-    return route .. ": flight time not known yet", true
+    return route .. ": no flight time yet", true
 end
 
 -- ------------------------------------------------------------------ module
@@ -322,6 +392,13 @@ end
 --   waypoint is already on takes it off (W.Clear). As Flow's MF.RightClick,
 --   MF.PointAt and MF.WaypointOn (Modules/Nav/MapFlights.lua:194-238).
 --   Nothing else is changed. Not tested in game.
+--   R-11 (MUSE-TO-CLAUDE-FLIGHTLINES, agreed; DISPATCH §892): the pick
+--   lines' look — can solid green, can't dashed red (MF.Styled, both
+--   palettes), the line under the mouse bold with its label
+--   ("<Destination> · <time>", or MF.NOT_KNOWN until A1-32 puts a time
+--   on the line). The mouse is the handle's own read (h.mouse); a
+--   faster tick (MF.HOVER_EVERY) follows it between draws. The gate,
+--   the pins and the flight masters are unchanged.
 MF.NAME = "mapFlights"
 MF.EVERY = 0.5          -- seconds between looks
 MF.ROW_LABEL = "Show my flight paths on the world map"
@@ -342,6 +419,7 @@ function MF.Declare(k)
     local api = {}
     local ctx, handle
     local drawn = false
+    local lastOut, lastRaw, lastHover   -- R-11: the last draw, for the hover looks
     local sel = {}          -- { from = name }: the flight master picked
     local onMap = {}        -- [name] = true for each pin drawn last
 
@@ -357,6 +435,30 @@ function MF.Declare(k)
         if handle and drawn then pcall(handle.clear) end
         drawn = false
         sel, onMap = {}, {}
+        lastOut, lastRaw, lastHover = nil, nil, nil
+    end
+
+    -- R-11: the arrow's palette word, for the lines' colours.
+    local function paletteNow()
+        local ok, v = pcall(ctx.settings.get, ctx.settings, "arrow.palette")
+        if ok and type(v) == "string" then return v end
+        return nil
+    end
+
+    -- R-11: the destination whose line is under the mouse, or nil.
+    -- The mouse and the reach are pixels, as MF.LineAt counts them.
+    local function hoverNow(raw)
+        if not handle or type(handle.mouse) ~= "function" or type(raw) ~= "table" then return nil end
+        local okM, mx, my, mw, mh = pcall(handle.mouse)
+        if not okM or not finite(mx) or not finite(my) or not finite(mw) or not finite(mh)
+            or mw <= 0 or mh <= 0 then return nil end
+        local rows = {}
+        for i, l in ipairs(raw) do
+            if type(l) == "table" and finite(l.ax) and finite(l.bx) then
+                rows[i] = { name = l.to, ax = l.ax * mw, ay = l.ay * mh, bx = l.bx * mw, by = l.by * mh }
+            end
+        end
+        return MF.LineAt(rows, mx * mw, my * mh, MF.LINE_REACH)
     end
 
     -- Your points (or the preview's) and the arrow's flight, or nil.
@@ -422,9 +524,26 @@ function MF.Declare(k)
             local a, b = at[air.from], at[air.to]
             lines[1] = { from = air.from, to = air.to, ax = a.x, ay = a.y, bx = b.x, by = b.y }
         end
-        local ok = pcall(handle.draw, out, lines)
+        -- R-11: the lines' look (MF.Styled); the hovered line is the
+        -- one under the mouse, when one is picked.
+        local hovered = nil
+        if picked then hovered = hoverNow(lines) end
+        local styled = MF.Styled(lines, hovered, paletteNow())
+        lastOut, lastRaw, lastHover = out, lines, hovered
+        local ok = pcall(handle.draw, out, styled)
         drawn = ok
-        return out, lines
+        return out, styled
+    end
+
+    -- R-11: between draws, only the hover moves: when the line under
+    -- the mouse changes, the same pins are drawn again with the new
+    -- line bold and labelled (or none).
+    function api.hover()
+        if not ctx or not drawn or not handle or not lastRaw or sel.from == nil then return end
+        local hovered = hoverNow(lastRaw)
+        if hovered == lastHover then return end
+        lastHover = hovered
+        pcall(handle.draw, lastOut, MF.Styled(lastRaw, hovered, paletteNow()))
     end
 
     -- A click on the pin named `name`: a left click picks it or clears the
@@ -468,7 +587,8 @@ function MF.Declare(k)
     k:Module({
         name = MF.NAME,
         needs = { "client", "settings", "store" },
-        ticks = { { every = MF.EVERY, when = "always", run = function() api.draw() end } },
+        ticks = { { every = MF.EVERY, when = "always", run = function() api.draw() end },
+                  { every = MF.HOVER_EVERY, when = "always", run = function() api.hover() end } },
         start = function(c) ctx = c end,
         stop = function() clear() end,
     })

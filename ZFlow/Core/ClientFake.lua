@@ -2232,6 +2232,11 @@ function ns.make.fakeClient(opts)
     end
     c.mapPinSets = {}
     function c.setWorldMap(map) s.worldMap = map end
+    -- The cursor over the world map's canvas (R-11): shares of it and
+    -- its size in pixels, as h.mouse() answers; nil until set.
+    function c.setMapMouse(x, y, w, h)
+        if x == nil then s.mapMouse = nil else s.mapMouse = { x = x, y = y, w = w, h = h } end
+    end
     -- Map names: c.setMapName(map, name); mapName(map) is nil until told.
     function c.setMapName(map, name)
         s.mapNames = s.mapNames or {}
@@ -2261,6 +2266,11 @@ function ns.make.fakeClient(opts)
         if s.noFrames then return nil end
         local h = { pins = {}, lines = {}, shown = false, draws = 0, clears = 0 }
         function h.map() return s.worldMap end
+        function h.mouse()
+            local m = s.mapMouse
+            if type(m) ~= "table" then return nil end
+            return m.x, m.y, m.w, m.h
+        end
         function h.draw(pins, lines)
             h.pins = copyRows(type(pins) == "table" and pins or {})
             h.lines = copyRows(type(lines) == "table" and lines or {})
