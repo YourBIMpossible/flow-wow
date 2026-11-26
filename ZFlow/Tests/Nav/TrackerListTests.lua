@@ -150,4 +150,25 @@ tests["tracker list: how many stops show, and the plan line"] = function(t)
     t.eq(TL().Plan("Everything", "Most XP first"), "Everything · Most XP first", "the saved labels read back")
 end
 
+tests["tracker list: rows carry their stop and its place in the route (slice 7)"] = function(t)
+    local a = { label = "Boars", quest = 1, objective = 1, detail = "Boars slain: 2/8", place = { map = 1, x = 0.6, y = 0.5 } }
+    local b1 = { label = "A Letter Home", quest = 2, turnIn = true, detail = "Turn in: Marshal Dunn", place = { map = 1, x = 0.8, y = 0.6 } }
+    local b2 = { label = "Lost Tools", quest = 3, turnIn = true, detail = "Turn in: Marshal Dunn", place = { map = 1, x = 0.8, y = 0.6 } }
+    local cStop = { label = "Wolves", quest = 4, kind = "pickup", detail = "Pick up from Guard Thom", place = { map = 2, x = 0.2, y = 0.2 } }
+    local heldStop = { label = "Old Debts", quest = 5, turnIn = true, detail = "Turn in", held = "not complete any more", place = { map = 2, x = 0.3, y = 0.3 } }
+    local leftStop = { quest = 6, label = "Far Away", detail = "Turn in", why = "not on this map" }
+    local v = view({ a, b1, b2, cStop, heldStop })
+    v.left = { leftStop }
+    local rows = TL().Rows(v, HERE)
+    t.eq(rows[1].stop, a, "the first row carries its stop")
+    t.eq(rows[1].index, 1, "the first walked stop is 1: the next step")
+    t.eq(rows[2].stop, b1, "a merged row carries its first stop")
+    t.eq(rows[2].index, 2, "a merged row takes its first stop's place")
+    t.eq(rows[3].index, 4, "the count runs over stops, not rows")
+    t.eq(rows[4].stop, heldStop, "a held row carries its stop")
+    t.eq(rows[4].index, nil, "a held row has no place on the route")
+    t.eq(rows[5].stop, leftStop, "a left-behind row carries its stop")
+    t.eq(rows[5].index, nil, "a left-behind row has no place either")
+end
+
 return tests

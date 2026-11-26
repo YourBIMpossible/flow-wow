@@ -123,7 +123,7 @@ function RL.Children(rows, more, nLeft, counts, plan, how, onRow, onSkip)
             line.key = "left" .. leftN
             line.tone = RL.TONE_BLOCKED
         end
-        if type(onRow) == "function" and type(r.place) == "table" then
+        if type(onRow) == "function" and (type(r.place) == "table" or type(r.stop) == "table") then
             line.tooltip = RL.TIP
             line.onClick = function() onRow(r) end
         end
@@ -230,6 +230,24 @@ function RL.Declare(k, diag)
         return nil
     end
 
+
+    -- Slice 7: a row's click opens the step card for its stop (the
+    -- shared detail view); the map is the card's own button. A held
+    -- or left-behind row passes no index, so the card shows its
+    -- "not on your route" reason. Without the card module, the
+    -- click keeps slice 5's behaviour and opens the map; so does a
+    -- card that cannot open (Toggle not true) or raises.
+    local function openRow(row)
+        local card = k.use and k.use("stepCard")
+        if type(card) == "table" and type(card.Toggle) == "function"
+            and type(row) == "table" and type(row.stop) == "table" then
+            local facts
+            if row.index then facts = { index = row.index } end
+            local ok, shown = pcall(card.Toggle, row.stop, facts)
+            if ok and shown == true then return true end
+        end
+        return api.Show(row)
+    end
     local function parts()
         local id = k.id or ns.id
         local T = ns.Nav and ns.Nav.TripRoute
@@ -238,7 +256,7 @@ function RL.Declare(k, diag)
         if not tl then return RL.Children(nil) end
         local rows, more, nLeft, counts = tl.Rows(view(), hereNow(), tl.MaxShown(setting("nav.routeShown")), needOf)
         local plan = tl.Plan(setting("nav.routeMode"), setting("nav.routeSort"))
-        return RL.Children(rows, more, nLeft, counts, plan, how, api.Show, api.Skip)
+        return RL.Children(rows, more, nLeft, counts, plan, how, openRow, api.Skip)
     end
 
     local function place(box)

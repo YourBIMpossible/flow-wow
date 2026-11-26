@@ -189,7 +189,9 @@ function TL.Rows(view, here, max, needOf)
     -- Turn-ins at one place are one row (the list beside the quest log
     -- has always read them so; now the tracker reads the same rows).
     local walked = {}
+    local at = 0
     for _, s in ipairs(walkedRaw) do
+        at = at + 1
         local last = walked[#walked]
         if last and last.turnIn and type(s) == "table" and s.kind == nil and s.turnIn == true
             and type(last.stop) == "table" and samePlace(last.stop.place, s.place) then
@@ -203,7 +205,7 @@ function TL.Rows(view, here, max, needOf)
             if type(s) == "table" and isText(s.label) then name = s.label end
             local to = nil
             if type(s) == "table" then to = receiver(s.detail) end
-            walked[#walked + 1] = { stop = s, merged = 1,
+            walked[#walked + 1] = { stop = s, merged = 1, index = at,
                 names = { name },
                 to = to,
                 turnIn = type(s) == "table" and s.kind == nil and s.turnIn == true }
@@ -238,6 +240,8 @@ function TL.Rows(view, here, max, needOf)
         local s = w.stop
         local row = baseRow(s)
         row.n = i
+        row.stop = s
+        row.index = w.index
         row.dist = dists[i]
         row.merged, row.names, row.to = w.merged, w.names, w.to
         if i == 1 then row.current, row.now = true, true end
@@ -258,6 +262,7 @@ function TL.Rows(view, here, max, needOf)
     for _, s in ipairs(heldRaw) do
         if #rows >= max then break end
         local row = baseRow(s)
+        row.stop = s
         local text = words(s)
         row.text = text
         row.icon = "questNotForYou"
@@ -276,6 +281,7 @@ function TL.Rows(view, here, max, needOf)
             row.detail = l.detail
             row.quest = l.quest
             row.why = l.why
+            row.stop = l
         end
         row.left = TL.Why(row.why)
         row.text = row.label
