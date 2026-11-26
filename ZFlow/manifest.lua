@@ -112,6 +112,7 @@ return {
         "Gear/Sets.lua",
         "Gear/SetIcons.lua",
         "Gear/OffSpec.lua",
+        "Gear/SetRecipes.lua",
 
         -- Rotation and classes
         "Rotation/Pack.lua",
