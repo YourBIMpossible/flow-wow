@@ -34,6 +34,8 @@ local KIND = {
              "infoBar", "broker",
              -- N57: the key-capture overlay on the settings page.
              "keyCapture",
+             -- F-19: the Key Bindings screen's names (plain string globals).
+             "setGlobalNames",
              -- F7 (section 447 item 6): route and waypoint lines on the world map.
              "mapRouteLines",
              -- N72 (section 248 item 4): the macro icon window; shows a list on it.

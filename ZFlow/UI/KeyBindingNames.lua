@@ -29,3 +29,8 @@ function KB.Globals()
         ["BINDING_NAME_" .. KB.ACTION] = KB.NAME_TEXT,
     }
 end
+
+-- Client.lua sets the globals (it loads first, so ns.client is here).
+if type(ns.client) == "table" and type(ns.client.setGlobalNames) == "function" then
+    pcall(ns.client.setGlobalNames, KB.Globals())
+end
