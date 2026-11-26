@@ -69,6 +69,11 @@ Pin.ON_ICON = 6        -- the pin's middle this close (minimap units) to
 
 local N = ns.Nav
 
+-- The arrow's here distance (N.AT_POINT): ArrowView loads before
+-- this file and the value is a constant, so it is read once here.
+local at = 24
+if N and N.AT_POINT then at = N.AT_POINT end
+
 -- One read of the client; nil when it has no such read. An error is not
 -- caught: the kernel counts it against the module.
 local function ask(client, read, ...)
@@ -112,7 +117,7 @@ function Pin.Colour(source, distance, palette, byDistance)
     end
     if source == "step" then
         local state = "zone"
-        if type(distance) == "number" and distance < (N and N.AT_POINT or 24) then state = "here" end
+        if type(distance) == "number" and distance < at then state = "here" end
         local r, g, b = RC.Of({ state = state }, distance, palette, byDistance)
         return r, g, b
     end

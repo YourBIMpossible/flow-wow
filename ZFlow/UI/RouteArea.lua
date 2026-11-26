@@ -30,8 +30,14 @@ RA.SIZE = 8        -- how wide one mark is. A first guess.
 
 local N = ns.Nav
 
+-- The arrow's here distance (N.AT_POINT): ArrowView loads before
+-- this file and the value is a constant, so it is read once here.
+local at = 24
+if N and N.AT_POINT then at = N.AT_POINT end
+
 function RA.Points(cur)
-    local s = type(cur) == "table" and type(cur.stops) == "table" and cur.stops[1] or nil
+    local s
+    if type(cur) == "table" and type(cur.stops) == "table" then s = cur.stops[1] end
     local area = type(s) == "table" and s.area or nil
     if type(area) ~= "table" or #area < 2 then return nil end
     return area
@@ -59,10 +65,11 @@ end
 local function colourOf(cur, yards, shade)
     local RC = ns.RouteColor
     if type(RC) ~= "table" or type(RC.Of) ~= "function" then return nil end
-    local s = type(cur) == "table" and type(cur.stops) == "table" and cur.stops[1] or nil
+    local s
+    if type(cur) == "table" and type(cur.stops) == "table" then s = cur.stops[1] end
     if type(s) ~= "table" then return nil end
     local state = "zone"
-    if type(yards) == "number" and yards < (N and N.AT_POINT or 24) then state = "here" end
+    if type(yards) == "number" and yards < at then state = "here" end
     local palette, byDistance
     if type(shade) == "table" then palette, byDistance = shade.palette, shade.byDistance end
     local r, g, b = RC.Of({ kind = s.kind, family = s.family, state = state }, yards, palette, byDistance)

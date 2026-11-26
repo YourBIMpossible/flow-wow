@@ -49,6 +49,11 @@ ns.MapRoute = MR
 
 local N = ns.Nav
 
+-- The arrow's here distance (N.AT_POINT): ArrowView loads before
+-- this file and the value is a constant, so it is read once here.
+local at = 24
+if N and N.AT_POINT then at = N.AT_POINT end
+
 MR.NAME = "mapRoute"
 MR.EVERY = 0.25
 MR.PIN = "Stop %d: %s"
@@ -83,7 +88,7 @@ function MR.Colour(row, yards, palette, byDistance, away)
     if away then
         state = "away"
     elseif type(row) == "table" and row.now == true and type(yards) == "number"
-        and yards < (N and N.AT_POINT or 24) then
+        and yards < at then
         state = "here"
     end
     local r, g, b = RC.Of({ state = state }, yards, palette, byDistance)
@@ -178,6 +183,13 @@ local function ask(client, name, ...)
     local ok, v = pcall(client[name], ...)
     if not ok then return nil end
     return v
+end
+
+-- A colour share as the redraw signature says it (an if, not the
+-- and-or form).
+local function fmt(v)
+    if v then return string.format("%.3f", v) end
+    return ""
 end
 
 function MR.Declare(k, diag)
@@ -307,8 +319,7 @@ function MR.Declare(k, diag)
         for _, l in ipairs(shown.lines) do sig[#sig + 1] = l end
         for _, p in ipairs(marks) do
             sig[#sig + 1] = table.concat({ p.n, p.x, p.y, tostring(p.text), tostring(p.sub), tostring(p.now),
-                p.r and string.format("%.3f", p.r) or "", p.g and string.format("%.3f", p.g) or "",
-                p.b and string.format("%.3f", p.b) or "" }, "|")
+                fmt(p.r), fmt(p.g), fmt(p.b) }, "|")
         end
         sig = table.concat(sig, "\n")
         if drawn and sig == lastSig then return end
