@@ -443,7 +443,7 @@ function ns.make.fakeClient(opts)
             h.tints = (h.tints or 0) + 1
         end
         function h.hollow(on)
-            h.hollowSet = on and true or false
+            h.hollowSet = on == true
         end
         c.minimapPins[#c.minimapPins + 1] = h
         return h

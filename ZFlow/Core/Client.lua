@@ -2776,7 +2776,7 @@ function ns.make.client(env)
         local disc = false
         if tex then
             method(tex, "SetAllPoints", f)
-            disc = method(tex, "SetTexture", "Interface\\CharacterFrame\\TempPortraitAlphaMask") and true or false
+            if method(tex, "SetTexture", "Interface\\CharacterFrame\\TempPortraitAlphaMask") then disc = true end
         end
         local function colourOf(r, g, b)
             if type(r) == "number" and r == r and type(g) == "number" and g == g
