@@ -52,6 +52,13 @@
 --              footer stands in a scroll.
 --   itemLine   name, quality (0..5), count, money (whole copper), icon,
 --              item, note, tone ("good" | "warn" | "bad")
+--   card       text, sub, icon, tone, tooltip, enabled, onClick()  (K-0:
+--              one bordered block, in a list or a grid)
+--   grid       children (card parts only), columns (a whole number;
+--              Kit.GRID_COLUMNS when not told). Never in another grid.
+--   bar        text, value, max, tone, tooltip  (K-0: a progress bar;
+--              the kit works out share, the fill between 0 and 1)
+--   fadedLine  a line's fields, drawn faded (K-0)
 --   empty      text (what is missing), how (how to get it): both needed
 --   footer     text, money (whole copper), slot (a name another lane's
 --              button is put in), buttons = { button ... }
@@ -69,6 +76,7 @@ Kit.SEARCH = "Search"
 Kit.NOT_BOUND = "Not Bound"
 Kit.BIND_WAITING = "Press a key..."
 Kit.SCROLL_HEIGHT = 240
+Kit.GRID_COLUMNS = 2   -- a grid's columns when the window does not say (K-0)
 
 -- Every size, colour, font and Blizzard part name: the one theme file,
 -- UI/Kit/Theme.lua (loaded before this file).
@@ -442,6 +450,81 @@ function PARTS.itemLine(p, out, _, ctx)
     end
     return true
 end
+
+-- A card (K-0): one bordered block — a title, a second line, an icon, a
+-- tone, and the whole block as the click. A leaf part: it stands in the
+-- plain flow, in a scroll, or in a grid.
+function PARTS.card(p, out)
+    local ok, why = needText(p, out, "text", "a card")
+    if not ok then return nil, why end
+    ok, why = someIcon(p, out, "a card")
+    if not ok then return nil, why end
+    for _, field in ipairs({ "sub", "tooltip" }) do
+        ok, why = someText(p, out, field, "a card")
+        if not ok then return nil, why end
+    end
+    if p.tone ~= nil then
+        if not TONES[p.tone] then return nil, "a card: tone must be good, warn or bad" end
+        out.tone = p.tone
+    end
+    ok, why = flag(p, out, "enabled", true, "a card")
+    if not ok then return nil, why end
+    if p.onClick ~= nil then
+        if type(p.onClick) ~= "function" then return nil, "a card: onClick must be a function" end
+        out.onClick = p.onClick
+    end
+    return true
+end
+
+-- A grid (K-0): cards in rows of `columns`. Cards only, and never a grid
+-- in a grid; the children are named before they are checked, so the
+-- refusal says which rule they broke.
+function PARTS.grid(p, out, path, ctx)
+    local columns = p.columns
+    if columns == nil then columns = Kit.GRID_COLUMNS end
+    if not isWhole(columns) or columns < 1 then
+        return nil, "a grid: columns must be a whole number, 1 or more"
+    end
+    out.columns = columns
+    if type(p.children) ~= "table" then return nil, "a grid: children must be a list of cards" end
+    for i = 1, #p.children do
+        local child = p.children[i]
+        if type(child) ~= "table" then return nil, "a grid holds cards only: child " .. i .. " is not a card" end
+        if child.kind == "grid" then return nil, "a grid may not stand in a grid" end
+        if child.kind ~= "card" then
+            return nil, "a grid holds cards only: child " .. i .. " is a " .. tostring(child.kind) .. ", not a card"
+        end
+    end
+    local children, why = parts(p.children, path .. ".", ctx, "a grid")
+    if not children then return nil, why end
+    out.children = children
+    return true
+end
+
+-- A progress bar (K-0): a label over a fill. The kit works out the share
+-- itself — value over max, held between 0 and 1 — so the client only
+-- draws the track and the filled length.
+function PARTS.bar(p, out)
+    local ok, why = needText(p, out, "text", "a bar")
+    if not ok then return nil, why end
+    if not isAmount(p.value) then return nil, "a bar needs value: a number" end
+    if not isAmount(p.max) or p.max <= 0 then return nil, "a bar: max must be a number above 0" end
+    out.value, out.max = p.value, p.max
+    local share = p.value / p.max
+    if share < 0 then share = 0 end
+    if share > 1 then share = 1 end
+    out.share = share
+    if p.tone ~= nil then
+        if not TONES[p.tone] then return nil, "a bar: tone must be good, warn or bad" end
+        out.tone = p.tone
+    end
+    return someText(p, out, "tooltip", "a bar")
+end
+
+-- A faded line (K-0): a line's fields exactly, drawn in the theme's dim
+-- text. Its own kind, so a window's intent reads in its tree; the checks
+-- are the line's.
+PARTS.fadedLine = PARTS.line
 
 -- The line a list shows in place of nothing: what is missing, and how to
 -- get it. Both are needed, so no window is ever blank or a dead end.

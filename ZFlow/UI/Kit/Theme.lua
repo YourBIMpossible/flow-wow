@@ -32,6 +32,9 @@ ns.KitTheme = {
         icon = 20, coin = 12,
         header = 32, tab = 24, section = 24,
         topicWidth = 180, topicRow = 24,
+        -- K-0 (2026-11-26): the shared parts — a card's least height and
+        -- padding, the gap between a grid's cards, a bar's height.
+        cardMin = 40, cardPad = 8, gridGap = 8, barHeight = 14,
         -- Lead section 340: the pane's page heading (the retail Settings
         -- window's category title).
         pageTitle = 36,
