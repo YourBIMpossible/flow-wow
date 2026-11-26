@@ -246,12 +246,17 @@ tests["module: the shown map gets the lines with their colours"] = function(t)
     t.eq(set.lines[1].g, 0x8C / 255)
     t.eq(set.lines[1].b, 0x1A / 255)
     t.eq(set.lines[1].a, MRL().FIRST_ALPHA)
-    -- the first later leg wears the same colour, fainter
+    -- B-17 (lead section 894): the later legs wear the order mode's colour,
+    -- fainter; nothing set, so the default mode in the standard palette
     local rest
     for _, l in ipairs(set.lines) do if l.kind == "rest" then rest = l break end end
     t.ok(rest ~= nil, "a later leg is drawn")
     t.eq(rest.a, MRL().REST_ALPHA)
-    t.eq(rest.r, 0xFF / 255)
+    local ROC = ns.RouteOrderColor
+    local mr, mg, mb = ROC.Color(ROC.DEFAULT, "standard")
+    t.eq(rest.r, mr, "later legs: the order mode colour")
+    t.eq(rest.g, mg)
+    t.eq(rest.b, mb)
     -- the waypoint line is green; the X is gold
     local wp, x
     for _, l in ipairs(set.lines) do if l.kind == "waypoint" then wp = l end if l.kind == "x" then x = l end end
@@ -347,6 +352,29 @@ tests["paint: without the contract, the route blue follows the palette (F-23)"] 
     end)
     ns.RouteColor = saved
     t.ok(ok, tostring(err))
+end
+
+tests["paint: the route legs take the order mode's colour (B-17)"] = function(t)
+    local saved = ns.RouteOrderColor
+    ns.RouteOrderColor = { Color = function(mode, palette)
+        if mode == "xp" and palette == "standard" then return 0.1, 0.2, 0.3 end
+        return 0.9, 0.9, 0.9
+    end }
+    local r, g, b, a = MRL().Paint("first", nil, 600, "standard", nil, "xp")
+    local rr, rg, rb, ra = MRL().Paint("rest", nil, 600, "standard", nil, "xp")
+    local wr = MRL().Paint("waypoint", nil, nil, "standard", nil, "xp")
+    local xr = MRL().Paint("x", nil, nil, "standard", nil, "xp")
+    local nr = MRL().Paint("rest", nil, 600, "standard")
+    local fr, fg, fb, fa = MRL().Paint("first", nil, 600, "standard")
+    ns.RouteOrderColor = saved
+    t.eq({ r, g, b, a }, { fr, fg, fb, fa }, "first leg: the arrow colour, as Flow's live leg")
+    t.eq(rr, 0.1, "later legs: the mode colour")
+    t.eq(rg, 0.2)
+    t.eq(rb, 0.3)
+    t.eq(ra, MRL().REST_ALPHA, "later legs stay fainter")
+    t.ok(wr ~= 0.1, "the waypoint keeps its own colour")
+    t.ok(xr ~= 0.1, "the X keeps its own colour")
+    t.ok(nr ~= 0.1, "no order mode: the contract colour")
 end
 
 return tests
