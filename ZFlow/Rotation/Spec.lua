@@ -6,8 +6,9 @@ local _, ns = ...
 -- open at. It only prints: no setting, talent, form or gear is touched, and
 -- the word changes nothing whatever follows it (the role word sets a role).
 --
--- No talents are read, so nothing is said of unspent points until a
--- readable talent API is seen in this client (probe ZP2).
+-- Unspent points are not read, so nothing is said of them until a
+-- readable talent API is seen in this client (probe ZP2). The points spent
+-- per tree are read only to say where the role comes from (D-new-7).
 --
 --   Sp.Recommended(pack) -> rec or nil
 --     rec = { role, name, why }   the pack's levelling row: its role, the
@@ -101,6 +102,107 @@ function Sp.Lines(pack, chosen)
     return lines
 end
 
+-- D-new-7: which role the spec word speaks of, and where it came from.
+-- Your own role setting wins; when it is not set, the talent tree you put
+-- the most points in; before talents, the pack's recommended levelling
+-- role. Only words: the rotation reads none of this, so what the key casts
+-- is unchanged. Talents are read as the client gives them (each tree's
+-- name and points spent: CLIENT NEED talentTrees), and a tree is matched
+-- to a role by the role's trees in the pack (the game's tree names), else
+-- the pack's own name for that role. A tree no role holds names no role.
+--
+--   Sp.FromTalents(pack, trees) -> role, tree name, points; or nil
+--   Sp.Source(pack, chosen, trees) -> { role, from, talents, tree, points }
+--     from: "setting", "talents" or "default"
+--   Sp.SourceLines(pack, chosen, trees) -> lines
+-- Does a role row hold the tree? The row's own trees (the game's tree
+-- names, Rotation/Pack.lua), else the pack's name for the role.
+local function treeIn(row, name, tree)
+    local want = tree:lower()
+    if type(row.trees) == "table" then
+        for _, t in ipairs(row.trees) do
+            if type(t) == "string" and t:lower() == want then return true end
+        end
+        return false
+    end
+    return name ~= nil and name:lower() == want
+end
+
+function Sp.FromTalents(pack, trees)
+    if type(pack) ~= "table" or type(pack.roles) ~= "table" or type(trees) ~= "table" then return nil end
+    local best, bestPoints, tie = nil, 0, false
+    for _, tree in ipairs(trees) do
+        if type(tree) == "table" and type(tree.name) == "string" and type(tree.points) == "number" then
+            if tree.points > bestPoints then
+                best, bestPoints, tie = tree.name, tree.points, false
+            elseif tree.points == bestPoints and bestPoints > 0 then
+                tie = true
+            end
+        end
+    end
+    -- An even split says nothing about which way the build leans.
+    if best == nil or tie then return nil end
+    for _, role in ipairs({ "dps", "heal", "tank" }) do
+        local row, name = partOf(pack, role)
+        if row ~= nil and treeIn(row, name, best) then return role, best, bestPoints end
+    end
+    return nil
+end
+
+function Sp.Source(pack, chosen, trees)
+    local talents, tree, points = Sp.FromTalents(pack, trees)
+    local out = { talents = talents, tree = tree, points = points, read = false }
+    -- Were any points read at all? A split or a tree in no role still was.
+    if type(trees) == "table" then
+        for _, t in ipairs(trees) do
+            if type(t) == "table" and type(t.points) == "number" and t.points > 0 then out.read = true end
+        end
+    end
+    local set = roleOf(chosen)
+    if set ~= nil then
+        out.role, out.from = set, "setting"
+    elseif talents ~= nil then
+        out.role, out.from = talents, "talents"
+    else
+        local rec = Sp.Recommended(pack)
+        out.from = "default"
+        if rec ~= nil then out.role = rec.role end
+    end
+    return out
+end
+
+function Sp.SourceLines(pack, chosen, trees)
+    local s = Sp.Source(pack, chosen, trees)
+    if s.role == nil then
+        if s.read then
+            return { "spec in use: not known. No role set, talents that fit no one role, and nothing recommended." }
+        end
+        return { "spec in use: not known. No role set, no talent points read, and nothing recommended." }
+    end
+    local _, name = partOf(pack, s.role)
+    local what = "spec in use: " .. named(s.role, name)
+    if s.from == "setting" then
+        local lines = { what .. ", from your role setting." }
+        -- No note when the role you set holds the leading tree itself
+        -- (a druid tank with Feral talents: Feral is a tank tree too).
+        local row, rowName = partOf(pack, s.role)
+        local holds = false
+        if row ~= nil and s.tree ~= nil then holds = treeIn(row, rowName, s.tree) end
+        if s.talents ~= nil and s.talents ~= s.role and not holds then
+            lines[#lines + 1] = "note: your talents lean to " .. named(s.talents, s.tree)
+                .. " (" .. s.points .. " points there), not the role you set."
+        end
+        return lines
+    end
+    if s.from == "talents" then
+        return { what .. ", from your talents (" .. s.points .. " points in " .. s.tree .. ")." }
+    end
+    if s.read then
+        return { what .. ", the default: no role set and your talents fit no one role, so the recommended one." }
+    end
+    return { what .. ", the default: no role set and no talent points read, so the recommended one." }
+end
+
 -- The module on kernel k. diag (optional) is what Diag.Start returned;
 -- packs: { [class token] = pack }, ns.Packs when left out.
 function Sp.Declare(k, diag, packs)
@@ -129,9 +231,30 @@ function Sp.Declare(k, diag, packs)
         if client then client.print(ns.id.title .. ": " .. text) end
     end
 
+    -- The talent trees, or nil while not known: no such read, no answer,
+    -- or the read raised.
+    local function treesNow()
+        if type(client) ~= "table" or type(client.talentTrees) ~= "function" then return nil end
+        local ok, trees = pcall(client.talentTrees)
+        if ok and type(trees) == "table" then return trees end
+        return nil
+    end
+
+    -- Where the role comes from; nothing when the class or its pack is
+    -- not known, since there is no role to speak of.
+    function api.sourceLines()
+        local class = classNow()
+        if class == nil then return {} end
+        local all = packs or ns.Packs
+        if type(all) ~= "table" or type(all[class]) ~= "table" then return {} end
+        return Sp.SourceLines(all[class], k.settings:get(Ro.SETTING), treesNow())
+    end
+
     local function run()
         local lines = api.lines()
         for i = 1, #lines do say(lines[i]) end
+        local more = api.sourceLines()
+        for i = 1, #more do say(more[i]) end
     end
 
     -- Only the level the event itself names counts: a level-up that names

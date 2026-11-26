@@ -267,8 +267,10 @@ local pack = {
     },
 
     -- One damage role (a first guess at the name).
+    -- trees: the talent tree names the game gives (GetTalentTabInfo), as in
+    -- this pack's talentBuilds trees list below.
     roles = {
-        dps = { name = "Affliction", evidence = GUESS },
+        dps = { name = "Affliction", evidence = GUESS, trees = { "Affliction", "Demonology", "Destruction" } },
     },
 
     -- G31: the spec recommended while levelling alone, and why. Written for

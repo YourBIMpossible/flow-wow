@@ -172,7 +172,8 @@ tests["spec module: the word prints the lines, each with the title"] = function(
     local _, c, _, diag = start()
     local out = run(c, diag, "")
     local want = Sp.Lines(pack(), "")
-    t.eq(#out, #want)
+    -- Then the line saying where the role comes from (D-new-7).
+    t.eq(#out, #want + 1)
     for i = 1, #want do t.eq(out[i], line(want[i])) end
 end
 
@@ -189,10 +190,10 @@ tests["spec module: the word follows the role setting"] = function(t)
     local k, c, _, diag = start()
     k.settings:set(Ro.SETTING, "tank")
     local out = run(c, diag, "")
-    t.eq(out[#out], line(Sp.Lines(pack(), "tank")[4]))
+    t.eq(out[4], line(Sp.Lines(pack(), "tank")[4]))
     k.settings:set(Ro.SETTING, "dps")
     out = run(c, diag, "")
-    t.eq(out[#out], line("your role is set to damage (Claws), the recommended one."))
+    t.eq(out[4], line("your role is set to damage (Claws), the recommended one."))
 end
 
 tests["spec module: the word changes no setting, whatever follows it"] = function(t)
@@ -228,9 +229,11 @@ tests["spec module: reaching the talent level says talents unlocked, then the li
     local before = #c.printed
     c.fire("PLAYER_LEVEL_UP", Sp.TALENT_LEVEL)
     local want = Sp.Lines(pack(), "")
-    t.eq(#c.printed - before, #want + 1)
+    -- Talents unlocked, the lines, then where the role comes from (D-new-7).
+    t.eq(#c.printed - before, #want + 2)
     t.eq(c.printed[before + 1], line(Sp.UNLOCKED))
     for i = 1, #want do t.eq(c.printed[before + 1 + i], line(want[i])) end
+    t.eq(c.printed[before + #want + 2], line(Sp.SourceLines(pack(), "", nil)[1]))
 end
 
 tests["spec module: any other level says nothing"] = function(t)
@@ -257,6 +260,154 @@ tests["spec module: the talent level with no pack says only talents unlocked"] =
     c.fire("PLAYER_LEVEL_UP", Sp.TALENT_LEVEL)
     t.eq(#c.printed - before, 1)
     t.eq(c.printed[#c.printed], line(Sp.UNLOCKED))
+end
+
+-- ------------------------------------------------ D-new-7: from talents
+-- Talent trees as the client gives them: { name, points }. The tree names
+-- match the pack's own role names; nothing about talents is written here.
+local function trees(claws, hide)
+    return { { name = "Claws", points = claws }, { name = "Hide", points = hide } }
+end
+
+tests["spec talents: the tree with the most points names the role"] = function(t)
+    local role, tree = Sp.FromTalents(pack(), trees(5, 2))
+    t.eq(role, "dps")
+    t.eq(tree, "Claws")
+    role = Sp.FromTalents(pack(), trees(1, 9))
+    t.eq(role, "tank")
+end
+
+tests["spec talents: no points, a tie, no read or a tree the pack has no part for: nothing"] = function(t)
+    t.eq(Sp.FromTalents(pack(), trees(0, 0)), nil)
+    t.eq(Sp.FromTalents(pack(), trees(4, 4)), nil, "a tie names no role")
+    t.eq(Sp.FromTalents(pack(), nil), nil)
+    t.eq(Sp.FromTalents(nil, trees(3, 0)), nil)
+    t.eq(Sp.FromTalents(pack(), { { name = "Fangs", points = 7 } }), nil)
+    t.eq(Sp.FromTalents(pack(), { { name = 5, points = "x" } }), nil)
+end
+
+-- Real packs: the game's tree names, which are not the pack's role names
+-- (review CHANGES-2). Names as GetTalentTabInfo gives them.
+tests["spec talents: a real pack - a Warrior with 31 points in Fury reads damage"] = function(t)
+    local warrior = ns.Packs.WARRIOR
+    local role, tree, points = Sp.FromTalents(warrior, {
+        { name = "Arms", points = 0 }, { name = "Fury", points = 31 }, { name = "Protection", points = 0 },
+    })
+    t.eq(role, "dps")
+    t.eq(tree, "Fury")
+    t.eq(points, 31)
+    role = Sp.FromTalents(warrior, {
+        { name = "Arms", points = 5 }, { name = "Fury", points = 0 }, { name = "Protection", points = 21 },
+    })
+    t.eq(role, "tank")
+end
+
+tests["spec talents: a real pack - 31 points in Feral reads damage, the tree that also tanks"] = function(t)
+    local druid = ns.Packs.DRUID
+    local role, tree, points = Sp.FromTalents(druid, {
+        { name = "Balance", points = 0 }, { name = "Feral", points = 31 }, { name = "Restoration", points = 0 },
+    })
+    t.eq(role, "dps")
+    t.eq(tree, "Feral")
+    t.eq(points, 31)
+    t.eq(Sp.FromTalents(druid, {
+        { name = "Balance", points = 0 }, { name = "Feral", points = 5 }, { name = "Restoration", points = 21 },
+    }), "heal")
+end
+
+tests["spec source: a tank role set with Feral talents gives no note"] = function(t)
+    local druid = ns.Packs.DRUID
+    local l = Sp.SourceLines(druid, "tank", {
+        { name = "Balance", points = 0 }, { name = "Feral", points = 31 }, { name = "Restoration", points = 0 },
+    })
+    t.eq(#l, 1, "Feral is one of the tank trees: no note")
+    t.ok(l[1]:find("your role setting", 1, true), l[1])
+end
+
+tests["spec source: points read that fit no one role never say none were read"] = function(t)
+    local l = Sp.SourceLines(pack(), "", trees(4, 4))
+    t.eq(#l, 1)
+    t.ok(l[1]:find("no role set", 1, true), l[1])
+    t.ok(not l[1]:find("no talent points read", 1, true), l[1])
+    l = Sp.SourceLines(pack(), "", nil)
+    t.ok(l[1]:find("no talent points read", 1, true), l[1])
+end
+
+tests["spec source: your setting wins, then talents, then the recommendation"] = function(t)
+    local s = Sp.Source(pack(), "tank", trees(6, 0))
+    t.eq(s.role, "tank")
+    t.eq(s.from, "setting")
+    t.eq(s.talents, "dps")
+    s = Sp.Source(pack(), "", trees(0, 6))
+    t.eq(s.role, "tank")
+    t.eq(s.from, "talents")
+    s = Sp.Source(pack(), "", nil)
+    t.eq(s.role, "dps")
+    t.eq(s.from, "default")
+    local p = pack()
+    p.levelling = nil
+    s = Sp.Source(p, "", nil)
+    t.eq(s.role, nil)
+    t.eq(s.from, "default")
+end
+
+tests["spec source: the line names the role and where it came from"] = function(t)
+    local l = Sp.SourceLines(pack(), "", trees(0, 6))
+    t.eq(#l, 1)
+    t.ok(l[1]:find("tanking (Hide)", 1, true), l[1])
+    t.ok(l[1]:find("talents", 1, true), l[1])
+    l = Sp.SourceLines(pack(), "tank", trees(0, 6))
+    t.eq(#l, 1, "talents agree with the setting: no note")
+    t.ok(l[1]:find("your role setting", 1, true), l[1])
+    l = Sp.SourceLines(pack(), "", nil)
+    t.eq(#l, 1)
+    t.ok(l[1]:find("damage (Claws)", 1, true), l[1])
+    t.ok(l[1]:find("no role set", 1, true), l[1])
+end
+
+tests["spec source: a note when the talents fit another role than the one set"] = function(t)
+    local l = Sp.SourceLines(pack(), "tank", trees(8, 1))
+    t.eq(#l, 2)
+    t.ok(l[1]:find("tanking (Hide)", 1, true), l[1])
+    t.ok(l[2]:find("damage (Claws)", 1, true), l[2])
+    t.ok(l[2]:find("8 points", 1, true), l[2])
+end
+
+tests["spec module: the word ends with where the role comes from, read from talents"] = function(t)
+    local _, c, _, diag = start()
+    c.setTalentTrees(trees(0, 11))
+    local out = run(c, diag, "")
+    t.eq(out[#out], line(Sp.SourceLines(pack(), "", trees(0, 11))[1]))
+end
+
+tests["spec module: your setting wins over talents, and the note says so"] = function(t)
+    local k, c, _, diag = start()
+    c.setTalentTrees(trees(0, 11))
+    k.settings:set(Ro.SETTING, "dps")
+    local out = run(c, diag, "")
+    local want = Sp.SourceLines(pack(), "dps", trees(0, 11))
+    t.eq(#want, 2)
+    t.eq(out[#out - 1], line(want[1]))
+    t.eq(out[#out], line(want[2]))
+    t.eq(k.settings:get(Ro.SETTING), "dps", "the word changes no setting")
+end
+
+tests["spec module: a talent read that raises is taken as not known"] = function(t)
+    local _, c, _, diag = start()
+    c.talentTrees = function() error("talent read failed (test)") end
+    local out = run(c, diag, "")
+    t.eq(out[#out], line(Sp.SourceLines(pack(), "", nil)[1]))
+end
+
+tests["fake client: talent trees are as set, copied"] = function(t)
+    local c = ns.make.fakeClient()
+    t.eq(c.talentTrees(), nil)
+    local set = trees(2, 3)
+    c.setTalentTrees(set)
+    local got = c.talentTrees()
+    t.eq(got, trees(2, 3))
+    got[1].points = 99
+    t.eq(c.talentTrees()[1].points, 2)
 end
 
 return tests

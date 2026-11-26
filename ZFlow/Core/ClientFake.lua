@@ -5710,3 +5710,31 @@ do
         return c
     end
 end
+
+-- D-new-7 (Rotation/Spec.lua), CLIENT NEED: the talent trees as the game
+-- names them, with the points spent in each: { { name, points }, ... }.
+-- The real read would be GetNumTalentTabs() and GetTalentTabInfo(tab) ->
+-- name, icon, points spent; not in Client.lua yet, so the spec word says
+-- the role comes from the default until it is.
+-- c.setTalentTrees(list or nil); nil (as made): not known.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local trees = nil
+        function c.setTalentTrees(list) trees = list end
+        function c.talentTrees()
+            if type(trees) ~= "table" then return nil end
+            local out = {}
+            for i, tree in ipairs(trees) do
+                if type(tree) == "table" then
+                    out[i] = { name = tree.name, points = tree.points }
+                else
+                    out[i] = tree
+                end
+            end
+            return out
+        end
+        return c
+    end
+end

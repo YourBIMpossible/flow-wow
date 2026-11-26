@@ -330,10 +330,17 @@ local pack = {
             .. "the Cat Form rule is an authored model with its own note. No guide, database or other addon used.",
     },
 
+    -- trees: the talent tree names the game gives (GetTalentTabInfo), as in
+    -- this pack's talentBuilds trees list below.
+    -- Feral is the dps tree that also tanks: Flow b657e6e5
+    -- Classes/Druid/Data.lua:100-108 (the Feral levelling build, role dps,
+    -- "the Feral tree, which serves Cat and Bear alike"), and this pack:
+    -- talentBuilds :465-468 (Feral build, role dps, alsoFor tank), roleForm
+    -- :144-145 (tank bear, dps cat) and DruidWantsCat :100.
     roles = {
-        dps  = { name = "Feral (Cat)", evidence = GUESS },
-        heal = { name = "Restoration", evidence = GUESS },
-        tank = { name = "Feral (Bear)", evidence = GUESS },
+        dps  = { name = "Feral (Cat)", evidence = GUESS, trees = { "Feral", "Balance" } },
+        heal = { name = "Restoration", evidence = GUESS, trees = { "Restoration" } },
+        tank = { name = "Feral (Bear)", evidence = GUESS, trees = { "Feral" } },
     },
 
     -- G31: the spec recommended while levelling alone, and why. Written for

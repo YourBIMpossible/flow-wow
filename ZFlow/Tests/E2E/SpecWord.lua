@@ -85,8 +85,9 @@ for _, class in ipairs(CLASSES) do
         local out = said(c, "spec")
         t.eq(out[1], firstLine(addon, class))
         for i, why in ipairs(pack.levelling.why) do t.eq(out[1 + i], line(why), class .. ": reason " .. i) end
-        t.eq(#out, #pack.levelling.why + 2, class .. ": the spec, the reasons, your role")
-        t.ok(out[#out]:find("no role chosen", 1, true) ~= nil, class .. ": none chosen: " .. tostring(out[#out]))
+        t.eq(#out, #pack.levelling.why + 3, class .. ": the spec, the reasons, your role, where it comes from")
+        t.ok(out[#out - 1]:find("no role chosen", 1, true) ~= nil, class .. ": none chosen: " .. tostring(out[#out - 1]))
+        t.ok(out[#out]:find("the default", 1, true) ~= nil, class .. ": no talents read: " .. tostring(out[#out]))
         t.eq(problemCount(addon), problems, class .. ": the word records no problem")
     end
 end
@@ -110,23 +111,24 @@ end
 
 tests["spec e2e: the role setting changed - the last line follows it"] = function(t)
     local c, addon = boot({ class = "WARRIOR" })
-    t.ok(#said(c, "spec") >= 3, "the spec, a reason, your role")
+    t.ok(#said(c, "spec") >= 4, "the spec, a reason, your role, where it comes from")
     said(c, "role dps")
     local out = said(c, "spec")
-    t.eq(out[#out], line("your role is set to damage (" .. addon.Packs.WARRIOR.roles.dps.name
+    t.eq(out[#out - 1], line("your role is set to damage (" .. addon.Packs.WARRIOR.roles.dps.name
         .. "), the recommended one."))
     t.eq(addon.settings:set("spec.role", "tank"), true)
     out = said(c, "spec")
-    t.ok(out[#out]:find("tanking (" .. addon.Packs.WARRIOR.roles.tank.name .. ")", 1, true) ~= nil,
-        "tank: " .. tostring(out[#out]))
-    t.ok(out[#out]:find("yours to choose", 1, true) ~= nil, "never a fault: " .. tostring(out[#out]))
+    t.ok(out[#out - 1]:find("tanking (" .. addon.Packs.WARRIOR.roles.tank.name .. ")", 1, true) ~= nil,
+        "tank: " .. tostring(out[#out - 1]))
+    t.ok(out[#out - 1]:find("yours to choose", 1, true) ~= nil, "never a fault: " .. tostring(out[#out - 1]))
+    t.ok(out[#out]:find("your role setting", 1, true) ~= nil, "from your setting: " .. tostring(out[#out]))
     t.eq(out[1], firstLine(addon, "WARRIOR"), "the recommendation does not move with your role")
 end
 
 tests["spec e2e: a role the class has no part for"] = function(t)
     local c = boot({ class = "MAGE", role = "heal" })
     local out = said(c, "spec")
-    t.ok(out[#out]:find("no healing part", 1, true) ~= nil, tostring(out[#out]))
+    t.ok(out[#out - 1]:find("no healing part", 1, true) ~= nil, tostring(out[#out - 1]))
 end
 
 tests["spec e2e: a reload keeps the role the word names"] = function(t)

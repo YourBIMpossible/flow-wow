@@ -187,8 +187,10 @@ local pack = {
     },
 
     -- No tank role: the class has none.
+    -- trees: the talent tree names the game gives (GetTalentTabInfo), as in
+    -- this pack's talentBuilds trees list below.
     roles = {
-        dps = { name = "Combat / Assassination / Subtlety", evidence = GUESS },
+        dps = { name = "Combat / Assassination / Subtlety", evidence = GUESS, trees = { "Assassination", "Combat", "Subtlety" } },
     },
 
     -- G31: the spec recommended while levelling alone, and why. Written for

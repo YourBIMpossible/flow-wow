@@ -54,7 +54,8 @@ tests["hunter pack: every data row is a first guess but the authored weights"] =
         for i, rule in ipairs(rules) do t.eq(rule.evidence, "first guess", list .. "[" .. i .. "]") end
     end
     for _, row in ipairs(p.resources) do t.eq(row.evidence, "first guess", "resource " .. row.name) end
-    t.eq(p.roles.dps, { name = "Marksmanship", evidence = "first guess" }, "D2")
+    t.eq(p.roles.dps, { name = "Marksmanship", evidence = "first guess",
+        trees = { "Beast Mastery", "Marksmanship", "Survival" } }, "D2")
     t.eq(p.roles.heal, nil)
     t.eq(p.roles.tank, nil)
     t.eq(p.proficiency.evidence, "first guess")
