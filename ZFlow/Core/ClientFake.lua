@@ -448,6 +448,20 @@ function ns.make.fakeClient(opts)
         c.minimapPins[#c.minimapPins + 1] = h
         return h
     end
+    -- Slice 6: the minimap bezel handle, recorded as the real one
+    -- (h.on the last look applied, h.shows how many applies).
+    c.bezelSets = {}
+    function c.minimapBezel(colour)
+        if s.noFrames then return nil end
+        local h = { shows = 0, colour = colour }
+        function h.show(on)
+            h.on = on == true
+            h.shows = h.shows + 1
+            return true
+        end
+        c.bezelSets[#c.bezelSets + 1] = h
+        return h
+    end
     -- The facts of one item: a copy of the row setItemInfo has for its ID,
     -- or nil. item: a link or an ID.
     function c.itemInfo(item)

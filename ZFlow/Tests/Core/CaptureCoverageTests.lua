@@ -55,7 +55,9 @@ local KIND = {
              -- what the caller's act does.
              "iconRow",
              -- S20: the per-role badges on the merchant's item buttons.
-             "markMerchantSpecs" },
+             "markMerchantSpecs",
+             -- Slice 6: the thin-line border on the minimap (UI/MinimapBezel.lua).
+             "minimapBezel" },
     tool = { "raw", "peek", "typeOf", "globalNames", "apiPresent", "saved", "savedExists", "savedMadeHere", "slash",
              "slashTaken", "unslash" },
     -- Hands back or runs a sound restart: never asked by the capture.

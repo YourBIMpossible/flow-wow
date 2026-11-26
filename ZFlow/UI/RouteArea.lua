@@ -16,7 +16,8 @@ local _, ns = ...
 --   RA.Update(client, cur, state[, shade]) -> { shown = n, r, g, b }
 --     one look; state is kept between looks (the marks are made once, as
 --     needed). Slice 4: the marks take the current step's colour (the
---     report's r, g, b); shade is { palette, byDistance }.
+--     report's r, g, b); shade is { palette, byDistance }. Slice 6: a
+--     one-point current step gets one dot instead (the report's dot).
 --   RA.Declare(k) -> api   api.last()
 -- Not tested in game.
 
@@ -27,6 +28,8 @@ RA.NAME = "routeArea"
 RA.SETTING = "nav.routeArea"
 RA.EVERY = 0.1     -- seconds between looks, as the waypoint pin's
 RA.SIZE = 8        -- how wide one mark is. A first guess.
+RA.DOT_SIZE = 12   -- how wide the one-point step's dot is (slice 6),
+                   -- as the waypoint pin. A first guess.
 
 local N = ns.Nav
 
@@ -38,7 +41,8 @@ if N and N.AT_POINT then at = N.AT_POINT end
 function RA.Points(cur)
     local s
     if type(cur) == "table" and type(cur.stops) == "table" then s = cur.stops[1] end
-    local area = type(s) == "table" and s.area or nil
+    local area = nil
+    if type(s) == "table" then area = s.area end
     if type(area) ~= "table" or #area < 2 then return nil end
     return area
 end
@@ -78,9 +82,43 @@ end
 
 -- A mark sits on the character icon when its middle is within half
 -- the mark of the minimap's middle. A first guess.
-local function onIcon(pin)
-    local half = RA.SIZE / 2
+local function onIcon(pin, size)
+    local half = size / 2
     return pin.x * pin.x + pin.y * pin.y <= half * half
+end
+
+-- Slice 6: the current step's one point, when it has no area of two
+-- or more: its place (or its area's only point).
+local function onePoint(cur)
+    local s
+    if type(cur) == "table" and type(cur.stops) == "table" then s = cur.stops[1] end
+    if type(s) ~= "table" then return nil end
+    if type(s.area) == "table" and #s.area >= 2 then return nil end
+    if type(s.place) == "table" then return s.place end
+    if type(s.area) == "table" then return s.area[1] end
+    return nil
+end
+
+-- The one-point step's dot, made once; nil when the client gives none.
+local function dotHandle(client, state, colour)
+    if state.dot then return state.dot end
+    if state.noDot then return nil end
+    local spec = { size = RA.DOT_SIZE }
+    if colour then spec.r, spec.g, spec.b = colour[1], colour[2], colour[3] end
+    local h = ask(client, "minimapPin", spec)
+    if type(h) ~= "table" or type(h.place) ~= "function" or type(h.hide) ~= "function" then
+        state.noDot = true
+        return nil
+    end
+    state.dot = h
+    return h
+end
+
+local function hideDot(state)
+    if state.dot and state.dotPlaced then
+        state.dot.hide()
+        state.dotPlaced = false
+    end
 end
 
 -- Mark i, made the first time it is needed; nil when the client gives none.
@@ -104,15 +142,51 @@ function RA.Update(client, cur, state, shade)
     state.handles = state.handles or {}
     state.placed = state.placed or {}
     local points = RA.Points(cur)
-    local seen = points and ask(client, "minimap") or nil
+    local single = nil
+    if not points then single = onePoint(cur) end
+    local seen
+    if points or single then seen = ask(client, "minimap") end
     if type(seen) ~= "table" then
         hideFrom(state, 0)
+        hideDot(state)
         return { shown = 0 }
     end
+    local anchor = single
+    if points and points[1] then anchor = points[1] end
+    local inset = RA.SIZE / 2
+    if single then inset = RA.DOT_SIZE / 2 end
     local mini = { size = seen.size, radius = seen.radius, rotates = seen.rotates,
-                   square = seen.square, inset = RA.SIZE / 2 }
-    local here = { position = ask(client, "position"), size = ask(client, "mapSize", points[1].map),
+                   square = seen.square, inset = inset }
+    local here = { position = ask(client, "position"), size = ask(client, "mapSize", anchor.map),
                    facing = ask(client, "facing") }
+    if single then
+        -- Slice 6: one dot for a one-point step; the area marks stand
+        -- down (they are the signal only when the step has an area).
+        hideFrom(state, 0)
+        local pin = N.MinimapPin(single, here, mini)
+        if not pin then
+            hideDot(state)
+            return { shown = 0 }
+        end
+        local colour = colourOf(cur, pin.distance, shade)
+        local h = dotHandle(client, state, colour)
+        if not h then return { shown = 0 } end
+        if colour then
+            local prev = state.dotColour
+            if prev and (prev[1] ~= colour[1] or prev[2] ~= colour[2] or prev[3] ~= colour[3])
+                and type(h.colour) == "function" then
+                h.colour(colour[1], colour[2], colour[3])
+            end
+            state.dotColour = colour
+        end
+        h.place(pin.x, pin.y, pin.edge)
+        if type(h.hollow) == "function" then h.hollow(onIcon(pin, RA.DOT_SIZE)) end
+        state.dotPlaced = true
+        local out = { shown = 1, dot = true }
+        if colour then out.r, out.g, out.b = colour[1], colour[2], colour[3] end
+        return out
+    end
+    hideDot(state)
     local inside, nearest = {}, nil
     for _, pt in ipairs(points) do
         local pin = N.MinimapPin(pt, here, mini)
@@ -150,7 +224,7 @@ function RA.Update(client, cur, state, shade)
         if not h then break end
         n = n + 1
         h.place(pin.x, pin.y, pin.edge)
-        if type(h.hollow) == "function" then h.hollow(onIcon(pin)) end
+        if type(h.hollow) == "function" then h.hollow(onIcon(pin, RA.SIZE)) end
         state.placed[n] = true
     end
     hideFrom(state, n)

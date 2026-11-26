@@ -2807,6 +2807,92 @@ function ns.make.client(env)
         function h.hollow(on) end
         return h
     end
+
+    -- c.minimapBezel(colour) -> h, or nil when there is no minimap
+    -- or no colour to draw with. colour = { r, g, b, a } comes from
+    -- the caller (UI/MinimapBezel.lua, out of the kit theme): this
+    -- client holds no theme colour of its own.
+    --   h.show(on) -> true: on draws the thin-line border (slice 6,
+    --       nav.minimapBezel) and hides the stock border; off hides
+    --       the line and puts the stock border back as it was when
+    --       the border was switched on (read at each switch-on).
+    --       The border is four thin strips on a frame hugging the
+    --       minimap's own frame, so a square minimap gets a square
+    --       border; it takes no mouse, and the minimap's own pins
+    --       (children of the minimap) draw above it.
+    -- First guesses, not seen in game: the stock border is the
+    -- MinimapBorder global (the ornate ring); the strips are
+    -- 2 units wide.
+    function c.minimapBezel(colour)
+        if type(colour) ~= "table" or type(colour.r) ~= "number"
+            or type(colour.g) ~= "number" or type(colour.b) ~= "number" then return nil end
+        local alpha = colour.a
+        if type(alpha) ~= "number" then alpha = 1 end
+        local map = env.Minimap
+        if map == nil then return nil end
+        local ok, f = call(env.CreateFrame, "Frame", nil, map)
+        if not ok or f == nil then return nil end
+        method(f, "SetAllPoints", map)
+        method(f, "EnableMouse", false)
+        local W = 2
+        local function strip()
+            local okT, tex = method(f, "CreateTexture", nil, "BACKGROUND")
+            if not okT or tex == nil then return nil end
+            method(tex, "SetColorTexture", colour.r, colour.g, colour.b, alpha)
+            return tex
+        end
+        local top = strip()
+        if top then
+            method(top, "SetPoint", "BOTTOMLEFT", f, "TOPLEFT", -W, 0)
+            method(top, "SetPoint", "BOTTOMRIGHT", f, "TOPRIGHT", W, 0)
+            method(top, "SetHeight", W)
+        end
+        local bottom = strip()
+        if bottom then
+            method(bottom, "SetPoint", "TOPLEFT", f, "BOTTOMLEFT", -W, 0)
+            method(bottom, "SetPoint", "TOPRIGHT", f, "BOTTOMRIGHT", W, 0)
+            method(bottom, "SetHeight", W)
+        end
+        local left = strip()
+        if left then
+            method(left, "SetPoint", "TOPRIGHT", f, "TOPLEFT", 0, 0)
+            method(left, "SetPoint", "BOTTOMRIGHT", f, "BOTTOMLEFT", 0, 0)
+            method(left, "SetWidth", W)
+        end
+        local right = strip()
+        if right then
+            method(right, "SetPoint", "TOPLEFT", f, "TOPRIGHT", 0, 0)
+            method(right, "SetPoint", "BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0)
+            method(right, "SetWidth", W)
+        end
+        local border = env.MinimapBorder
+        local stockShown = false
+        local function readStock()
+            stockShown = false
+            if border ~= nil then
+                local okS, shown = method(border, "IsShown")
+                if okS and shown == true then stockShown = true end
+            end
+        end
+        method(f, "Hide")
+        local applied
+        local h = {}
+        function h.show(on)
+            on = on == true
+            if applied == on then return true end
+            applied = on
+            if on then
+                readStock()
+                if border ~= nil then method(border, "Hide") end
+                method(f, "Show")
+            else
+                method(f, "Hide")
+                if border ~= nil and stockShown then method(border, "Show") end
+            end
+            return true
+        end
+        return h
+    end
     -- Bags and vendor helper (FEATURE-PLAN F5, owner Lazy): what an item
     -- is, how worn the gear is, whose loot a chat line is, and what the open
     -- loot window holds. Read only: nothing is sold, bought, repaired,
