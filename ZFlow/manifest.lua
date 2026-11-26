@@ -233,6 +233,7 @@ return {
         "UI/GameOptions.lua",
         "UI/SellList.lua",
         "UI/BankList.lua",
+        "UI/BankerWindow.lua",
         "UI/KitHost.lua",
         "Items/Keep.lua",
         "Items/Buyback.lua",
