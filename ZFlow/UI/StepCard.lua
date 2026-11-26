@@ -291,19 +291,31 @@ end
 -- The addon's own: declared when this file loads, started at login.
 -- A1-13 lead hook: what a left click on the quest arrow opens. The arrow
 -- calls a drawer with the arrow's key (UI/Arrow.lua setDrawer); only the
--- quest arrow opens the card, on the first stop still to walk. The other
--- arrows' left click stays as it was (nothing that can be seen). The card
--- gets no distance and no anchor here: it shows none rather than one made
--- up, and opens where the player put it, else at the screen centre.
---   M.ArrowDrawer(route, card) -> fn(key), true when it opened or closed one
+-- quest arrow opens the card. The step is the route's first stop not held,
+-- from TripRoute.View (look only; it covers the route word's routes and the
+-- route planned by itself, and carries objective, turnIn and place), so the
+-- card shows the stop the arrow walks. index = 1: View counts from the
+-- route's current stop, so that stop is the next step and "Do this next"
+-- rightly stays off. No distance and no anchor: the card shows none rather
+-- than one made up, and opens where the player put it, else at the centre.
+-- Other arrows' left click stays as it was (nothing that can be seen).
+--   M.ArrowDrawer(route, card) -> fn(key), true when it toggled the card
 function M.ArrowDrawer(route, card)
     return function(key)
         if key ~= "quest" then return false end
-        if type(route) ~= "table" or type(route.Current) ~= "function" then return false end
+        if type(route) ~= "table" or type(route.View) ~= "function" then return false end
         if type(card) ~= "table" or type(card.Toggle) ~= "function" then return false end
-        local stops = route.Current()
-        if type(stops) ~= "table" or type(stops[1]) ~= "table" then return false end
-        card.Toggle(stops[1], nil, nil)
+        local ok, view = pcall(route.View)
+        if not ok or type(view) ~= "table" or type(view.stops) ~= "table" then return false end
+        local step = nil
+        for _, s in ipairs(view.stops) do
+            if type(s) == "table" and s.held == nil then
+                step = s
+                break
+            end
+        end
+        if step == nil then return false end
+        card.Toggle(step, { index = 1 }, nil)
         return true
     end
 end
