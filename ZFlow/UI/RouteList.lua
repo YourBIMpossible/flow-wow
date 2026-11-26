@@ -1,19 +1,20 @@
 -- The route list beside the quest log (lead section 387, R4): the stops of
 -- the route the arrow walks (Nav/TripRoute.lua View), in route order, each a
--- numbered plain line with its distance; the current stop marked; a stop
--- that waits says why; what was left off the route is listed under it with
--- its reason. With no route it says so and how to plan one. It opens and
--- closes with the game's quest log and stands at its right edge
--- (client.questLogFrame); the setting RL.SETTING (on at first) turns it and
--- the world map pieces (UI/MapRoute.lua: the numbers and the zone card)
+-- numbered plain line with its distance; the current stop marked; the stops
+-- that wait under their own heading with the reason in plain words; what was
+-- left off the route under its own. With no route it says so and how to plan
+-- one. It opens and closes with the game's quest log and stands at its right
+-- edge (client.questLogFrame); the setting RL.SETTING (on at first) turns it
+-- and the world map pieces (UI/MapRoute.lua: the numbers and the zone card)
 -- off, and the lines on the world map with them (UI/MapRouteLines.lua reads
--- this setting too). A row that hides only the map trail comes with the
--- slice that draws the trail (lead section 543).
+-- this setting too).
 --
--- It shows only what the route holds: the stops, their words and their
--- places are the route's (the quest log's own titles and objective lines,
--- places this player learned). Nothing is authored here, and a reason the
--- route does not give is not made up.
+-- Slice 5 (DISPATCH section 893): the rows are Nav/TrackerList.lua TL.Rows',
+-- the ONE builder the tracker window reads too — this file draws them, it
+-- does not build its own. It shows only what the route holds: the stops,
+-- their words and their places are the route's (the quest log's own titles
+-- and objective lines, places this player learned). Nothing is authored
+-- here, and a reason the route does not give is not made up.
 --
 -- Built from the kit's parts only (UI/Kit.lua, drawn by client.kitWindow):
 -- this file names no template, colour, font or size; its pictures are the
@@ -21,22 +22,22 @@
 --
 -- LOOK ONLY: nothing is moved, targeted, cast or sent. A click on a row
 -- opens the world map on that stop's map (client.showMap), nothing else.
---
---   RL.Rows(view, here, needOf) -> rows, left   (pure) the numbered rows
---                          and what was left off; needOf(quest) -> tags,
---                          note (RL.Needs), or nil: no needs shown
---   RL.Needs(raw) -> tags, note | nil   (pure) from Questie's quest fields
+-- The one action is the Skip button under the current row, the same as
+-- the tracker's: it asks the route to skip (tripRoute.Skip).
 --
 -- QUEST NEEDS (parity row C-14, lead section 603): a stop of a quest whose
 -- Questie data says so gets "(escort)" or "(group of N)" after its words,
 -- read through Questie's own QueryQuestSingle(id, "triggerEnd" |
--- "suggestedGroup"). As Flow Modules/Quests/QuestNeeds.lua Q.ApplyNeed (tag
--- after the name). Flow's hand-written escort note (Q.EscortNote) is not
--- carried: no cited Forever source backs it (lead section 620, 611/619). Flow's per-quest table
--- (where / note / tool / item, questNeed 98430) is not carried: a table of
--- quest IDs waits for a ruling. "group of N" is Questie's suggested group,
--- which Flow did not show.
---   RL.Children(rows, left, how, onRow) -> the window's parts (pure)
+-- "suggestedGroup"). The tags are TL.Needs', applied by TL.Rows through
+-- the needOf this window hands it. As Flow Modules/Quests/QuestNeeds.lua
+-- Q.ApplyNeed (tag after the name). Flow's hand-written escort note
+-- (Q.EscortNote) is not carried: no cited Forever source backs it (lead
+-- section 620, 611/619). Flow's per-quest table (where / note / tool /
+-- item, questNeed 98430) is not carried: a table of quest IDs waits for
+-- a ruling. "group of N" is Questie's suggested group, which Flow did
+-- not show.
+--   RL.Children(rows, more, nLeft, counts, plan, how, onRow, onSkip)
+--                          -> the window's parts (pure)
 --   RL.Declare(k, diag) -> api   api.Refresh(), api.Shown(), api.Show(row)
 -- Not tested in game.
 local _, ns = ...
@@ -50,212 +51,90 @@ RL.SETTING = "nav.routePanel"
 RL.HEADER = "Your route"
 RL.EMPTY = "No route planned yet."
 RL.EMPTY_HOW = "Type %s %s to plan one from your quest log."
-RL.TURN_IN = "Turn in %s"
-RL.TURN_IN_MANY = "Turn in %d quests"
-RL.GIVE_TO = "Give it to %s"
-RL.GIVE_THEM_TO = "Give them to %s"
-RL.FOR_QUEST = "For the quest %s"
+RL.SKIP = "Skip this stop"
 RL.NUMBERED = "%d. %s"
 RL.NOW = "The arrow points here now"
-RL.WAITING = "Waiting: %s"
-RL.LEFT_OFF = "Not on the route: %s"
 RL.MORE = "and %d more stops"
 RL.SUMMARY_STOPS = "%d stops"
 RL.SUMMARY_ONE = "1 stop"
 RL.SUMMARY_WAITING = "%d waiting"
 RL.SUMMARY_LEFT = "%d not on the route"
 RL.TIP = "Click to open the map on this stop."
-RL.MAX = 12
 RL.EVERY = 0.25
 RL.WIDTH = 300
 RL.HEIGHT = 420
 RL.TONE_NOW = "good"
 RL.TONE_BLOCKED = "bad"
--- Tags from Questie's quest fields (Flow Q.ApplyNeed).
-RL.ESCORT = "escort"
-RL.GROUP = "group of %d"
-RL.TAGS = "%s (%s)"
-
--- The reasons the route gives in a few words, said as a whole sentence. A
--- reason not listed here is shown as the route gave it.
-RL.PLAIN = {
-    ["not complete any more"] = "this quest is not complete any more. Finish it again first.",
-    ["objectives not read yet"] = "the game has not told its objectives yet. Open the quest once.",
-    ["a quest before it is not done"] = "a quest that comes before it is not done.",
-    ["not on this map"] = "it is in another zone. Plan a new route when you get there.",
-    ["giver's place not known"] = "nobody you met has shown where its giver stands.",
-    ["location unknown"] = "its place is not known yet.",
-}
 
 local function isText(v) return type(v) == "string" and v ~= "" end
 
-function RL.Why(why)
-    if not isText(why) then return "the route gave no reason." end
-    return RL.PLAIN[why] or why
-end
-
--- "Turn in: <name>" (Nav/QuestSource.lua Q.TURN_IN_TO) -> the name, or nil.
-local function receiver(detail)
-    if not isText(detail) then return nil end
-    local Q = ns.Nav and ns.Nav.QuestSource
-    local form = type(Q) == "table" and Q.TURN_IN_TO or "Turn in: %s"
-    local head = form:gsub("%%s", "")
-    if detail:sub(1, #head) == head and #detail > #head then return detail:sub(#head + 1) end
-    return nil
-end
-
-local function samePlace(a, b)
-    return type(a) == "table" and type(b) == "table" and a.map == b.map and a.x == b.x and a.y == b.y
-end
-
--- One stop's words: text, sub, icon (a Kit.look.icon key).
-local function words(s)
-    local label = isText(s.label) and s.label or "?"
-    if s.kind == nil and s.turnIn == true then
-        local to = receiver(s.detail)
-        return RL.TURN_IN:format(label), to and RL.GIVE_TO:format(to) or nil, "questInLog"
-    end
-    if s.kind == nil and s.quest ~= nil then
-        if isText(s.detail) then return s.detail, RL.FOR_QUEST:format(label), "questLater" end
-        return label, nil, "questLater"
-    end
-    return label, isText(s.detail) and s.detail or nil, s.kind == "pickup" and "questAvailable" or nil
-end
-
-function RL.Needs(raw)
-    if type(raw) ~= "table" then return nil end
-    local tags = {}
-    local te = raw.triggerEnd
-    local text = type(te) == "table" and te[1]
-    if type(text) == "string" and text:lower():find("escort", 1, true) then
-        tags[#tags + 1] = RL.ESCORT
-    end
-    local g = raw.suggestedGroup
-    if type(g) == "number" and g == g and g >= 2 and g < 100 then
-        tags[#tags + 1] = RL.GROUP:format(math.floor(g))
-    end
-    if #tags == 0 then return nil end
-    return tags, nil
-end
-
-local function withNeeds(row, quest, needOf)
-    if type(needOf) ~= "function" or quest == nil then return row end
-    local ok, tags, note = pcall(needOf, quest)
-    if not ok or type(tags) ~= "table" or #tags == 0 then return row end
-    row.text = RL.TAGS:format(row.text, table.concat(tags, ", "))
-    if isText(note) then row.sub = row.sub and (note .. " " .. row.sub) or note end
-    return row
-end
-
--- rows: the stops to walk, numbered in route order, turn-ins at one place
--- as one row; then the stops that wait (no number). left: what the route
--- left off. Each row { n, count, text, sub, dist, icon, now, blocked, why,
--- place }. here: { map, x, y, size = { w, h } } or nil.
-function RL.Rows(view, here, needOf)
-    if type(view) ~= "table" or type(view.stops) ~= "table" then return nil, nil end
-    local walk, waiting = {}, {}
-    for _, s in ipairs(view.stops) do
-        if type(s) == "table" and type(s.place) == "table" then
-            if s.held then
-                local text, _, _ = words(s)
-                waiting[#waiting + 1] = withNeeds({ text = text, sub = RL.WAITING:format(RL.Why(s.held)),
-                    blocked = true, why = s.held, icon = "questNotForYou", place = s.place }, s.quest, needOf)
-            else
-                local last = walk[#walk]
-                if last and last.turnIn and s.kind == nil and s.turnIn == true and samePlace(last.place, s.place) then
-                    last.count = last.count + 1
-                    last.names[#last.names + 1] = isText(s.label) and s.label or "?"
-                    if last.to ~= receiver(s.detail) then last.to = nil end
-                else
-                    local text, sub, icon = words(s)
-                    walk[#walk + 1] = { count = 1, text = text, sub = sub, icon = icon, place = s.place,
-                        turnIn = s.kind == nil and s.turnIn == true, to = receiver(s.detail),
-                        names = { isText(s.label) and s.label or "?" }, quest = s.quest }
-                end
-            end
-        end
-    end
-    local T = ns.Nav and ns.Nav.Trip
-    local dists = T and type(T.TrackRows) == "function" and T.TrackRows({ stops = walk }, here) or nil
-    local rows = {}
-    for i, r in ipairs(walk) do
-        local row = { n = i, count = r.count, text = r.text, sub = r.sub, icon = r.icon, place = r.place,
-            now = i == 1, dist = dists and dists[i] and dists[i].dist or nil }
-        if r.count > 1 then
-            row.text = RL.TURN_IN_MANY:format(r.count)
-            row.sub = table.concat(r.names, ", ")
-            if r.to then row.sub = row.sub .. ". " .. RL.GIVE_THEM_TO:format(r.to) end
-        else
-            withNeeds(row, r.quest, needOf)
-        end
-        rows[#rows + 1] = row
-    end
-    for _, r in ipairs(waiting) do rows[#rows + 1] = r end
-    local left = {}
-    for _, l in ipairs(type(view.left) == "table" and view.left or {}) do
-        if type(l) == "table" then
-            left[#left + 1] = { text = isText(l.label) and l.label or "?",
-                sub = RL.LEFT_OFF:format(RL.Why(l.why)), blocked = true, why = l.why, icon = "questNotForYou" }
-        end
-    end
-    return rows, left
-end
-
-function RL.Summary(rows, left)
-    local stops, waiting = 0, 0
-    for _, r in ipairs(rows or {}) do
-        if r.n then stops = stops + 1 else waiting = waiting + 1 end
-    end
+local function TL() return ns.Nav and ns.Nav.TrackerList end
+-- The counts line, from TL.Rows' counts (over all stops, capped or not).
+function RL.Summary(rows, counts, nLeft)
+    local stops = type(counts) == "table" and counts.stops or 0
+    local waiting = type(counts) == "table" and counts.waiting or 0
     local parts = { stops == 1 and RL.SUMMARY_ONE or RL.SUMMARY_STOPS:format(stops) }
     if waiting > 0 then parts[#parts + 1] = RL.SUMMARY_WAITING:format(waiting) end
-    if #(left or {}) > 0 then parts[#parts + 1] = RL.SUMMARY_LEFT:format(#left) end
+    if (nLeft or 0) > 0 then parts[#parts + 1] = RL.SUMMARY_LEFT:format(nLeft) end
     return table.concat(parts, ", ")
 end
 
+-- The window's parts from TL.Rows' rows (slice 5): the plan line, the
+-- counts, the numbered stops, the held stops under their heading, the
+-- left-off steps under theirs, how many more the cap left out, and the
+-- Skip button under the current row (onSkip, wired by Declare).
 -- how: the empty state's second line. onRow(row): a row's click, or nil.
-function RL.Children(rows, left, how, onRow)
+function RL.Children(rows, more, nLeft, counts, plan, how, onRow, onSkip)
     local kids = { { kind = "header", key = "header", title = RL.HEADER } }
-    left = type(left) == "table" and left or {}
-    if type(rows) ~= "table" or (#rows == 0 and #left == 0) then
+    if type(rows) ~= "table" or #rows == 0 then
         kids[#kids + 1] = { kind = "empty", key = "empty", text = RL.EMPTY,
             how = isText(how) and how
                 or RL.EMPTY_HOW:format(tostring(type(ns.id) == "table" and ns.id.slash or ""), "route") }
         return kids
     end
+    local tl = TL()
     local icons = ns.Kit and ns.Kit.look and ns.Kit.look.icon or {}
-    kids[#kids + 1] = { kind = "line", key = "summary", text = RL.Summary(rows, left) }
-    local shown, held, hidden = 0, 0, 0
+    if isText(plan) then kids[#kids + 1] = { kind = "line", key = "plan", text = plan } end
+    kids[#kids + 1] = { kind = "line", key = "summary", text = RL.Summary(rows, counts, nLeft) }
+    local held, leftN, hasCurrent = 0, 0, false
     for _, r in ipairs(rows) do
-        if shown + held >= RL.MAX then
-            hidden = hidden + 1
+        local line = { kind = "line", text = r.text, sub = r.sub, icon = icons[r.icon or ""] }
+        if r.n then
+            line.key = r.current and "current" or ("stop" .. r.n)
+            line.text = RL.NUMBERED:format(r.n, r.text)
+            line.right = r.dist
+            if r.current then
+                hasCurrent = true
+                line.tone = RL.TONE_NOW
+                line.sub = r.sub and (r.sub .. ". " .. RL.NOW) or RL.NOW
+            end
+        elseif r.held ~= nil then
+            held = held + 1
+            if held == 1 and tl then
+                kids[#kids + 1] = { kind = "line", key = "waitingHead", text = tl.WAITING_HEAD }
+            end
+            line.key = "held" .. held
+            line.tone = RL.TONE_BLOCKED
         else
-            local line = { kind = "line", text = r.text, sub = r.sub, icon = icons[r.icon or ""] }
-            if r.n then
-                shown = shown + 1
-                line.key = r.now and "current" or ("stop" .. r.n)
-                line.text = RL.NUMBERED:format(r.n, r.text)
-                line.right = r.dist
-                if r.now then
-                    line.tone = RL.TONE_NOW
-                    line.sub = r.sub and (r.sub .. ". " .. RL.NOW) or RL.NOW
-                end
-            else
-                held = held + 1
-                line.key = "held" .. held
-                line.tone = RL.TONE_BLOCKED
+            leftN = leftN + 1
+            if leftN == 1 and tl then
+                kids[#kids + 1] = { kind = "line", key = "leftHead", text = tl.LEFT_HEAD }
             end
-            if type(onRow) == "function" and type(r.place) == "table" then
-                line.tooltip = RL.TIP
-                line.onClick = function() onRow(r) end
-            end
-            kids[#kids + 1] = line
+            line.key = "left" .. leftN
+            line.tone = RL.TONE_BLOCKED
         end
+        if type(onRow) == "function" and type(r.place) == "table" then
+            line.tooltip = RL.TIP
+            line.onClick = function() onRow(r) end
+        end
+        kids[#kids + 1] = line
     end
-    if hidden > 0 then kids[#kids + 1] = { kind = "line", key = "more", text = RL.MORE:format(hidden) } end
-    for i, l in ipairs(left) do
-        if i > RL.MAX then break end
-        kids[#kids + 1] = { kind = "line", key = "left" .. i, text = l.text, sub = l.sub,
-            icon = icons[l.icon or ""], tone = RL.TONE_BLOCKED }
+    if type(more) == "number" and more > 0 then
+        kids[#kids + 1] = { kind = "line", key = "more", text = RL.MORE:format(more) }
+    end
+    if hasCurrent and type(onSkip) == "function" then
+        kids[#kids + 1] = { kind = "footer", key = "footer", text = "",
+            buttons = { { kind = "button", key = "skip", text = RL.SKIP, onClick = onSkip } } }
     end
     return kids
 end
@@ -319,6 +198,15 @@ function RL.Declare(k, diag)
         return ask(client(), "showMap", row.place.map) == true
     end
 
+    -- The Skip button under the current row (slice 5): the same action
+    -- as the tracker's — the route skips its current stop.
+    function api.Skip()
+        local r = k.use and k.use("tripRoute")
+        if r and type(r.Skip) == "function" then pcall(r.Skip) end
+        api.Refresh()
+        return true
+    end
+
     -- Questie's own fields for a quest, through its loader; nil without it.
     local function needOf(quest)
         local db = ask(client(), "questieModule", "QuestieDB")
@@ -328,15 +216,29 @@ function RL.Declare(k, diag)
             local ok, v = pcall(db.QueryQuestSingle, quest, field)
             if ok then raw[field] = v end
         end
-        return RL.Needs(raw)
+        local tl = TL()
+        return tl and tl.Needs(raw)
+    end
+
+    -- Slice 5: the route settings the list reads — how many stops to
+    -- show (nav.routeShown) and the plan line (nav.routeMode/Sort).
+    local function setting(key)
+        local s = ctx and ctx.settings
+        if type(s) ~= "table" or type(s.get) ~= "function" then return nil end
+        local ok, v = pcall(s.get, s, key)
+        if ok then return v end
+        return nil
     end
 
     local function parts()
         local id = k.id or ns.id
         local T = ns.Nav and ns.Nav.TripRoute
         local how = RL.EMPTY_HOW:format(tostring(id.slash), tostring(T and T.WORD or "route"))
-        local rows, left = RL.Rows(view(), hereNow(), needOf)
-        return RL.Children(rows, left, how, api.Show)
+        local tl = TL()
+        if not tl then return RL.Children(nil) end
+        local rows, more, nLeft, counts = tl.Rows(view(), hereNow(), tl.MaxShown(setting("nav.routeShown")), needOf)
+        local plan = tl.Plan(setting("nav.routeMode"), setting("nav.routeSort"))
+        return RL.Children(rows, more, nLeft, counts, plan, how, api.Show, api.Skip)
     end
 
     local function place(box)

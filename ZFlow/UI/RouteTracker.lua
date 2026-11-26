@@ -53,7 +53,7 @@ RT.HEADER = "Route"
 RT.EMPTY = { "No route planned.", "Plan one with the trip or route word." }
 RT.SKIP = "Skip this stop"
 RT.MORE = "and %d more"
-RT.HELD = "Held: %s"
+RT.TIP = "Click to open the map on this stop."
 RT.MAX = 8
 RT.EVERY = 1
 RT.TONE_NOW = "good"
@@ -79,7 +79,7 @@ function RT.ItemLine(item)
     return line
 end
 
-function RT.Rows(view, current, here)
+function RT.Rows(view, current, here, max)
     local TL = ns.Nav and ns.Nav.TrackerList
     if type(TL) ~= "table" then return nil end
     -- Lead section 762: the view whenever it has stops or steps that can't
@@ -92,7 +92,7 @@ function RT.Rows(view, current, here)
         if type(view.left) == "table" then n = n + #view.left end
         if n > 0 then src = view end
     end
-    return TL.Rows(src, here, RT.MAX)
+    return TL.Rows(src, here, max or RT.MAX)
 end
 
 -- The row that is the current step: the one TL.Rows marked; rows that
@@ -109,34 +109,55 @@ local function currentIndex(rows)
     return 1
 end
 
-function RT.Children(rows, item, more)
+-- The window's parts from TL.Rows' rows (slice 5: the same rows the
+-- list beside the quest log draws — the plan line, the held stops
+-- under their heading, the left-off steps under theirs, and a click
+-- on a row opens the map on its stop, as in the list). The rows
+-- arrive capped (nav.routeShown, read by Declare); more says how
+-- many stops the cap left out.
+function RT.Children(rows, item, more, plan, onRow)
     local kids = { { kind = "header", key = "header", title = RT.HEADER } }
     if type(rows) ~= "table" or #rows == 0 then
         kids[#kids + 1] = { kind = "empty", key = "empty", text = RT.EMPTY[1], how = RT.EMPTY[2] }
         return kids
     end
+    local TL = ns.Nav and ns.Nav.TrackerList
+    if type(plan) == "string" and plan ~= "" then
+        kids[#kids + 1] = { kind = "line", key = "plan", text = plan }
+    end
     local now = currentIndex(rows)
-    local cut = false
+    local held, leftN = 0, 0
     for i, r in ipairs(rows) do
-        if i > RT.MAX then
-            kids[#kids + 1] = { kind = "line", key = "more", text = RT.MORE:format(#rows - RT.MAX) }
-            cut = true
-            break
-        end
-        local line = { kind = "line", text = tostring(r.label), sub = r.detail, right = r.dist }
-        if i == now then
-            line.key = "current"
-            line.tone = RT.TONE_NOW
-        elseif r.held ~= nil then
-            line.key = "held" .. i
-            line.sub = RT.HELD:format(tostring(r.held))
+        local line
+        if r.held ~= nil then
+            held = held + 1
+            if held == 1 and TL then
+                kids[#kids + 1] = { kind = "line", key = "waitingHead", text = TL.WAITING_HEAD }
+            end
+            line = { kind = "line", key = "held" .. held, text = tostring(r.label), sub = r.held }
+        elseif r.left ~= nil then
+            leftN = leftN + 1
+            if leftN == 1 and TL then
+                kids[#kids + 1] = { kind = "line", key = "leftHead", text = TL.LEFT_HEAD }
+            end
+            line = { kind = "line", key = "left" .. leftN, text = tostring(r.label), sub = r.sub }
         else
-            line.key = "next" .. (i - 1)
+            line = { kind = "line", text = tostring(r.label), sub = r.detail, right = r.dist }
+            if i == now then
+                line.key = "current"
+                line.tone = RT.TONE_NOW
+            else
+                line.key = "next" .. (i - 1)
+            end
+        end
+        if type(onRow) == "function" and type(r.place) == "table" then
+            line.tooltip = RT.TIP
+            line.onClick = function() onRow(r) end
         end
         kids[#kids + 1] = line
         if i == now then kids[#kids + 1] = RT.ItemLine(item) end
     end
-    if not cut and whole(more) and more > 0 then
+    if whole(more) and more > 0 then
         kids[#kids + 1] = { kind = "line", key = "more", text = RT.MORE:format(more) }
     end
     kids[#kids + 1] = { kind = "footer", key = "footer", text = "",
@@ -211,11 +232,31 @@ function RT.Declare(k, diag)
         return nil
     end
 
+    -- A row's click: the world map opens on that stop's map (slice 5:
+    -- the same action as the list beside the quest log).
+    function api.Show(row)
+        if type(row) ~= "table" or type(row.place) ~= "table" or row.place.map == nil then return false end
+        return ask(client(), "showMap", row.place.map) == true
+    end
+
+    -- Slice 5: the route settings the tracker reads — how many stops
+    -- to show (nav.routeShown) and the plan line (nav.routeMode/Sort).
+    local function setting(key)
+        local s = ctx and ctx.settings
+        if type(s) ~= "table" or type(s.get) ~= "function" then return nil end
+        local ok, v = pcall(s.get, s, key)
+        if ok then return v end
+        return nil
+    end
+
     local function tree(cur)
-        local rows, more = RT.Rows(view(), cur, hereNow())
+        local TL = ns.Nav and ns.Nav.TrackerList
+        local max = TL and TL.MaxShown(setting("nav.routeShown")) or nil
+        local rows, more = RT.Rows(view(), cur, hereNow(), max)
         local item
         if rows then item = itemOf(cur) end
-        local kids = RT.Children(rows, item, more)
+        local plan = TL and TL.Plan(setting("nav.routeMode"), setting("nav.routeSort")) or nil
+        local kids = RT.Children(rows, item, more, plan, api.Show)
         local foot = kids[#kids]
         if foot.kind == "footer" then
             foot.buttons[1].onClick = function()
