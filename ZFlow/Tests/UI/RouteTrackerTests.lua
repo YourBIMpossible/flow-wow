@@ -204,4 +204,25 @@ tests["tracker parts: a click hands over the row's stop and place; a left-behind
     t.eq(got and got.stop, stops[1], "and the row's stop")
 end
 
+tests["slice 7: a card that cannot open, or raises, leaves the tracker row's click on the map"] = function(t)
+    for _, toggle in ipairs({ function() return false end, function() error("boom") end }) do
+        local c = ns.make.fakeClient()
+        c.setSaved(ns.id.accountDB, {})
+        local k = ns.Kernel({}, c)
+        ns.Diag.Start(k)
+        local v = current()
+        v.left = {}
+        k:Module({ name = "tripRoute", provides = { View = function() return v end, Current = function() return v end } })
+        k:Module({ name = "stepCard", provides = { Toggle = toggle } })
+        local api = RT().Declare(k)
+        k:Boot()
+        c.fire("ADDON_LOADED", ns.id.addon)
+        c.fire("PLAYER_LOGIN")
+        c.fire("PLAYER_ENTERING_WORLD")
+        api.Open()
+        c.kitClick(RT().ID, "current")
+        t.ok(c.mapsShown ~= nil and #c.mapsShown > 0, "the map opens, as in slice 5")
+    end
+end
+
 return tests

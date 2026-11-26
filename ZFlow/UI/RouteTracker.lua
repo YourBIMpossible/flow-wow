@@ -254,15 +254,16 @@ function RT.Declare(k, diag)
     -- shared detail view); the map is the card's own button. A held
     -- or left-behind row passes no index, so the card shows its
     -- "not on your route" reason. Without the card module, the
-    -- click keeps slice 5's behaviour and opens the map.
+    -- click keeps slice 5's behaviour and opens the map; so does a
+    -- card that cannot open (Toggle not true) or raises.
     local function openRow(row)
         local card = k.use and k.use("stepCard")
         if type(card) == "table" and type(card.Toggle) == "function"
             and type(row) == "table" and type(row.stop) == "table" then
             local facts
             if row.index then facts = { index = row.index } end
-            card.Toggle(row.stop, facts)
-            return true
+            local ok, shown = pcall(card.Toggle, row.stop, facts)
+            if ok and shown == true then return true end
         end
         return api.Show(row)
     end

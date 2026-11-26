@@ -54,6 +54,7 @@ local function start(opts)
     local api = RL().Declare(k)
     local card
     if opts.card then card = ns.StepCard.Declare(k) end
+    if opts.cardToggle then k:Module({ name = "stepCard", provides = { Toggle = opts.cardToggle } }) end
     local map = ns.MapRoute.Declare(k)
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
@@ -459,6 +460,16 @@ tests["slice 7: a row click opens the step card; held and left-behind rows say n
     t.eq(h.card.Shown(), true, "a left-behind row opens the card too")
     first = cardButton(treeOf(), "act.first")
     t.eq(first and first.tooltip, "This step is not on your route.", "the same reason for what was left off")
+end
+
+tests["slice 7: a card that cannot open, or raises, leaves the row's click on the map"] = function(t)
+    for _, toggle in ipairs({ function() return false end, function() error("boom") end }) do
+        local h = start({ view = view(), cardToggle = toggle })
+        h.c.setQuestLogFrame(BOX)
+        h.api.Refresh()
+        h.c.kitClick(RL().ID, "current")
+        t.ok(h.c.mapsShown ~= nil and #h.c.mapsShown > 0, "the map opens, as in slice 5")
+    end
 end
 
 return tests
