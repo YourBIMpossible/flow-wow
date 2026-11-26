@@ -131,6 +131,17 @@ SellList.RESERVATIONS_UNKNOWN = "Reservations not known: nothing is offered for 
 SellList.TITLE = "Sell list"
 SellList.SELL_SECTION = "To sell"
 SellList.KEPT_SECTION = "Kept, and why"
+-- C-32 (the drawing half): the keep-for ticks above the kept list — the
+-- gear.keepOffspec switch as a checkbox and one tick per role of your
+-- class, writing char state.gear.keepFor (Gear/OffSpec.lua's data).
+-- The switch's words are its settings row's, word for word.
+SellList.KEEP_SECTION = "Keeping"
+SellList.KEEP_LABEL = "Keep gear for your other roles"
+SellList.KEEP_FOR_LABEL = "Keep gear for:"
+SellList.KEEP_TEXT = "Tick the roles you want gear kept for. Once you tick any role, "
+    .. "the ticks decide what is kept and the 'keep off-spec gear' switch is no longer read. "
+    .. "With nothing ticked, the switch works as before."
+SellList.KEEP_GREYED = "Ticks above decide what is kept."
 SellList.TOTAL = "Total"
 SellList.NO_TOTAL = "No total"
 -- The footer when some rows are not in the total, and when none is.
@@ -213,6 +224,60 @@ end
 -- says it can't be made).
 --   -> { stacks, kept = SellView.Kept's, unavailable = true, or
 --        list = ItemSell.List's }
+-- C-32: any tick saved (on or off) hands the keeping to the ticks: a
+-- saved off is a decision too (GearOffSpec.KeepFor reads it so).
+function SellList.AnyTick(choices)
+    if type(choices) ~= "table" then return false end
+    for _, v in pairs(choices) do
+        if v == true or v == false then return true end
+    end
+    return false
+end
+
+-- C-32: the keep-for block the window draws, from the facts
+-- GearOffSpec.Apply wrote into the listing's context: your roles and
+-- their names, your saved ticks (char, GearOffSpec.KEEP_FOR_PATH) and
+-- the switch (account, GearOffSpec.PATH; on as made). nil when your
+-- class has fewer than two roles: there is nothing else to keep for.
+function SellList.KeepFor(store, context)
+    if type(context) ~= "table" or type(context.roleNames) ~= "table" then return nil end
+    local roles = {}
+    for role in pairs(context.roleNames) do roles[#roles + 1] = role end
+    table.sort(roles)
+    if #roles < 2 then return nil end
+    local choices, switch = nil, nil
+    local O = ns.GearOffSpec
+    if type(store) == "table" and type(store.get) == "function" and type(O) == "table" then
+        local okC, saved = pcall(store.get, store, "char", O.KEEP_FOR_PATH)
+        if okC and type(saved) == "table" then choices = saved end
+        local okS, value = pcall(store.get, store, "account", O.PATH)
+        if okS then switch = value end
+    end
+    return { roles = roles, names = context.roleNames, choices = choices,
+        switch = switch ~= false, role = context.role }
+end
+
+-- C-32: one tick's write. On saves true, off saves false; when no tick
+-- is on any more, the saved ticks are cleared altogether, so unticking
+-- all hands the keeping back to the switch (the agreed tick text).
+function SellList.SaveTick(store, role, on)
+    if type(store) ~= "table" or type(store.get) ~= "function" or type(store.set) ~= "function" then return end
+    local O = ns.GearOffSpec
+    if type(O) ~= "table" then return end
+    local ticks = {}
+    local ok, cur = pcall(store.get, store, "char", O.KEEP_FOR_PATH)
+    if ok and type(cur) == "table" then
+        for r, v in pairs(cur) do ticks[r] = v end
+    end
+    ticks[role] = on == true
+    local anyOn = false
+    for _, v in pairs(ticks) do
+        if v == true then anyOn = true end
+    end
+    if not anyOn then ticks = {} end
+    pcall(store.set, store, "char", O.KEEP_FOR_PATH, ticks)
+end
+
 function SellList.Listing(client, store, grants, r)
     local stacks = type(client) == "table" and type(client.bagItems) == "function" and client.bagItems() or nil
     local read = type(client) == "table" and type(client.itemInfo) == "function" and client.itemInfo or nil
@@ -251,6 +316,8 @@ function SellList.Listing(client, store, grants, r)
         end
     end
     local out = { stacks = stacks, kept = ns.SellView.Kept(bag, context), notRead = 0 }
+    -- C-32: the keep-for ticks' block, from the facts Apply just wrote.
+    out.keepFor = SellList.KeepFor(store, context)
     -- Items whose facts were not read yet (no name, quality or price),
     -- counted once per item: two stacks of one item are one item.
     local unreadSeen = {}
@@ -488,6 +555,40 @@ end
 -- A listing as a Kit.Window spec. client: for the icons and the quality
 -- colours (SellList.Look); without it the lines have none. id: the identity
 -- the title and the empty state name the add-on from (default ns.id).
+-- C-32: the wired keep actions of a tree, or nil (SellList.Tree draws
+-- without any; the window wires them).
+local function keepAction(action)
+    if type(action) ~= "table" then return nil end
+    if type(action.keep) ~= "table" then return nil end
+    return action.keep
+end
+
+-- C-32: the switch as a checkbox: on as the setting reads, greyed once
+-- any tick is saved, with its settings row's words.
+local function keepSwitch(keepFor, action)
+    local part = { kind = "checkbox", key = "keep.switch", label = SellList.KEEP_LABEL,
+        checked = keepFor.switch ~= false, enabled = not SellList.AnyTick(keepFor.choices),
+        onToggle = function() end }
+    local keep = keepAction(action)
+    if keep and type(keep.onSwitch) == "function" then
+        part.onToggle = function(on) keep.onSwitch(on == true) end
+    end
+    return part
+end
+
+-- C-32: one role's tick, named for the role, checked as saved.
+local function keepTick(keepFor, role, action)
+    local checked = false
+    if type(keepFor.choices) == "table" and keepFor.choices[role] == true then checked = true end
+    local part = { kind = "checkbox", key = "keep." .. role, label = keepFor.names[role],
+        checked = checked, onToggle = function() end }
+    local keep = keepAction(action)
+    if keep and type(keep.onTick) == "function" then
+        part.onToggle = function(on) keep.onTick(role, on == true) end
+    end
+    return part
+end
+
 function SellList.TreeOf(listing, client, id, action)
     id = type(id) == "table" and id or ns.id
     listing = type(listing) == "table" and listing or {}
@@ -562,6 +663,20 @@ function SellList.TreeOf(listing, client, id, action)
     end
     for _, note in ipairs(Present.SellNotes(list)) do
         body[#body + 1] = { kind = "line", text = note, tone = "warn" }
+    end
+    -- C-32: the keep-for ticks, above the kept list they explain.
+    if type(listing.keepFor) == "table" then
+        local keepFor = listing.keepFor
+        body[#body + 1] = { kind = "section", text = SellList.KEEP_SECTION }
+        body[#body + 1] = keepSwitch(keepFor, action)
+        body[#body + 1] = { kind = "line", text = SellList.KEEP_FOR_LABEL }
+        for _, role in ipairs(keepFor.roles) do
+            body[#body + 1] = keepTick(keepFor, role, action)
+        end
+        body[#body + 1] = { kind = "line", text = SellList.KEEP_TEXT, wrap = true }
+        if SellList.AnyTick(keepFor.choices) then
+            body[#body + 1] = { kind = "line", text = SellList.KEEP_GREYED }
+        end
     end
     local kept = type(listing.kept) == "table" and type(listing.kept.rows) == "table" and listing.kept.rows or {}
     if #kept > 0 then
@@ -738,7 +853,22 @@ function SellList.Declare(k)
                         button.text, button.enabled, button.tooltip = why, false, SellThese.Tip(why)
                     end
                 end
-                return { button = button, note = note }
+                -- C-32: the keep-for ticks' writes, then the list is drawn
+                -- again with what they changed.
+                local keep = {
+                    onSwitch = function(on)
+                        local O = ns.GearOffSpec
+                        if type(O) == "table" and ctx.settings and type(ctx.settings.set) == "function" then
+                            pcall(ctx.settings.set, ctx.settings, O.SETTING, on)
+                        end
+                        api.refresh()
+                    end,
+                    onTick = function(role, on)
+                        SellList.SaveTick(ctx.store, role, on)
+                        api.refresh()
+                    end,
+                }
+                return { button = button, note = note, keep = keep }
             end
             -- The kit window of a listing: true when it was drawn.
             local function draw(listing)
