@@ -154,6 +154,8 @@ return {
         "Nav/RoutePalette.lua",
         "Nav/Bearing.lua",
         "Nav/ArrowView.lua",
+        -- A1-22: the profession arrow's text: click and hover (section 844).
+        "Nav/ProfArrowText.lua",
         "Nav/ArrowMotion.lua",
         "Nav/ArrowStyles.lua",
         "Nav/Guide.lua",
