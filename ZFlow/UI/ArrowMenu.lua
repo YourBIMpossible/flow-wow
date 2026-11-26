@@ -139,6 +139,10 @@ M.OPEN = "step.open"
 M.HIDE = "step.hide"
 M.NEAREST = "nearest"
 M.WAYPOINT = "waypoint"
+-- Parity A1-40 (lead section 864.3): the waypoint box (Nav/WayWords.lua
+-- api.Prompt), as Flow's arrow menu row (Modules/Menu.lua:575).
+M.WAY_SET = "wayset"
+M.WAY_SET_TEXT = "Set a waypoint (coordinates, or a party member's name)..."
 -- The kinds of Nav/Errand.lua (E.KINDS values): places this player has
 -- seen, saved by Nav/ServiceSeen.lua and Nav/ProfSeen.lua. Nothing authored.
 M.NEAREST_KINDS = {
@@ -193,6 +197,7 @@ function M.StepRow(state)
         { key = M.HIDE, text = "Hide this step", disabled = (not (has and hideOf(s.step))) or nil },
         { key = M.NEAREST, text = "Go to the nearest...", children = nearest },
         { key = M.WAYPOINT, text = "Your waypoint", disabled = (not s.waypoint) or nil },
+        { key = M.WAY_SET, text = M.WAY_SET_TEXT },
         -- Lead section 387 R3: what the route includes, one level down so
         -- the top level stays short (M.RouteRow).
         M.RouteRow(s.route),
@@ -514,6 +519,8 @@ function M.Action(key, state)
     -- Lead section 387 R3: Buttons and Flow windows.
     if key == M.BUTTONS or key == M.FLOW then return { open = key } end
     if key:match("^buttons%.") or key:match("^windows%.") then return M.WindowAction(key, s) end
+    -- Parity A1-40: { wayPrompt = true } opens the waypoint box.
+    if key == M.WAY_SET then return { wayPrompt = true } end
     -- Parity A1-42: a waypoint where a member (by unit) stands now.
     local at = key:match("^wayat%.(.+)$")
     if at then return { wayAt = at } end

@@ -1496,6 +1496,21 @@ function Arrow.Start(k, diag, own)
             -- Parity B-30: Walk there instead (Nav/Travel.lua).
             run("walking", using("travel", "Walk"))
             relayout()
+        elseif action.wayPrompt then
+            -- Parity A1-40: "Set a waypoint..." opens the waypoint box
+            -- (Nav/WayWords.lua api.Prompt); its own line says why when
+            -- the box cannot open.
+            local prompt = using("wayWords", "Prompt")
+            if prompt then
+                local okP, shown, line = pcall(prompt)
+                if not okP then
+                    k.problems:add("arrow", "wayPrompt", shown)
+                elseif shown ~= true then
+                    say(tostring(line))
+                end
+            else
+                say("waypoints are not ready.")
+            end
         elseif action.wayAt then
             -- Lead section 465 (A1-42): "Waypoint at <name>".
             local at = using("wayWords", "At")
