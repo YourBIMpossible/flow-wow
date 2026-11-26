@@ -9102,6 +9102,24 @@ function ns.make.client(env)
             end
             return true
         end
+        -- F2 (Lazy, lead section 551): a new side in pixels for every
+        -- button, laid out as at creation. The only way the row is sized:
+        -- no SetScale, so the anchor and the screen clamp stay true.
+        function h.resize(newSize)
+            if type(newSize) ~= "number" or newSize <= 0 then return false, "refused" end
+            if not unlocked() then return false, "lockdown" end
+            size = newSize
+            method(holder, "SetSize", count * size + (count - 1) * gap, size)
+            for i = 1, count do
+                local b = buttons[i]
+                if b then
+                    method(b, "SetSize", size, size)
+                    method(b, "ClearAllPoints")
+                    method(b, "SetPoint", "LEFT", holder, "LEFT", (i - 1) * (size + gap), 0)
+                end
+            end
+            return true
+        end
         return h
     end
 
@@ -9519,6 +9537,22 @@ function ns.make.client(env)
             if type(spec.onMoved) == "function" then pcall(spec.onMoved, { a, r, x, y }) end
         end
         method(grip, "SetScript", "OnDragStop", onStop)
+        -- F2 (lead section 447 item 3): Ctrl + mouse wheel over the button
+        -- itself resizes it, same as Flow's move handle (Modules/MoveHandle.lua).
+        -- Reports the raw wheel delta; the add-on clamps, saves and resizes
+        -- the row (clickRow h.resize) (Rotation/FlowButton.lua), same split as onMoved above.
+        if type(spec.onResized) == "function" then
+            local function ctrl()
+                local okC, down = call(env.IsControlKeyDown)
+                return okC and down == true
+            end
+            method(target, "EnableMouseWheel", true)
+            method(target, "SetScript", "OnMouseWheel", function(_, delta)
+                if not unlocked() or not ctrl() then return end
+                if hidden(delta) or type(delta) ~= "number" or delta == 0 then return end
+                pcall(spec.onResized, delta)
+            end)
+        end
         local h = {}
         function h.show(on)
             if not unlocked() then return false, "lockdown" end

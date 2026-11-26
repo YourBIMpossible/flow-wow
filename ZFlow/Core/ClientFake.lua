@@ -3341,6 +3341,9 @@ function ns.make.fakeClient(opts)
         if type(spec.count) ~= "number" or spec.count < 1 then return nil end
         if c.combatLockdown() ~= false then return nil end
         local h = { spec = spec, slots = {}, shown = false, point = nil, given = {} }
+        -- h.size: each button's side on screen, in pixels (spec.size, else
+        -- the real client's 32); h.resize changes it, as SetSize would.
+        h.size = (type(spec.size) == "number" and spec.size > 0) and spec.size or 32
         for i = 1, spec.count do h.slots[i] = { attrs = {}, shown = false, icon = nil } end
         function h.set(i, attr, value)
             local slot = h.slots[i]
@@ -3380,6 +3383,12 @@ function ns.make.fakeClient(opts)
             h.point = { point[1], point[2], point[3], point[4] }
             return true
         end
+        function h.resize(size)
+            if type(size) ~= "number" or size <= 0 then return false, "refused" end
+            if c.combatLockdown() ~= false then return false, "lockdown" end
+            h.size = size
+            return true
+        end
         c.clickRows[#c.clickRows + 1] = h
         return h
     end
@@ -3398,6 +3407,20 @@ function ns.make.fakeClient(opts)
         if spec == nil then return false, "absent" end
         if c.combatLockdown() ~= false then return false, "lockdown" end
         if type(spec.onMoved) == "function" then pcall(spec.onMoved, point) end
+        return true
+    end
+    -- F2 (lead section 447 item 3): Ctrl + wheel over the button, as the
+    -- offline stand-in for the real client's OnMouseWheel wiring
+    -- (Core/Client.lua). ctrl defaults to true (the usual case a test
+    -- cares about); pass false to check the gate is respected.
+    function c.wheelHandle(target, delta, ctrl)
+        local spec = c.moveHandles[target]
+        if spec == nil then return false, "absent" end
+        if c.combatLockdown() ~= false then return false, "lockdown" end
+        if ctrl == nil then ctrl = true end
+        if ctrl ~= true then return false, "no-ctrl" end
+        if type(delta) ~= "number" or delta == 0 then return false, "refused" end
+        if type(spec.onResized) == "function" then pcall(spec.onResized, delta) end
         return true
     end
     -- Flow and self buttons (Rotation/FlowButton.lua). Each helper answers

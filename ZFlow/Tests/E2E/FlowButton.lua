@@ -216,7 +216,8 @@ tests["flow button: holds the planned spell, its icon that spell's"] = function(
     t.eq({ a.type, a.spell }, { "spell", "Power Word: Fortitude" }, "the click casts the planned spell")
     t.eq(h.slots[1].icon, "tex:Power Word: Fortitude")
     t.eq(empty(c, FLOW), false, "the face shows the icon")
-    t.eq(tip(c, FLOW), "Flow button. Casts Power Word: Fortitude when you click it.")
+    t.eq(tip(c, FLOW), "Flow button. Casts Power Word: Fortitude when you click it. " .. FB.SizeLine(1),
+        "F-34: ends with its size")
     t.eq(h.shown, true)
     noBindsNoMacros(t, c)
 end
@@ -250,6 +251,76 @@ tests["flow button: the grip moves it out of a fight only, the place kept"] = fu
     t.eq(c.dragHandle(FLOW, to), true, "the grip, out of a fight: moved")
     t.eq(h.point, to, "placed there")
     t.eq(addon.settings:get(FB.LAYOUT), to, "kept in the add-on's layout")
+end
+
+-- F2 (lead section 447 item 3): Ctrl + mouse wheel over the Flow button
+-- resizes it, half to double size, and the size is saved (Flow:
+-- Modules/MoveHandle.lua at b657e6e5, Cast.lua:457-461). The self button is
+-- not wired to this, same as Flow had it. Not tested in game: the fake
+-- client's c.wheelHandle stands in for the real OnMouseWheel + Ctrl check.
+tests["flow button: Ctrl + wheel resizes it out of a fight only, half to double, saved"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no module"); return end
+    local c, addon = start({ on = true })
+    local h = rowOf(c, FLOW)
+    if not h then t.ok(false, "no Flow button"); return end
+    t.eq(addon.settings:get(FB.SCALE), 1, "no saved size yet: the default, full size")
+
+    c.setCombat(true); c.advance(1, 5)
+    t.eq(c.wheelHandle(FLOW, 1), false, "no resize in a fight")
+    t.eq(h.size, FB.SIZE, "nothing applied")
+    c.setCombat(false); c.advance(1, 5)
+
+    t.eq(c.wheelHandle(FLOW, 1, false), false, "no Ctrl: refused")
+    t.eq(h.size, FB.SIZE, "nothing applied without Ctrl")
+
+    t.eq(c.wheelHandle(FLOW, 1), true, "Ctrl + wheel up, out of a fight: resized")
+    t.eq(h.size, math.floor(FB.SIZE * 1.1 + 0.5), "a tenth bigger")
+    t.eq(addon.settings:get(FB.SCALE), 1.1, "kept in the add-on's settings")
+
+    for _ = 1, 12 do c.wheelHandle(FLOW, 1) end
+    t.eq(h.size, FB.SIZE * 2, "wheeling up past double: clamped to double size")
+    t.eq(addon.settings:get(FB.SCALE), 2, "the clamp is what was saved")
+
+    for _ = 1, 20 do c.wheelHandle(FLOW, -1) end
+    t.eq(h.size, FB.SIZE / 2, "wheeling down past half: clamped to half size")
+    t.eq(addon.settings:get(FB.SCALE), 0.5, "the clamp is what was saved")
+
+    -- The self button accepts the same gesture (the client cannot tell the
+    -- two apart) but is not wired to a size setting, same as Flow: nothing
+    -- happens to it.
+    local hs = rowOf(c, SELF)
+    local before = hs and hs.size
+    c.wheelHandle(SELF, 1)
+    if hs then t.eq(hs.size, before, "the self button is not resized") end
+    noBindsNoMacros(t, c)
+end
+
+-- Lazy F2 (lead section 551): one way to size. The wheel resizes the row
+-- to the rounded pixel size; nothing scales it on top, so the size on
+-- screen is 52 * scale once, never 52 * scale * scale.
+tests["flow button: the wheel sets the size on screen once, no scale on top"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no module"); return end
+    local c, addon = start({ on = true, account = { layout = { rotation = { scale = 1.5 } } } })
+    local h = rowOf(c, FLOW)
+    if not h then t.ok(false, "no Flow button"); return end
+    t.eq(h.size, math.floor(FB.SIZE * 1.5 + 0.5), "made at the saved size")
+    t.eq(c.wheelHandle(FLOW, 1), true)
+    t.eq(addon.settings:get(FB.SCALE), 1.6)
+    t.eq(h.size, math.floor(FB.SIZE * 1.6 + 0.5), "the row is the new size on screen")
+    t.eq(h.scale, nil, "no scale on top of the size")
+end
+
+tests["flow button: a reload keeps the size the player chose"] = function(t)
+    if type(FB) ~= "table" then t.ok(false, "no module"); return end
+    local c, addon = start({ on = true })
+    t.eq(c.wheelHandle(FLOW, 1), true)
+    t.eq(addon.settings:get(FB.SCALE), 1.1)
+
+    local c2, addon2 = start({ on = true, account = c.saved(ns.id.accountDB) })
+    local h2 = rowOf(c2, FLOW)
+    t.ok(h2 ~= nil, "the Flow button made again after a reload")
+    t.eq(addon2.settings:get(FB.SCALE), 1.1, "the chosen size carried over")
+    if h2 then t.eq(h2.spec.size, math.floor(FB.SIZE * 1.1 + 0.5), "made at the saved size") end
 end
 
 -- Lead section 305 item 1: a drag never casts. The buttons act on the
