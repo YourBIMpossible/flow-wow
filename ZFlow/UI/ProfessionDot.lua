@@ -6,14 +6,29 @@ local _, ns = ...
 -- RC.ProfessionDot's purple (§8.1: purple always means
 -- professions). It follows the profession arrow's switch
 -- (nav.profArrow): no arrow, no dot. Where it goes is N.MinimapPin's,
--- as every minimap mark. The dot stays a dot: the arrival ring is
--- proposed, not approved, and is not built here.
+-- as every minimap mark.
+--
+-- THE ARRIVAL RING (owner's word, 2026-11-26: build it): when the
+-- player reaches the profession destination — inside the step's own
+-- reach (its radius), or the arrow's 24 yards for a step with no
+-- radius of its own — the dot becomes a purple ring: the pin is told
+-- hollow, so the player marker shows through it, and the report says
+-- ring. Reaching the place does not complete the step: training,
+-- buying or crafting there is still the step's own business, and
+-- nothing here touches it.
+--
+-- CLIENT NEED (the lead's): the pin's hollow call in Core/Client.lua
+-- is an empty body over a named gap (no ring texture exists in Flow,
+-- Questie or Z-Flow). Until the lead names a texture or draws the
+-- ring there, the pin is told hollow and still draws the solid dot;
+-- this file's half — when to ring, and the purple — is complete.
 --
 -- LOOK ONLY: nothing is clicked, targeted, moved, saved or printed.
 --
 --   PD.Update(client, step, state, palette) -> report   one look;
 --     state is kept between looks (the dot is made once)
---     report = { shown = true, x, y, edge, distance, r, g, b }
+--     report = { shown = true, x, y, edge, distance, r, g, b,
+--                ring = true when the destination is reached }
 --            or { shown = false, reason }
 --   PD.Declare(k, diag) -> api   api.Refresh(), api.Shown(), api.last()
 -- Not tested in game.
@@ -27,6 +42,8 @@ PD.SIZE = 12       -- how wide the dot is, as the waypoint pin. A first guess.
 PD.ON_ICON = 6     -- the dot's middle this close (minimap units) to the
                    -- minimap's middle sits on the character icon: half
                    -- the dot. A first guess.
+PD.ARRIVE_AT = 24  -- yards: the reach for a step with no radius of its
+                   -- own — the arrow's own at-point (Nav/ArrowView.lua).
 
 local N = ns.Nav
 
@@ -84,10 +101,20 @@ function PD.Update(client, step, state, palette)
         end
         state.colour = colour
     end
+    -- Reached: inside the step's own reach, or the arrow's for a step
+    -- with no radius of its own.
+    local arrived = false
+    if type(pin.distance) == "number" then
+        local reach = PD.ARRIVE_AT
+        if type(step.radius) == "number" and step.radius > 0 then reach = step.radius end
+        arrived = pin.distance <= reach
+    end
     if type(h.hollow) == "function" then
-        h.hollow(pin.x * pin.x + pin.y * pin.y <= PD.ON_ICON * PD.ON_ICON)
+        local onIcon = pin.x * pin.x + pin.y * pin.y <= PD.ON_ICON * PD.ON_ICON
+        h.hollow(onIcon or arrived)
     end
     local out = { shown = true, x = pin.x, y = pin.y, edge = pin.edge, distance = pin.distance }
+    if arrived then out.ring = true end
     if colour then out.r, out.g, out.b = colour[1], colour[2], colour[3] end
     return out
 end
