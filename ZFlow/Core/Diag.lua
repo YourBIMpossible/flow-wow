@@ -1598,6 +1598,23 @@ function Diag.Start(k)
     -- The import report. The import itself loads after this file, so it is
     -- looked up when the word is typed. The predecessor's tables are read
     -- only when the client already has them: none is created here.
+    -- F-03 (Core/ApiReport.lua, loaded after this file, so looked up when
+    -- the word is typed): the client check, read from the saved diagnostics.
+    help.api = "say which game functions this client has, from the saved client check"
+    commands.api = function()
+        local AR = ns.ApiReport
+        if not (AR and type(AR.Run) == "function") then
+            client.print(id.title .. ": the client check report is not loaded.")
+            return
+        end
+        local ok, lines = pcall(AR.Run, client, id)
+        if not ok or type(lines) ~= "table" then
+            client.print(id.title .. ": the client check could not be read.")
+            return
+        end
+        for i = 1, #lines do client.print(id.title .. ": " .. tostring(lines[i])) end
+    end
+
     help.import = "say what an import of the earlier addon's saved data would leave behind or change;"
         .. " nothing is imported or written"
     commands.import = function()
