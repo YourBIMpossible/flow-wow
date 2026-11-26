@@ -51,6 +51,12 @@ local function boot(opts)
     c.setBagItems({ { item = GUARD, count = 1 }, { item = CLOAK, count = 1 } })
     local k = ns.Kernel({}, c)
     ns.Diag.Start(k)
+    -- The switch's Settings row, as Gear/OffSpec.lua declares it in the
+    -- real addon: the window now writes the switch through
+    -- ctx.settings:set (White's note on the approved build), which
+    -- needs the row declared.
+    k:Setting({ key = "gear.keepOffspec", scope = "account", type = "bool", default = true,
+        label = "Keep gear for your other roles", group = "gear" })
     ns.Reservations.Declare(k)
     local api = L.Declare(k)
     k:Boot()

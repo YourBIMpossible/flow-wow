@@ -858,8 +858,8 @@ function SellList.Declare(k)
                 local keep = {
                     onSwitch = function(on)
                         local O = ns.GearOffSpec
-                        if type(O) == "table" then
-                            pcall(ctx.store.set, ctx.store, "account", O.PATH, on)
+                        if type(O) == "table" and ctx.settings and type(ctx.settings.set) == "function" then
+                            pcall(ctx.settings.set, ctx.settings, O.SETTING, on)
                         end
                         api.refresh()
                     end,
