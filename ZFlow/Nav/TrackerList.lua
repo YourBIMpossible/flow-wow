@@ -102,8 +102,9 @@ end
 function TL.Plan(mode, sort)
     local T = N.TripRoute
     if type(T) ~= "table" or type(T.ModeOf) ~= "function" or type(T.SortOf) ~= "function" then return nil end
-    local ml = type(T.MODE_LABELS) == "table" and T.MODE_LABELS[T.ModeOf(mode)] or nil
-    local sl = type(T.SORT_LABELS) == "table" and T.SORT_LABELS[T.SortOf(sort)] or nil
+    local ml, sl
+    if type(T.MODE_LABELS) == "table" then ml = T.MODE_LABELS[T.ModeOf(mode)] end
+    if type(T.SORT_LABELS) == "table" then sl = T.SORT_LABELS[T.SortOf(sort)] end
     if not isText(ml) or not isText(sl) then return nil end
     return ml .. " · " .. sl
 end
@@ -127,13 +128,19 @@ local function words(s)
     local label = isText(s.label) and s.label or "?"
     if s.kind == nil and s.turnIn == true then
         local to = receiver(s.detail)
-        return TL.TURN_IN:format(label), to and TL.GIVE_TO:format(to) or nil, "questInLog"
+        local give
+        if to then give = TL.GIVE_TO:format(to) end
+        return TL.TURN_IN:format(label), give, "questInLog"
     end
     if s.kind == nil and s.quest ~= nil then
         if isText(s.detail) then return s.detail, TL.FOR_QUEST:format(label), "questLater" end
         return label, nil, "questLater"
     end
-    return label, isText(s.detail) and s.detail or nil, s.kind == "pickup" and "questAvailable" or nil
+    local detail
+    if isText(s.detail) then detail = s.detail end
+    local icon
+    if s.kind == "pickup" then icon = "questAvailable" end
+    return label, detail, icon
 end
 
 function TL.Needs(raw)
@@ -190,8 +197,10 @@ function TL.Rows(view, here, max, needOf)
             last.names[#last.names + 1] = isText(s.label) and s.label or "?"
             if last.to ~= receiver(s.detail) then last.to = nil end
         else
+            local name = "?"
+            if type(s) == "table" and isText(s.label) then name = s.label end
             walked[#walked + 1] = { stop = s, merged = 1,
-                names = { type(s) == "table" and isText(s.label) and s.label or "?" },
+                names = { name },
                 to = type(s) == "table" and receiver(s.detail) or nil,
                 turnIn = type(s) == "table" and s.kind == nil and s.turnIn == true }
         end

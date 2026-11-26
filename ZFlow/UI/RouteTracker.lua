@@ -251,11 +251,13 @@ function RT.Declare(k, diag)
 
     local function tree(cur)
         local TL = ns.Nav and ns.Nav.TrackerList
-        local max = TL and TL.MaxShown(setting("nav.routeShown")) or nil
+        local max
+        if TL then max = TL.MaxShown(setting("nav.routeShown")) end
         local rows, more = RT.Rows(view(), cur, hereNow(), max)
         local item
         if rows then item = itemOf(cur) end
-        local plan = TL and TL.Plan(setting("nav.routeMode"), setting("nav.routeSort")) or nil
+        local plan
+        if TL then plan = TL.Plan(setting("nav.routeMode"), setting("nav.routeSort")) end
         local kids = RT.Children(rows, item, more, plan, api.Show)
         local foot = kids[#kids]
         if foot.kind == "footer" then

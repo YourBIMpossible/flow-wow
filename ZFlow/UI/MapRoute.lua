@@ -231,7 +231,8 @@ function MR.Declare(k, diag)
         if not pins then return end
         local okMap, map = pcall(pins.map)
         local TL = ns.Nav and ns.Nav.TrackerList
-        local rows = okMap and map ~= nil and TL and TL.Rows(view(), nil, TL.ALL) or nil
+        local rows
+        if okMap and map ~= nil and TL then rows = TL.Rows(view(), nil, TL.ALL) end
         if not rows then
             clear()
             return
