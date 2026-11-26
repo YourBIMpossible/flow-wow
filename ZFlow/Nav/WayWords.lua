@@ -29,6 +29,19 @@ local _, ns = ...
 --     api.Take(text) -> true, line when the text was one of these words
 --                       (set or turned down), false when it is not
 --     api.At(which)  -> true, line or nil, line: which is a party unit or name
+--     api.SetFromText(text) -> true, line | false, line (A1-40): any text
+--                       the way word takes, in one place, as Flow's
+--                       W:SetFromText: these words first (Take), else
+--                       "x y [label]" or "Zone x y" on the map you are on
+--                       (N.Waypoint.Set), the same path as the way word.
+--                       false: nothing was set (no text, or not a waypoint).
+--     api.Prompt()   -> true | false, WW.NO_BOX (A1-40): opens the client's
+--                       input box (client.inputBox) with WW.PROMPT; what is
+--                       typed goes through SetFromText and its line is said
+--                       in chat. As Flow's waypoint popup
+--                       (Modules/Nav/Waypoint.lua:217-231), opened from the
+--                       arrow menu's "Set a waypoint..." row (Menu.lua:575;
+--                       here that row is a lead patch on UI/ArrowMenu.lua).
 --   WW.Word(word) -> the place word it means ("sell" -> "vendor"), any
 --     case, or nil for a word that is no place.                       pure
 ns.Nav = ns.Nav or {}
@@ -51,6 +64,11 @@ WW.NAMES = { repair = "repair vendor", vendor = "vendor", flight = "flight maste
     bank = "banker", auction = "auctioneer", mail = "mailbox" }
 -- No place of that kind known: which kind, and how one comes to be known.
 WW.NONE = "no %s is known yet: each one is learned when you use it, so visit one and try again; nothing changed."
+-- A1-40: the waypoint box's line, and what is said with no box to open.
+WW.PROMPT = "Type or paste a waypoint: coordinates, a zone and coordinates, a place (repair, bank, inn...)"
+    .. " or a party member's name.\ne.g. 45.2 63.1  or  <zone name> 45.2 63.1 <label>  or  repair"
+WW.NO_BOX = "the waypoint box cannot be opened here; type the way word instead."
+WW.EMPTY = "nothing was typed; nothing changed."
 
 function WW.Word(word)
     if type(word) ~= "string" then return nil end
@@ -186,12 +204,51 @@ function WW.Declare(k, diag)
         return set(map, parsed.x, parsed.y, parsed.label)
     end
 
+    -- A1-40: one path for any waypoint text, as the way word takes it.
+    function api.SetFromText(text)
+        if type(text) ~= "string" or not text:find("%S") then return false, WW.EMPTY end
+        local took, line = api.Take(text)
+        if took then return true, line end
+        local W = N.Waypoint
+        if type(W) ~= "table" then return false, "waypoints are not loaded." end
+        local here = ask("position")
+        local zoneName
+        if type(here) == "table" then zoneName = ask("mapName", here.map) end
+        local wp, why = W.Set(slot(), here, text, zoneName)
+        if wp then return true, "waypoint set: " .. tostring(W.Text(wp)) .. "." end
+        return false, tostring(why) .. "; nothing changed."
+    end
+
+    -- A1-40: the waypoint box. Nothing is set until something is typed.
+    function api.Prompt()
+        local c = client()
+        if type(c) ~= "table" or type(c.inputBox) ~= "function" then return false, WW.NO_BOX end
+        local ok, shown = pcall(c.inputBox, WW.PROMPT, function(text)
+            local _, line = api.SetFromText(text)
+            if type(line) == "string" and type(c.print) == "function" then
+                -- The add-on's title read inside the pcall too (Lazy's
+                -- CHANGES-1): a missing id or title never raises here, and
+                -- the line is then said with no prefix (CHANGES-2).
+                pcall(function()
+                    local id = k.id or ns.id
+                    local said = line
+                    if type(id) == "table" and type(id.title) == "string" then said = id.title .. ": " .. line end
+                    c.print(said)
+                end)
+            end
+        end)
+        if not ok or shown ~= true then return false, WW.NO_BOX end
+        return true
+    end
+
     k:Module({
         name = WW.NAME,
         needs = { "client", "store" },
         provides = {
             Take = function(text) return api.Take(text) end,
             At = function(which) return api.At(which) end,
+            SetFromText = function(text) return api.SetFromText(text) end,
+            Prompt = function() return api.Prompt() end,
         },
         start = function(c) ctx = c end,
         stop = function() zoneIds = nil end,
