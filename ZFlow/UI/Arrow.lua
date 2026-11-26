@@ -449,6 +449,28 @@ end
 Arrow.INTRO_PATH = "layout.arrowIntroSeen"
 Arrow.INTRO_SECONDS = 3
 
+-- F-new-3 (lead section 872.2): the intro's length. With the short, still
+-- login intro on (UI/LoginIntro.lua: the LI.SHORT setting), the arrows'
+-- intro lasts as long as that one, LI.Times(true): its show plus its fade.
+-- Otherwise, or when that file or the setting cannot be read,
+-- INTRO_SECONDS. Read once, when the intro's clock starts.
+function Arrow.IntroSeconds(k)
+    local LI = ns.LoginIntro
+    if type(LI) ~= "table" or type(LI.Times) ~= "function" or type(LI.SHORT) ~= "string" then
+        return Arrow.INTRO_SECONDS
+    end
+    local s = type(k) == "table" and k.settings
+    if type(s) ~= "table" or type(s.get) ~= "function" then return Arrow.INTRO_SECONDS end
+    local okS, short = pcall(s.get, s, LI.SHORT)
+    if not okS or short ~= true then return Arrow.INTRO_SECONDS end
+    local okT, show, tail = pcall(LI.Times, true)
+    if not okT or type(show) ~= "number" or type(tail) ~= "number" then return Arrow.INTRO_SECONDS end
+    local total = show + tail
+    -- (Not a number, not above 0 or endless: passed over too.)
+    if total ~= total or total <= 0 or total == math.huge then return Arrow.INTRO_SECONDS end
+    return total
+end
+
 -- Whether the player's own quests may be the quest step (S43): the
 -- setting row N.QuestSource.SETTING, on unless it says a plain false (the
 -- row is the lead's to add; with no such row the answer is on).
@@ -1066,7 +1088,7 @@ function Arrow.Start(k, diag, own)
             relayout()
             return
         end
-        introUntil = now + Arrow.INTRO_SECONDS
+        introUntil = now + Arrow.IntroSeconds(k)
         local ok, reason = k.store:set("account", Arrow.INTRO_PATH, true)
         if not ok then k.problems:add("arrow", "save", reason) end
     end
