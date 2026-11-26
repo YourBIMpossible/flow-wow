@@ -36,8 +36,20 @@
 -- item, questNeed 98430) is not carried: a table of quest IDs waits for
 -- a ruling. "group of N" is Questie's suggested group, which Flow did
 -- not show.
+-- A2-22: while the world map is open the same window docks beside the
+-- map instead (upstream Flow's RouterDock rule): outside the map's right
+-- edge when the screen has room, inside that edge when it does not, and
+-- left of the map's own quest panel when that panel is open. The map
+-- takes precedence over the quest-log dock; when it closes the list
+-- returns to the quest log, or hides. The spot is RL.Spot, pure. The map
+-- read is client.worldMapFrame (a CLIENT NEED, the lead's patch: { shown,
+-- right, top, height, panel = { shown, left, top, height } or nil });
+-- until it lands, the ask finds nothing and the quest-log dock is the
+-- only one, exactly as before.
 --   RL.Children(rows, more, nLeft, counts, plan, how, onRow, onSkip)
 --                          -> the window's parts (pure)
+--   RL.Spot(mapRight, screenRight, need, questPanelOpen)
+--                          -> "outside" | "besidePanel" | "inside" (pure)
 --   RL.Declare(k, diag) -> api   api.Refresh(), api.Shown(), api.Show(row)
 -- Not tested in game.
 local _, ns = ...
@@ -63,8 +75,22 @@ RL.TIP = "Click to open the map on this stop."
 RL.EVERY = 0.25
 RL.WIDTH = 300
 RL.HEIGHT = 420
+RL.DOCK_GAP = 2
 RL.TONE_NOW = "good"
 RL.TONE_BLOCKED = "bad"
+
+-- A2-22: where the list docks beside the world map (Flow RouterDock's
+-- D.Spot, the panel named for Z-Flow's read). Pure: right edges and the
+-- room needed, in screen pixels; an exact fit counts as outside, as in
+-- Flow. Missing numbers are never outside.
+function RL.Spot(mapRight, screenRight, need, questPanelOpen)
+    if type(mapRight) == "number" and type(screenRight) == "number" and type(need) == "number"
+        and mapRight + need <= screenRight then
+        return "outside"
+    end
+    if questPanelOpen then return "besidePanel" end
+    return "inside"
+end
 
 local function isText(v) return type(v) == "string" and v ~= "" end
 
@@ -264,6 +290,36 @@ function RL.Declare(k, diag)
         return { "TOPLEFT", "BOTTOMLEFT", box.right, box.top }
     end
 
+    -- A2-22: the dock point and the height for one spot beside the world
+    -- map. Points anchor on the screen's bottom-left, as place() does.
+    local function dockPlace(map, spot)
+        if type(map) ~= "table" then return nil, RL.HEIGHT end
+        local gap = RL.DOCK_GAP
+        if spot == "besidePanel" and type(map.panel) == "table"
+            and type(map.panel.left) == "number" and type(map.panel.top) == "number" then
+            local pheight = RL.HEIGHT
+            if type(map.panel.height) == "number" and map.panel.height > 0 then pheight = map.panel.height end
+            return { "TOPRIGHT", "BOTTOMLEFT", map.panel.left - gap, map.panel.top }, pheight
+        end
+        if type(map.right) ~= "number" or type(map.top) ~= "number" then return nil, RL.HEIGHT end
+        local height = RL.HEIGHT
+        if type(map.height) == "number" and map.height > 0 then height = map.height end
+        if spot == "outside" then
+            return { "TOPLEFT", "BOTTOMLEFT", map.right + gap, map.top }, height
+        end
+        return { "TOPRIGHT", "BOTTOMLEFT", map.right - gap, map.top }, height
+    end
+
+    local function dockSpot(map, c)
+        local screenW
+        if type(c) == "table" and type(c.screen) == "function" then
+            local ok, w = pcall(c.screen)
+            if ok and type(w) == "number" then screenW = w end
+        end
+        local panelOpen = type(map.panel) == "table" and map.panel.shown == true
+        return RL.Spot(map.right, screenW, RL.WIDTH + RL.DOCK_GAP, panelOpen)
+    end
+
     local function hide()
         if handle and handle.shown() then handle.close() end
     end
@@ -277,7 +333,10 @@ function RL.Declare(k, diag)
         if not ctx then return end
         local c = client()
         local box = ask(c, "questLogFrame")
-        if type(box) ~= "table" or box.shown ~= true then
+        local map = ask(c, "worldMapFrame")
+        local logShown = type(box) == "table" and box.shown == true
+        local mapShown = type(map) == "table" and map.shown == true
+        if not logShown and not mapShown then
             closedByPlayer = false
             hide()
             return
@@ -289,8 +348,14 @@ function RL.Declare(k, diag)
         if type(c.kitWindow) ~= "function" then return end
         local kids = parts()
         local id = k.id or ns.id
-        local point = place(box)
-        local height = type(box.height) == "number" and box.height > 0 and box.height or RL.HEIGHT
+        local point, height
+        if mapShown then
+            point, height = dockPlace(map, dockSpot(map, c))
+        else
+            point = place(box)
+            height = RL.HEIGHT
+            if type(box.height) == "number" and box.height > 0 then height = box.height end
+        end
         local tree, why = ns.Kit.Window({ id = RL.ID, title = id.title .. ": " .. RL.HEADER, children = kids,
             width = RL.WIDTH, height = height, point = point, resizable = false })
         if not tree then
@@ -298,7 +363,8 @@ function RL.Declare(k, diag)
             return
         end
         local sig = signature(kids)
-        local edge = point and (point[3] .. ":" .. point[4] .. ":" .. height) or "none"
+        local edge = "none"
+        if point then edge = point[1] .. ":" .. point[3] .. ":" .. point[4] .. ":" .. height end
         if not handle then
             handle = c.kitWindow(RL.ID, tree, {
                 point = point, width = RL.WIDTH, height = height,

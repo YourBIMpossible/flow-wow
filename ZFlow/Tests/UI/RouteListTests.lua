@@ -474,4 +474,51 @@ tests["slice 7: a card that cannot open, or raises, leaves the row's click on th
     end
 end
 
+tests["spot: the dock spot follows Flow's rule (A2-22)"] = function(t)
+    local S = RL().Spot
+    t.eq(S(1000, 1600, 302, false), "outside", "room on the right: outside")
+    t.eq(S(1298, 1600, 302, false), "outside", "an exact fit counts as outside, as in Flow")
+    t.eq(S(1299, 1600, 302, false), "inside", "one pixel less: inside")
+    t.eq(S(1299, 1600, 302, true), "besidePanel", "no room and the quest panel open: left of it")
+    t.eq(S(nil, 1600, 302, false), "inside", "no map edge read: never outside")
+    t.eq(S(1000, nil, 302, true), "besidePanel", "no screen read: never outside")
+end
+
+tests["window: the list docks beside the world map, and returns (A2-22)"] = function(t)
+    local h = start({ view = view() })
+    h.c.setScreen(1600, 900)
+    h.c.setQuestLogFrame(BOX)
+    h.api.Refresh()
+    t.eq(window(h).point, { "TOPLEFT", "BOTTOMLEFT", 400, 700 }, "no map read yet: the quest log dock, as today")
+    local map = { shown = true, right = 1000, top = 800, height = 600 }
+    h.c.worldMapFrame = function() return map end
+    h.api.Refresh()
+    t.eq(window(h).point, { "TOPLEFT", "BOTTOMLEFT", 1002, 800 }, "room on the right: outside the map, 2px past its edge")
+    t.eq(window(h).height, 600, "the map's height")
+    h.c.setScreen(1200, 900)
+    h.api.Refresh()
+    t.eq(window(h).point, { "TOPRIGHT", "BOTTOMLEFT", 998, 800 }, "no room: inside the map's right edge")
+    map.panel = { shown = true, left = 700, top = 780, height = 500 }
+    h.api.Refresh()
+    t.eq(window(h).point, { "TOPRIGHT", "BOTTOMLEFT", 698, 780 }, "the quest panel open: left of the panel")
+    t.eq(window(h).height, 500, "the panel's height")
+    map.shown = false
+    h.api.Refresh()
+    t.eq(window(h).point, { "TOPLEFT", "BOTTOMLEFT", 400, 700 }, "the map closed: back beside the quest log")
+    t.eq(window(h).height, 450)
+    t.eq(h.api.Shown(), true, "still shown throughout")
+end
+
+tests["window: the map alone shows the list; both closed hides it (A2-22)"] = function(t)
+    local h = start({ view = view() })
+    h.c.setScreen(1600, 900)
+    local map = { shown = true, right = 1000, top = 800, height = 600 }
+    h.c.worldMapFrame = function() return map end
+    h.api.Refresh()
+    t.eq(h.api.Shown(), true, "the map open, the quest log closed: shown, docked")
+    map.shown = false
+    h.api.Refresh()
+    t.eq(h.api.Shown(), false, "both closed: hidden, as today")
+end
+
 return tests
