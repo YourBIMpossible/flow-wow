@@ -451,11 +451,11 @@ function ns.make.fakeClient(opts)
     -- Slice 6: the minimap bezel handle, recorded as the real one
     -- (h.on the last look applied, h.shows how many applies).
     c.bezelSets = {}
-    function c.minimapBezel()
+    function c.minimapBezel(colour)
         if s.noFrames then return nil end
-        local h = { shows = 0 }
+        local h = { shows = 0, colour = colour }
         function h.show(on)
-            h.on = on and true or false
+            h.on = on == true
             h.shows = h.shows + 1
             return true
         end

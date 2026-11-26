@@ -2808,18 +2808,26 @@ function ns.make.client(env)
         return h
     end
 
-    -- c.minimapBezel() -> h, or nil when there is no minimap.
+    -- c.minimapBezel(colour) -> h, or nil when there is no minimap
+    -- or no colour to draw with. colour = { r, g, b, a } comes from
+    -- the caller (UI/MinimapBezel.lua, out of the kit theme): this
+    -- client holds no theme colour of its own.
     --   h.show(on) -> true: on draws the thin-line border (slice 6,
     --       nav.minimapBezel) and hides the stock border; off hides
-    --       the line and puts the stock border back as it was. The
-    --       border is four thin strips on a frame hugging the
+    --       the line and puts the stock border back as it was when
+    --       the border was switched on (read at each switch-on).
+    --       The border is four thin strips on a frame hugging the
     --       minimap's own frame, so a square minimap gets a square
     --       border; it takes no mouse, and the minimap's own pins
     --       (children of the minimap) draw above it.
     -- First guesses, not seen in game: the stock border is the
-    -- MinimapBorder global (the ornate ring); the strips' colour is
-    -- a pale line (0.85, 0.82, 0.75) at 0.9 alpha, 2 units wide.
-    function c.minimapBezel()
+    -- MinimapBorder global (the ornate ring); the strips are
+    -- 2 units wide.
+    function c.minimapBezel(colour)
+        if type(colour) ~= "table" or type(colour.r) ~= "number"
+            or type(colour.g) ~= "number" or type(colour.b) ~= "number" then return nil end
+        local alpha = colour.a
+        if type(alpha) ~= "number" then alpha = 1 end
         local map = env.Minimap
         if map == nil then return nil end
         local ok, f = call(env.CreateFrame, "Frame", nil, map)
@@ -2830,7 +2838,7 @@ function ns.make.client(env)
         local function strip()
             local okT, tex = method(f, "CreateTexture", nil, "BACKGROUND")
             if not okT or tex == nil then return nil end
-            method(tex, "SetColorTexture", 0.85, 0.82, 0.75, 0.9)
+            method(tex, "SetColorTexture", colour.r, colour.g, colour.b, alpha)
             return tex
         end
         local top = strip()
@@ -2859,18 +2867,22 @@ function ns.make.client(env)
         end
         local border = env.MinimapBorder
         local stockShown = false
-        if border ~= nil then
-            local okS, shown = method(border, "IsShown")
-            stockShown = okS and shown == true or false
+        local function readStock()
+            stockShown = false
+            if border ~= nil then
+                local okS, shown = method(border, "IsShown")
+                if okS and shown == true then stockShown = true end
+            end
         end
         method(f, "Hide")
         local applied
         local h = {}
         function h.show(on)
-            on = on and true or false
+            on = on == true
             if applied == on then return true end
             applied = on
             if on then
+                readStock()
                 if border ~= nil then method(border, "Hide") end
                 method(f, "Show")
             else
