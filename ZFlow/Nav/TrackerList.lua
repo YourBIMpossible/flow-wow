@@ -194,14 +194,18 @@ function TL.Rows(view, here, max, needOf)
         if last and last.turnIn and type(s) == "table" and s.kind == nil and s.turnIn == true
             and type(last.stop) == "table" and samePlace(last.stop.place, s.place) then
             last.merged = last.merged + 1
-            last.names[#last.names + 1] = isText(s.label) and s.label or "?"
+            local more = "?"
+            if isText(s.label) then more = s.label end
+            last.names[#last.names + 1] = more
             if last.to ~= receiver(s.detail) then last.to = nil end
         else
             local name = "?"
             if type(s) == "table" and isText(s.label) then name = s.label end
+            local to = nil
+            if type(s) == "table" then to = receiver(s.detail) end
             walked[#walked + 1] = { stop = s, merged = 1,
                 names = { name },
-                to = type(s) == "table" and receiver(s.detail) or nil,
+                to = to,
                 turnIn = type(s) == "table" and s.kind == nil and s.turnIn == true }
         end
     end
