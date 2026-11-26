@@ -52,13 +52,15 @@ local function start(opts)
     local current = opts.view
     k:Module({ name = "tripRoute", provides = { View = function() return current end } })
     local api = RL().Declare(k)
+    local card
+    if opts.card then card = ns.StepCard.Declare(k) end
     local map = ns.MapRoute.Declare(k)
     k:Boot()
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
     if opts.setting == false then k.settings:set(RL().SETTING, false) end
-    return { c = c, k = k, api = api, map = map, set = function(v) current = v end }
+    return { c = c, k = k, api = api, map = map, card = card, set = function(v) current = v end }
 end
 
 local function window(h)
@@ -168,7 +170,7 @@ tests["parts: the current stop is marked, numbers and distances shown"] = functi
     t.eq(byKey(kids, "stop2").tone, nil)
     t.eq(byKey(kids, "stop2").icon, ns.Kit.look.icon.questInLog)
     t.ok(type(byKey(kids, "stop2").onClick) == "function", "a row can be clicked")
-    t.eq(byKey(kids, "left1").onClick, nil, "what was left off has no place to show")
+    t.ok(type(byKey(kids, "left1").onClick) == "function", "what was left off can be clicked too (slice 7: it opens the card)")
     local foot = byKey(kids, "footer")
     t.ok(foot ~= nil and foot.buttons[1].text == RL().SKIP, "the Skip button under the current row")
     t.ok(ns.Kit.Window({ id = RL().ID, title = "x", children = kids }) ~= nil, "the kit takes the parts")
@@ -400,6 +402,63 @@ tests["slice 5: the list and the tracker read the same rows"] = function(t)
     t.eq(byKey(rl, "held1").sub, byKey(rt, "held1").sub, "the held reason reads the same in both")
     t.eq(byKey(rl, "left1").sub, byKey(rt, "left1").sub, "the left-off reason reads the same in both")
     t.eq(ns.RouteList.Rows, nil, "the list's own builder is gone")
+end
+
+-- The step card's last tree, the way StepCardKit reads it.
+local function cardTree(c)
+    local last
+    local real = c.kitWindow
+    c.kitWindow = function(id, tree, extra)
+        if id == "stepCard" then last = tree end
+        local h = real(id, tree, extra)
+        if id == "stepCard" and type(h) == "table" and type(h.update) == "function" then
+            local update = h.update
+            h.update = function(now)
+                last = now
+                return update(now)
+            end
+        end
+        return h
+    end
+    return function() return last end
+end
+
+local function cardButton(tree, key)
+    local found
+    ns.Kit.Each(tree, function(p) if p.key == key then found = p end end)
+    return found
+end
+
+local function cardTexts(tree)
+    local joined = {}
+    ns.Kit.Each(tree, function(p)
+        if p.text then joined[#joined + 1] = p.text end
+        if p.title then joined[#joined + 1] = p.title end
+    end)
+    return table.concat(joined, "\n")
+end
+
+tests["slice 7: a row click opens the step card; held and left-behind rows say not on your route"] = function(t)
+    local h = start({ view = view(), card = true })
+    h.c.setQuestLogFrame(BOX)
+    h.api.Refresh()
+    local treeOf = cardTree(h.c)
+    h.c.kitClick(RL().ID, "current")
+    t.eq(h.card.Shown(), true, "the card opens for the clicked stop")
+    t.ok(h.c.mapsShown == nil or #h.c.mapsShown == 0, "the map does not open: it is the card's own button now")
+    t.ok(cardTexts(treeOf()):find("Boar Trouble", 1, true) ~= nil, "the card is for the clicked stop")
+    local first = cardButton(treeOf(), "act.first")
+    t.eq(first and first.enabled, false, "the next step cannot be made next")
+    t.eq(first and first.tooltip, "This is already your next step.", "because it already is (index 1)")
+    h.c.kitClick(RL().ID, "held1")
+    t.eq(h.card.Shown(), true, "a held row opens the card too")
+    first = cardButton(treeOf(), "act.first")
+    t.eq(first and first.enabled, false, "a held stop cannot be made next")
+    t.eq(first and first.tooltip, "This step is not on your route.", "the card's not-on-route reason (no index passed)")
+    h.c.kitClick(RL().ID, "left1")
+    t.eq(h.card.Shown(), true, "a left-behind row opens the card too")
+    first = cardButton(treeOf(), "act.first")
+    t.eq(first and first.tooltip, "This step is not on your route.", "the same reason for what was left off")
 end
 
 return tests

@@ -150,7 +150,7 @@ function RT.Children(rows, item, more, plan, onRow)
                 line.key = "next" .. (i - 1)
             end
         end
-        if type(onRow) == "function" and type(r.place) == "table" then
+        if type(onRow) == "function" and (type(r.place) == "table" or type(r.stop) == "table") then
             line.tooltip = RT.TIP
             line.onClick = function() onRow(r) end
         end
@@ -249,6 +249,23 @@ function RT.Declare(k, diag)
         return nil
     end
 
+
+    -- Slice 7: a row's click opens the step card for its stop (the
+    -- shared detail view); the map is the card's own button. A held
+    -- or left-behind row passes no index, so the card shows its
+    -- "not on your route" reason. Without the card module, the
+    -- click keeps slice 5's behaviour and opens the map.
+    local function openRow(row)
+        local card = k.use and k.use("stepCard")
+        if type(card) == "table" and type(card.Toggle) == "function"
+            and type(row) == "table" and type(row.stop) == "table" then
+            local facts
+            if row.index then facts = { index = row.index } end
+            card.Toggle(row.stop, facts)
+            return true
+        end
+        return api.Show(row)
+    end
     local function tree(cur)
         local TL = ns.Nav and ns.Nav.TrackerList
         local max
@@ -258,7 +275,7 @@ function RT.Declare(k, diag)
         if rows then item = itemOf(cur) end
         local plan
         if TL then plan = TL.Plan(setting("nav.routeMode"), setting("nav.routeSort")) end
-        local kids = RT.Children(rows, item, more, plan, api.Show)
+        local kids = RT.Children(rows, item, more, plan, openRow)
         local foot = kids[#kids]
         if foot.kind == "footer" then
             foot.buttons[1].onClick = function()

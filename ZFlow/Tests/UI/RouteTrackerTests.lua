@@ -186,4 +186,22 @@ tests["tracker parts: only steps that can't be placed: none is current, no item 
     end
 end
 
+tests["tracker parts: a click hands over the row's stop and place; a left-behind row is clickable (slice 7)"] = function(t)
+    local stops = {
+        { label = "Boars", quest = 1, objective = 1, detail = "Boars slain: 2/8", place = { map = 1, x = 0.6, y = 0.5 } },
+        { label = "Wolves", quest = 2, kind = "pickup", detail = "Pick up from Guard Thom", place = { map = 1, x = 0.7, y = 0.5 } },
+    }
+    local v = { kind = "quests", label = "Quest route", stops = stops,
+        left = { { quest = 3, label = "Far Away", why = "not on this map" } } }
+    local rows = RT().Rows(v, nil, HERE)
+    local got
+    local kids = RT().Children(rows, nil, 0, nil, function(r) got = r end)
+    local leftPart = byKey(kids, "left1")
+    t.ok(leftPart and type(leftPart.onClick) == "function", "a left-behind row can be clicked (it opens the card)")
+    local now = byKey(kids, "current")
+    now.onClick()
+    t.eq(got and got.index, 1, "the click hands over the row's place: 1, the next step")
+    t.eq(got and got.stop, stops[1], "and the row's stop")
+end
+
 return tests
