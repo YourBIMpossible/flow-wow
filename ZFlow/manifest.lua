@@ -246,6 +246,8 @@ return {
         "Items/Goals.lua",
     "UI/Arrow.lua",
     "UI/MinimapPin.lua",
+    -- Slice 6 (§8.2): the thin-line border on the minimap (after MinimapPin).
+    "UI/MinimapBezel.lua",
     "UI/RotationIcon.lua",
     "UI/InfoBar.lua",
     "Rotation/Pulse.lua",
@@ -448,6 +450,8 @@ return {
     "Nav/FollowAdvice.lua",
     -- N43 (P-TRIP route display): the current step's area on the minimap (after TripRoute, MinimapPin).
     "UI/RouteArea.lua",
+    -- Slice 6: the profession step's destination dot on the minimap (after ProfStep, RouteArea).
+    "UI/ProfessionDot.lua",
     -- F7 (lead section 447 item 6): route and waypoint lines on the world map (after RouteList, MapRoute).
     "UI/MapRouteLines.lua",
     -- B-13, B-14 (lead section 846.4): the world map menu's two switches (after MapFlights, MapRouteLines).
