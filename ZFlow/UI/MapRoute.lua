@@ -30,7 +30,12 @@
 -- changes what the map's card says; a right click sets or clears your own
 -- waypoint (saved data only, nothing in the game changes).
 --
---   MR.Pins(rows, map) -> pins   (pure) the marks for the shown map
+--   MR.Pins(rows, map[, shade]) -> pins   (pure) the marks for the shown
+--                                map; with a shade ({ you, size, palette,
+--                                byDistance }) each mark also carries its
+--                                colour (r, g, b), MR.Colour's
+--   MR.Colour(row, yards, palette, byDistance, away) -> r, g, b or nil
+--                                (pure) the mark's colour, slice 4
 --   MR.Card(rows, map, info) -> card or nil   (pure) the zone card
 --   MR.StepCard(row) -> card or nil   (pure) one step's card
 --   MR.PointLabel(row) -> the waypoint's label, or nil when it would not do
@@ -41,6 +46,8 @@ local _, ns = ...
 
 local MR = {}
 ns.MapRoute = MR
+
+local N = ns.Nav
 
 MR.NAME = "mapRoute"
 MR.EVERY = 0.25
@@ -62,13 +69,48 @@ local function onMap(r, map)
     return type(r) == "table" and type(r.place) == "table" and map ~= nil and r.place.map == map
 end
 
+-- Slice 4: the colour of one mark, from the one contract (Nav/
+-- RouteColor.lua RC.Of), the colour the trail's first leg takes. The
+-- state is the mark's: "away" when the shown map is not the player's
+-- (every mark grey), "here" for the current stop under N.AT_POINT
+-- yards (the arrow's own rule), else "zone" (the distance ramp at the
+-- yards). nil when the contract is not loaded (the mark then keeps
+-- the client's fallback colour).
+function MR.Colour(row, yards, palette, byDistance, away)
+    local RC = ns.RouteColor
+    if type(RC) ~= "table" or type(RC.Of) ~= "function" then return nil end
+    local state = "zone"
+    if away then
+        state = "away"
+    elseif type(row) == "table" and row.now == true and type(yards) == "number"
+        and yards < (N and N.AT_POINT or 24) then
+        state = "here"
+    end
+    local r, g, b = RC.Of({ state = state }, yards, palette, byDistance)
+    return r, g, b
+end
+
 -- The marks for the map shown: the numbered rows on it, in route order.
-function MR.Pins(rows, map)
+-- shade (slice 4, optional): { you = your place, size = the map's size
+-- in yards, palette, byDistance } — with it, each mark carries its
+-- colour (r, g, b); the yards are the trail's own sums (MRL.Yards).
+function MR.Pins(rows, map, shade)
     local pins = {}
     for _, r in ipairs(type(rows) == "table" and rows or {}) do
         if r.n and onMap(r, map) then
-            pins[#pins + 1] = { n = r.n, x = r.place.x, y = r.place.y, now = r.now == true,
+            local pin = { n = r.n, x = r.place.x, y = r.place.y, now = r.now == true,
                 text = MR.PIN:format(r.n, tostring(r.text)), sub = r.sub }
+            if type(shade) == "table" then
+                local MRL = ns.MapRouteLines
+                local yards
+                if type(MRL) == "table" and type(MRL.Yards) == "function" then
+                    yards = MRL.Yards(shade.you, r.place, shade.size)
+                end
+                local away = type(shade.you) == "table" and shade.you.map ~= nil and shade.you.map ~= map
+                local cr, cg, cb = MR.Colour(r, yards, shade.palette, shade.byDistance, away)
+                if cr then pin.r, pin.g, pin.b = cr, cg, cb end
+            end
+            pins[#pins + 1] = pin
         end
     end
     return pins
@@ -236,7 +278,19 @@ function MR.Declare(k, diag)
             clear()
             return
         end
-        local marks = MR.Pins(rows, map)
+        -- Slice 4: the marks' shade — your place and the shown map's
+        -- size (the yards), the arrow's palette and its one-colour
+        -- setting, read as the trail reads them.
+        local palette, byDistance
+        local s = ctx and ctx.settings
+        if type(s) == "table" and type(s.get) == "function" then
+            local okP, p = pcall(s.get, s, "arrow.palette")
+            if okP and type(p) == "string" then palette = p end
+            local okB, b = pcall(s.get, s, "arrow.byDistance")
+            if okB and b == false then byDistance = false end
+        end
+        local marks = MR.Pins(rows, map, { you = ask(c, "position"), size = ask(c, "mapSize", map),
+            palette = palette, byDistance = byDistance })
         local zone = MR.Card(rows, map, ask(c, "mapInfo", map))
         if not zone then
             clear()
@@ -252,7 +306,9 @@ function MR.Declare(k, diag)
         local sig = { tostring(map), shown.title, tostring(opened) }
         for _, l in ipairs(shown.lines) do sig[#sig + 1] = l end
         for _, p in ipairs(marks) do
-            sig[#sig + 1] = table.concat({ p.n, p.x, p.y, tostring(p.text), tostring(p.sub), tostring(p.now) }, "|")
+            sig[#sig + 1] = table.concat({ p.n, p.x, p.y, tostring(p.text), tostring(p.sub), tostring(p.now),
+                p.r and string.format("%.3f", p.r) or "", p.g and string.format("%.3f", p.g) or "",
+                p.b and string.format("%.3f", p.b) or "" }, "|")
         end
         sig = table.concat(sig, "\n")
         if drawn and sig == lastSig then return end

@@ -104,4 +104,47 @@ tests["route area: the row is a bool in the route group, on by default"] = funct
     t.eq(row and row.group, "travel.route")
 end
 
+-- Slice 4: the marks take the current step's colour (RC.Of at the
+-- nearest point's yards), and follow it as the player walks. Fails
+-- before: the pin spec carries no colour and nothing retints.
+local function RC() return ns.RouteColor end
+
+tests["route area: the marks are made in the current step's colour"] = function(t)
+    local c = client()
+    local state = {}
+    local r = RA().Update(c, cur(area({ 0.53, 0.5 }, { 0.5, 0.54 })), state, {})
+    t.eq(r.shown, 2)
+    local er, eg, eb = RC().Of({ state = "zone" }, 30, nil, nil)
+    t.eq({ r.r, r.g, r.b }, { er, eg, eb }, "the report carries the colour (nearest point, 30 yd)")
+    for _, h in ipairs(c.minimapPins) do
+        t.eq({ h.spec.r, h.spec.g, h.spec.b }, { er, eg, eb }, "the mark's colour")
+    end
+end
+
+tests["route area: walking recolours the marks"] = function(t)
+    local c = client()
+    local state = {}
+    RA().Update(c, cur(area({ 0.53, 0.5 }, { 0.5, 0.54 })), state, {})
+    local h = c.minimapPins[1]
+    t.eq(h.tints or 0, 0, "no retint yet: the colour came with the frame")
+    c.setPosition(1, 0.52, 0.5)
+    local r = RA().Update(c, cur(area({ 0.53, 0.5 }, { 0.5, 0.54 })), state, {})
+    local er, eg, eb = RC().Of({ state = "here" }, 10, nil, nil)
+    t.eq({ r.r, r.g, r.b }, { er, eg, eb }, "the nearest point under 24 yd: here")
+    t.eq(h.tint, { r = er, g = eg, b = eb }, "the marks were retinted")
+end
+
+tests["route area: a mark on the character icon is told to draw hollow"] = function(t)
+    local c = client()
+    local state = {}
+    local r = RA().Update(c, cur(area({ 0.5, 0.5 }, { 0.5, 0.53 })), state, {})
+    t.eq(r.shown, 2)
+    local onIcon, offIcon
+    for _, h in ipairs(c.minimapPins) do
+        if h.x == 0 and h.y == 0 then onIcon = h else offIcon = h end
+    end
+    t.eq(onIcon and onIcon.hollowSet, true, "the mark on the icon: hollow")
+    t.eq(offIcon and offIcon.hollowSet, false, "the other: solid")
+end
+
 return tests

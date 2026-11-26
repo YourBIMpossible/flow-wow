@@ -327,4 +327,83 @@ tests["minimap pin module: nothing is saved by it"] = function(t)
     t.eq(k.store:get(N.Waypoint.SCOPE, N.Waypoint.PATH), { waypoint = { map = MAP, x = 0.55, y = 0.5 } })
 end
 
+-- Slice 4: the pin takes its colour by source (A2-23): your waypoint
+-- in the waypoint colour, the arrow's step in its distance colour; the
+-- frame is retinted as the colour changes, and a pin on the character
+-- icon is told to draw hollow. Fails before: the spec carries no
+-- colour and the frame is never retinted.
+-- As client(o), and the frame records retints and hollow calls.
+local function clientC(o)
+    local c = client(o)
+    local base = c.minimapPin
+    c.minimapPin = function(spec)
+        local h = base(spec)
+        if not h then return nil end
+        local f = o.frame
+        function h.colour(r, g, b)
+            f.tint = { r = r, g = g, b = b }
+            f.tints = (f.tints or 0) + 1
+        end
+        function h.hollow(on) f.hollowSet = on and true or false end
+        return h
+    end
+    return c
+end
+
+tests["minimap pin: a waypoint pin is made in the waypoint colour"] = function(t)
+    local o = world()
+    local r = P.Update(clientC(o), store(o), {})
+    t.eq(r.source, "waypoint")
+    t.eq({ r.r, r.g, r.b }, { 0x1E / 255, 1, 0 }, "the waypoint green")
+    t.eq({ o.spec.r, o.spec.g, o.spec.b }, { 0x1E / 255, 1, 0 }, "the frame's colour")
+end
+
+tests["minimap pin: the colour-blind palette gives the waypoint pin 0072B2"] = function(t)
+    local o = world()
+    P.Update(clientC(o), store(o), {}, nil, nil, { palette = "colourblind" })
+    t.eq({ o.spec.r, o.spec.g, o.spec.b }, { 0, 0x72 / 255, 0xB2 / 255 }, "0072B2")
+end
+
+tests["minimap pin: a palette change retints the pin"] = function(t)
+    local o = world()
+    local state = {}
+    local c, s = clientC(o), store(o)
+    P.Update(c, s, state, nil, nil, {})
+    t.eq(o.frame.tints or 0, 0, "made in colour: no retint yet")
+    P.Update(c, s, state, nil, nil, { palette = "colourblind" })
+    t.eq(o.frame.tint, { r = 0, g = 0x72 / 255, b = 0xB2 / 255 }, "retinted colour-blind")
+end
+
+tests["minimap pin: the step pin takes the step's distance colour"] = function(t)
+    local o = world()
+    o.slot = {}
+    local heading = { map = MAP, x = 0.55, y = 0.5 }
+    local r = P.Update(clientC(o), store(o), {}, heading)
+    t.eq(r.source, "step")
+    local er, eg, eb = ns.RouteColor.Of({ state = "zone" }, 50, nil, nil)
+    t.eq({ r.r, r.g, r.b }, { er, eg, eb }, "the distance colour at 50 yd")
+end
+
+tests["minimap pin: the step pin recolours as you walk, here under 24 yards"] = function(t)
+    local o = world()
+    o.slot = {}
+    local state = {}
+    local c, s = clientC(o), store(o)
+    local heading = { map = MAP, x = 0.55, y = 0.5 }
+    P.Update(c, s, state, heading)
+    heading.x = 0.51
+    local r = P.Update(c, s, state, heading)
+    local er, eg, eb = ns.RouteColor.Of({ state = "here" }, 10, nil, nil)
+    t.eq({ r.r, r.g, r.b }, { er, eg, eb }, "here under 24 yd")
+    t.eq(o.frame.tint, { r = er, g = eg, b = eb }, "retinted")
+end
+
+tests["minimap pin: a waypoint where you stand is told to draw hollow"] = function(t)
+    local o = world()
+    o.slot.waypoint = { map = MAP, x = 0.5, y = 0.5 }
+    local r = P.Update(clientC(o), store(o), {})
+    t.eq(r.shown, true)
+    t.eq(o.frame.hollowSet, true, "on the character icon: hollow")
+end
+
 return tests

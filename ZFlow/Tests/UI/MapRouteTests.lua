@@ -251,4 +251,69 @@ tests["click: a right click points your waypoint at the step; again takes it off
     t.eq(MR().PointLabel({ n = 2, text = string.rep("a", 200) }), nil, "too long a label: none")
 end
 
+-- Slice 4: the pins take the step colour (RC.Of), the same colour the
+-- trail's first leg takes. Fails before: MR.Pins carries no colour.
+local function RC() return ns.RouteColor end
+local function MRL() return ns.MapRouteLines end
+
+local function shade(you, size)
+    return { you = you, size = size or { w = 1000, h = 1000 } }
+end
+
+tests["pins: the colour of the step, from the same contract as the arrow"] = function(t)
+    local pins = MR().Pins(rows(), 1, shade({ map = 1, x = 0.5, y = 0.5 }))
+    local wr, wg, wb = RC().Of({ state = "zone" }, 100, nil, nil)
+    t.eq({ pins[1].r, pins[1].g, pins[1].b }, { wr, wg, wb }, "stop 1 at 100 yd")
+    local d3 = math.sqrt(300 * 300 + 100 * 100)
+    local er, eg, eb = RC().Of({ state = "zone" }, d3, nil, nil)
+    t.eq({ pins[2].r, pins[2].g, pins[2].b }, { er, eg, eb }, "stop 3 at its yards")
+    local lr, lg, lb = MRL().Paint("first", { state = "zone" }, 100, nil, nil)
+    t.eq({ pins[1].r, pins[1].g, pins[1].b }, { lr, lg, lb }, "the first pin is the first leg's colour")
+end
+
+tests["pins: here-blue only for the current stop under 24 yards"] = function(t)
+    local pins = MR().Pins(rows(), 1, shade({ map = 1, x = 0.5, y = 0.59 }))
+    local hr, hg, hb = RC().Of({ state = "here" }, 10, nil, nil)
+    t.eq({ pins[1].r, pins[1].g, pins[1].b }, { hr, hg, hb }, "the current stop at 10 yd: here")
+    local hand = {
+        { n = 1, now = true, text = "A", place = { map = 1, x = 0.1, y = 0.1 } },
+        { n = 2, now = false, text = "B", place = { map = 1, x = 0.5, y = 0.51 } },
+    }
+    local p2 = MR().Pins(hand, 1, shade({ map = 1, x = 0.5, y = 0.5 }))
+    local zr, zg, zb = RC().Of({ state = "zone" }, 10, nil, nil)
+    t.eq({ p2[2].r, p2[2].g, p2[2].b }, { zr, zg, zb }, "a later stop at 10 yd: the near colour, not here")
+end
+
+tests["pins: another map than yours greys every pin"] = function(t)
+    local pins = MR().Pins(rows(), 1, shade({ map = 2, x = 0.5, y = 0.5 }))
+    local ar, ag, ab = RC().Of({ state = "away" }, nil, nil, nil)
+    t.eq(#pins, 2)
+    for _, p in ipairs(pins) do
+        t.eq({ p.r, p.g, p.b }, { ar, ag, ab }, "away grey")
+    end
+end
+
+tests["pins: no shade, no colour (the client keeps its fallback)"] = function(t)
+    t.eq(MR().Pins(rows(), 1)[1].r, nil)
+end
+
+tests["map: walking recolours the marks (a colour-only change redraws)"] = function(t)
+    local h = start({ view = view() })
+    h.c.setWorldMap(1)
+    h.c.setMapSize(1, 1000, 1000)
+    h.c.setPosition(1, 0.5, 0.5)
+    h.api.Refresh()
+    local pins = h.c.routePinSets[1]
+    local wr, wg, wb = RC().Of({ state = "zone" }, 100, nil, nil)
+    t.eq({ pins.pins[1].r, pins.pins[1].g, pins.pins[1].b }, { wr, wg, wb }, "stop 1 at 100 yd")
+    local draws = pins.draws
+    h.api.Refresh()
+    t.eq(pins.draws, draws, "nothing changed: no redraw")
+    h.c.setPosition(1, 0.5, 0.59)
+    h.api.Refresh()
+    t.eq(pins.draws, draws + 1, "closer: the colour changed, so it redraws")
+    local hr, hg, hb = RC().Of({ state = "here" }, 10, nil, nil)
+    t.eq({ pins.pins[1].r, pins.pins[1].g, pins.pins[1].b }, { hr, hg, hb }, "here now")
+end
+
 return tests

@@ -16,8 +16,12 @@ local _, ns = ...
 --     rotates  true or false: the minimap turns with the player
 --     square   true for a square minimap, else nil
 --   client.minimapPin(spec) -> handle or nil
---     spec = { name, size }: one small mark on the minimap, hidden when
---     made. It takes no mouse.
+--     spec = { name, size, r, g, b }: one small mark on the minimap,
+--     hidden when made. It takes no mouse. Slice 4: (r, g, b) is the
+--     pin's colour (Pin.Colour); the handle's colour(r, g, b) retints
+--     it as the colour changes, and hollow(on) is told when the pin
+--     sits on the character icon (the client draws the solid dot
+--     until a ring texture is named — a gap named in the client).
 --     handle.place(x, y, edge)  shows it, its middle x to the right and y
 --                               up from the middle of the minimap; edge is
 --                               true when the place is off the minimap
@@ -31,9 +35,11 @@ local _, ns = ...
 --     | nil, Pin.NONE (pure). source "waypoint" (yours, or a party member
 --     you follow: followed true, as Flow :397-398) or "step"; the report
 --     carries it so the drawing lane can colour the pin.
---   MinimapPin.Update(client, store, state[, heading[, followed]]) -> report
+--   MinimapPin.Update(client, store, state[, heading[, followed[, shade]]])
+--     -> report
 --     state: a table kept between looks (the handle is made once).
---     report = { shown = true, x, y, edge, distance }
+--     shade (slice 4): { palette, byDistance }, the arrow's settings.
+--     report = { shown = true, x, y, edge, distance, source, r, g, b }
 --            or { shown = false, reason }
 --       reason: "no waypoint", "no pin frame", or a reason of N.MinimapPin
 --   MinimapPin.Declare(k) -> api    declares the module and its setting
@@ -57,6 +63,9 @@ Pin.OFF = "turned off"
 Pin.NONE = "no waypoint"   -- nothing to pin: no waypoint, and the arrow points nowhere
 Pin.EVERY = 0.1        -- seconds between looks. A first guess.
 Pin.SIZE = 12          -- how wide the pin is. A first guess.
+Pin.ON_ICON = 6        -- the pin's middle this close (minimap units) to
+                       -- the minimap's middle sits on the character
+                       -- icon: half the pin. A first guess (slice 4).
 
 local N = ns.Nav
 
@@ -75,15 +84,39 @@ local function hidden(state, reason)
     return { shown = false, reason = reason }
 end
 
--- The pin frame, made once. A client that gives none is not asked again.
-local function handleOf(client, state)
+-- The pin frame, made once, in the colour of its first look. A client
+-- that gives none is not asked again.
+local function handleOf(client, state, colour)
     if state.handle or state.tried then return state.handle end
     state.tried = true
-    local h = ask(client, "minimapPin", { name = tostring(ns.id.addon) .. "MinimapPin", size = Pin.SIZE })
+    local spec = { name = tostring(ns.id.addon) .. "MinimapPin", size = Pin.SIZE }
+    if colour then spec.r, spec.g, spec.b = colour[1], colour[2], colour[3] end
+    local h = ask(client, "minimapPin", spec)
     if type(h) == "table" and type(h.place) == "function" and type(h.hide) == "function" then
         state.handle = h
     end
     return state.handle
+end
+
+-- Slice 4 (A2-23): the pin's colour by source, from the one contract
+-- (Nav/RouteColor.lua): your waypoint in the waypoint colour; the
+-- arrow's step in its distance colour at the pin's yards, "here"
+-- under N.AT_POINT (the arrow's own rule). nil when the contract is
+-- not loaded (the pin then keeps the client's fallback colour).
+function Pin.Colour(source, distance, palette, byDistance)
+    local RC = ns.RouteColor
+    if type(RC) ~= "table" or type(RC.Of) ~= "function" then return nil end
+    if source == "waypoint" then
+        local r, g, b = RC.Of({ family = "waypoint" }, nil, palette)
+        return r, g, b
+    end
+    if source == "step" then
+        local state = "zone"
+        if type(distance) == "number" and distance < (N and N.AT_POINT or 24) then state = "here" end
+        local r, g, b = RC.Of({ state = state }, distance, palette, byDistance)
+        return r, g, b
+    end
+    return nil
 end
 
 local function placed(p)
@@ -119,7 +152,7 @@ function Pin.Followed(memo, now, fight, read)
     return memo.value
 end
 
-function Pin.Update(client, store, state, heading, followed)
+function Pin.Update(client, store, state, heading, followed, shade)
     if type(state) ~= "table" then state = {} end
     local W = N.Waypoint
     local slot
@@ -145,11 +178,30 @@ function Pin.Update(client, store, state, heading, followed)
     }, mini)
     if not pin then return hidden(state, why) end
 
-    local handle = handleOf(client, state)
+    -- Slice 4: the pin's colour by source; the frame is made in it and
+    -- retinted when it changes, and told hollow on the character icon.
+    local palette, byDistance
+    if type(shade) == "table" then palette, byDistance = shade.palette, shade.byDistance end
+    local r, g, b = Pin.Colour(source, pin.distance, palette, byDistance)
+    local colour
+    if r then colour = { r, g, b } end
+    local handle = handleOf(client, state, colour)
     if not handle then return hidden(state, "no pin frame") end
     handle.place(pin.x, pin.y, pin.edge)
+    if colour then
+        local prev = state.colour
+        if prev and (prev[1] ~= r or prev[2] ~= g or prev[3] ~= b)
+            and type(handle.colour) == "function" then
+            handle.colour(r, g, b)
+        end
+        state.colour = colour
+    end
+    if type(handle.hollow) == "function" then
+        handle.hollow(pin.x * pin.x + pin.y * pin.y <= Pin.ON_ICON * Pin.ON_ICON)
+    end
     state.shown = true
-    return { shown = true, x = pin.x, y = pin.y, edge = pin.edge, distance = pin.distance, source = source }
+    return { shown = true, x = pin.x, y = pin.y, edge = pin.edge, distance = pin.distance,
+        source = source, r = r, g = g, b = b }
 end
 
 -- Declares the module on kernel k. On a client without the two reads it
@@ -210,7 +262,14 @@ function Pin.Declare(k)
                     if type(follow) ~= "table" or type(follow.Step) ~= "function" then return false end
                     return type(follow.Step()) == "table"
                 end)
-                last = Pin.Update(client, ctx.store, state, heading, followed)
+                -- Slice 4: the arrow's palette and one-colour setting,
+                -- re-read each look, for the pin's colour.
+                local shade = {}
+                local okP, p = pcall(ctx.settings.get, ctx.settings, "arrow.palette")
+                if okP and type(p) == "string" then shade.palette = p end
+                local okB, b = pcall(ctx.settings.get, ctx.settings, "arrow.byDistance")
+                if okB and b == false then shade.byDistance = false end
+                last = Pin.Update(client, ctx.store, state, heading, followed, shade)
                 return last
             end
             ctx.sched:every(Pin.NAME, Pin.EVERY, look)
