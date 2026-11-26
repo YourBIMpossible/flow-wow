@@ -202,7 +202,7 @@ tests["mapFlights module: a click picks a master and lines go to the others; the
     t.eq(far and far.picked, nil)
     t.eq(pinNamed(h, "Home Post").picked, true)
     local tip = far and far.tip or {}
-    t.eq(tip[#tip - 2], "Home Post to Far Post: flight time not known yet", "the flight from the one picked")
+    t.eq(tip[#tip - 2], "Home Post to Far Post: no flight time yet", "the flight from the one picked")
     t.eq(tip[#tip - 1], MF.TIP_CLEAR)
     c.advance(2, 8)
     t.eq(#h.lines, 2, "it stays picked")
@@ -292,7 +292,7 @@ tests["mapFlights module: the mouse on the line makes it bold with its label"] =
     local l = h.lines[1]
     t.eq(l.width, MF.LINE_BOLD, "bold under the mouse")
     t.eq(l.a, 1)
-    t.eq(l.label, "Far Post · flight time not known yet")
+    t.eq(l.label, "Far Post · no flight time yet")
     c.setMapMouse(0.9, 0.05, 1000, 500)
     c.advance(2, 8)
     t.eq(h.lines[1].width, MF.LINE_THIN, "thin again off the line")

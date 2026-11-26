@@ -7174,7 +7174,8 @@ function ns.make.client(env)
                 local line = pool[nSegs]
                 if line == nil then
                     local okL, made = method(host, "CreateLine", nil, "ARTWORK")
-                    line = okL and made or false
+                    line = false
+                    if okL and made ~= nil then line = made end
                     pool[nSegs] = line
                 end
                 if not line then return end

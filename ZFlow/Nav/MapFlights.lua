@@ -55,7 +55,7 @@ MF.LINE_BOLD = 4        -- the hovered line's: exactly double
 MF.LINE_ALPHA = 0.8     -- a line's alpha; the hovered one is 1
 MF.DASH_ON = 0.04       -- a can't line's dash, as a share of its own length
 MF.DASH_OFF = 0.02      -- and the gap between dashes
-MF.NOT_KNOWN = "flight time not known yet"   -- until A1-32 learns the times
+MF.NOT_KNOWN = "no flight time yet"   -- until A1-32 learns the times
 MF.HOVER_EVERY = 0.1    -- seconds between hover looks
 -- The lines' colours, from the agreed spec's hex: can = solid green,
 -- can't = dashed red (red AND dashed: never colour-only). The
@@ -277,7 +277,8 @@ function MF.Styled(lines, hovered, palette)
             for k2, v in pairs(l) do row[k2] = v end
         end
         if type(l) == "table" and l.can ~= nil then
-            local col = l.can and colours.can or colours.cant
+            local col = colours.cant
+            if l.can then col = colours.can end
             row.r, row.g, row.b = col[1], col[2], col[3]
             if not l.can then row.dashOn, row.dashOff = MF.DASH_ON, MF.DASH_OFF end
             if hovered ~= nil and l.to == hovered then
@@ -355,7 +356,7 @@ function MF.FlightText(a, b, flown, estimate, fmt)
     end
     if finite(flown) then return route .. ": " .. fmt(flown) .. " (your last flight)", true end
     if finite(estimate) then return route .. ": about " .. fmt(estimate), true end
-    return route .. ": flight time not known yet", true
+    return route .. ": no flight time yet", true
 end
 
 -- ------------------------------------------------------------------ module
