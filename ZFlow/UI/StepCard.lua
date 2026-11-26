@@ -271,7 +271,8 @@ function M.Declare(k, diag)
                         line.onClick = function()
                             local facts
                             if row.index then facts = { index = row.index } end
-                            api.Toggle(row.stop, facts)
+                            local ok, why = pcall(api.Toggle, row.stop, facts)
+                            if not ok then problems("toggle", why) end
                         end
                     end
                     children[#children + 1] = line
