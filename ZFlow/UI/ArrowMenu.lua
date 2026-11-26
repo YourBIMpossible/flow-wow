@@ -33,6 +33,7 @@ local function read(s)
         buttons = type(s.buttons) == "table" and s.buttons or {},
         windows = type(s.windows) == "table" and s.windows or {},
         travel = type(s.travel) == "table" and s.travel or {},
+        mapToggles = type(s.mapToggles) == "table" and s.mapToggles or {},
     }
 end
 
@@ -78,6 +79,9 @@ function M.Items(state)
     -- level stays at Topics.MENU_MAX.
     show[#show + 1] = M.ButtonsRow(s.buttons)
     show[#show + 1] = M.FlowRow(s.windows)
+    -- B-13, B-14: the world map switches, one level down so Show stays at
+    -- Topics.MENU_MAX (M.MapRow).
+    show[#show + 1] = M.MapRow(s.mapToggles)
     local rows = {
         M.StepRow(s),
         { key = "layout", text = T.MENU.layout, children = layout },
@@ -139,6 +143,10 @@ M.OPEN = "step.open"
 M.HIDE = "step.hide"
 M.NEAREST = "nearest"
 M.WAYPOINT = "waypoint"
+-- Parity A1-40 (lead section 864.3): the waypoint box (Nav/WayWords.lua
+-- api.Prompt), as Flow's arrow menu row (Modules/Menu.lua:575).
+M.WAY_SET = "wayset"
+M.WAY_SET_TEXT = "Set a waypoint (coordinates, or a party member's name)..."
 -- The kinds of Nav/Errand.lua (E.KINDS values): places this player has
 -- seen, saved by Nav/ServiceSeen.lua and Nav/ProfSeen.lua. Nothing authored.
 M.NEAREST_KINDS = {
@@ -193,6 +201,7 @@ function M.StepRow(state)
         { key = M.HIDE, text = "Hide this step", disabled = (not (has and hideOf(s.step))) or nil },
         { key = M.NEAREST, text = "Go to the nearest...", children = nearest },
         { key = M.WAYPOINT, text = "Your waypoint", disabled = (not s.waypoint) or nil },
+        { key = M.WAY_SET, text = M.WAY_SET_TEXT },
         -- Lead section 387 R3: what the route includes, one level down so
         -- the top level stays short (M.RouteRow).
         M.RouteRow(s.route),
@@ -344,6 +353,26 @@ end
 -- (UI/WindowButtons.lua shows or hides the button, and makes none in
 -- combat); a window row opens the add-on's own window, or closes it when
 -- the window can say it is open.
+M.MAP = "map"
+M.MAP_TEXT = "World map"
+M.MAP_NONE = "No world map switches here"
+
+-- B-13, B-14 (Nav/MapToggles.lua MenuItems): flight masters and the route
+-- on the world map, under Show in a level of their own: Show itself has
+-- room for one more row only. toggles: { { key = "map.*", text, checked } }.
+function M.MapRow(toggles)
+    toggles = type(toggles) == "table" and toggles or {}
+    local children = {}
+    for _, r in ipairs(toggles) do
+        if #children >= topics().MENU_MAX - 2 then break end
+        if type(r) == "table" and type(r.key) == "string" and r.key:match("^map%.") and type(r.text) == "string" then
+            children[#children + 1] = { key = r.key, text = r.text, checked = r.checked == true }
+        end
+    end
+    if #children == 0 then children[1] = { key = M.MAP .. ".none", text = M.MAP_NONE, disabled = true } end
+    return { key = M.MAP, text = M.MAP_TEXT, children = children }
+end
+
 M.BUTTONS = "buttons"
 M.BUTTONS_TEXT = "Buttons"
 M.BUTTONS_NONE = "No buttons on any window"
@@ -513,7 +542,18 @@ function M.Action(key, state)
     if M.WINDOWS[key] then return { window = M.WINDOWS[key] } end
     -- Lead section 387 R3: Buttons and Flow windows.
     if key == M.BUTTONS or key == M.FLOW then return { open = key } end
+    -- B-13, B-14: the World map level, and { mapToggle = key } for
+    -- Nav/MapToggles.lua's Toggle (only a row it offered).
+    if key == M.MAP then return { open = key } end
+    if key:match("^map%.") then
+        for _, r in ipairs(s.mapToggles) do
+            if type(r) == "table" and r.key == key then return { mapToggle = key } end
+        end
+        return nil
+    end
     if key:match("^buttons%.") or key:match("^windows%.") then return M.WindowAction(key, s) end
+    -- Parity A1-40: { wayPrompt = true } opens the waypoint box.
+    if key == M.WAY_SET then return { wayPrompt = true } end
     -- Parity A1-42: a waypoint where a member (by unit) stands now.
     local at = key:match("^wayat%.(.+)$")
     if at then return { wayAt = at } end

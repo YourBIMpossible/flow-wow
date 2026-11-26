@@ -449,6 +449,28 @@ end
 Arrow.INTRO_PATH = "layout.arrowIntroSeen"
 Arrow.INTRO_SECONDS = 3
 
+-- F-new-3 (lead section 872.2): the intro's length. With the short, still
+-- login intro on (UI/LoginIntro.lua: the LI.SHORT setting), the arrows'
+-- intro lasts as long as that one, LI.Times(true): its show plus its fade.
+-- Otherwise, or when that file or the setting cannot be read,
+-- INTRO_SECONDS. Read once, when the intro's clock starts.
+function Arrow.IntroSeconds(k)
+    local LI = ns.LoginIntro
+    if type(LI) ~= "table" or type(LI.Times) ~= "function" or type(LI.SHORT) ~= "string" then
+        return Arrow.INTRO_SECONDS
+    end
+    local s = type(k) == "table" and k.settings
+    if type(s) ~= "table" or type(s.get) ~= "function" then return Arrow.INTRO_SECONDS end
+    local okS, short = pcall(s.get, s, LI.SHORT)
+    if not okS or short ~= true then return Arrow.INTRO_SECONDS end
+    local okT, show, tail = pcall(LI.Times, true)
+    if not okT or type(show) ~= "number" or type(tail) ~= "number" then return Arrow.INTRO_SECONDS end
+    local total = show + tail
+    -- (Not a number, not above 0 or endless: passed over too.)
+    if total ~= total or total <= 0 or total == math.huge then return Arrow.INTRO_SECONDS end
+    return total
+end
+
 -- Whether the player's own quests may be the quest step (S43): the
 -- setting row N.QuestSource.SETTING, on unless it says a plain false (the
 -- row is the lead's to add; with no such row the answer is on).
@@ -598,6 +620,15 @@ function Arrow.Start(k, diag, own)
     -- layout. shaped: its handle holds lines. moved: the one-time move to
     -- the modern arrow was looked at.
     local drawn, shaped, moved = "modern", false, false
+    -- B-13, B-14: the world map switches' menu rows (Nav/MapToggles.lua),
+    -- or none.
+    local function mapRows()
+        local MT = k.use and k.use("mapToggles")
+        if type(MT) ~= "table" or type(MT.MenuItems) ~= "function" then return {} end
+        local ok, rows = pcall(MT.MenuItems)
+        if ok and type(rows) == "table" then return rows end
+        return {}
+    end
     local function canShapes()
         local q = handles and handles.quest
         return q ~= nil and type(q.shapes) == "function"
@@ -1066,7 +1097,7 @@ function Arrow.Start(k, diag, own)
             relayout()
             return
         end
-        introUntil = now + Arrow.INTRO_SECONDS
+        introUntil = now + Arrow.IntroSeconds(k)
         local ok, reason = k.store:set("account", Arrow.INTRO_PATH, true)
         if not ok then k.problems:add("arrow", "save", reason) end
     end
@@ -1235,7 +1266,7 @@ function Arrow.Start(k, diag, own)
                  styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback,
                  party = party, step = { name = stepName, from = from, open = drawer ~= nil },
                  nearest = nearest, waypoint = waypoint, professions = professions,
-                 travel = travel }
+                 travel = travel, mapToggles = mapRows() }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.
@@ -1474,6 +1505,30 @@ function Arrow.Start(k, diag, own)
             -- Parity B-30: Walk there instead (Nav/Travel.lua).
             run("walking", using("travel", "Walk"))
             relayout()
+        elseif action.mapToggle ~= nil then
+            -- B-13, B-14: the world map switches (Nav/MapToggles.lua).
+            local toggle = using("mapToggles", "Toggle")
+            if toggle then
+                local ok, err = pcall(toggle, action.mapToggle)
+                if not ok then k.problems:add("arrow", "mapToggle", err) end
+            else
+                say("the world map switches are not ready.")
+            end
+        elseif action.wayPrompt then
+            -- Parity A1-40: "Set a waypoint..." opens the waypoint box
+            -- (Nav/WayWords.lua api.Prompt); its own line says why when
+            -- the box cannot open.
+            local prompt = using("wayWords", "Prompt")
+            if prompt then
+                local okP, shown, line = pcall(prompt)
+                if not okP then
+                    k.problems:add("arrow", "wayPrompt", shown)
+                elseif shown ~= true then
+                    say(tostring(line))
+                end
+            else
+                say("waypoints are not ready.")
+            end
         elseif action.wayAt then
             -- Lead section 465 (A1-42): "Waypoint at <name>".
             local at = using("wayWords", "At")
