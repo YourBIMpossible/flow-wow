@@ -126,9 +126,11 @@ end
 
 local function shared(c)
     local root = c.saved(ns.id.accountDB)
-    root = type(root) == "table" and root.learned or nil
-    root = type(root) == "table" and root.places or nil
-    return type(root) == "table" and root.party or nil
+    for _, key in ipairs({ "learned", "places", "party" }) do
+        if type(root) ~= "table" then return nil end
+        root = root[key]
+    end
+    return root
 end
 
 local function bobMessage()

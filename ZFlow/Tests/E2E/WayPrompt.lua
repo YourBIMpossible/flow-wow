@@ -42,7 +42,8 @@ end
 local function waypoint(addon)
     local W = ns.Nav.Waypoint
     local slot = addon.store:get(W.SCOPE, W.PATH)
-    local wp = type(slot) == "table" and slot.waypoint or nil
+    if type(slot) ~= "table" then return nil end
+    local wp = slot.waypoint
     if type(wp) ~= "table" then return nil end
     return { map = wp.map, x = wp.x, y = wp.y, label = wp.label }
 end
