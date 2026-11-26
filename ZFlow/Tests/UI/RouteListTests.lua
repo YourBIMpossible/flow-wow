@@ -397,7 +397,9 @@ tests["slice 5: the list and the tracker read the same rows"] = function(t)
     end
     t.eq(#rtStops, #rlStops, "the same number of stops in both windows")
     for i, txt in ipairs(rtStops) do
-        t.eq(txt, rows[i].label, "the tracker's stop " .. i .. " is the same stop")
+        local want = rows[i].label
+        if rows[i].count then want = want .. " " .. rows[i].count end
+        t.eq(txt, want, "the tracker's stop " .. i .. " is the same stop (A2-18 adds the count beside the label)")
     end
     t.eq(byKey(rl, "waitingHead").text, byKey(rt, "waitingHead").text)
     t.eq(byKey(rl, "held1").sub, byKey(rt, "held1").sub, "the held reason reads the same in both")

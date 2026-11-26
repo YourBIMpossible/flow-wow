@@ -135,8 +135,10 @@ tests["tracker wiring: the view's held step is listed with its reason, the next 
     t.eq(held and held.sub, "the item is not looted yet", "the reason in plain words, as in the list")
     t.eq(held and held.tone, nil, "a held step is not the current one")
     local now = byKey(kids, "current")
-    t.eq(now and now.text, "Boars")
+    t.eq(now and now.text, "Boars 2/8", "the count beside the label (A2-18)")
     t.eq(now and now.sub, "Boars slain: 2/8")
+    t.eq(now and now.icon, ns.Kit.look.icon[rows[1].icon or ""], "the row's kind mark shows (A2-18)")
+    t.eq(held and held.icon, ns.Kit.look.icon.questNotForYou, "a held step shows the not-for-you mark")
     t.eq(now and now.tone, RT().TONE_NOW)
     t.ok(ns.Kit.Window({ id = RT().ID, title = "x", children = kids }) ~= nil, "the kit takes the parts")
 end
@@ -223,6 +225,25 @@ tests["slice 7: a card that cannot open, or raises, leaves the tracker row's cli
         c.kitClick(RT().ID, "current")
         t.ok(c.mapsShown ~= nil and #c.mapsShown > 0, "the map opens, as in slice 5")
     end
+end
+
+tests["tracker parts: a mark by kind, and the count beside the label (A2-18)"] = function(t)
+    local v = { kind = "quests", label = "Quest route", stops = {
+        { label = "Boars", quest = 1, objective = 1, detail = "Boars slain: 2/8", place = { map = 1, x = 0.6, y = 0.5 } },
+        { label = "A Letter Home", quest = 2, turnIn = true, detail = "Turn in: Marshal Dunn", place = { map = 1, x = 0.8, y = 0.6 } },
+        { label = "Sell Junk", kind = "sell", detail = "Sell", place = { map = 1, x = 0.9, y = 0.6 } },
+    }, left = {} }
+    local rows = RT().Rows(v, nil, HERE)
+    local kids = RT().Children(rows, nil, 0)
+    local now = byKey(kids, "current")
+    t.eq(now and now.text, "Boars 2/8", "an objective's count sits beside its label")
+    t.eq(now and now.icon, ns.Kit.look.icon.questLater, "an objective's mark")
+    local nxt = byKey(kids, "next1")
+    t.eq(nxt and nxt.text, "A Letter Home", "no count: the label alone")
+    t.eq(nxt and nxt.icon, ns.Kit.look.icon.questInLog, "a turn-in's mark")
+    local third = byKey(kids, "next2")
+    t.eq(third and third.text, "Sell Junk", "a row with neither reads as before")
+    t.eq(third and third.icon, nil, "and shows no mark")
 end
 
 return tests

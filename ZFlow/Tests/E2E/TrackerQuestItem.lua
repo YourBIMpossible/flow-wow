@@ -102,7 +102,7 @@ tests["tracker quest item: the current quest's item is shown under the current s
     local _, w = parts(c)
     t.eq(w and w.shown, true, "the tracker is up")
     local cur, at = part(c, "current")
-    t.eq(cur and cur.text, "Boars", "the nearer quest is the current step")
+    t.eq(cur and cur.text, "Boars 0/4", "the nearer quest is the current step (A2-18: its count beside the label)")
     local item, where = part(c, "questItem")
     t.ok(item ~= nil, "the item's line is there")
     t.eq(where, at and at + 1, "right under the current step")
@@ -141,7 +141,7 @@ tests["tracker quest item: the line goes when the route moves on to a quest with
     c.setQuestLog({ HERBS })
     c.advance(5, 60)
     local cur = part(c, "current")
-    t.eq(cur and cur.text, "Herbs", "the route moved on")
+    t.eq(cur and cur.text, "Herbs 0/5", "the route moved on (A2-18: its count beside the label)")
     t.eq(part(c, "questItem"), nil, "the other quest's item is not shown")
 end
 
