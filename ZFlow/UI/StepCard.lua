@@ -177,7 +177,71 @@ function M.Declare(k, diag)
         end
     end
 
-    local function tree(card, point)
+    local function SD()
+        local sd = ns.Nav and ns.Nav.StepDetail
+        if type(sd) == "table" and type(sd.Rows) == "function" then return sd end
+        return nil
+    end
+
+    -- A1-10: the details drawer, as the card's lower section. When the
+    -- card's step is the route's current step, SD.Rows' blocked, then,
+    -- stop, more and along rows follow the card's own lines (its title
+    -- and detail rows are the card's already). Each stop row is paired
+    -- with its stop and the index a click passes: the count from the
+    -- current stop, 1 = next, and no index for a held stop. Nil when
+    -- the card is not showing the current step, or there is nothing
+    -- more to show.
+    local function drawerRows(step)
+        local sd = SD()
+        if not sd then return nil end
+        local route = k.use and k.use("tripRoute")
+        if type(route) ~= "table" or type(route.View) ~= "function" then return nil end
+        local ok, view = pcall(route.View)
+        if not ok or type(view) ~= "table" or type(view.stops) ~= "table" then return nil end
+        local stops = view.stops
+        local at
+        for i, st in ipairs(stops) do
+            if type(st) == "table" and (st.held == nil or st.held == false) then
+                at = i
+                break
+            end
+        end
+        if not at then return nil end
+        if M.StepKey(stops[at]) ~= M.StepKey(step) then return nil end
+        local paired = {}
+        local walked, n = 0, 0
+        for i, st in ipairs(stops) do
+            if i > sd.LAST then break end
+            if type(st) == "table" and (st.held == nil or st.held == false) then
+                walked = walked + 1
+            end
+            if i ~= at then
+                n = n + 1
+                local pair = { stop = st }
+                if type(st) == "table" and (st.held == nil or st.held == false) then
+                    pair.index = walked
+                end
+                paired[n] = pair
+            end
+        end
+        local out, sn = {}, 0
+        for _, r in ipairs(sd.Rows(view)) do
+            if r.kind == "stop" then
+                sn = sn + 1
+                local pair = paired[sn]
+                local row = { kind = "stop", text = r.text }
+                if pair then row.stop, row.index = pair.stop, pair.index end
+                out[#out + 1] = row
+            elseif r.kind == "blocked" or r.kind == "then" or r.kind == "more"
+                or r.kind == "along" or r.kind == "alongItem" then
+                out[#out + 1] = { kind = r.kind, text = r.text }
+            end
+        end
+        if #out == 0 then return nil end
+        return out
+    end
+
+    local function tree(card, point, drawer)
         local children = { { kind = "header", title = card.title } }
         if card.sub ~= nil or card.distance ~= nil then
             local line = { kind = "line", key = "sub" }
@@ -191,6 +255,30 @@ function M.Declare(k, diag)
         end
         for i, s in ipairs(card.lines) do
             children[#children + 1] = { kind = "line", key = "line" .. i, text = s, wrap = true }
+        end
+        if drawer then
+            local sn = 0
+            for _, r in ipairs(drawer) do
+                if r.kind == "blocked" then
+                    children[#children + 1] = { kind = "line", key = "blocked", text = r.text, tone = "warn", wrap = true }
+                elseif r.kind == "then" or r.kind == "along" then
+                    children[#children + 1] = { kind = "section", key = r.kind, text = r.text }
+                elseif r.kind == "stop" then
+                    sn = sn + 1
+                    local row = r
+                    local line = { kind = "line", key = "dstop" .. sn, text = r.text }
+                    if type(row.stop) == "table" then
+                        line.onClick = function()
+                            local facts
+                            if row.index then facts = { index = row.index } end
+                            api.Toggle(row.stop, facts)
+                        end
+                    end
+                    children[#children + 1] = line
+                else
+                    children[#children + 1] = { kind = "line", key = "d" .. r.kind, text = r.text }
+                end
+            end
         end
         local buttons = {}
         for _, a in ipairs(card.actions) do
@@ -215,7 +303,7 @@ function M.Declare(k, diag)
             local ok, w, h = pcall(c.screen)
             if ok then beside = M.BesidePoint(anchor, w, h) end
         end
-        local t, why = tree(card, beside)
+        local t, why = tree(card, beside, drawerRows(current and current.step))
         if not t then
             problems("tree", why)
             return false
@@ -288,18 +376,6 @@ function M.Declare(k, diag)
     return api
 end
 
--- The addon's own: declared when this file loads, started at login.
--- A1-13 lead hook: what a left click on the quest arrow opens. The arrow
--- calls a drawer with the arrow's key (UI/Arrow.lua setDrawer); only the
--- quest arrow opens the card. The step is the route's first stop not held,
--- from TripRoute.View (look only; it covers the route word's routes and the
--- route planned by itself, and carries objective, turnIn and place), so the
--- card shows the stop the arrow walks. index = 1: View counts from the
--- route's current stop, so that stop is the next step and "Do this next"
--- rightly stays off. No distance and no anchor: the card shows none rather
--- than one made up, and opens where the player put it, else at the centre.
--- Other arrows' left click stays as it was (nothing that can be seen).
---   M.ArrowDrawer(route, card) -> fn(key), true when it toggled the card
 function M.ArrowDrawer(route, card)
     return function(key)
         if key ~= "quest" then return false end
@@ -320,6 +396,7 @@ function M.ArrowDrawer(route, card)
     end
 end
 
+-- The addon's own: declared when this file loads, started at login.
 ns.stepCard = M.Declare(ns, ns.diag)
 if type(ns.arrow) == "table" and type(ns.arrow.setDrawer) == "function" then
     ns.arrow.setDrawer(M.ArrowDrawer(ns.tripRoute, ns.stepCard))

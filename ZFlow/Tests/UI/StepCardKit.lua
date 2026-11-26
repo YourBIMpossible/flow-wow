@@ -26,10 +26,12 @@ local function boot(opts)
     local k = ns.Kernel({}, c)
     ns.Diag.Start(k)
     local firstCalls = {}
-    if opts.first then
+    if opts.first or opts.view then
+        local provides = { First = function(n) firstCalls[#firstCalls + 1] = n end }
+        if opts.view then provides.View = function() return opts.view end end
         k:Module({
             name = "tripRoute",
-            provides = { First = function(n) firstCalls[#firstCalls + 1] = n end },
+            provides = provides,
             start = function() end,
         })
     end
@@ -92,6 +94,12 @@ local function step(over)
     }
     for key, v in pairs(over or {}) do s[key] = v end
     return s
+end
+
+local function partOf(tree, key)
+    local found
+    ns.Kit.Each(tree, function(p) if p.key == key then found = p end end)
+    return found
 end
 
 function tests.toggleOpensTheCard(t)
@@ -256,6 +264,75 @@ function tests.noDistanceInventedAndHandInSub(t)
     api2.Toggle(s2, { index = 2 })
     local sub2 = partByKey(tree2(), "sub")
     t.eq(sub2.text, "Hand the quest in", "a hand-in step's sub says so")
+end
+
+-- A1-10: the drawer is the card's lower section, for the current step.
+local function routeView()
+    local cur = step()
+    local nxt = { label = "Defias Grease", quest = 102, turnIn = true,
+        detail = "Turn in: Scout Riell", place = { map = 1436, x = 0.4, y = 0.7 }, kind = "trip" }
+    local heldStop = { label = "Old Sea Chest", quest = 103, turnIn = true,
+        detail = "Turn in", held = "needs the Brass Key",
+        place = { map = 1436, x = 0.3, y = 0.6 }, kind = "trip" }
+    local last = { label = "Moonbrook Well", quest = 104, kind = "pickup",
+        detail = "Pick up from Scout Riell", place = { map = 1436, x = 0.2, y = 0.5 } }
+    return { stops = { cur, nxt, heldStop, last } }, cur, nxt, heldStop, last
+end
+
+function tests.drawerListsTheNextStops(t)
+    local view, cur = routeView()
+    local c, api, firstCalls = boot({ first = true, view = view })
+    local tree = keepTree(c)
+    t.eq(api.Toggle(cur, { index = 1 }), true)
+    local thenPart = partOf(tree(), "then")
+    t.eq(thenPart and thenPart.text, "Then (3 steps)", "the drawer's heading counts the other stops")
+    local d1 = partOf(tree(), "dstop1")
+    t.eq(d1 and d1.text, "  2. Defias Grease", "the next stop, numbered by its place")
+    t.ok(d1 and type(d1.onClick) == "function", "a listed stop can be clicked")
+    local d2 = partOf(tree(), "dstop2")
+    t.eq(d2 and d2.text, "  3. Old Sea Chest (needs the Brass Key)", "a held stop carries its reason")
+    t.ok(d2 and type(d2.onClick) == "function", "a held stop's line clicks too (it opens with no index)")
+    local d3 = partOf(tree(), "dstop3")
+    t.eq(d3 and d3.text, "  4. Moonbrook Well")
+    d1.onClick()
+    t.eq(api.Shown(), true, "the card stays open")
+    t.eq(partOf(tree(), "then"), nil, "the drawer is gone: that stop is not the current one")
+    local head
+    ns.Kit.Each(tree(), function(p) if p.kind == "header" then head = p end end)
+    t.eq(head and head.title, "Defias Grease", "the card now shows the clicked stop")
+    c.kitClick(ID, "act.first")
+    t.eq(firstCalls, { 2 }, "making it next calls First with its place: 2, counted from the current stop")
+    t.eq(api.Shown(), false, "and the card closes, as the button does")
+    -- A held stop opens with no index: not on your route.
+    t.eq(api.Toggle(cur, { index = 1 }), true)
+    partOf(tree(), "dstop2").onClick()
+    local firstBtn = partOf(tree(), "act.first")
+    t.eq(firstBtn and firstBtn.enabled, false, "a held stop cannot be made next")
+    t.eq(firstBtn and firstBtn.tooltip, "This step is not on your route.", "no index was passed for it")
+end
+
+function tests.drawerOnlyForTheCurrentStep(t)
+    local view, _, nxt = routeView()
+    local c, api = boot({ first = true, view = view })
+    local tree = keepTree(c)
+    t.eq(api.Toggle(nxt, { index = 2 }), true)
+    t.eq(partOf(tree(), "then"), nil, "no drawer under another stop's card")
+end
+
+function tests.drawerListsAHeldStopBeforeTheCurrentOne(t)
+    local heldFirst = { label = "Locked Gate", quest = 105, turnIn = true,
+        detail = "Turn in", held = "needs the Brass Key",
+        place = { map = 1436, x = 0.3, y = 0.6 }, kind = "trip" }
+    local after = step({ label = "After Gate", quest = 106 })
+    local view = { stops = { heldFirst, after } }
+    local c, api = boot({ first = true, view = view })
+    local tree = keepTree(c)
+    -- The current step is the first not held (After Gate); the held one
+    -- ahead of it is still listed, with its reason.
+    t.eq(api.Toggle(after, { index = 1 }), true)
+    local d1 = partOf(tree(), "dstop1")
+    t.eq(d1 and d1.text, "  1. Locked Gate (needs the Brass Key)")
+    t.ok(d1 and type(d1.onClick) == "function", "and it opens its card, with no index")
 end
 
 return tests
