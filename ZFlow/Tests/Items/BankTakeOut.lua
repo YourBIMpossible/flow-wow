@@ -181,6 +181,23 @@ tests["bank take out: a hold keeps only its count; the free part is still offere
     t.eq(#T.Rows(wanted, { sell(4865, "Ruined Pelt", 1) }, nil, nil), 1, "a quest still takes the whole thing")
 end
 
+-- E-19 join CHANGES-3 (section 888.1): the hold row and the sell row
+-- together are the whole bank count: what two claims hold, and the rest.
+-- Fails before: the hold row counted the first claim only (2 + 1 of 6).
+tests["bank take out: two holds and the free part add up to the bank count"] = function(t)
+    local grants = {
+        { claim = { kind = "item", key = 4865, amount = 2, activity = "goal" }, from = { bank = 2 } },
+        { claim = { kind = "item", key = 4865, amount = 3, activity = "goal" }, from = { bank = 3 } },
+    }
+    local bank = { { key = 4865, name = "Ruined Pelt", count = 6, quality = 0, classID = 15 } }
+    local free = 6 - ns.Reservations.HeldIn(grants, "bank"):Held(4865)
+    local rows = T.Rows(ns.TakeOutWhy.Fill(bank, nil, {}, grants), { sell(4865, "Ruined Pelt", free) }, nil, nil)
+    local by = {}
+    for _, r in ipairs(rows) do by[r.take] = r.count end
+    t.eq({ by[T.HOLD], by[T.SELL] }, { 5, 1 })
+    t.eq((by[T.HOLD] or 0) + (by[T.SELL] or 0), 6, "every pelt in one row or the other")
+end
+
 tests["bank take out: kept in the bank, nothing takes it out"] = function(t)
     local sells = { sell(4865, "Ruined Pelt", 3), sell(9001, "Broken Fang", 7) }
     local rules = { [9002] = "bank", [9003] = "bank", [9004] = "bank", [4865] = "bank", [9006] = "carry" }
