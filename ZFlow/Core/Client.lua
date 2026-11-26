@@ -336,30 +336,50 @@ function ns.make.client(env)
         if type(info) ~= "table" then return false end
         local item, count = info.hyperlink or info.itemID, info.stackCount
         if (type(item) ~= "string" and type(item) ~= "number") or not wholeCount(count) then return false end
-        return item, count
+        -- E-new-8: whether the stack is soulbound, from the same answer's
+        -- isBound (ContainerItemInfo). nil when it is not a boolean or is
+        -- hidden. First guess, not seen on 16001: that the field is there.
+        -- (hidden() is defined further down this file, so the secret
+        -- check is made here the same way.)
+        local bound = nil
+        if type(info.isBound) == "boolean" then
+            if env.issecretvalue == nil then
+                bound = info.isBound
+            else
+                local okSecret, secret = call(env.issecretvalue, info.isBound)
+                if okSecret and secret == false then bound = info.isBound end
+            end
+        end
+        return item, count, bound
     end
 
     -- Every stack in those containers: { { item = link or ID, count = n }, ... }
-    -- nil when any container or slot could not be read.
-    local function stacks(ids)
+    -- nil when any container or slot could not be read. withBound: each row
+    -- also says bound = true|false when the slot's answer said it.
+    local function stacks(ids, withBound)
         local slotsOf = container("GetContainerNumSlots")
         local out = {}
         for _, bag in ipairs(ids) do
             local ok, total = call(slotsOf, bag)
             if not ok or not wholeCount(total) then return nil end
             for slot = 1, total do
-                local item, count = slotItem(bag, slot)
+                local item, count, bound = slotItem(bag, slot)
                 if item == false then return nil end
-                if item ~= nil then out[#out + 1] = { item = item, count = count } end
+                if item ~= nil then
+                    local row = { item = item, count = count }
+                    if withBound then row.bound = bound end
+                    out[#out + 1] = row
+                end
             end
         end
         return out
     end
 
     -- The stacks in the bags, or nil. Not summed and not keyed: the caller
-    -- says what "the same item" is (ns.make.resourceRead).
+    -- says what "the same item" is (ns.make.resourceRead). Each row has
+    -- bound = true|false when the client said (E-new-8), else no bound.
     function c.bagItems()
-        return stacks(bagIds())
+        return stacks(bagIds(), true)
     end
 
     -- Lead section 337 item 1 (the sell list's "Sell these" button): the
@@ -388,7 +408,8 @@ function ns.make.client(env)
 
     function c.bagSlot(bag, slot)
         if not wholeCount(bag) or not wholeCount(slot) or slot < 1 then return false end
-        return slotItem(bag, slot)
+        local item, count = slotItem(bag, slot)
+        return item, count
     end
 
     -- The character's bank tabs, as the client lists them:
