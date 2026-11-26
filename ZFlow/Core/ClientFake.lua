@@ -435,6 +435,16 @@ function ns.make.fakeClient(opts)
             h.shown = false
             h.hides = h.hides + 1
         end
+        -- Slice 4: the retint and the hollow call are recorded as the
+        -- real handle takes them (h.tint the last retint, h.tints how
+        -- many; h.hollowSet the last hollow call, or nil when never).
+        function h.colour(r, g, b)
+            h.tint = { r = r, g = g, b = b }
+            h.tints = (h.tints or 0) + 1
+        end
+        function h.hollow(on)
+            h.hollowSet = on == true
+        end
         c.minimapPins[#c.minimapPins + 1] = h
         return h
     end

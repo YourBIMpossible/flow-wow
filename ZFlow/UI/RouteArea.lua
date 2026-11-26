@@ -13,8 +13,10 @@ local _, ns = ...
 --
 --   RA.Points(cur) -> the area's points, or nil when the current step has
 --     fewer than two (pure)
---   RA.Update(client, cur, state) -> { shown = n }   one look; state is
---     kept between looks (the marks are made once, as needed)
+--   RA.Update(client, cur, state[, shade]) -> { shown = n, r, g, b }
+--     one look; state is kept between looks (the marks are made once, as
+--     needed). Slice 4: the marks take the current step's colour (the
+--     report's r, g, b); shade is { palette, byDistance }.
 --   RA.Declare(k) -> api   api.last()
 -- Not tested in game.
 
@@ -28,8 +30,14 @@ RA.SIZE = 8        -- how wide one mark is. A first guess.
 
 local N = ns.Nav
 
+-- The arrow's here distance (N.AT_POINT): ArrowView loads before
+-- this file and the value is a constant, so it is read once here.
+local at = 24
+if N and N.AT_POINT then at = N.AT_POINT end
+
 function RA.Points(cur)
-    local s = type(cur) == "table" and type(cur.stops) == "table" and cur.stops[1] or nil
+    local s
+    if type(cur) == "table" and type(cur.stops) == "table" then s = cur.stops[1] end
     local area = type(s) == "table" and s.area or nil
     if type(area) ~= "table" or #area < 2 then return nil end
     return area
@@ -49,12 +57,40 @@ local function hideFrom(state, n)
     end
 end
 
+-- Slice 4: the marks' colour — the current step's colour from the one
+-- contract (RC.Of), at the nearest point's yards; "here" when that is
+-- under N.AT_POINT (the arrow's own rule), else the distance ramp.
+-- nil when the contract is not loaded (the marks then keep the
+-- client's fallback colour).
+local function colourOf(cur, yards, shade)
+    local RC = ns.RouteColor
+    if type(RC) ~= "table" or type(RC.Of) ~= "function" then return nil end
+    local s
+    if type(cur) == "table" and type(cur.stops) == "table" then s = cur.stops[1] end
+    if type(s) ~= "table" then return nil end
+    local state = "zone"
+    if type(yards) == "number" and yards < at then state = "here" end
+    local palette, byDistance
+    if type(shade) == "table" then palette, byDistance = shade.palette, shade.byDistance end
+    local r, g, b = RC.Of({ kind = s.kind, family = s.family, state = state }, yards, palette, byDistance)
+    return { r, g, b }
+end
+
+-- A mark sits on the character icon when its middle is within half
+-- the mark of the minimap's middle. A first guess.
+local function onIcon(pin)
+    local half = RA.SIZE / 2
+    return pin.x * pin.x + pin.y * pin.y <= half * half
+end
+
 -- Mark i, made the first time it is needed; nil when the client gives none.
-local function handle(client, state, i)
+local function handle(client, state, i, colour)
     local h = state.handles[i]
     if h then return h end
     if state.noFrame then return nil end
-    h = ask(client, "minimapPin", { size = RA.SIZE })
+    local spec = { size = RA.SIZE }
+    if colour then spec.r, spec.g, spec.b = colour[1], colour[2], colour[3] end
+    h = ask(client, "minimapPin", spec)
     if type(h) ~= "table" or type(h.place) ~= "function" or type(h.hide) ~= "function" then
         state.noFrame = true
         return nil
@@ -63,7 +99,7 @@ local function handle(client, state, i)
     return h
 end
 
-function RA.Update(client, cur, state)
+function RA.Update(client, cur, state, shade)
     if type(state) ~= "table" then state = {} end
     state.handles = state.handles or {}
     state.placed = state.placed or {}
@@ -89,16 +125,38 @@ function RA.Update(client, cur, state)
         end
     end
     if #inside == 0 and nearest then inside[1] = nearest end
+    -- Slice 4: the step's colour at the nearest mark's yards; the marks
+    -- already made are retinted when it changes (the new ones are made
+    -- in it), and a mark on the character icon is told to draw hollow.
+    local yards
+    for _, pin in ipairs(inside) do
+        if type(pin.distance) == "number" and (yards == nil or pin.distance < yards) then
+            yards = pin.distance
+        end
+    end
+    local colour = colourOf(cur, yards, shade)
+    if colour then
+        local prev = state.colour
+        if not prev or prev[1] ~= colour[1] or prev[2] ~= colour[2] or prev[3] ~= colour[3] then
+            for _, h in ipairs(state.handles) do
+                if type(h.colour) == "function" then h.colour(colour[1], colour[2], colour[3]) end
+            end
+            state.colour = colour
+        end
+    end
     local n = 0
     for _, pin in ipairs(inside) do
-        local h = handle(client, state, n + 1)
+        local h = handle(client, state, n + 1, colour)
         if not h then break end
         n = n + 1
         h.place(pin.x, pin.y, pin.edge)
+        if type(h.hollow) == "function" then h.hollow(onIcon(pin)) end
         state.placed[n] = true
     end
     hideFrom(state, n)
-    return { shown = n }
+    local out = { shown = n }
+    if colour then out.r, out.g, out.b = colour[1], colour[2], colour[3] end
+    return out
 end
 
 function RA.Declare(k)
@@ -124,7 +182,14 @@ function RA.Declare(k)
                     local ok, v = pcall(r.Current)
                     if ok then cur = v end
                 end
-                last = RA.Update(client, cur, state)
+                -- Slice 4: the arrow's palette and one-colour setting,
+                -- for the marks' colour.
+                local shade = {}
+                local okPal, pal = pcall(ctx.settings.get, ctx.settings, "arrow.palette")
+                if okPal and type(pal) == "string" then shade.palette = pal end
+                local okBy, by = pcall(ctx.settings.get, ctx.settings, "arrow.byDistance")
+                if okBy and by == false then shade.byDistance = false end
+                last = RA.Update(client, cur, state, shade)
             end)
         end,
         stop = function()

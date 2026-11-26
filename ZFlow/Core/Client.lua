@@ -2734,11 +2734,25 @@ function ns.make.client(env)
 
     -- One small mark on the minimap (F1), or nil when the client cannot
     -- make it. Hidden when made; it takes no mouse and holds no action.
-    --   spec = { name = global frame name or nil, size = n }
+    --   spec = { name = global frame name or nil, size = n, r =, g =, b = }
     --   h.place(x, y, edge)   shows it, its middle x to the right and y up
     --                   from the middle of the minimap; edge true (the place
     --                   is off the minimap) draws it fainter
     --   h.hide()
+    --   h.colour(r, g, b)   retints the dot (slice 4: the colour follows
+    --                   the step as the player walks; the frame is kept)
+    --   h.hollow(on)    the hollow look, when the mark sits on the
+    --                   character icon (slice 4). NAMED GAP: no ring
+    --                   texture exists in the client inventory (Flow,
+    --                   Questie and Z-Flow searched; the filled disc
+    --                   below is the only circle), so hollow draws the
+    --                   same solid dot until a texture path is named.
+    --                   The call is kept so only this function changes.
+    -- Slice 4: the mark is a round dot — the portrait disc
+    -- (TempPortraitAlphaMask, as routePins draws) tinted with the
+    -- spec's colour; a spec with no colour keeps it near-black, never a
+    -- guessed colour. A square colour fill is the fallback when the
+    -- disc cannot be set.
     -- A first guess: not seen in game.
     -- Docs (warcraft.wiki.gg, API TextureBase SetColorTexture): (r, g, b [, a]),
     -- added in 7.0.3 and listed for the 1.x clients; matches. How the pin
@@ -2756,11 +2770,30 @@ function ns.make.client(env)
             method(f, "SetHeight", size)
         end
         method(f, "EnableMouse", false)
-        local okTex, tex = method(f, "CreateTexture", nil, "OVERLAY")
-        if okTex and tex ~= nil then
+        local tex
+        local okTex, made = method(f, "CreateTexture", nil, "OVERLAY")
+        if okTex and made ~= nil then tex = made end
+        local disc = false
+        if tex then
             method(tex, "SetAllPoints", f)
-            if not method(tex, "SetColorTexture", 1, 0.82, 0, 1) then method(tex, "SetTexture", 1, 0.82, 0, 1) end
+            if method(tex, "SetTexture", "Interface\\CharacterFrame\\TempPortraitAlphaMask") then disc = true end
         end
+        local function colourOf(r, g, b)
+            if type(r) == "number" and r == r and type(g) == "number" and g == g
+                and type(b) == "number" and b == b then
+                return r, g, b
+            end
+            return 0.1, 0.1, 0.1
+        end
+        local function tint(r, g, b)
+            if not tex then return end
+            if disc then
+                method(tex, "SetVertexColor", r, g, b, 1)
+            elseif not method(tex, "SetColorTexture", r, g, b, 1) then
+                method(tex, "SetTexture", r, g, b, 1)
+            end
+        end
+        tint(colourOf(spec.r, spec.g, spec.b))
         local h = {}
         function h.place(x, y, edge)
             if type(x) ~= "number" or type(y) ~= "number" or x ~= x or y ~= y then return end
@@ -2770,6 +2803,8 @@ function ns.make.client(env)
             method(f, "Show")
         end
         function h.hide() method(f, "Hide") end
+        function h.colour(r, g, b) tint(colourOf(r, g, b)) end
+        function h.hollow(on) end
         return h
     end
     -- Bags and vendor helper (FEATURE-PLAN F5, owner Lazy): what an item
@@ -13524,10 +13559,12 @@ function ns.make.client(env)
     -- no frame could be made. Round numbered marks over the map's canvas,
     -- made as needed and kept; each shows a tooltip under the mouse.
     --   h.map() -> the uiMapID the world map shows, or nil (as c.mapPins)
-    --   h.draw(pins)   pins = { { n, x, y, text, sub, now } }: x, y shares
-    --       (x right, y down) of the shown map; n the number written on
-    --       the mark; text, sub the tooltip's lines; now marks the stop
-    --       the arrow points at. Marks past the count are hidden.
+    --   h.draw(pins)   pins = { { n, x, y, text, sub, now, r, g, b } }: x, y
+    --       shares (x right, y down) of the shown map; n the number written
+    --       on the mark; text, sub the tooltip's lines; now marks the stop
+    --       the arrow points at. Slice 4: a pin with a colour (r, g, b)
+    --       tints its disc with it; a pin with no colour keeps the disc
+    --       near-black. Marks past the count are hidden.
     --   h.clear()   hides them all
     --   h.onClick(fn) -> true: a click on a mark calls fn(n, button), n
     --       the number drawn on it (B-19). First guesses, not seen on
@@ -13621,8 +13658,8 @@ function ns.make.client(env)
                         m.text = type(p.text) == "string" and p.text or nil
                         m.sub = type(p.sub) == "string" and p.sub ~= "" and p.sub or nil
                         if m.disc then
-                            if p.now == true then
-                                method(m.disc, "SetVertexColor", 0.1, 0.45, 0.1, 0.95)
+                            if finiteNumber(p.r) and finiteNumber(p.g) and finiteNumber(p.b) then
+                                method(m.disc, "SetVertexColor", p.r, p.g, p.b, 0.95)
                             else
                                 method(m.disc, "SetVertexColor", 0.1, 0.1, 0.1, 0.9)
                             end
