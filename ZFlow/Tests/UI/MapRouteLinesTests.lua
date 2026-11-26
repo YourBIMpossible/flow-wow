@@ -349,27 +349,4 @@ tests["paint: without the contract, the route blue follows the palette (F-23)"] 
     t.ok(ok, tostring(err))
 end
 
-tests["paint: the route legs take the order mode's colour (B-17)"] = function(t)
-    local saved = ns.RouteOrderColor
-    ns.RouteOrderColor = { Color = function(mode, palette)
-        if mode == "xp" and palette == "standard" then return 0.1, 0.2, 0.3 end
-        return 0.9, 0.9, 0.9
-    end }
-    local r, g, b, a = MRL().Paint("first", nil, 600, "standard", nil, "xp")
-    local rr, rg, rb, ra = MRL().Paint("rest", nil, 600, "standard", nil, "xp")
-    local wr = MRL().Paint("waypoint", nil, nil, "standard", nil, "xp")
-    local xr = MRL().Paint("x", nil, nil, "standard", nil, "xp")
-    local nr = MRL().Paint("rest", nil, 600, "standard")
-    local fr, fg, fb, fa = MRL().Paint("first", nil, 600, "standard")
-    ns.RouteOrderColor = saved
-    t.eq({ r, g, b, a }, { fr, fg, fb, fa }, "first leg: the arrow colour, as Flow's live leg")
-    t.eq(rr, 0.1, "later legs: the mode colour")
-    t.eq(rg, 0.2)
-    t.eq(rb, 0.3)
-    t.eq(ra, MRL().REST_ALPHA, "later legs stay fainter")
-    t.ok(wr ~= 0.1, "the waypoint keeps its own colour")
-    t.ok(xr ~= 0.1, "the X keeps its own colour")
-    t.ok(nr ~= 0.1, "no order mode: the contract colour")
-end
-
 return tests

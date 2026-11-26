@@ -222,17 +222,7 @@ end
 --   so the first leg must too. When byDistance is false the family is
 --   skipped here and the distance colour — the flat row — wins, so the
 --   leg is the arrow's colour, whatever the arrow shows.
--- orderMode (B-17, section 844): the route's order mode; when given and
--- Nav/RouteOrderColor.lua is loaded, the later legs take that mode's
--- colour, as Flow colours its route by order mode. The first leg stays
--- the arrow's colour (Flow MapOverlay.lua:379, the live leg is
--- arrowColor), and the waypoint and the X keep their own.
-function MRL.Paint(kind, step, yards, palette, byDistance, orderMode)
-    local ROC = ns.RouteOrderColor
-    if orderMode ~= nil and kind == "rest" and type(ROC) == "table" and type(ROC.Color) == "function" then
-        local r, g, b = ROC.Color(orderMode, palette)
-        return r, g, b, MRL.REST_ALPHA
-    end
+function MRL.Paint(kind, step, yards, palette, byDistance)
     local RC = ns.RouteColor
     if type(RC) ~= "table" or type(RC.Of) ~= "function" then
         -- F-23 (section 828.2): the fallback route blue follows the
@@ -371,11 +361,9 @@ function MRL.Declare(k)
             local okB, b = pcall(s.get, s, "arrow.byDistance")
             if okB and b == false then byDistance = false end
         end
-        local orderMode = nil
-        if type(ns.RouteOrderColor) == "table" then orderMode = ns.RouteOrderColor.Mode(s) end
         local sig = { tostring(map) }
         for _, l in ipairs(lines) do
-            local r, g, b, a = MRL.Paint(l.kind, step, yards, palette, byDistance, orderMode)
+            local r, g, b, a = MRL.Paint(l.kind, step, yards, palette, byDistance)
             l.r, l.g, l.b, l.a = r, g, b, a
             sig[#sig + 1] = table.concat({ l.kind, l.ax, l.ay, l.bx, l.by, r, g, b, a }, "|")
         end
