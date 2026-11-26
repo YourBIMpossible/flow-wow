@@ -553,6 +553,10 @@ READS.rewardButtons = false
 READS.groupLeader = false
 -- Lease rows (lead sections 659, 662, 677, 679, 682, 692, 693).
 READS.gossipOptions = false
+-- A2-27 (lead section 851): each gossip window's options, raw, for the
+-- diagnostics (Core/Diag.lua keeps them at GOSSIP_SHOW); the capture does
+-- not ask it.
+READS.gossipRawLines = false
 READS.itemIdByName = false
 READS.questRewardXp = false
 KIND.listen[#KIND.listen + 1] = "onBoughtBack"
