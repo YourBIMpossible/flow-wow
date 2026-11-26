@@ -241,6 +241,46 @@ tests["party route B-42: on the party route your quest step stays when a member 
     t.eq(labels, { "Wolves", "Hand in", "Party stop" })
 end
 
+-- B-44 (lead section 843.2): a member joining the party route, as Flow's
+-- PartyHelp.lua J handler (:278-291): on your own route, one who joins with
+-- quests to do is asked about once ("join them?"); on the party route, a
+-- line when someone joins or leaves. Fails before: a join was only noted.
+tests["party route B-44: news of a member joining or leaving the party route"] = function(t)
+    t.eq(type(P().JoinNews), "function")
+    if type(P().JoinNews) ~= "function" then return end
+    t.eq(P().JoinNews("Al", true, nil, PROG, {}, "mine", "Bo"), "ask", "on your own route, with quests to do")
+    t.eq(P().JoinNews("Al", true, nil, PROG, { Al = true }, "mine", "Bo"), nil, "asked once")
+    t.eq(P().JoinNews("Cy", true, nil, PROG, {}, "mine", "Bo"), nil, "nothing to do")
+    t.eq(P().JoinNews("Zed", true, nil, PROG, {}, "mine", "Bo"), nil, "no progress from them")
+    t.eq(P().JoinNews("Al", true, nil, PROG, {}, "combined", "Bo"), "joined")
+    t.eq(P().JoinNews("Al", false, true, PROG, {}, "combined", "Bo"), "left")
+    t.eq(P().JoinNews("Al", true, true, PROG, {}, "combined", "Bo"), nil, "no change: no news")
+    t.eq(P().JoinNews("Bo", true, nil, PROG, {}, "mine", "Bo"), nil, "yourself")
+    t.eq(P().JoinNews("Al", true, nil, PROG, {}, "theirs", "Bo"), nil, "helping someone: not asked")
+end
+
+tests["party route B-44: the join ask is said in chat with the choices"] = function(t)
+    if type(P().JoinNews) ~= "function" then return t.ok(false, "no JoinNews") end
+    local c = ns.make.fakeClient()
+    c.setPlayerName("Bo")
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    local api = P().Declare(k, d)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    local before = #c.printed
+    c.fire("CHAT_MSG_ADDON", ns.id.commPrefix, P().JoinMsg(true, ns.id.commVersion), "PARTY", "Cy")
+    t.eq(#c.printed, before, "Cy has no progress here: not asked")
+    local said = {}
+    api.Progress("Dee", { [20] = { complete = false, objectives = { { have = 0, need = 3 } } } })
+    before = #c.printed
+    c.fire("CHAT_MSG_ADDON", ns.id.commPrefix, P().JoinMsg(true, ns.id.commVersion), "PARTY", "Dee")
+    for i = before + 1, #c.printed do said[#said + 1] = tostring(c.printed[i]) end
+    local all = table.concat(said, " / ")
+    t.ok(all:find(P().HELP_JOIN:format("Dee", 1), 1, true) ~= nil, all)
+end
+
 -- B-42 CHANGES-1 (lead section 861): a quest's pick-up is not a party route
 -- step, as Flow's H.QuestsOnly drops "pickup:<id>" (PartyHelp.lua:409;
 -- Focus.lua:48, :436-438). Fails before: it was kept by its quest id.
