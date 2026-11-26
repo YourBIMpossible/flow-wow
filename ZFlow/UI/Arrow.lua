@@ -1549,6 +1549,36 @@ function Arrow.Start(k, diag, own)
                     if on then h.tip(tip(key)) else h.tip(nil) end
                 end)))
             end
+            -- A1-22 (section 844): the profession arrow's text, as Flow's
+            -- (b657e6e5 Modules/Nav/Nav.lua:4415-4431): a left click opens
+            -- the step, a right click the menu, a hover the step's lines.
+            -- The answers are Nav/ProfArrowText.lua's; the hit is the
+            -- client's (h.onTextClick / h.onTextHover), when it has one.
+            local PT = ns.Nav and ns.Nav.ProfArrowText
+            if key == "prof" and PT and type(h.onTextClick) == "function" then
+                local function textState()
+                    if not current or not shownLines then return {} end
+                    local lines = shownLines.prof
+                    if type(lines) ~= "table" or #lines == 0 then return {} end
+                    return { step = { lines = lines } }
+                end
+                h.onTextClick(script("textClick", guarded(function(button)
+                    if not ready or not live() then return end
+                    local what = PT.Click(button, textState())
+                    if what == "menu" then
+                        h.tip(nil)
+                        showMenu(h)
+                    elseif what == "open" and drawer then
+                        local ok, err = pcall(drawer, key)
+                        if not ok then k.problems:add("arrow", "drawer", err) end
+                    end
+                end)))
+                if type(h.onTextHover) == "function" and type(h.tip) == "function" then
+                    h.onTextHover(script("textHover", guarded(function(on)
+                        if on and ready and live() then h.tip(PT.Tip(textState(), drawer ~= nil)) else h.tip(nil) end
+                    end)))
+                end
+            end
         end
         if own.loaded then apply() else listen("PLAYER_LOGIN", apply) end
         listen("PLAYER_ENTERING_WORLD", guarded(enterWorld))

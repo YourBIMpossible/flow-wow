@@ -3838,6 +3838,54 @@ function ns.make.client(env)
         function h.onHover(fn)
             hovered = type(fn) == "function" and fn or nil
         end
+        -- A1-22 (section 844): a hit over the arrow's text, 240x16 as Flow's
+        -- (b657e6e5 Modules/Nav/Nav.lua:4417-4420), left and right clicks.
+        -- It tells h.onTextClick("left" | "right") and h.onTextHover(on)
+        -- when they are set. It follows the label: shown with it, hidden
+        -- with it. First guesses, not seen in game on 16001: a Button with
+        -- RegisterForClicks, OnClick(self, button), OnEnter, OnLeave.
+        do
+            local textClicked, textHovered
+            local okHit, hit = call(env.CreateFrame, "Button", nil, textFrame)
+            if not okHit then hit = nil end
+            if hit ~= nil and label ~= nil then
+                method(hit, "SetSize", 240, 16)
+                method(hit, "SetPoint", "CENTER", label, "CENTER", 0, 0)
+                method(hit, "EnableMouse", true)
+                method(hit, "RegisterForClicks", "LeftButtonUp", "RightButtonUp")
+                method(hit, "SetScript", "OnClick", function(_, button)
+                    local which = nil
+                    if button == "LeftButton" then which = "left" end
+                    if button == "RightButton" then which = "right" end
+                    if which and textClicked then pcall(textClicked, which) end
+                end)
+                method(hit, "SetScript", "OnEnter", function()
+                    if textHovered then pcall(textHovered, true) end
+                end)
+                method(hit, "SetScript", "OnLeave", function()
+                    if textHovered then pcall(textHovered, false) end
+                end)
+                method(hit, "Hide")
+                local showText = h.text
+                function h.text(lines, point)
+                    showText(lines, point)
+                    local okShown, shown = method(label, "IsShown")
+                    if okShown and shown == true and textClicked ~= nil then
+                        method(hit, "Show")
+                    else
+                        method(hit, "Hide")
+                    end
+                end
+            end
+            -- fn("left" | "right") at a click on the text; nil: no one is told.
+            function h.onTextClick(fn)
+                if type(fn) == "function" then textClicked = fn else textClicked = nil end
+            end
+            -- fn(true) when the pointer comes over the text, fn(false) when it leaves.
+            function h.onTextHover(fn)
+                if type(fn) == "function" then textHovered = fn else textHovered = nil end
+            end
+        end
         -- The client's own tooltip beside the arrow with these lines, the
         -- first as its title; nil or no lines takes it away, unless this
         -- arrow did not fill it or another frame has taken it since.

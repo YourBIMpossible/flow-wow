@@ -5647,3 +5647,35 @@ do
         return c
     end
 end
+
+-- A1-22 (section 844; Core/Client.lua h.onTextClick / h.onTextHover): the
+-- hit over an arrow's text. A handle keeps them; the test's controls are
+-- h.textClick(button) ("left" or "right") and h.textHover(on). Nothing is
+-- told while the arrow is hidden or its text is empty, as on the client.
+do
+    local make = ns.make.fakeClient
+    ns.make.fakeClient = function(...)
+        local c = make(...)
+        local arrow = c.arrow
+        function c.arrow(spec)
+            local h = arrow(spec)
+            if h == nil then return nil end
+            local textClicked, textHovered
+            function h.onTextClick(fn)
+                if type(fn) == "function" then textClicked = fn else textClicked = nil end
+            end
+            function h.onTextHover(fn)
+                if type(fn) == "function" then textHovered = fn else textHovered = nil end
+            end
+            local function live() return h.shown and #h.lines > 0 end
+            function h.textClick(button)
+                if textClicked and live() then textClicked(button) end
+            end
+            function h.textHover(on)
+                if textHovered and live() then textHovered(on == true) end
+            end
+            return h
+        end
+        return c
+    end
+end
