@@ -538,8 +538,20 @@ return {
     ["settings: the speech toggle bonus.spoken is kept"] = function(t)
         for _, spoken in ipairs({ true, false }) do
             local result = Import.FromFlow({ bonus = { enabled = true, spoken = spoken } }, nil)
-            t.eq(result.account.settings.bonus, { enabled = true, spoken = spoken })
+            t.eq(result.account.settings.bonus, { spoken = spoken })
             t.eq(droppedFor(result, "bonus.spoken"), nil, "not listed as left behind")
+        end
+    end,
+
+    -- Lead section 852: Flow's Bonus mode switch lands on the setting this
+    -- add-on reads, general.bonus (UI/NpcSpeech.lua S.BONUS), so an imported
+    -- on stays on now the default is off.
+    ["settings: Flow's bonus.enabled becomes general.bonus"] = function(t)
+        for _, on in ipairs({ true, false }) do
+            local result = Import.FromFlow({ bonus = { enabled = on } }, nil)
+            local general = result.account.settings.general
+            t.eq(general and general.bonus, on, "general.bonus")
+            t.eq(result.account.settings.bonus, nil, "not under bonus.enabled")
         end
     end,
 

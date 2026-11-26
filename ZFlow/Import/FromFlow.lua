@@ -400,7 +400,8 @@ local MAP = {
     { "buffButton.always", to = "settings.buffButton.always", as = "bool" },
     { "buffButton.care", to = "settings.buffButton.care", as = "bool" },
     { "buffButton.keepOnMain", to = "settings.buffButton.keepOnMain", as = "bool" },
-    { "bonus.enabled", to = "settings.bonus.enabled" },
+    -- Lead section 852: the setting is general.bonus (UI/NpcSpeech.lua).
+    { "bonus.enabled", to = "settings.general.bonus" },
     -- The speech toggle (Modules/Bonus.lua): a choice, not a notice flag.
     { "bonus.spoken", to = "settings.bonus.spoken" },
     { "camera.maxZoom", to = "settings.camera.maxZoom" },

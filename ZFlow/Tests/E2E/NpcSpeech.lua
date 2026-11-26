@@ -33,7 +33,10 @@ local function boot(opts)
     local addon = ns.offline.addon(c)
     c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
     c.advance(5, 20)
-    if opts.on then addon.settings:set(SETTING, true) end
+    if opts.on then
+        addon.settings:set(BONUS, true)
+        addon.settings:set(SETTING, true)
+    end
     return c, addon
 end
 
@@ -124,7 +127,7 @@ end
 
 tests["npc speech: the bonus master switch off silences it"] = function(t)
     local c, addon = boot({ on = true })
-    t.eq(addon.settings:get(BONUS), true, "bonus extras on by default")
+    t.eq(addon.settings:get(BONUS), true, "turned on by this test's boot")
     addon.settings:set(BONUS, false)
     t.eq(addon.settings:available(SETTING), false, "greyed under the master switch")
     c.setNpcText("detail", STORY)
@@ -158,10 +161,54 @@ tests["npc speech: no local playback destination - greyed row with its reason, n
 end
 
 tests["npc speech: call and destination both there - the row is usable"] = function(t)
-    local _, addon = boot()
+    local _, addon = boot({ on = true })   -- (F-22: bonus mode is off by default)
     local e = entry(addon)
     t.eq(e and e.available, true)
     t.eq(e and e.because, nil)
+end
+
+-- F-22 (lead sections 792, 794): Bonus mode, as Flow's (Modules/Bonus.lua;
+-- Settings.lua:783-795): off by default, a word that turns it on or off and
+-- says where it stands, with each extra and its own switch. A saved choice
+-- is kept. Fails before: the default is on and there is no bonus word.
+local function said(c, from)
+    local out = {}
+    for i = from + 1, #c.printed do out[#out + 1] = tostring(c.printed[i]) end
+    return out
+end
+
+tests["npc speech: bonus mode is off by default; with no choice saved, nothing is read aloud"] = function(t)
+    local c, addon = boot()
+    t.eq(addon.settings:get(BONUS), false, "off by default, as Flow")
+    addon.settings:set(SETTING, true)
+    c.setNpcText("detail", STORY)
+    c.fire("QUEST_DETAIL")
+    t.eq(#c.spoken(), 0, "speech on but bonus mode off: nothing said")
+end
+
+tests["npc speech: a saved bonus choice is kept"] = function(t)
+    local c, addon = boot({ account = { settings = { general = { bonus = true } } } })
+    t.eq(addon.settings:get(BONUS), true, "the saved on stays on")
+    addon.settings:set(SETTING, true)
+    c.setNpcText("detail", STORY)
+    c.fire("QUEST_DETAIL")
+    t.eq(#c.spoken(), 1)
+end
+
+tests["npc speech: the bonus word"] = function(t)
+    local S = ns.NpcSpeech
+    t.eq(type(S.BonusLines), "function", "S.BonusLines")
+    if type(S.BonusLines) ~= "function" then return end
+    t.eq(S.BonusLines(false, false), { S.BONUS_IS_OFF, S.EXTRA_LINE:format(S.EXTRA_SPEECH, "off") })
+    t.eq(S.BonusLines(true, true), { S.BONUS_IS_ON, S.EXTRA_LINE:format(S.EXTRA_SPEECH, "on") })
+    local c, addon = boot()
+    local n = #c.printed
+    c.slashes[ns.id.slash]("bonus")
+    t.eq(said(c, n), { ns.id.title .. ": " .. S.BONUS_IS_OFF, "  " .. S.EXTRA_LINE:format(S.EXTRA_SPEECH, "off") })
+    c.slashes[ns.id.slash]("bonus on")
+    t.eq(addon.settings:get(BONUS), true, "bonus on")
+    c.slashes[ns.id.slash]("bonus off")
+    t.eq(addon.settings:get(BONUS), false, "bonus off")
 end
 
 return tests
