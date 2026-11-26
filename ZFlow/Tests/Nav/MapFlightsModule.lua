@@ -265,4 +265,38 @@ tests["mapFlights module: a right click sets your waypoint on a master; again ta
     t.eq(W.Get(slot) and W.Get(slot).label, MF.PointLabel({ name = "Home Post" }), "no pin: nothing changes")
 end
 
+tests["mapFlights module: a pick draws its line styled, solid green and thin"] = function(t)
+    local _, c = start({ on = true })
+    c.setWorldMap(1414)
+    c.advance(2, 8)
+    local h = c.mapPinSets[1]
+    h.click("Home Post")
+    t.eq(#h.lines, 1)
+    local l = h.lines[1]
+    t.eq(l.to, "Far Post")
+    t.eq({ l.r, l.g, l.b }, { 0x66 / 255, 1, 0x66 / 255 }, "can: the solid green")
+    t.eq(l.width, MF.LINE_THIN)
+    t.eq(l.a, 0.8)
+    t.eq(l.dashOn, nil)
+    t.eq(l.label, nil, "no mouse: no label")
+end
+
+tests["mapFlights module: the mouse on the line makes it bold with its label"] = function(t)
+    local _, c = start({ on = true })
+    c.setWorldMap(1414)
+    c.advance(2, 8)
+    local h = c.mapPinSets[1]
+    h.click("Home Post")
+    c.setMapMouse(0.3, 0.375, 1000, 500)
+    c.advance(2, 8)
+    local l = h.lines[1]
+    t.eq(l.width, MF.LINE_BOLD, "bold under the mouse")
+    t.eq(l.a, 1)
+    t.eq(l.label, "Far Post · flight time not known yet")
+    c.setMapMouse(0.9, 0.05, 1000, 500)
+    c.advance(2, 8)
+    t.eq(h.lines[1].width, MF.LINE_THIN, "thin again off the line")
+    t.eq(h.lines[1].label, nil)
+end
+
 return tests

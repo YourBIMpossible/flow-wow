@@ -173,4 +173,58 @@ tests["map flights: nil and odd inputs give the same answers as before"] = funct
         "no fmt: seconds")
 end
 
+-- R-11: the pick lines' look (MUSE-TO-CLAUDE-FLIGHTLINES, agreed).
+tests["flight lines: a can line is solid green, a can't line dashed red"] = function(t)
+    local lines = {
+        { from = "A", to = "B", can = true, ax = 0.1, ay = 0.1, bx = 0.4, by = 0.1 },
+        { from = "A", to = "C", can = false, ax = 0.1, ay = 0.1, bx = 0.1, by = 0.5 },
+    }
+    local out = MF.Styled(lines, nil, nil)
+    t.eq({ out[1].r, out[1].g, out[1].b }, { 0x66 / 255, 1, 0x66 / 255 }, "can: the solid green")
+    t.eq(out[1].dashOn, nil, "can: no dash")
+    t.eq(out[1].width, MF.LINE_THIN)
+    t.eq(out[1].a, 0.8)
+    t.eq({ out[2].r, out[2].g, out[2].b }, { 0xE8 / 255, 0x44 / 255, 0x3A / 255 }, "can't: the red")
+    t.eq({ out[2].dashOn, out[2].dashOff }, { 0.04, 0.02 }, "can't: dashed, shares of its own length")
+    t.eq(lines[1].r, nil, "the rows given are not changed")
+end
+
+tests["flight lines: the colour-blind palette's green and vermillion"] = function(t)
+    local lines = {
+        { from = "A", to = "B", can = true, ax = 0, ay = 0, bx = 1, by = 0 },
+        { from = "A", to = "C", can = false, ax = 0, ay = 0, bx = 0, by = 1 },
+    }
+    local out = MF.Styled(lines, nil, "colourblind")
+    t.eq({ out[1].r, out[1].g, out[1].b }, { 0, 0x9E / 255, 0x73 / 255 }, "can: 009E73")
+    t.eq({ out[2].r, out[2].g, out[2].b }, { 0xD5 / 255, 0x5E / 255, 0 }, "can't: D55E00")
+end
+
+tests["flight lines: the hovered line is bold and labelled"] = function(t)
+    local lines = {
+        { from = "A", to = "B", can = true, ax = 0, ay = 0, bx = 1, by = 0 },
+        { from = "A", to = "C", can = false, ax = 0, ay = 0, bx = 0, by = 1 },
+    }
+    local out = MF.Styled(lines, "C", nil)
+    t.eq(out[2].width, MF.LINE_BOLD)
+    t.eq(out[2].a, 1)
+    t.eq(out[2].label, "C · flight time not known yet")
+    t.eq(out[1].width, MF.LINE_THIN, "only the hovered line is bold")
+    t.eq(out[1].label, nil)
+end
+
+tests["flight lines: a line with a learned time says it"] = function(t)
+    local lines = { { from = "A", to = "Ironforge", can = true, ax = 0, ay = 0, bx = 1, by = 0, time = 100 } }
+    local out = MF.Styled(lines, "Ironforge", nil)
+    t.eq(out[1].label, "Ironforge · 1m 40s")
+    t.eq(MF.TimeText(45), "45s")
+    t.eq(MF.TimeText(100), "1m 40s")
+end
+
+tests["flight lines: a line that is not a pick line passes through"] = function(t)
+    local lines = { { from = "A", to = "B", ax = 0, ay = 0, bx = 1, by = 0 } }
+    local out = MF.Styled(lines, "B", nil)
+    t.eq(out[1].r, nil, "no colour: the client's own look, as today")
+    t.eq(out[1].label, nil)
+end
+
 return tests
