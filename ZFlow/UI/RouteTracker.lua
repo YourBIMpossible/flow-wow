@@ -115,7 +115,17 @@ end
 -- on a row opens the map on its stop, as in the list). The rows
 -- arrive capped (nav.routeShown, read by Declare); more says how
 -- many stops the cap left out.
+-- A2-18: the count beside the label ("Boars 2/8"), when the row
+-- carries one; the label alone otherwise.
+local function labelOf(r)
+    local label = tostring(r.label)
+    if r.count then label = label .. " " .. tostring(r.count) end
+    return label
+end
+
 function RT.Children(rows, item, more, plan, onRow)
+    local icons = {}
+    if ns.Kit and ns.Kit.look and type(ns.Kit.look.icon) == "table" then icons = ns.Kit.look.icon end
     local kids = { { kind = "header", key = "header", title = RT.HEADER } }
     if type(rows) ~= "table" or #rows == 0 then
         kids[#kids + 1] = { kind = "empty", key = "empty", text = RT.EMPTY[1], how = RT.EMPTY[2] }
@@ -134,15 +144,15 @@ function RT.Children(rows, item, more, plan, onRow)
             if held == 1 and TL then
                 kids[#kids + 1] = { kind = "line", key = "waitingHead", text = TL.WAITING_HEAD }
             end
-            line = { kind = "line", key = "held" .. held, text = tostring(r.label), sub = r.held }
+            line = { kind = "line", key = "held" .. held, text = labelOf(r), sub = r.held, icon = icons[r.icon or ""] }
         elseif r.left ~= nil then
             leftN = leftN + 1
             if leftN == 1 and TL then
                 kids[#kids + 1] = { kind = "line", key = "leftHead", text = TL.LEFT_HEAD }
             end
-            line = { kind = "line", key = "left" .. leftN, text = tostring(r.label), sub = r.sub }
+            line = { kind = "line", key = "left" .. leftN, text = tostring(r.label), sub = r.sub, icon = icons[r.icon or ""] }
         else
-            line = { kind = "line", text = tostring(r.label), sub = r.detail, right = r.dist }
+            line = { kind = "line", text = labelOf(r), sub = r.detail, right = r.dist, icon = icons[r.icon or ""] }
             if i == now then
                 line.key = "current"
                 line.tone = RT.TONE_NOW
