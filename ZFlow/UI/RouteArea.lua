@@ -89,7 +89,8 @@ end
 -- Slice 6: the current step's one point, when it has no area of two
 -- or more: its place (or its area's only point).
 local function onePoint(cur)
-    local s = type(cur) == "table" and type(cur.stops) == "table" and cur.stops[1] or nil
+    local s
+    if type(cur) == "table" and type(cur.stops) == "table" then s = cur.stops[1] end
     if type(s) ~= "table" then return nil end
     if type(s.area) == "table" and #s.area >= 2 then return nil end
     if type(s.place) == "table" then return s.place end
@@ -142,15 +143,19 @@ function RA.Update(client, cur, state, shade)
     local points = RA.Points(cur)
     local single = nil
     if not points then single = onePoint(cur) end
-    local seen = (points or single) and ask(client, "minimap") or nil
+    local seen
+    if points or single then seen = ask(client, "minimap") end
     if type(seen) ~= "table" then
         hideFrom(state, 0)
         hideDot(state)
         return { shown = 0 }
     end
-    local anchor = points and points[1] or single
+    local anchor = single
+    if points and points[1] then anchor = points[1] end
+    local inset = RA.SIZE / 2
+    if single then inset = RA.DOT_SIZE / 2 end
     local mini = { size = seen.size, radius = seen.radius, rotates = seen.rotates,
-                   square = seen.square, inset = (single and RA.DOT_SIZE or RA.SIZE) / 2 }
+                   square = seen.square, inset = inset }
     local here = { position = ask(client, "position"), size = ask(client, "mapSize", anchor.map),
                    facing = ask(client, "facing") }
     if single then

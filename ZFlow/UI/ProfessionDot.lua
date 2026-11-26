@@ -56,7 +56,8 @@ end
 
 function PD.Update(client, step, state, palette)
     if type(state) ~= "table" then state = {} end
-    local place = type(step) == "table" and step.place or nil
+    local place
+    if type(step) == "table" then place = step.place end
     if type(place) ~= "table" then return hidden(state, "no profession step") end
     local seen = ask(client, "minimap")
     if type(seen) ~= "table" then return hidden(state, "no minimap") end
