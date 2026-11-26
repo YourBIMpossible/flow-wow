@@ -138,9 +138,15 @@ tests["party route: a join message parses on and off"] = function(t)
 end
 
 -- FLOW-PARITY B-42 and B-44: whose quests the route covers, and whom to ask.
+-- A member's progress is B-41's (Nav/PartyProgress.lua): { [quest id] =
+-- { complete, objectives = { { have, need } } } }. Lead section 843.2: the
+-- route keeps steps by quest id and objective, as Flow's PartyHelp.lua
+-- H.Keep (:381-399) and H.QuestsOnly (:404-411). Fails before: steps were
+-- matched by title, which B-41 does not send.
 local PROG = {
-    Al = { { title = "Boars", complete = false }, { title = "Herbs", complete = true } },
-    Cy = { { title = "Herbs", complete = true } },
+    Al = { [10] = { complete = false, objectives = { { have = 2, need = 8 }, { have = 5, need = 5 } } },
+           [11] = { complete = true, objectives = {} } },
+    Cy = { [11] = { complete = true, objectives = {} } },
 }
 
 tests["party route: to do counts only quests not complete"] = function(t)
@@ -156,12 +162,20 @@ tests["party route: the route covers mine, just one member's, or everyone joined
     t.eq(P().Covered("combined", nil, PROG, { Cy = true }), { Cy = PROG.Cy })
 end
 
-tests["party route: just their quests keeps only steps of quests they still have to do"] = function(t)
-    local steps = { { label = "Boars" }, { label = "Herbs" }, { label = "Wolves" } }
+tests["party route: just their quests keeps your steps of their quests, by quest and objective"] = function(t)
+    local steps = {
+        { quest = 10, objective = 1, label = "Boars" },      -- theirs, 2/8: kept
+        { quest = 10, objective = 2, label = "Herbs" },      -- theirs, 5/5 done: dropped
+        { quest = 11, turnIn = true, label = "Hand in" },    -- they hand it in too: kept
+        { quest = 12, objective = 1, label = "Wolves" },     -- not theirs: dropped
+        { label = "Sell junk" },                             -- no quest: dropped
+        { label = "Party stop", kind = "party" },            -- the party route's own: kept
+    }
     local kept = P().KeepFor(steps, { Al = PROG.Al })
-    t.eq(#kept, 1)
-    t.eq(kept[1].label, "Boars")
-    t.eq(#P().KeepFor(steps, nil), 3)
+    local labels = {}
+    for i, s in ipairs(kept) do labels[i] = s.label end
+    t.eq(labels, { "Boars", "Hand in", "Party stop" })
+    t.eq(#P().KeepFor(steps, nil), 6, "nobody covered: every step")
 end
 
 tests["party route: asks once per member, only with quests to do, only on your own route"] = function(t)
@@ -172,6 +186,71 @@ tests["party route: asks once per member, only with quests to do, only on your o
     t.eq(P().AskWho("Cy", PROG, {}, "mine", "Bo"), nil)
     t.eq(P().AskWho("Al", PROG, {}, "combined", "Bo"), nil)
     t.eq(P().AskWho("Bo", { Bo = PROG.Al }, {}, "mine", "Bo"), nil)
+end
+
+-- Lead section 843.2: B-41's progress reaches the party route by itself:
+-- PartyRoute reads partyProgress (Names, Progress) on its own tick. Fails
+-- before: nothing fed it.
+tests["party route: the members' progress from B-41 is fed in"] = function(t)
+    local c = ns.make.fakeClient()
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    local api = P().Declare(k, d)
+    k:Module({ name = "partyProgress", provides = {
+        Names = function() return { "Al" } end,
+        Progress = function(name) return PROG[name] end,
+        All = function() return PROG end,
+    } })
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.advance(P().FEED_EVERY + 1, 3)
+    local kept = api.Filter({ { quest = 10, objective = 1, label = "Boars" }, { quest = 12, objective = 1, label = "Wolves" } })
+    t.eq(#kept, 2, "your own route as made: every step")
+    api.SetScope("theirs", "Al")
+    t.eq(api.Scope(), "theirs", "Al's progress is there, so you can help them")
+    kept = api.Filter({ { quest = 10, objective = 1, label = "Boars" }, { quest = 12, objective = 1, label = "Wolves" } })
+    t.eq(#kept, 1)
+    t.eq(kept[1].label, "Boars")
+end
+
+-- B-42 CHANGES-1 (lead section 856): on the party route ("combined") every
+-- quest step, turn-in and party step is kept, as Flow's PartyHelp.lua
+-- H.QuestsOnly (:406-415); only "theirs" keeps by a member's quests. Fails
+-- before: a joined member who lacks your quest cut your step.
+tests["party route B-42: on the party route your quest step stays when a member lacks it"] = function(t)
+    local c = ns.make.fakeClient()
+    c.setPlayerName("Bo")
+    local k = ns.Kernel({}, c)
+    local d = ns.Diag.Start(k)
+    local api = P().Declare(k, d)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    api.Progress("Al", PROG.Al)
+    c.fire("CHAT_MSG_ADDON", ns.id.commPrefix, P().JoinMsg(true, ns.id.commVersion), "PARTY", "Al")
+    api.SetScope("combined")
+    local kept = api.Filter({
+        { quest = 12, objective = 1, label = "Wolves" },
+        { quest = 13, turnIn = true, label = "Hand in" },
+        { label = "Party stop", party = true },
+        { label = "Sell junk" },
+    })
+    local labels = {}
+    for i, s in ipairs(kept) do labels[i] = s.label end
+    t.eq(labels, { "Wolves", "Hand in", "Party stop" })
+end
+
+-- B-42 CHANGES-1 (lead section 861): a quest's pick-up is not a party route
+-- step, as Flow's H.QuestsOnly drops "pickup:<id>" (PartyHelp.lua:409;
+-- Focus.lua:48, :436-438). Fails before: it was kept by its quest id.
+tests["party route B-42: on the party route a quest pick-up is left out"] = function(t)
+    local kept = P().QuestsOnly({
+        { kind = "pickup", quest = 14, label = "Pick up" },
+        { quest = 12, objective = 1, label = "Wolves" },
+    })
+    t.eq(#kept, 1)
+    t.eq(kept[1] and kept[1].label, "Wolves")
 end
 
 return tests
