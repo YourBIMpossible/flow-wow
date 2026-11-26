@@ -535,6 +535,18 @@ return {
         t.ok(droppedFor(broken, "nav.profArrowText").why == "malformed", "not true or false: malformed")
     end,
 
+    -- Lead section 872: Flow's splash.enabled and splash.short land on the
+    -- keys UI/LoginIntro.lua reads, ui.splash and ui.splashShort.
+    ["settings: Flow's splash choices become ui.splash and ui.splashShort"] = function(t)
+        for _, on in ipairs({ true, false }) do
+            local result = Import.FromFlow({ splash = { enabled = on, short = not on } }, nil)
+            local ui = result.account.settings.ui
+            t.eq(ui and ui.splash, on, "ui.splash")
+            t.eq(ui and ui.splashShort, not on, "ui.splashShort")
+            t.eq(result.account.settings.splash, nil, "nothing under settings.splash")
+        end
+    end,
+
     ["settings: the speech toggle bonus.spoken is kept"] = function(t)
         for _, spoken in ipairs({ true, false }) do
             local result = Import.FromFlow({ bonus = { enabled = true, spoken = spoken } }, nil)
