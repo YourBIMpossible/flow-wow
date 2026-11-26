@@ -124,7 +124,8 @@ end
 --                             last-visit line; inLook their SellList look
 --   sellGroups                { { header, rows }, ... } in Banker.TAKES'
 --                             order, sellLine (a line to show instead),
---                             sellKept (rows already kept), sellLook
+--                             sellKept (the bank's kept items, built
+--                             by the module from the never list), sellLook
 --   priceRows, priceHead      PriceList's filtered rows and header line;
 --                             priceNow the clock, for "seen ... ago"
 --   search                    the prices search text
@@ -160,8 +161,14 @@ function W.Children(tab, d, acts)
                 for _, row in ipairs(group.rows) do
                     n = n + 1
                     local r = row
-                    body[#body + 1] = sellPart(r, d.sellLook, r.reason, "sell" .. n,
-                        function() if acts.keep then acts.keep(r) end end)
+                    -- The keep click goes only on a row taken to sell
+                    -- (a row with no take reads as sell, as in Banker):
+                    -- keeping a route, quest or held row means nothing.
+                    local click = nil
+                    if r.take == "sell" or r.take == nil then
+                        click = function() if acts.keep then acts.keep(r) end end
+                    end
+                    body[#body + 1] = sellPart(r, d.sellLook, r.reason, "sell" .. n, click)
                 end
             end
             if n == 0 then
@@ -344,6 +351,18 @@ function W.Declare(k, diag)
         end
         local saved, items, look = bankItems()
         d.inItems, d.inLook = items, look
+        -- Kept: the bank's own items whose key is on the never list
+        -- (with this session's clicks laid over it). Not a filter of
+        -- the take-out rows: once the keep is written, Make drops the
+        -- item, so a filter would never find it (CHANGES-1 b).
+        if type(items) == "table" then
+            local kept = keptSet()
+            local keptRows = {}
+            for _, e in ipairs(items) do
+                if kept[e.key] then keptRows[#keptRows + 1] = { key = e.key, name = e.name, count = e.count } end
+            end
+            d.sellKept, d.sellLook = keptRows, look
+        end
         if type(items) == "table" and type(saved) == "table" and whole(saved.at) then
             local now = nil
             if type(c) == "table" and type(c.clock) == "function" then now = c.clock() end
@@ -365,25 +384,20 @@ function W.Declare(k, diag)
             elseif list == nil then
                 d.sellLine = "To sell: " .. ns.Banker.FAILED
             elseif type(list.rows) == "table" then
-                local kept = keptSet()
-                local groups, keptRows = {}, {}
+                local groups = {}
                 local byTake = {}
                 for _, row in ipairs(list.rows) do
-                    if kept[row.key] then
-                        keptRows[#keptRows + 1] = row
-                    else
-                        local take = row.take
-                        if take == nil then take = "sell" end
-                        byTake[take] = byTake[take] or {}
-                        local g = byTake[take]
-                        g[#g + 1] = row
-                    end
+                    local take = row.take
+                    if take == nil then take = "sell" end
+                    byTake[take] = byTake[take] or {}
+                    local g = byTake[take]
+                    g[#g + 1] = row
                 end
                 for _, kind in ipairs(ns.Banker.TAKES) do
                     local g = byTake[kind.take]
                     if g then groups[#groups + 1] = { header = kind.header, rows = g } end
                 end
-                d.sellGroups, d.sellKept, d.sellLook = groups, keptRows, look
+                d.sellGroups = groups
             end
         end
         -- Auction prices: this realm's table, through AuctionLog's read.

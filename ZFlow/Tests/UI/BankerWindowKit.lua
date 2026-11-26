@@ -5,7 +5,9 @@ local _, ns = ...
 -- rows and the auction prices. Fake client; the pure Children builder is
 -- tested directly, the window through c.kitWindows(). The keep click's
 -- data call (ItemKeep.Set) is a Lane Items NEED: the round-trip test
--- stands a fake one in its place and puts the real table back after.
+-- stands a fake one in its place (it writes the never list through the
+-- store, as the real one will) and puts the real table back after; the
+-- take-out list in that test is the real BankTakeOut.Make.
 -- Look only: nothing here moves an item. Not tested in game.
 --
 -- Fails before the change: ns.BankerWindow is nil.
@@ -16,6 +18,7 @@ local tests = {}
 
 local CLOTH, POTION = 2589, 858
 local INFO = {
+    [9001] = { name = "Broken Fang", quality = 0, sellPrice = 5, classID = 0 },
     [CLOTH] = { name = "Linen Cloth", quality = 1, sellPrice = 13, classID = 7 },
     [POTION] = { name = "Lesser Healing Potion", quality = 1, sellPrice = 20, classID = 0 },
 }
@@ -95,6 +98,30 @@ tests["banker children: to sell groups its rows, kept rows at the bottom, clicks
     t.eq(byKey(empty, "sellLine").text, B.NOTHING_TO_SELL)
 end
 
+tests["banker children: only a sell row clicks to keep (CHANGES-1 a)"] = function(t)
+    local routeRow = { key = 9003, name = "Dreamfoil", count = 2, quality = 1, take = "route", reason = "for a route step" }
+    local sellRow = { key = 9001, name = "Broken Fang", count = 7, quality = 0, take = "sell", reason = "the sell rules would sell it" }
+    local plainRow = { key = 9004, name = "Old Boot", count = 1, quality = 0, reason = "the sell rules would sell it" }
+    local clicked = {}
+    local acts = { keep = function(r) clicked[#clicked + 1] = r end }
+    local kids = W.Children(W.TAB_SELL, {
+        sellGroups = {
+            { header = B.ROUTE_HEADER, rows = { routeRow } },
+            { header = B.SELL_HEADER, rows = { sellRow, plainRow } },
+        },
+        sellKept = {}, sellLook = {},
+    }, acts)
+    local route = byKey(kids, "sell1")
+    t.eq(route and route.text, "Dreamfoil x2")
+    t.eq(route and route.onClick, nil, "a route row has no click: keeping it means nothing")
+    local sell = byKey(kids, "sell2")
+    t.ok(sell and type(sell.onClick) == "function", "a sell row clicks")
+    sell.onClick()
+    t.eq(clicked[1], sellRow)
+    local plain = byKey(kids, "sell3")
+    t.ok(plain and type(plain.onClick) == "function", "a row with no take clicks too (it reads as sell)")
+end
+
 tests["banker children: auction prices show the buyout and when it was seen"] = function(t)
     local rows = { { id = CLOTH, name = "Linen Cloth", price = 30, at = 900 } }
     local kids = W.Children(W.TAB_PRICES, {
@@ -168,30 +195,42 @@ tests["banker window: the banker word prints its lists and opens the window"] = 
 end
 
 tests["banker window: the keep click round-trips through the data's call"] = function(t)
-    local realMake, realSet = ns.BankTakeOut.Make, ns.ItemKeep.Set
+    -- The real BankTakeOut.Make over a bank holding grey junk; only the
+    -- keep call is stood in for, writing the never list through the
+    -- store as the real ItemKeep.Set will (CHANGES-1 b).
+    local realSet = ns.ItemKeep.Set
     local calls = {}
-    ns.BankTakeOut.Make = function()
-        return { rows = { { key = 9001, name = "Broken Fang", count = 7, quality = 0,
-            reason = "the sell rules would sell it", take = "sell" } } }
-    end
-    ns.ItemKeep.Set = function(_, key, on)
+    ns.ItemKeep.Set = function(k, key, on)
         calls[#calls + 1] = { key = key, on = on }
+        local set = k.store:get("char", ns.SellList.NEVER_PATH)
+        if type(set) ~= "table" then set = {} end
+        if on then set[key] = true else set[key] = nil end
+        k.store:set("char", ns.SellList.NEVER_PATH, set)
         return true
     end
-    local _, c, api = boot({ char = BANKED })
+    local char = { learned = { bankCounts = { at = 900, counts = { [9001] = 7, [CLOTH] = 12 } } } }
+    local _, c, api = boot({ char = char })
     local ok, err = pcall(function()
         t.eq(api.show(W.TAB_SELL), true)
-        t.ok(partOf(c.kitWindows()[W.ID], "sell1") ~= nil, "the row is offered")
-        t.eq(c.kitClick(W.ID, "sell1"), true, "the row clicks")
+        local function findRow(prefix)
+            for _, p in ipairs(c.kitWindows()[W.ID].parts) do
+                if p.text == "Broken Fang x7" and p.key:sub(1, #prefix) == prefix then return p end
+            end
+            return nil
+        end
+        local row = findRow("sell")
+        t.ok(row ~= nil, "the real Make offers the junk under To sell")
+        t.eq(c.kitClick(W.ID, row.key), true, "the row clicks")
         t.eq(calls, { { key = 9001, on = true } }, "the click asks the data to keep it")
-        local rec = c.kitWindows()[W.ID]
-        t.eq(partOf(rec, "sell1"), nil, "and the row leaves the sell rows")
-        t.ok(partOf(rec, "kept1") ~= nil, "for the Kept section")
-        t.eq(c.kitClick(W.ID, "kept1"), true)
+        t.eq(findRow("sell"), nil, "and the real Make no longer offers it")
+        local kept = findRow("kept")
+        t.ok(kept ~= nil, "it shows under Kept, built from the bank's own items")
+        t.eq(c.kitClick(W.ID, kept.key), true)
         t.eq(calls[2], { key = 9001, on = false }, "clicking there asks to put it back")
-        t.ok(partOf(c.kitWindows()[W.ID], "sell1") ~= nil, "and the row is offered again")
+        t.ok(findRow("sell") ~= nil, "and the row is offered again")
+        t.eq(findRow("kept"), nil, "and Kept is empty again")
     end)
-    ns.BankTakeOut.Make, ns.ItemKeep.Set = realMake, realSet
+    ns.ItemKeep.Set = realSet
     if not ok then error(err) end
 end
 
