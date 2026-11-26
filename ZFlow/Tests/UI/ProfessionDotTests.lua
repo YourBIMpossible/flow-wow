@@ -55,6 +55,30 @@ tests["profession dot: the destination where you stand is told hollow"] = functi
     t.eq(c.minimapPins[1].hollowSet, true)
 end
 
+tests["profession dot: reached, the dot becomes the arrival ring"] = function(t)
+    local c = client()
+    -- 9 yards east: inside the step's own reach (radius 10), but the
+    -- pin sits past the character icon (9 * 0.7 = 6.3 units > ON_ICON),
+    -- so only the arrival rule can make it hollow.
+    local r = PD().Update(c, { place = { map = 1, x = 0.509, y = 0.5 }, radius = 10 }, {}, nil)
+    t.eq(r.shown, true)
+    t.eq(r.ring, true, "reached: the report says the ring")
+    t.eq(c.minimapPins[1].hollowSet, true, "and the pin is told hollow, so the marker shows through")
+end
+
+tests["profession dot: not reached, no ring; no radius reads the arrow's reach"] = function(t)
+    local c = client()
+    local r = PD().Update(c, STEP, {}, nil)
+    t.eq(r.ring, nil, "30 yards off with a reach of 10: no ring")
+    t.eq(c.minimapPins[1].hollowSet, false)
+    local c2 = client()
+    local r2 = PD().Update(c2, { place = { map = 1, x = 0.52, y = 0.5 } }, {}, nil)
+    t.eq(r2.ring, true, "20 yards off and no radius of its own: inside the arrow's 24-yard reach")
+    local c3 = client()
+    local r3 = PD().Update(c3, { place = { map = 1, x = 0.53, y = 0.5 } }, {}, nil)
+    t.eq(r3.ring, nil, "30 yards off, no radius: no ring")
+end
+
 tests["profession dot: the module follows the profession arrow switch"] = function(t)
     local c = client()
     c.setSaved(ns.id.accountDB, {})
