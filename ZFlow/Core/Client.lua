@@ -14152,6 +14152,34 @@ function ns.make.client(env)
         if not any then return nil end
         return out
     end
+
+    -- D-new-7 (Rotation/Spec.lua): the talent trees as the game names them,
+    -- with the points spent in each, { { name, points }, ... } in tab
+    -- order. GetNumTalentTabs() and GetTalentTabInfo(tab). The return order
+    -- is a first guess, not seen on 16001: the classic one is name, icon,
+    -- pointsSpent; a later one is id, name, description, icon, pointsSpent,
+    -- which legacy Flow already allowed for (Modules/Spec.lua:283-284: a
+    -- number first means the name is second). nil when a call is absent, a
+    -- read raised or was hidden, or a tab gave no name or no points.
+    function c.talentTrees()
+        if type(env.GetNumTalentTabs) ~= "function" or type(env.GetTalentTabInfo) ~= "function" then
+            return nil
+        end
+        local okT, tabs = call(env.GetNumTalentTabs)
+        if not okT or type(tabs) ~= "number" or hidden(tabs) then return nil end
+        local out = {}
+        for tab = 1, tabs do
+            local answer = { call(env.GetTalentTabInfo, tab) }
+            if not answer[1] then return nil end
+            local name, points = answer[2], answer[4]
+            if type(name) == "number" then name, points = answer[3], answer[6] end
+            if type(name) ~= "string" or type(points) ~= "number" then return nil end
+            if hidden(name) or hidden(points) then return nil end
+            out[#out + 1] = { name = name, points = points }
+        end
+        if out[1] == nil then return nil end
+        return out
+    end
     ---------------------------------------------------------------------
     -- Lease rows (lead sections 659, 662, 677, 679, 682, 692, 693). Data and
     -- API only; every game call through call() (pcall). Drawing is a MUSE
