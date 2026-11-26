@@ -614,6 +614,9 @@ end
 --     lines = { quest = { ... }, prof = { ... } }, route = { ... } }
 -- route (P-TRIP slice 2, optional): the lines of the route the quest arrow
 -- walks (Nav/Trip.lua P.TipLines), after the quest arrow's own lines.
+-- here (R-09, optional): { header, lines } from Nav/AlsoHere.lua, the other
+-- steps in the area once arrived; a blank line, the header, then the lines,
+-- after the route's lines.
 -- The arrow's name, its step's lines, and last how to use it. Stacked with
 -- both showing, the needle is under the quest arrow and takes no mouse, so
 -- the quest arrow's tooltip carries the needle's lines too. A click is
@@ -624,6 +627,12 @@ function M.Tip(state)
     local out = { NAMES[state.key] }
     add(out, lines[state.key])
     if state.key == "quest" then add(out, state.route) end
+    local here = state.here
+    if state.key == "quest" and type(here) == "table" and type(here.lines) == "table" and #here.lines > 0 then
+        out[#out + 1] = " "
+        out[#out + 1] = tostring(here.header or "")
+        add(out, here.lines)
+    end
     if state.key == "quest" and state.stacked and state.both then
         out[#out + 1] = NAMES.prof
         add(out, lines.prof)

@@ -198,6 +198,24 @@ return {
         t.eq(#alone, 3, "a needle that is not showing adds nothing")
     end,
 
+    ["tip: the other steps here follow the step and route lines, after a blank line (R-09)"] = function(t)
+        if not has(t) then return end
+        local here = { header = "Here as well", lines = { "Wolves - Loot 2/6", "Boars" } }
+        local tip = M.Tip({ key = "quest", lines = { quest = { "Kill ten boars" } },
+                            route = { "Next: Bears" }, here = here })
+        t.eq(tip[2], "Kill ten boars")
+        t.eq(tip[3], "Next: Bears")
+        t.eq(tip[4], " ")
+        t.eq(tip[5], "Here as well")
+        t.eq(tip[6], "Wolves - Loot 2/6")
+        t.eq(tip[7], "Boars")
+        t.eq(#tip, 8)
+        local prof = M.Tip({ key = "prof", lines = { prof = { "Copper Vein" } }, here = here })
+        t.eq(#prof, 3, "the needle does not carry them")
+        local empty = M.Tip({ key = "quest", lines = { quest = { "a" } }, here = { header = "x", lines = {} } })
+        t.eq(#empty, 3, "no lines, no header")
+    end,
+
     ["tip: a click is promised only when there is something to open"] = function(t)
         if not has(t) then return end
         local without = M.Tip({ key = "quest", lines = { quest = { "a" } } })

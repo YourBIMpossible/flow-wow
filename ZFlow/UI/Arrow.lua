@@ -1258,9 +1258,21 @@ function Arrow.Start(k, diag, own)
             local okTrip, lines = pcall(trip.Tip)
             if okTrip and type(lines) == "table" then route = lines end
         end
+        -- R-09 (section 835): arrived, the other route steps in the area
+        -- (Nav/AlsoHere.lua), as Flow's hover did (Nav.lua:4385-4405).
+        -- Arrived is the quest arrow drawn as the ring (Nav/ArrowView.lua).
+        local here
+        local also
+        if key == "quest" and type(current.quest) == "table" and current.quest.mode == "ring" and k.use then
+            also = k.use("alsoHere")
+        end
+        if type(also) == "table" and type(also.Lines) == "function" then
+            local okHere, found = pcall(also.Lines)
+            if okHere and type(found) == "table" then here = found end
+        end
         return M.Tip({ key = key, stacked = current.prof.behind == true,
                        both = current.quest.shown == true and current.prof.shown == true,
-                       drawer = drawer ~= nil, lines = shownLines, route = route })
+                       drawer = drawer ~= nil, lines = shownLines, route = route, here = here })
     end
     -- Lead section 387 R3: the trip list, the stops the arrow walks and the
     -- Suggest dungeons switch, for the menu's Route level. Read only.
