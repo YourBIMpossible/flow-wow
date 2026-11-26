@@ -6972,10 +6972,20 @@ function ns.make.client(env)
     --       shown or will not say (WorldMapFrame:IsShown, :GetMapID).
     --   h.draw(pins, lines)
     --       pins  = { { name, kind = "have" | "new", role, x, y } }
-    --       lines = { { from, to, ax, ay, bx, by } }
+    --       lines = { { from, to, ax, ay, bx, by, r, g, b, a, width,
+    --                   dashOn, dashOff, label } }
     --       x, y: shares (x right, y down) of the shown map. Draws these and
     --       hides any made before past their count; a pin or line not placed
     --       by plain numbers is skipped.
+    --       A line's look (R-11): r, g, b, a and width when given (else the
+    --       one green, 0.8, thickness 2 as before); dashOn and dashOff,
+    --       shares of the line's own length, draw it dashed (its segments
+    --       come from the same pool); label, when a line carries one, is
+    --       drawn at the line's midpoint, shifted above the line, clamped
+    --       inside the canvas, on a dark backing.
+    --   h.mouse() -> mx, my, w, h, or nil: the cursor's place as shares
+    --       of the canvas with the canvas's size in pixels; nil when the
+    --       cursor is not over the canvas or the client will not say.
     --   h.clear()   hides them all
     --   h.onClick(fn) -> true: a click on a dot calls fn(pin.name, button)
     --       (B-10). Each dot is a small Button (it was a bare texture,
@@ -7000,8 +7010,8 @@ function ns.make.client(env)
         if not ok or host == nil then return nil end
         method(host, "EnableMouse", false)
         method(host, "SetAllPoints", canvas)
-        local dots, lines = {}, {}
-        local nDots, nLines = 0, 0
+        local dots, pool = {}, {}
+        local nDots, nSegs = 0, 0
         local clickFns = {}
         -- One dot: a Button with its colour texture, clickable, with a
         -- tooltip. false when the client will not make one.
@@ -7041,6 +7051,53 @@ function ns.make.client(env)
         }
         local function plain(v) return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge end
 
+        -- A line's label (R-11): one backing + one line of text, made
+        -- once, at the labelled line's midpoint shifted above the line
+        -- and clamped inside the canvas. First guesses: the font
+        -- object GameFontHighlightSmall; the text's height read as 14.
+        local labelTex, labelText
+        local function hideLabel()
+            if labelTex then method(labelTex, "Hide") end
+            if labelText then method(labelText, "Hide") end
+        end
+        local function showLabel(l, w, ht)
+            if labelTex == nil then
+                local okB, back = method(host, "CreateTexture", nil, "OVERLAY")
+                if okB and back ~= nil then labelTex = back end
+                local okF, fs = method(host, "CreateFontString", nil, "OVERLAY", "GameFontHighlightSmall")
+                if okF and fs ~= nil then labelText = fs end
+                if labelTex == nil or labelText == nil then
+                    labelTex, labelText = nil, nil
+                    return
+                end
+                method(labelTex, "SetColorTexture", 0, 0, 0, 0.75)
+            end
+            method(labelText, "SetText", l.label)
+            local okW, lw = method(labelText, "GetStringWidth")
+            local textW = 80
+            if okW and plain(lw) and lw > 0 then textW = lw end
+            local textH = 14
+            local mx, my = (l.ax + l.bx) / 2 * w, (l.ay + l.by) / 2 * ht
+            local dx, dy = (l.bx - l.ax) * w, (l.by - l.ay) * ht
+            local len = math.sqrt(dx * dx + dy * dy)
+            local px, py = 0, -1
+            if len > 0 then
+                px, py = -dy / len, dx / len
+                if py > 0 then px, py = -px, -py end
+            end
+            local cx, cy = mx + px * 12, my + py * 12
+            local halfW, halfH = textW / 2 + 4, textH / 2 + 2
+            if cx < halfW + 2 then cx = halfW + 2 elseif cx > w - halfW - 2 then cx = w - halfW - 2 end
+            if cy < halfH + 2 then cy = halfH + 2 elseif cy > ht - halfH - 2 then cy = ht - halfH - 2 end
+            method(labelTex, "ClearAllPoints")
+            method(labelTex, "SetSize", textW + 8, textH + 4)
+            method(labelTex, "SetPoint", "CENTER", canvas, "TOPLEFT", cx, -cy)
+            method(labelTex, "Show")
+            method(labelText, "ClearAllPoints")
+            method(labelText, "SetPoint", "CENTER", canvas, "TOPLEFT", cx, -cy)
+            method(labelText, "Show")
+        end
+
         local h = {}
         function h.onClick(fn)
             if type(fn) == "function" then clickFns[#clickFns + 1] = fn end
@@ -7055,8 +7112,26 @@ function ns.make.client(env)
         end
         function h.clear()
             for i = 1, nDots do if dots[i] then method(dots[i].button, "Hide") end end
-            for i = 1, nLines do if lines[i] then method(lines[i], "Hide") end end
-            nDots, nLines = 0, 0
+            for i = 1, nSegs do if pool[i] then method(pool[i], "Hide") end end
+            hideLabel()
+            nDots, nSegs = 0, 0
+        end
+        function h.mouse()
+            if type(env.GetCursorPosition) ~= "function" then return nil end
+            local okP, gx, gy = pcall(env.GetCursorPosition)
+            if not okP or not plain(gx) or not plain(gy) then return nil end
+            local okS, scale = method(canvas, "GetEffectiveScale")
+            if not okS or not plain(scale) or scale <= 0 then return nil end
+            local okL, left = method(canvas, "GetLeft")
+            local okB, bottom = method(canvas, "GetBottom")
+            local okW, w = method(canvas, "GetWidth")
+            local okH, ht = method(canvas, "GetHeight")
+            if not (okL and okB and okW and okH) or not plain(left) or not plain(bottom)
+                or not plain(w) or not plain(ht) or w <= 0 or ht <= 0 then return nil end
+            local x = gx / scale - left
+            local y = gy / scale - bottom
+            if x < 0 or y < 0 or x > w or y > ht then return nil end
+            return x / w, 1 - y / ht, w, ht
         end
         function h.draw(pins, segs)
             local okW, w = method(canvas, "GetWidth")
@@ -7094,27 +7169,47 @@ function ns.make.client(env)
             end
             for i = n + 1, nDots do if dots[i] then method(dots[i].button, "Hide") end end
             nDots = n
-            local m = 0
+            local function seg(x1, y1, x2, y2, width, r, g, b, a)
+                nSegs = nSegs + 1
+                local line = pool[nSegs]
+                if line == nil then
+                    local okL, made = method(host, "CreateLine", nil, "ARTWORK")
+                    line = okL and made or false
+                    pool[nSegs] = line
+                end
+                if not line then return end
+                method(line, "SetThickness", width)
+                method(line, "SetColorTexture", r, g, b, a)
+                method(line, "SetStartPoint", "TOPLEFT", canvas, x1, -y1)
+                method(line, "SetEndPoint", "TOPLEFT", canvas, x2, -y2)
+                method(line, "Show")
+            end
+            nSegs = 0
+            local labelled = nil
             for _, l in ipairs(type(segs) == "table" and segs or {}) do
                 if type(l) == "table" and plain(l.ax) and plain(l.ay) and plain(l.bx) and plain(l.by) then
-                    m = m + 1
-                    local line = lines[m]
-                    if line == nil then
-                        local okL, made = method(host, "CreateLine", nil, "ARTWORK")
-                        line = okL and made or false
-                        lines[m] = line
+                    local r, g, b, a = 0.3, 1, 0.4, 0.8
+                    if plain(l.r) and plain(l.g) and plain(l.b) then r, g, b = l.r, l.g, l.b end
+                    if plain(l.a) then a = l.a end
+                    local width = 2
+                    if plain(l.width) and l.width > 0 then width = l.width end
+                    local x1, y1, x2, y2 = l.ax * w, l.ay * ht, l.bx * w, l.by * ht
+                    if plain(l.dashOn) and plain(l.dashOff) and l.dashOn > 0 and l.dashOff > 0 then
+                        local pos = 0
+                        while pos < 1 do
+                            local till = math.min(pos + l.dashOn, 1)
+                            seg(x1 + (x2 - x1) * pos, y1 + (y2 - y1) * pos,
+                                x1 + (x2 - x1) * till, y1 + (y2 - y1) * till, width, r, g, b, a)
+                            pos = till + l.dashOff
+                        end
+                    else
+                        seg(x1, y1, x2, y2, width, r, g, b, a)
                     end
-                    if line then
-                        method(line, "SetThickness", 2)
-                        method(line, "SetColorTexture", 0.3, 1, 0.4, 0.8)
-                        method(line, "SetStartPoint", "TOPLEFT", canvas, l.ax * w, -l.ay * ht)
-                        method(line, "SetEndPoint", "TOPLEFT", canvas, l.bx * w, -l.by * ht)
-                        method(line, "Show")
-                    end
+                    if type(l.label) == "string" and l.label ~= "" then labelled = l end
                 end
             end
-            for i = m + 1, nLines do if lines[i] then method(lines[i], "Hide") end end
-            nLines = m
+            for i = nSegs + 1, #pool do if pool[i] then method(pool[i], "Hide") end end
+            if labelled then showLabel(labelled, w, ht) else hideLabel() end
             return true
         end
         return h
