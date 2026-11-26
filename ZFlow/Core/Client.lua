@@ -14653,6 +14653,20 @@ function ns.make.client(env)
         end
         return out
     end
+    -- F-19: names the game's screens read from plain string globals (the
+    -- Key Bindings heading and entry). Sets a name only while it is unset,
+    -- so another add-on's names are never overwritten. Returns how many it set.
+    function c.setGlobalNames(names)
+        if type(names) ~= "table" then return 0 end
+        local n = 0
+        for name, text in pairs(names) do
+            if type(name) == "string" and type(text) == "string" and rawget(env, name) == nil then
+                env[name] = text
+                n = n + 1
+            end
+        end
+        return n
+    end
     return c
 end
 
