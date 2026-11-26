@@ -289,4 +289,26 @@ function M.Declare(k, diag)
 end
 
 -- The addon's own: declared when this file loads, started at login.
+-- A1-13 lead hook: what a left click on the quest arrow opens. The arrow
+-- calls a drawer with the arrow's key (UI/Arrow.lua setDrawer); only the
+-- quest arrow opens the card, on the first stop still to walk. The other
+-- arrows' left click stays as it was (nothing that can be seen). The card
+-- gets no distance and no anchor here: it shows none rather than one made
+-- up, and opens where the player put it, else at the screen centre.
+--   M.ArrowDrawer(route, card) -> fn(key), true when it opened or closed one
+function M.ArrowDrawer(route, card)
+    return function(key)
+        if key ~= "quest" then return false end
+        if type(route) ~= "table" or type(route.Current) ~= "function" then return false end
+        if type(card) ~= "table" or type(card.Toggle) ~= "function" then return false end
+        local stops = route.Current()
+        if type(stops) ~= "table" or type(stops[1]) ~= "table" then return false end
+        card.Toggle(stops[1], nil, nil)
+        return true
+    end
+end
+
 ns.stepCard = M.Declare(ns, ns.diag)
+if type(ns.arrow) == "table" and type(ns.arrow.setDrawer) == "function" then
+    ns.arrow.setDrawer(M.ArrowDrawer(ns.tripRoute, ns.stepCard))
+end
