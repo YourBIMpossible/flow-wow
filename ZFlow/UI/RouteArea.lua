@@ -41,7 +41,8 @@ if N and N.AT_POINT then at = N.AT_POINT end
 function RA.Points(cur)
     local s
     if type(cur) == "table" and type(cur.stops) == "table" then s = cur.stops[1] end
-    local area = type(s) == "table" and s.area or nil
+    local area = nil
+    if type(s) == "table" then area = s.area end
     if type(area) ~= "table" or #area < 2 then return nil end
     return area
 end
