@@ -104,4 +104,50 @@ tests["tracker list: steps that can't be placed follow the route's, with why"] =
     t.eq(r3 and r3[1].current, nil)
 end
 
+-- Slice 5: the one builder also numbers the rows, merges turn-ins at
+-- one place and gives each stop its own words, as the list beside the
+-- quest log has always done — the tracker reads the same rows now.
+tests["tracker list: numbered rows, turn-ins at one place are one row"] = function(t)
+    local v = view({
+        { quest = 11, objective = 1, label = "Boar Trouble", detail = "Boars slain: 2/8", place = { map = 1, x = 0.5, y = 0.6 } },
+        { quest = 12, turnIn = true, label = "A Letter Home", detail = "Turn in: Marshal Dunn", place = { map = 1, x = 0.8, y = 0.6 } },
+        { quest = 13, turnIn = true, label = "Lost Tools", detail = "Turn in: Marshal Dunn", place = { map = 1, x = 0.8, y = 0.6 } },
+        { quest = 14, turnIn = true, label = "Old Debts", detail = "Turn in", place = { map = 2, x = 0.3, y = 0.3 } },
+    })
+    local rows, _, _, counts = TL().Rows(v, HERE)
+    t.eq(#rows, 3, "the two turn-ins at one place are one row")
+    t.eq(rows[1].n, 1); t.eq(rows[2].n, 2); t.eq(rows[3].n, 3)
+    t.eq(rows[1].text, "Boars slain: 2/8")
+    t.eq(rows[1].sub, "For the quest Boar Trouble")
+    t.eq(rows[2].merged, 2)
+    t.eq(rows[2].text, "Turn in 2 quests")
+    t.eq(rows[2].sub, "A Letter Home, Lost Tools. Give them to Marshal Dunn")
+    t.eq(rows[3].text, "Turn in Old Debts")
+    t.eq(rows[3].merged, 1)
+    t.eq(counts.stops, 3, "stops counted as the rows read them")
+    t.eq(counts.waiting, 0)
+end
+
+tests["tracker list: a held reason is said in plain words"] = function(t)
+    t.eq(TL().Why("not complete any more"), "this quest is not complete any more. Finish it again first.")
+    t.eq(TL().Why("not on this map"), "it is in another zone. Plan a new route when you get there.")
+    t.eq(TL().Why("some other reason"), "some other reason", "a reason with no plain form is shown as given")
+    local v = view({ { label = "Stale Bread", quest = 16, turnIn = true, held = "not complete any more",
+        place = { map = 1, x = 0.1, y = 0.1 } } })
+    local rows = TL().Rows(v, HERE)
+    t.eq(rows[1].held, "this quest is not complete any more. Finish it again first.")
+    t.eq(rows[1].why, "not complete any more", "the route's own words are kept on the row")
+end
+
+tests["tracker list: how many stops show, and the plan line"] = function(t)
+    t.eq(TL().MaxShown("5"), 5)
+    t.eq(TL().MaxShown("20"), 20)
+    t.eq(TL().MaxShown("All"), TL().ALL)
+    t.eq(TL().MaxShown(nil), TL().ALL, "no saved value shows all")
+    t.eq(TL().MaxShown(10), 10)
+    t.eq(TL().Plan(nil, nil), "Today's route · Shortest first", "the defaults, in plain words")
+    t.eq(TL().Plan("quests", "xp"), "My quests only · Most XP first")
+    t.eq(TL().Plan("Everything", "Most XP first"), "Everything · Most XP first", "the saved labels read back")
+end
+
 return tests

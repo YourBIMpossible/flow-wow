@@ -9,6 +9,7 @@ local tests = {}
 
 local function MR() return ns.MapRoute end
 local function RL() return ns.RouteList end
+local function TL() return ns.Nav.TrackerList end
 
 local function view()
     return { kind = "quests", stops = {
@@ -27,7 +28,7 @@ local function view()
     }, left = {} }
 end
 
-local function rows() return (RL().Rows(view(), nil)) end
+local function rows() return (TL().Rows(view(), nil, TL().ALL)) end
 
 local function start(opts)
     opts = opts or {}
@@ -94,10 +95,10 @@ end
 
 tests["card: one stop, one level, and nothing the game did not say"] = function(t)
     local only = { stops = { { label = "Inn", place = { map = 5, x = 0.5, y = 0.5 } } } }
-    local card = MR().Card(RL().Rows(only, nil), 5, { name = "Town", low = 30, high = 30 })
+    local card = MR().Card(TL().Rows(only, nil, TL().ALL), 5, { name = "Town", low = 30, high = 30 })
     t.eq(card.lines[1], "Level 30")
     t.eq(card.lines[2], "1 route stop here")
-    local bare = MR().Card(RL().Rows(only, nil), 5, nil)
+    local bare = MR().Card(TL().Rows(only, nil, TL().ALL), 5, nil)
     t.eq(bare.title, MR().NO_NAME)
     t.eq(bare.lines[1], MR().NO_LEVELS, "no level range is made up")
 end
@@ -105,7 +106,7 @@ end
 tests["card: only waiting stops here says so"] = function(t)
     local v = { stops = { { quest = 1, turnIn = true, label = "Q", detail = "Turn in", held = "x",
                             place = { map = 7, x = 0.5, y = 0.5 } } } }
-    local card = MR().Card(RL().Rows(v, nil), 7, { name = "Z" })
+    local card = MR().Card(TL().Rows(v, nil, TL().ALL), 7, { name = "Z" })
     t.eq(card.lines, { MR().NO_LEVELS, MR().NO_STOPS, "1 waiting here" })
     t.eq(card.next, nil)
 end
