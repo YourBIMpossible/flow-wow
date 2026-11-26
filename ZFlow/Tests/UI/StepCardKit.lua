@@ -40,7 +40,7 @@ local function boot(opts)
     c.fire("ADDON_LOADED", ns.id.addon)
     c.fire("PLAYER_LOGIN")
     c.fire("PLAYER_ENTERING_WORLD")
-    return c, api, firstCalls
+    return c, api, firstCalls, k
 end
 
 -- The tree the kit was last handed for this window, kept whole (the
@@ -309,6 +309,25 @@ function tests.drawerListsTheNextStops(t)
     local firstBtn = partOf(tree(), "act.first")
     t.eq(firstBtn and firstBtn.enabled, false, "a held stop cannot be made next")
     t.eq(firstBtn and firstBtn.tooltip, "This step is not on your route.", "no index was passed for it")
+end
+
+function tests.drawerClickThatRaisesIsAProblemNotAnError(t)
+    local view, cur = routeView()
+    local c, api, _, k = boot({ first = true, view = view })
+    local tree = keepTree(c)
+    t.eq(api.Toggle(cur, { index = 1 }), true)
+    local SC = ns.Nav.StepCard
+    local realCard = SC.Card
+    SC.Card = function() error("boom") end
+    local clicked = pcall(partOf(tree(), "dstop1").onClick)
+    SC.Card = realCard
+    t.eq(clicked, true, "the click itself does not raise (the handler pcalls Toggle)")
+    t.eq(api.Shown(), true, "the card stays as it was when the click's Toggle raises")
+    local found = false
+    for _, p in ipairs(k.problems:list("stepCard")) do
+        if p.owner == "toggle" then found = true end
+    end
+    t.ok(found, "the raise is written as a problems line (Plexy's nit)")
 end
 
 function tests.drawerOnlyForTheCurrentStep(t)
