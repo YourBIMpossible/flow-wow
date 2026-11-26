@@ -9,6 +9,7 @@ local tests = {}
 
 local function MRL() return ns.MapRouteLines end
 local function RL() return ns.RouteList end
+local function TL() return ns.Nav.TrackerList end
 
 local function view()
     return { kind = "quests", stops = {
@@ -49,7 +50,7 @@ local function start(opts)
 end
 
 tests["lines: you to the first stop, then between later stops, then the waypoint"] = function(t)
-    local rows = RL().Rows(view(), nil)
+    local rows = TL().Rows(view(), nil, TL().ALL)
     local lines = MRL().Lines(rows, 1, { map = 1, x = 0.1, y = 0.1 }, { map = 1, x = 0.3, y = 0.9 })
     -- the kinds, runs collapsed: the two later legs are one run of "rest"
     t.eq(kinds(lines), "first,rest,waypoint,x")
@@ -168,7 +169,7 @@ tests["lines: no X when the next stop is on another map"] = function(t)
     local v = { kind = "quests", stops = {
         { quest = 11, label = "Over There", detail = "Go", place = { map = 2, x = 0.5, y = 0.5 } },
     }, left = {} }
-    local rows = RL().Rows(v, nil)
+    local rows = TL().Rows(v, nil, TL().ALL)
     local lines = MRL().Lines(rows, 1, { map = 1, x = 0.1, y = 0.1 }, nil, cornersOf)
     t.eq(kinds(lines), "first", "the leg is clipped at the edge, and no X")
     for _, l in ipairs(lines) do t.ok(l.kind ~= "x", "no X for a stop off the map") end

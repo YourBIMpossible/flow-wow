@@ -1,6 +1,6 @@
 -- The route on the world map (lead section 387, R5): a numbered mark on
 -- every stop of the route that is on the map the world map shows, in the
--- same numbers as the list beside the quest log (UI/RouteList.lua RL.Rows),
+-- same numbers as the list beside the quest log (TL.Rows' rows,
 -- each with a tooltip naming the stop; and a small card for that zone: its
 -- name, the levels the game gives for it, how many of the route's stops
 -- are in it and which comes next. Nothing is drawn, and the card is
@@ -284,8 +284,9 @@ function MR.Declare(k, diag)
         end
         if not pins then return end
         local okMap, map = pcall(pins.map)
-        local RL = ns.RouteList
-        local rows = okMap and map ~= nil and RL and RL.Rows(view(), nil) or nil
+        local TL = ns.Nav and ns.Nav.TrackerList
+        local rows
+        if okMap and map ~= nil and TL then rows = TL.Rows(view(), nil, TL.ALL) end
         if not rows then
             clear()
             return

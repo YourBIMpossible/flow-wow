@@ -319,10 +319,10 @@ function MRL.Declare(k)
         end
         local okMap, map = pcall(handle.map)
         if not okMap or map == nil then clear() return nil end
-        local RL = ns.RouteList
+        local TL = ns.Nav and ns.Nav.TrackerList
         local v = view()
         local rows = nil
-        if v and RL then rows = RL.Rows(v, nil) end
+        if v and TL then rows = TL.Rows(v, nil, TL.ALL) end
         local function cornersOf(m) return ask(c, "mapCorners", m) end
         local pos = ask(c, "position")
         local lines = MRL.Lines(rows, map, pos, ask(c, "waypoint"), cornersOf)

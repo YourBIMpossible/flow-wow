@@ -63,13 +63,12 @@ tests["tracker parts: no route is the empty state"] = function(t)
     t.ok(ns.Kit.Window({ id = RT().ID, title = "x", children = kids }) ~= nil, "the kit takes the parts")
 end
 
-tests["tracker parts: no more than RT.MAX stops are listed"] = function(t)
+tests["tracker parts: the parts list the rows they are given; the cap is the builder's"] = function(t)
     local rows = {}
-    for i = 1, RT().MAX + 3 do rows[i] = { label = "S" .. i, dist = "1 yd" } end
-    local kids = RT().Children(rows)
-    t.ok(byKey(kids, "next" .. (RT().MAX - 1)) ~= nil, "the last shown")
-    t.eq(byKey(kids, "next" .. RT().MAX), nil)
-    t.ok(byKey(kids, "more") ~= nil, "says how many more")
+    for i = 1, 11 do rows[i] = { label = "S" .. i, dist = "1 yd" } end
+    local kids = RT().Children(rows, nil, 3)
+    t.ok(byKey(kids, "next10") ~= nil, "every row given is listed (slice 5: no cap of its own)")
+    t.eq(byKey(kids, "more").text, RT().MORE:format(3), "the more line is the builder's count")
 end
 
 -- S42: the quest's own item under the current step.
@@ -130,9 +129,10 @@ tests["tracker wiring: the view's held step is listed with its reason, the next 
     t.eq(more, 0)
     local kids = RT().Children(rows, nil, more)
     t.eq(rows[1].current, true, "the route's step first (lead section 770)")
-    local held = byKey(kids, "held2")
+    t.eq(byKey(kids, "waitingHead").text, "Waiting", "the held step sits under its heading (slice 5)")
+    local held = byKey(kids, "held1")
     t.eq(held and held.text, "Hand in Wolves")
-    t.eq(held and held.sub, RT().HELD:format("the item is not looted yet"))
+    t.eq(held and held.sub, "the item is not looted yet", "the reason in plain words, as in the list")
     t.eq(held and held.tone, nil, "a held step is not the current one")
     local now = byKey(kids, "current")
     t.eq(now and now.text, "Boars")
