@@ -3343,7 +3343,8 @@ function ns.make.fakeClient(opts)
         local h = { spec = spec, slots = {}, shown = false, point = nil, given = {} }
         -- h.size: each button's side on screen, in pixels (spec.size, else
         -- the real client's 32); h.resize changes it, as SetSize would.
-        h.size = (type(spec.size) == "number" and spec.size > 0) and spec.size or 32
+        h.size = 32
+        if type(spec.size) == "number" and spec.size > 0 then h.size = spec.size end
         for i = 1, spec.count do h.slots[i] = { attrs = {}, shown = false, icon = nil } end
         function h.set(i, attr, value)
             local slot = h.slots[i]
