@@ -234,6 +234,14 @@ function AL.Declare(k, diag)
             label = "Auction price history on item tooltips",
             help = "The cheapest buyout for one you saw in your own auction searches, and how it moved. It buys and posts nothing.",
             group = "auctions", synonyms = { "auction", "price", "history", "ah", "tooltip" },
+        }, {
+            -- E-41 (lead section 787): Alt-click an item for its price chart.
+            -- A new row, on as made (Flow's chartClick); reviewed from
+            -- another lane (lead section 557). It only opens the chart.
+            key = ns.PriceChart.CLICK_SETTING, scope = "account", type = "bool", default = true,
+            label = "Alt-click an item for its price chart",
+            help = "Hold Alt and click an item (in your bags, a chat link or the auction house) to see how its price moved in your own searches. It buys and posts nothing.",
+            group = "auctions", synonyms = { "auction", "price", "chart", "alt", "click" },
         } },
         provides = { Looks = api.looks },
         start = function(c)
