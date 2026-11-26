@@ -101,41 +101,139 @@ local function buttonOn(c, frameName)
     return nil
 end
 
-tests["banker buttons: one on the bank frame, one above the backpack; each opens the window"] = function(t)
-    local c, _, api = booted(function(k, c)
-        c.setWindow("BankFrame", {})
-        c.setWindow("ContainerFrame1", {})
-        return ns.BankerWindow.Declare(k, ns.diag)
-    end)
-    local bank, bags = buttonOn(c, "BankFrame"), buttonOn(c, "ContainerFrame1")
-    t.ok(bank ~= nil and bags ~= nil, "both made")
-    t.eq(bank.shown, true)
-    t.eq(bank.spec.name, ns.id.framePrefix .. "BankerBankButton")
-    local before = api.shows()
-    bags.click()
-    t.eq(api.shows(), before + 1, "the bag button opens it")
-    bank.click()
-    t.eq(api.shows(), before + 2, "and the bank button")
+local function bankerAndButtons(k, c)
+    c.setWindow("BankFrame", {})
+    c.setWindow("ContainerFrame1", {})
+    ns.UIRows.Declare(k)
+    local api = ns.BankerWindow.Declare(k, ns.diag)
+    ns.WindowButtons.Declare(k)
+    return api
 end
 
-tests["deals button: made once the auction frame exists, follows On, opens the window"] = function(t)
+tests["banker buttons: WindowButtons rows, each with its own setting, each opens its tab"] = function(t)
+    local rows = {}
+    for _, win in ipairs(ns.WindowButtons.WINDOWS) do rows[win.key] = win end
+    t.eq(rows.banker.frame, "BankFrame")
+    t.eq(rows.banker.setting, "buttons.banker")
+    t.eq(rows.banker.args, { ns.BankerWindow.TAB_BANK }, "the bank one opens on To bank")
+    t.eq(rows.bags.frame, "ContainerFrame1")
+    t.eq(rows.bags.setting, "buttons.bags")
+    t.eq(rows.bags.args, { ns.BankerWindow.TAB_IN }, "the bag one opens on In your bank")
+    t.eq(rows.bank.text, "Bank list", "the Bank list row is unchanged")
+    t.eq(rows.bank.point, { "TOPRIGHT", "TOPRIGHT", -40, -40 })
+    t.ok(rows.banker.point[4] <= rows.bank.point[4] - 24, "Banker stands a button lower than Bank list")
+    local c, k, api = booted(bankerAndButtons)
+    local bank, bags
+    for _, h in ipairs(c.windowButtons) do
+        if h.spec.name == ns.id.framePrefix .. "BankerBankButton" then bank = h end
+        if h.spec.name == ns.id.framePrefix .. "BankerBagButton" then bags = h end
+    end
+    t.ok(bank ~= nil and bags ~= nil, "both made, on by default")
+    t.eq(bank.frame, "BankFrame")
+    t.eq(bags.frame, "ContainerFrame1")
+    t.eq(bank.shown, true)
+    local before = api.shows()
+    bags.click()
+    t.eq(api.shows(), before + 1, "the bag button opens the window")
+    bank.click()
+    t.eq(api.shows(), before + 2, "and the bank button")
+    k.settings:set("buttons.banker", false)
+    t.eq(bank.shown, false, "its own setting hides the Banker button")
+    t.eq(bags.shown, true, "and leaves the bag one")
+end
+
+tests["banker buttons: refused in a fight, made when the fight ends"] = function(t)
+    local c = booted(function(k, cl)
+        cl.setCombat(true)
+        return bankerAndButtons(k, cl)
+    end)
+    for _, h in ipairs(c.windowButtons) do
+        t.ok(h.spec.name ~= ns.id.framePrefix .. "BankerBankButton", "none in a fight")
+    end
+    c.setCombat(false)
+    c.fire("PLAYER_REGEN_ENABLED")
+    local made = false
+    for _, h in ipairs(c.windowButtons) do
+        if h.spec.name == ns.id.framePrefix .. "BankerBankButton" then made = true end
+    end
+    t.ok(made, "made once the fight is over")
+end
+
+tests["deals button: a WindowButtons row, made once the auction frame exists, follows the trader"] = function(t)
     local c, k, api = booted(function(k)
+        ns.UIRows.Declare(k)
         ns.Trader.Declare(k, ns.diag)
-        return ns.DealsPanel.Declare(k)
+        local dp = ns.DealsPanel.Declare(k)
+        ns.WindowButtons.Declare(k)
+        return dp
     end)
     t.eq(buttonOn(c, "AuctionFrame"), nil, "Blizzard_AuctionUI not loaded yet")
     c.setWindow("AuctionFrame", {})
     c.fire("ADDON_LOADED", "Blizzard_AuctionUI")
     local b = buttonOn(c, "AuctionFrame")
     t.ok(b ~= nil, "made on its ADDON_LOADED")
+    t.eq(b.spec.name, ns.id.framePrefix .. "DealsButton")
     t.eq(b.shown, true)
     b.click()
     local w = c.kitWindows()[ns.DealsPanel.ID]
     t.ok(w ~= nil and w.shown == true, "the Deals window opens")
     k.settings:set(ns.Trader.SETTING, true)
-    api.follow()
     t.eq(b.shown, false, "the trader off: no button")
     t.eq(api.open(), false, "and nothing to open")
+    k.settings:set(ns.Trader.SETTING, false)
+    t.eq(b.shown, true, "the trader on again: the button is back")
+    k.settings:set("buttons.deals", false)
+    t.eq(b.shown, false, "its own setting hides it")
+end
+
+tests["buttons word: one line says what worldMapFrame() answers"] = function(t)
+    local WB = ns.WindowButtons
+    t.eq(WB.MapLine(nil), "world map frame: not read.")
+    local c = ns.make.fakeClient()
+    t.eq(WB.MapLine(c), "world map frame: not there.")
+    c.setWorldMapFrame({ shown = true, right = 900, top = 700, height = 500 })
+    t.eq(WB.MapLine(c), "world map frame: open, right 900, top 700, height 500, no quest panel.")
+    c.setWorldMapFrame({ shown = false, panel = { shown = true } })
+    t.eq(WB.MapLine(c), "world map frame: closed, quest panel open.")
+end
+
+-- CHANGES-2: opening the step card hides a tooltip that one of this
+-- add-on's frames owns (the real client's hideTooltip over a fake
+-- GameTooltip), and leaves another add-on's tooltip shown.
+local function cardWithTip(ownerName)
+    local env, tip = tipEnv(ownerName)
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, {})
+    c.setSaved(ns.id.charDB, {})
+    c.setScreen(1920, 1080)
+    c.setQuestLog({})
+    c.hideTooltip = ns.make.client(env).hideTooltip
+    local k = ns.Kernel({}, c)
+    ns.Diag.Start(k)
+    local card = ns.StepCard.Declare(k, ns.diag)
+    k:Boot()
+    c.fire("ADDON_LOADED", ns.id.addon)
+    c.fire("PLAYER_LOGIN")
+    c.fire("PLAYER_ENTERING_WORLD")
+    return card, tip
+end
+
+local function cardStep()
+    return { label = "Kill Gnolls", title = "Wanted: Gnolls", objective = "Gnoll Paw: 2/8",
+             quest = 176, kind = "quest", place = { map = 1429, x = 0.4, y = 0.6 } }
+end
+
+tests["step card: Toggle hides a tooltip owned by one of this add-on's frames"] = function(t)
+    local card, tip = cardWithTip(ns.id.framePrefix .. "RouteListRow")
+    t.eq(tip.shown, true)
+    t.ok(card.Toggle(cardStep(), { index = 1 }, nil), "the card opens")
+    t.eq(tip.shown, false, "the tooltip under it is hidden")
+end
+
+tests["step card: Toggle leaves another add-on's tooltip shown"] = function(t)
+    local card, tip = cardWithTip("BagnonFrame")
+    t.ok(card.Toggle(cardStep(), { index = 1 }, nil), "the card opens")
+    t.eq(tip.shown, true, "another add-on's tooltip stays")
 end
 
 return tests

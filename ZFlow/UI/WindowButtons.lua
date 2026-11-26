@@ -37,7 +37,8 @@
 --   WindowButtons.Declare(k, diag) also adds the word WB.WORD, which
 --   prints those lines.
 --
--- Settings: "buttons.worldMap", "buttons.merchant", "buttons.profession", "buttons.bank" and "buttons.talents" (bool, account,
+-- Settings: "buttons.worldMap", "buttons.merchant", "buttons.profession", "buttons.bank",
+-- "buttons.banker", "buttons.bags", "buttons.deals" and "buttons.talents" (bool, account,
 -- default on). The rows are UI/Rows.lua's;
 -- a missing row is off.
 --
@@ -169,6 +170,41 @@ WB.WINDOWS = {
         tipText = "Bank list: what to store and take out",
         point = { "TOPRIGHT", "TOPRIGHT", -40, -40 },
     },
+    -- E-25: the Banker window's two buttons (UI/BankerWindow.lua). The bank
+    -- one stands under "Bank list" (same right edge, one button lower), so
+    -- the two never cover each other. args are the window's tabs:
+    -- BankerWindow.TAB_BANK (1) and TAB_IN (2); BankerWindow.lua loads after
+    -- this file, so the numbers are written here and a test holds them to
+    -- the window's own. name: the button's global name after the prefix.
+    {
+        key = "banker", frame = "BankFrame", setting = "buttons.banker",
+        label = "Banker button on the bank window", says = "bank window (Banker)",
+        retry = "BANKFRAME_OPENED", name = "BankerBankButton",
+        opens = "bankerWindow", call = "Show", args = { 1 },
+        text = "Banker", tipText = "Banker: what to bank, what is in your bank, and what to sell",
+        point = { "TOPRIGHT", "TOPRIGHT", -40, -66 },
+    },
+    {
+        key = "bags", frame = "ContainerFrame1", setting = "buttons.bags",
+        label = "Banker button on your backpack", says = "backpack",
+        retry = "PLAYER_ENTERING_WORLD", name = "BankerBagButton",
+        opens = "bankerWindow", call = "Show", args = { 2 },
+        text = "Banker", tipText = "Banker: what to bank, what is in your bank, and what to sell",
+        point = { "BOTTOMRIGHT", "TOPRIGHT", -8, 2 },
+    },
+    -- E-38: the Deals button on the auction house (UI/DealsPanel.lua says
+    -- why it is not a real tab). AuctionFrame comes with Blizzard_AuctionUI,
+    -- loaded on demand, so it is asked again when an add-on loads. offWhen:
+    -- a second setting that hides the button while it is true; here the
+    -- trader's own off switch, so the button follows the trader.
+    {
+        key = "deals", frame = "AuctionFrame", setting = "buttons.deals",
+        label = "Deals button on the auction house", says = "auction house",
+        retry = "ADDON_LOADED", name = "DealsButton", offWhen = "trader.off",
+        opens = "dealsPanel", call = "Open",
+        text = "Deals", tipText = "This session's auction deals (look only)",
+        point = { "TOPRIGHT", "TOPRIGHT", -70, -14 },
+    },
     -- F-29 (lead section 817): the talent window, as Flow's "Flow Talents"
     -- tab (Modules/GameButtons.lua:222-238 at b657e6e5); a click opens this
     -- add-on's talents window (UI/TalentsWindow.lua). Which frame is the
@@ -210,6 +246,35 @@ function WB.FrameOf(win, client)
         end
     end
     return win.frame
+end
+
+-- One line for the buttons word: what client.worldMapFrame() answers.
+function WB.MapLine(client)
+    if type(client) ~= "table" or type(client.worldMapFrame) ~= "function" then
+        return "world map frame: not read."
+    end
+    local ok, m = pcall(client.worldMapFrame)
+    if not ok then return "world map frame: not read." end
+    if type(m) ~= "table" then return "world map frame: not there." end
+    local line = "world map frame: "
+    if m.shown == true then
+        line = line .. "open"
+    elseif m.shown == false then
+        line = line .. "closed"
+    else
+        line = line .. "will not say whether it is open"
+    end
+    for _, f in ipairs({ "right", "top", "height" }) do
+        if type(m[f]) == "number" then line = line .. ", " .. f .. " " .. string.format("%.0f", m[f]) end
+    end
+    if type(m.panel) == "table" then
+        line = line .. ", quest panel"
+        if m.panel.shown == true then line = line .. " open" end
+        if m.panel.shown == false then line = line .. " closed" end
+    else
+        line = line .. ", no quest panel"
+    end
+    return line .. "."
 end
 
 function WB.Declare(k, diag)
@@ -309,6 +374,7 @@ function WB.Declare(k, diag)
     local function update(win)
         if not ctx then return end
         local on = ctx.settings:get(win.setting) == true
+        if on and win.offWhen and ctx.settings:get(win.offWhen) == true then on = false end
         local h = handles[win.key]
         reasons[win.key] = nil
         if not on then
@@ -334,7 +400,7 @@ function WB.Declare(k, diag)
             for _, place in ipairs(WB.Places(win)) do
                 local p = place.point
                 h, why = make(frame, {
-                    name = id.framePrefix .. "Button" .. win.frame,
+                    name = id.framePrefix .. (win.name or ("Button" .. win.frame)),
                     text = win.text or id.title, tip = win.tipText or (id.title .. ": " .. win.tip),
                     point = { p[1], p[2], p[3], p[4] },
                     inside = place.inside, strata = win.strata,
@@ -370,6 +436,7 @@ function WB.Declare(k, diag)
             if type(client) ~= "table" or type(client.print) ~= "function" then return end
             local lines = api.lines()
             for _, line in ipairs(api.surfaceLines()) do lines[#lines + 1] = line end
+            lines[#lines + 1] = WB.MapLine(client)
             for i = 1, #lines do client.print(id.title .. ": " .. lines[i]) end
         end
         if type(diag.help) == "table" then diag.help[WB.WORD] = WB.HELP end
@@ -386,6 +453,15 @@ function WB.Declare(k, diag)
                 local scope = row and row.scope or "account"
                 local path = row and row.path or ("settings." .. win.setting)
                 cancels[#cancels + 1] = c.store:watch(scope, path, function() update(win) end)
+                if win.offWhen then
+                    local offRow = c.settings:row(win.offWhen)
+                    local offScope, offPath = "account", "settings." .. win.offWhen
+                    if offRow then
+                        offScope = offRow.scope or offScope
+                        offPath = offRow.path or offPath
+                    end
+                    cancels[#cancels + 1] = c.store:watch(offScope, offPath, function() update(win) end)
+                end
                 c.bus:on(WB.NAME, win.retry, function() retry(win) end)
             end
             c.bus:on(WB.NAME, "PLAYER_REGEN_ENABLED", updateAll)

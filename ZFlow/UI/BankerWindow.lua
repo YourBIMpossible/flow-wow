@@ -32,8 +32,9 @@ local _, ns = ...
 -- The chat word <slash> banker keeps printing its lists (Items/Banker.lua)
 -- and also opens this window: the word is wrapped once, at the start.
 --
--- The buttons: client.windowButton on BankFrame (opens on To bank) and
--- above ContainerFrame1, the backpack window (opens on In your bank).
+-- The buttons that open it are rows of UI/WindowButtons.lua: "banker" on
+-- BankFrame (Show on To bank) and "bags" above ContainerFrame1, the
+-- backpack window (Show on In your bank), each with its own setting.
 --
 -- DATA NEED (Lane Items): the To sell click writes the never-sell list
 -- (settings.sell.never), which Items/Keep.lua owns. The window calls
@@ -57,16 +58,6 @@ W.TITLE = "Banker"
 W.TABS = { "To bank", "In your bank", "To sell", "Auction prices" }
 W.TAB_BANK, W.TAB_IN, W.TAB_SELL, W.TAB_PRICES = 1, 2, 3, 4
 
--- The buttons that open the window (E-25): on Blizzard's bank frame (To
--- bank) and above the backpack window, ContainerFrame1 (In your bank).
-W.BUTTON_TEXT = "Banker"
-W.BUTTON_TIP = "Banker: what to bank, what is in your bank, and what to sell"
-W.BUTTONS = {
-    { key = "bank", frame = "BankFrame", name = "BankerBankButton", tab = W.TAB_BANK,
-      point = { "TOPRIGHT", "TOPRIGHT", -60, -16 } },
-    { key = "bags", frame = "ContainerFrame1", name = "BankerBagButton", tab = W.TAB_IN,
-      point = { "BOTTOMRIGHT", "TOPRIGHT", -8, 2 } },
-}
 W.KIT_WIDTH, W.KIT_HEIGHT = 420, 480
 W.LIST_HEIGHT = 360
 W.LAYOUT = "layout.banker"          -- account: { point, width, height }
@@ -262,7 +253,6 @@ function W.Declare(k, diag)
     end
 
     local ctx
-    local buttons = {}
     local function client()
         if ctx then return ctx.client end
         return nil
@@ -493,41 +483,12 @@ function W.Declare(k, diag)
             local function refresh()
                 if handle and handle.shown() then render() end
             end
-            -- The two buttons (E-25): one on the bank frame, one above the
-            -- backpack window. Made out of a fight only (client.windowButton
-            -- refuses in one); a refusal is tried again when the bank opens
-            -- or the fight ends.
-            local function makeButtons()
-                local cl = ctx and ctx.client
-                if not cl or type(cl.windowButton) ~= "function" then return end
-                for _, b in ipairs(W.BUTTONS) do
-                    if not buttons[b.key] then
-                        local okB, h = pcall(cl.windowButton, b.frame, {
-                            name = tostring(id.framePrefix) .. b.name, text = W.BUTTON_TEXT,
-                            point = b.point, tip = W.BUTTON_TIP })
-                        if okB and type(h) == "table" then
-                            buttons[b.key] = h
-                            local tab = b.tab
-                            h.onClick(function() api.show(tab) end,
-                                function(err) k.problems:add(W.NAME, "button", tostring(err)) end)
-                            h.show(true)
-                        end
-                    end
-                end
-            end
-            makeButtons()
-            ctx.bus:on(W.NAME, "BANKFRAME_OPENED", makeButtons)
-            ctx.bus:on(W.NAME, "PLAYER_REGEN_ENABLED", makeButtons)
             ctx.bus:on(W.NAME, "BANKFRAME_OPENED", refresh)
             ctx.bus:on(W.NAME, "BANKFRAME_CLOSED", refresh)
             ctx.bus:on(W.NAME, ns.Reservations.CHANGED, refresh)
         end,
         stop = function()
             if handle then handle.show(false) end
-            for key, h in pairs(buttons) do
-                pcall(h.show, false)
-                buttons[key] = nil
-            end
             started = false
             ctx = nil
         end,

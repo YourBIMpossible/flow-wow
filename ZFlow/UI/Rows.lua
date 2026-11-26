@@ -9,7 +9,10 @@ local _, ns = ...
 --   buttons.merchant   bool, account, off: a button on the merchant window
 --   buttons.profession bool, account, on: a button on the profession window
 --   buttons.bank       bool, account, on: a button on the bank window
---   buttons.talents    bool, account, on: a button on the talent window (F-29)
+--   buttons.banker     bool, account, on: the Banker button on the bank window
+--   buttons.bags       bool, account, on: the Banker button on the backpack
+--   buttons.deals      bool, account, on: the Deals button on the auction house
+--   buttons.talents   bool, account, on: a button on the talent window (F-29)
 --
 --   UIRows.Declare(k) -> how many rows the kernel took. A row it refuses
 --   is a problem of kind "setting" there (Core/Settings.lua).
@@ -38,6 +41,22 @@ function R.Declare(k)
     if k:Setting({ key = "buttons.bank", scope = "account", type = "bool", default = true,
         label = "Button on the bank window", group = R.GROUP, synonyms = { "button", "bank", "window" },
         help = "A button on the bank window that says Bank list and shows the list of what to store and take out." }) then
+        made = made + 1
+    end
+    -- E-25 and E-38: the Banker and Deals buttons.
+    if k:Setting({ key = "buttons.banker", scope = "account", type = "bool", default = true,
+        label = "Banker button on the bank window", group = R.GROUP, synonyms = { "button", "banker", "bank", "window" },
+        help = "A button on the bank window, under Bank list, that opens the Banker window on To bank." }) then
+        made = made + 1
+    end
+    if k:Setting({ key = "buttons.bags", scope = "account", type = "bool", default = true,
+        label = "Banker button on your backpack", group = R.GROUP, synonyms = { "button", "banker", "bags", "backpack" },
+        help = "A button above your backpack that opens the Banker window on In your bank." }) then
+        made = made + 1
+    end
+    if k:Setting({ key = "buttons.deals", scope = "account", type = "bool", default = true,
+        label = "Deals button on the auction house", group = R.GROUP, synonyms = { "button", "deals", "auction", "trader" },
+        help = "A button on the auction house that opens this session's deals. Hidden while the trader is off." }) then
         made = made + 1
     end
     -- F-29 (lead section 817): the talent window's button.
