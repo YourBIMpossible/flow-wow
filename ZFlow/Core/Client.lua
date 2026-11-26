@@ -13694,6 +13694,61 @@ function ns.make.client(env)
         return out
     end
 
+
+    -- c.worldMapFrame() -> { shown, right, top, height, panel } or nil when
+    -- the game has no WorldMapFrame or it will not say whether it shows.
+    -- right, top and height are the frame's own (screen units, from the
+    -- bottom left), nil while it is hidden or not plain numbers. panel is
+    -- always nil here: the Classic-era map (1.15) has no quest panel at
+    -- its side (retail's QuestMapFrame is not on this client). Reads only.
+    -- First guess, not seen on 16001: WorldMapFrame with IsShown /
+    -- GetRight / GetTop / GetHeight (the same calls c.questLogFrame uses).
+    -- Needs a game test.
+    function c.worldMapFrame()
+        local f = env.WorldMapFrame
+        if type(f) ~= "table" then return nil end
+        local okS, shown = method(f, "IsShown")
+        if not okS or hidden(shown) then return nil end
+        local out = { shown = shown == true }
+        if not out.shown then return out end
+        local okR, right = method(f, "GetRight")
+        local okT, top = method(f, "GetTop")
+        local okH, height = method(f, "GetHeight")
+        if okR and finiteNumber(right) then out.right = right end
+        if okT and finiteNumber(top) then out.top = top end
+        if okH and finiteNumber(height) then out.height = height end
+        return out
+    end
+
+    -- c.hideTooltip() -> true when GameTooltip was hidden. Only a tooltip
+    -- whose owner is a Z-Flow frame is hidden: GameTooltip:GetOwner, then (the addon's frame
+    -- prefix). Any other tooltip is left alone. Hide on GameTooltip is not
+    -- protected and replaces nothing. First guess, not seen on 16001:
+    -- GameTooltip:GetOwner / IsShown / Hide, Frame:GetName / GetParent. Needs a game test.
+    function c.hideTooltip(prefix)
+        if type(prefix) ~= "string" or prefix == "" then return false end
+        local tip = env.GameTooltip
+        if type(tip) ~= "table" then return false end
+        local okS, shown = method(tip, "IsShown")
+        if not okS or shown ~= true then return false end
+        local okO, owner = method(tip, "GetOwner")
+        if not okO or hidden(owner) or type(owner) ~= "table" then return false end
+        -- The owner or one of its parents (ten at most) is named with the prefix.
+        local ours, f = false, owner
+        for _ = 1, 10 do
+            if type(f) ~= "table" then break end
+            local okN, name = method(f, "GetName")
+            if okN and not hidden(name) and type(name) == "string" and name:sub(1, #prefix) == prefix then
+                ours = true
+                break
+            end
+            local okP, parent = method(f, "GetParent")
+            if not okP or hidden(parent) then break end
+            f = parent
+        end
+        if not ours then return false end
+        return (method(tip, "Hide")) == true
+    end
     -- c.showMap(map) -> true when the world map was asked to show that
     -- uiMapID. The world map is opened first when it is closed. Nothing is
     -- done unless InCombatLockdown answers a plain false.

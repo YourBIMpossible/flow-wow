@@ -4917,6 +4917,47 @@ function ns.make.fakeClient(opts)
         if s.noFrames or not t then return nil end
         return { shown = t.shown, right = t.right, top = t.top, height = t.height }
     end
+    -- As the real client's worldMapFrame() and hideTooltip(prefix).
+    --   c.setWorldMapFrame({ shown, right, top, height, panel } or nil);
+    --       panel = { shown, left, top, height } or nil.
+    --   c.setTooltipOwner(name or nil): the shown tooltip's owner's name
+    --       (nil: no tooltip shows). c.tooltipHides counts the hides.
+    function c.setWorldMapFrame(t)
+        if type(t) ~= "table" then
+            s.worldMapFrame = nil
+            return
+        end
+        local out = { shown = t.shown == true, right = t.right, top = t.top, height = t.height }
+        if type(t.panel) == "table" then
+            out.panel = { shown = t.panel.shown == true, left = t.panel.left, top = t.panel.top, height = t.panel.height }
+        end
+        s.worldMapFrame = out
+    end
+    function c.worldMapFrame()
+        local t = s.worldMapFrame
+        if s.noFrames or not t then return nil end
+        local out = { shown = t.shown, right = t.right, top = t.top, height = t.height }
+        if t.panel then
+            out.panel = { shown = t.panel.shown, left = t.panel.left, top = t.panel.top, height = t.panel.height }
+        end
+        return out
+    end
+    c.tooltipHides = 0
+    function c.setTooltipOwner(name)
+        if type(name) == "string" then
+            s.tooltipOwner = name
+        else
+            s.tooltipOwner = nil
+        end
+    end
+    function c.hideTooltip(prefix)
+        if type(prefix) ~= "string" or prefix == "" then return false end
+        local owner = s.tooltipOwner
+        if type(owner) ~= "string" or owner:sub(1, #prefix) ~= prefix then return false end
+        s.tooltipOwner = nil
+        c.tooltipHides = c.tooltipHides + 1
+        return true
+    end
     c.mapsShown = {}
     function c.showMap(map)
         if s.noFrames or type(map) ~= "number" then return false end

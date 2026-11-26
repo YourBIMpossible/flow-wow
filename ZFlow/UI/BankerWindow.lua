@@ -32,10 +32,9 @@ local _, ns = ...
 -- The chat word <slash> banker keeps printing its lists (Items/Banker.lua)
 -- and also opens this window: the word is wrapped once, at the start.
 --
--- CLIENT NEED (the lead's): a named button on a Blizzard frame with a
--- click callback — once on the bank frame (opens on To bank), once on the
--- bag bar (opens on In your bank, tooltip "Banker — what to bank, what is
--- in your bank, and what to sell"). Until those land, the word opens it.
+-- The buttons that open it are rows of UI/WindowButtons.lua: "banker" on
+-- BankFrame (Show on To bank) and "bags" above ContainerFrame1, the
+-- backpack window (Show on In your bank), each with its own setting.
 --
 -- DATA NEED (Lane Items): the To sell click writes the never-sell list
 -- (settings.sell.never), which Items/Keep.lua owns. The window calls
@@ -58,6 +57,7 @@ W.ID = "Banker"
 W.TITLE = "Banker"
 W.TABS = { "To bank", "In your bank", "To sell", "Auction prices" }
 W.TAB_BANK, W.TAB_IN, W.TAB_SELL, W.TAB_PRICES = 1, 2, 3, 4
+
 W.KIT_WIDTH, W.KIT_HEIGHT = 420, 480
 W.LIST_HEIGHT = 360
 W.LAYOUT = "layout.banker"          -- account: { point, width, height }

@@ -581,4 +581,9 @@ KIND.act[#KIND.act + 1] = "acceptGroup"
 -- D-26 (lead sections 746 and 753): each press of the rotation key.
 KIND.listen[#KIND.listen + 1] = "onKeyPress"
 
+-- Lead client4: the world map's place (UI/RouteList.lua), read by the
+-- route list only; and the card's tooltip hide (UI/StepCard.lua).
+READS.worldMapFrame = false
+KIND.show[#KIND.show + 1] = "hideTooltip"
+
 return tests

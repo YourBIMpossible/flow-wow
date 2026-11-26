@@ -13,18 +13,21 @@ local _, ns = ...
 --
 --   DealsPanel.Parts(deals, coin) -> kit parts (pure)
 --   DealsPanel.EmptyText() -> the no-deals line
---   DealsPanel.Declare(k) -> api   (api.parts(), api.on())
---   ns.use(DealsPanel.NAME) -> { Parts, On }
+--   DealsPanel.Declare(k) -> api   (api.parts(), api.on(), api.open(), api.follow())
+--   ns.use(DealsPanel.NAME) -> { Parts, On, Open }
 --     Parts: the panel's parts now, or nil while the trader's switch
 --     (trader.off) says nothing — the tab is not shown then.
 --     On: whether the tab is shown at all; it follows the trader.
 --
--- CLIENT NEED (the lead's): a tab on Blizzard's auction house frame
--- with a panel this module fills — shown while On() holds, its parts
--- taken from Parts() when the tab opens and whenever the deals change.
--- (The client already draws on that frame for the deal tooltip line.)
--- Until the tab lands, these parts are the panel, ready to be handed
--- over; nothing else draws them.
+-- On the auction house: a Deals button on AuctionFrame, the "deals" row of
+-- UI/WindowButtons.lua (setting buttons.deals, hidden while trader.off is
+-- set; it calls Open). Not a
+-- real tab: Blizzard's tab code (PanelTemplates_SetNumTabs and the tab
+-- click) runs over AuctionFrame's own tabs and panels by number, and an
+-- added tab would be in that loop. The click opens the Deals window (a
+-- kit window at a screen point beside where the auction frame stands) filled from Parts(); it is filled
+-- again on each click and each time the auction house opens. Trader has
+-- no deals-changed signal, so an open window is not refilled between.
 --
 -- Reads: the trader module through ctx.use, the trader.off setting.
 -- Not tested in game.
@@ -34,6 +37,12 @@ ns.DealsPanel = DP
 DP.NAME = "dealsPanel"
 DP.ID = "dealsPanel"
 DP.HEADER = "Deals"
+DP.WIDTH, DP.HEIGHT = 320, 360
+-- A point on the screen (client.kitWindow places against UIParent, not
+-- against another frame): from the left edge, past where AuctionFrame
+-- usually stands, so the window opens beside it. Not tied to AuctionFrame;
+-- the player can move it, as any kit window.
+DP.POINT = { "TOPLEFT", "TOPLEFT", 860, -104 }
 
 -- Items/Trader.lua loads after this file, so the trader's table is read
 -- when a function runs, never at load.
@@ -112,12 +121,73 @@ function DP.Declare(k)
         return DP.Parts(deals, ns.Prices.Coin)
     end
 
+    local handle
+
+    local function window(kids)
+        local cl = ctx and ctx.client
+        if not cl or type(cl.kitWindow) ~= "function" then return end
+        local id = k.id or ns.id
+        local tree, why = ns.Kit.Window({ id = DP.ID, title = tostring(id.title) .. ": " .. DP.HEADER,
+            children = kids, width = DP.WIDTH, height = DP.HEIGHT, point = DP.POINT })
+        if not tree then
+            k.problems:add(DP.NAME, "tree", tostring(why))
+            return
+        end
+        if handle then
+            handle.update(tree)
+        else
+            handle = cl.kitWindow(DP.ID, tree, {
+                name = tostring(id.framePrefix) .. "Deals",
+                point = DP.POINT, width = DP.WIDTH, height = DP.HEIGHT,
+                failed = function(err) k.problems:add(DP.NAME, "draw", tostring(err)) end,
+            })
+            if not handle then
+                k.problems:add(DP.NAME, "window", "the client could not draw the window")
+                return
+            end
+        end
+        handle.show(true)
+    end
+
+    -- Opens (or refills) the Deals window. True when it was drawn.
+    function api.open()
+        local kids = api.parts()
+        if not kids then return false end
+        window(kids)
+        return handle ~= nil
+    end
+
+    -- The trader off: an open Deals window is closed (the button itself
+    -- follows the trader through its WindowButtons row's offWhen).
+    local function follow()
+        if not ctx then return end
+        if not api.on() and handle and handle.shown() then handle.close() end
+    end
+    function api.follow() follow() end
+
     k:Module({
         name = DP.NAME,
-        needs = { "settings" },
-        provides = { Parts = function() return api.parts() end, On = function() return api.on() end },
-        start = function(c) ctx = c end,
-        stop = function() ctx = nil end,
+        needs = { "settings", "client", "bus" },
+        provides = {
+            Parts = function() return api.parts() end,
+            On = function() return api.on() end,
+            Open = function() return api.open() end,
+        },
+        start = function(c)
+            ctx = c
+            follow()
+            ctx.bus:on(DP.NAME, "AUCTION_HOUSE_SHOW", function()
+                follow()
+                if handle and handle.shown() then api.open() end
+            end)
+            ctx.bus:on(DP.NAME, "AUCTION_HOUSE_CLOSED", function()
+                if handle and handle.shown() then handle.close() end
+            end)
+        end,
+        stop = function()
+            if handle and handle.shown() then handle.close() end
+            ctx = nil
+        end,
     })
     return api
 end
