@@ -147,4 +147,38 @@ tests["route area: a mark on the character icon is told to draw hollow"] = funct
     t.eq(offIcon and offIcon.hollowSet, false, "the other: solid")
 end
 
+-- Slice 6: a one-point current step gets its own dot (the area marks
+-- stand down for it). Fails before: a one-point step draws nothing.
+tests["route area: a one-point step shows one dot in the step's colour"] = function(t)
+    local c = client()
+    local state = {}
+    local one = { kind = "quests", stops = { { label = "Inn", place = { map = 1, x = 0.53, y = 0.5 } } } }
+    local r = RA().Update(c, one, state, {})
+    t.eq(r.shown, 1)
+    t.eq(r.dot, true)
+    local er, eg, eb = RC().Of({ state = "zone" }, 30, nil, nil)
+    t.eq({ r.r, r.g, r.b }, { er, eg, eb }, "the dot's colour (30 yd)")
+    t.eq(#c.minimapPins, 1)
+    t.eq({ c.minimapPins[1].spec.r, c.minimapPins[1].spec.g, c.minimapPins[1].spec.b }, { er, eg, eb })
+end
+
+tests["route area: the dot stands down when the step has an area"] = function(t)
+    local c = client()
+    local state = {}
+    local one = { kind = "quests", stops = { { label = "Inn", place = { map = 1, x = 0.53, y = 0.5 } } } }
+    RA().Update(c, one, state, {})
+    t.eq(shown(c), 1, "the dot first")
+    local r = RA().Update(c, cur(area({ 0.52, 0.5 }, { 0.5, 0.53 })), state, {})
+    t.eq(r.shown, 2)
+    t.eq(r.dot, nil)
+    t.eq(shown(c), 2, "the marks only: the dot hid")
+end
+
+tests["route area: the dot where you stand is told hollow"] = function(t)
+    local c = client()
+    local one = { kind = "quests", stops = { { label = "Inn", place = { map = 1, x = 0.5, y = 0.5 } } } }
+    RA().Update(c, one, {}, {})
+    t.eq(c.minimapPins[1].hollowSet, true)
+end
+
 return tests
