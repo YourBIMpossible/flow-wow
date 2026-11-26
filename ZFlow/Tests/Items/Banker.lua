@@ -16,6 +16,8 @@ local INFO = {
     [858] = { name = "Lesser Healing Potion", quality = 1, sellPrice = 20, classID = 0 },
     [4865] = { name = "Ruined Pelt", quality = 0, sellPrice = 5, classID = 15 },
     [2318] = { name = "Light Leather", quality = 1, sellPrice = 15, classID = 7 },
+    [9002] = { name = "Bent Sword", quality = 0, sellPrice = 7, classID = 2 },
+    [9003] = { name = "Torn Vest", quality = 0, sellPrice = 6, classID = 4 },
 }
 
 local function info(item)
@@ -86,6 +88,28 @@ tests["banker: what in your bank you would now sell, by the sell rules"] = funct
     t.eq(B.SellLines(nil), { B.SELL_NOT_SEEN })
 end
 
+-- E-19 join, lane A CHANGES-1 (§881): the word says why each bank thing
+-- is to be taken out, under Flow's labels: "for your route", "for a quest",
+-- "held", and "you would now sell" only for what the sell rules take.
+tests["banker: bank things a route, a quest or a hold wants are not listed to sell"] = function(t)
+    local rows = {
+        { key = 2589, name = "Linen Cloth", count = 12, reason = "Bring 12 Linen Cloth", take = "route" },
+        { key = 2318, name = "Light Leather", count = 40, reason = "A Leather Job", take = "quest" },
+        { key = 858, name = "Lesser Healing Potion", count = 5, reason = "kept for your goal", take = "hold" },
+        { key = 4865, name = "Ruined Pelt", count = 3, reason = "junk", take = "sell" },
+    }
+    t.eq(B.SellLines(rows), {
+        B.ROUTE_HEADER, "12 x Linen Cloth: Bring 12 Linen Cloth",
+        B.QUEST_HEADER, "40 x Light Leather: A Leather Job",
+        B.HOLD_HEADER, "5 x Lesser Healing Potion: kept for your goal",
+        B.SELL_HEADER, "3 x Ruined Pelt: junk",
+    })
+    t.ok(B.ROUTE_HEADER:find("for your route", 1, true) ~= nil, "Flow's label")
+    t.ok(B.QUEST_HEADER:find("for a quest", 1, true) ~= nil, "Flow's label")
+    t.ok(B.HOLD_HEADER:find("held", 1, true) ~= nil, "Flow's label")
+    t.eq(B.SellLines({ rows[2] }), { B.QUEST_HEADER, "40 x Light Leather: A Leather Job" }, "nothing to sell: no sell header")
+end
+
 local function start(opts)
     opts = opts or {}
     local c = ns.make.fakeClient()
@@ -146,6 +170,22 @@ tests["banker word: the bank as last seen, and what in it you would sell"] = fun
     c.slashes[ns.id.slash]("banker")
     local lines = said(c, before)
     t.eq(lines[#lines], p .. B.NOTHING_TO_SELL)
+end
+
+-- E-19 one-source join: the word's bank rows are BankTakeOut's (Flow's
+-- B.NOT_OUT). A banked grey weapon and armor piece the sell rules would sell
+-- are not listed to take out. Fails before: both were listed.
+tests["banker word: a banked weapon or armor to sell is not listed"] = function(t)
+    local k, c = start()
+    t.eq(k.store:set("char", ns.HaveTip.PATH, { at = 1000, counts = { [4865] = 3, [9002] = 1, [9003] = 1 } }), true)
+    local sold = {}
+    for _, r in ipairs(B.SellRows(B.Items(k.store:get("char", ns.HaveTip.PATH), info), {})) do sold[r.key] = true end
+    t.ok(sold[9002] and sold[9003], "the sell rules would sell both")
+    local before = #c.printed
+    c.slashes[ns.id.slash]("banker")
+    local lines = said(c, before)
+    local p = ns.id.title .. ": "
+    t.eq({ lines[#lines - 1], lines[#lines] }, { p .. B.SELL_HEADER, p .. "3 x Ruined Pelt: junk" })
 end
 
 tests["banker word: bags not read still lists the bank"] = function(t)

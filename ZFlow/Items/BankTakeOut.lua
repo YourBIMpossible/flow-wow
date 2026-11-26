@@ -22,25 +22,49 @@ local _, ns = ...
 -- (Disposition.Decide with the bank list's context: your never-sell list,
 -- your bank rules, your saved sets, and what your goals hold in the bank).
 --
+-- E-19 one-source join (lead ruling): this is Flow's whole B.TakeOutRows,
+-- the one rule the Take out list, E-21's bank step (Items/BankPutAway.lua),
+-- the banker view's bank rows (Items/BankerRows.lua BR.SellRows) and the
+-- banker word (Items/Banker.lua) read. As Flow (:321-326), a bank thing a
+-- route step wants (e.step) or a quest wants (e.quest) is taken out too,
+-- and Z-Flow's own hold (e.hold, a reservation no route stop names; lead
+-- section 776) between quest and sell: one row per thing, the first of
+-- route, quest, hold, sell, then one sort of all rows by name. NOT_OUT
+-- holds back the sell rows only (Flow: a route or quest takes even gear
+-- out). Your rule "bank" drops a thing before every branch.
+--
 -- Left out, and why:
 --   the auction half (Flow's action "ah")   Z-Flow's rules sell or keep;
 --             none sends a banked thing to the auction house
---   the quest and route rows (:321-324)     not "marked to sell"; what a
---             goal of yours holds in the bank is kept by the sell rules
 --   the one-move memory (B.Unmoved, :198)   it undid Flow's own moves
+--   the 10 s memo (B.TakeOut)               out of scope (lead ruling)
 --
 -- Pure parts (plain tables in):
 --   rows, unread = BankTakeOut.Rows(items, sells, rules, where)
---     items   Banker.Items': { { key, name, count, quality, classID } };
---             nil: the bank was never seen
---     sells   Banker.SellRows': { { key, name, count, quality, reason } }
+--     items   Banker.Items': { { key, name, count, quality, classID } },
+--             each optionally with step, quest, hold (words: who wants it,
+--             as Items/TakeOutWhy.lua Fill sets them); nil: the bank was
+--             never seen
+--     sells   Banker.SellRows': { { key, name, count, quality, reason,
+--             mine } }
 --     rules   your bank choices: { [key] = "bank" | "carry" }, or nil
 --     where   BankTakeOut.Where's, or nil
---     rows    { { key, id, name, count, quality, reason, slots } }, by name
---             (an item with no name read: by its key), then by key.
---             name is nil when it was not read; count is nil when the
---             rules could not say how many; slots only when `where` has it
---     unread  how many sold items were left out because their kind was not
+--     rows    { { key, id, name, count, quality, reason, slots, take, mine,
+--             next } }, by name (an item with no name read: by its key),
+--             then by key. take: T.ROUTE | T.QUEST | T.HOLD | T.SELL;
+--             reason: the step's words, the quest's title, the hold's
+--             reason or the sell reason. next: what a click makes a sell
+--             row (BankerRows.NextChoice), nil for the others. mine: your
+--             own sell choice. name is nil when it was not read; count is
+--             the bank's for a wanted thing, the sell rules' for a sell (nil
+--             when they could not say how many); slots only when `where`
+--             has it
+--   list, why = BankTakeOut.Make(client, store, use, r): the list from the
+--     reads (saved bank, sell rules, bank rules, quest log, the route's
+--     View, the reservations r), as List() gives it; the banker word calls
+--     it with its own reservations evaluation
+--     unread  how many sold items nothing else wants were left out because
+--             their kind was not
 --             read (a weapon can't be told from a pelt then)
 --     nil when items or sells is nil: not known is never an empty list.
 --   where = BankTakeOut.Where(client)
@@ -61,8 +85,13 @@ local T = {}
 ns.BankTakeOut = T
 
 T.NAME = "bankTakeOut"
--- Item classes never listed (Flow's B.NOT_OUT): weapon, armor, quest.
+-- Item classes never listed to sell (Flow's B.NOT_OUT): weapon, armor, quest.
 T.NOT_OUT = { [2] = true, [4] = true, [12] = true }
+-- Why a row is taken out (row.take), in Flow's priority for one thing.
+T.ROUTE = "route"
+T.QUEST = "quest"
+T.HOLD = "hold"
+T.SELL = "sell"
 -- Why there is no list.
 T.NOT_STARTED = "The take out list has not started."
 T.NOT_SEEN = "Your bank has not been seen yet. Open it once."
@@ -107,22 +136,89 @@ function T.Where(client)
     return out
 end
 
+local function words(v)
+    if type(v) == "string" and v ~= "" then return v end
+    return nil
+end
+
+-- What a sell row's click makes it (BankerRows.NextChoice, Flow's
+-- B.NextSellChoice): nil when that file is not loaded.
+local function nextOfSell()
+    local BR = ns.BankerRows
+    if type(BR) == "table" and type(BR.NextChoice) == "function" then return BR.NextChoice(nil) end
+    return nil
+end
+
+-- A route or quest row (Flow B.TakeOutRows: it takes the whole thing), or
+-- nil.
+local function wantedOf(e)
+    local take, reason = nil, nil
+    if words(e.step) then
+        take, reason = T.ROUTE, e.step
+    elseif words(e.quest) then
+        take, reason = T.QUEST, e.quest
+    end
+    if not take then return nil end
+    return { key = e.key, id = ns.Items.Id(e.key), name = words(e.name), count = e.count,
+             quality = e.quality, reason = reason, take = take }
+end
+
+-- A hold row (Z-Flow's own, lead section 776), or nil. It counts what the
+-- hold keeps (e.holdCount), else the bank's count; it does not stop the
+-- free part from being sold (E-19 join CHANGES-2: the sell rules already
+-- leave the held part out).
+local function holdOf(e)
+    if not words(e.hold) then return nil end
+    local n = e.count
+    if whole(e.holdCount) and e.holdCount > 0 then n = e.holdCount end
+    return { key = e.key, id = ns.Items.Id(e.key), name = words(e.name), count = n,
+             quality = e.quality, reason = e.hold, take = T.HOLD }
+end
+
+-- A sell row when the sell rules sell it and its kind may leave (NOT_OUT:
+-- the sell rows only, as Flow). nil and the unread flag when its kind was
+-- not read.
+local function sellOf(e, sold)
+    if sold == nil then return nil end
+    if e.classID == nil then return nil, true end
+    if T.NOT_OUT[e.classID] then return nil end
+    local name = words(e.name)
+    if name == nil then name = words(sold.name) end
+    local quality = e.quality
+    if quality == nil then quality = sold.quality end
+    local row = { key = e.key, id = ns.Items.Id(e.key), name = name, count = sold.count, quality = quality,
+                  reason = sold.reason, take = T.SELL, next = nextOfSell() }
+    if sold.mine == true then row.mine = true end
+    return row
+end
+
 function T.Rows(items, sells, rules, where)
     if type(items) ~= "table" or type(sells) ~= "table" then return nil end
-    local classOf = {}
-    for _, e in ipairs(items) do
-        if type(e) == "table" and e.key ~= nil then classOf[e.key] = e.classID end
-    end
-    local rows, unread = {}, 0
+    local sold = {}
     for _, s in ipairs(sells) do
-        if type(s) == "table" and s.key ~= nil and not (type(rules) == "table" and rules[s.key] == "bank") then
-            local classID = classOf[s.key]
-            if classID == nil then
-                unread = unread + 1
-            elseif not T.NOT_OUT[classID] then
-                local row = { key = s.key, id = ns.Items.Id(s.key), name = s.name, count = s.count,
-                              quality = s.quality, reason = s.reason }
-                if type(where) == "table" and where[s.key] ~= nil then row.slots = where[s.key] end
+        if type(s) == "table" and s.key ~= nil then sold[s.key] = s end
+    end
+    local rows, unread, seen = {}, 0, {}
+    for _, e in ipairs(items) do
+        if type(e) == "table" and e.key ~= nil and not seen[e.key]
+            and not (type(rules) == "table" and rules[e.key] == "bank") then
+            seen[e.key] = true
+            local found = {}
+            local wanted = wantedOf(e)
+            if wanted then
+                found[1] = wanted
+            else
+                local held = holdOf(e)
+                if held then found[#found + 1] = held end
+                local row, notRead = sellOf(e, sold[e.key])
+                if row then
+                    found[#found + 1] = row
+                elseif notRead and not held then
+                    unread = unread + 1
+                end
+            end
+            for _, row in ipairs(found) do
+                if type(where) == "table" and where[e.key] ~= nil then row.slots = where[e.key] end
                 rows[#rows + 1] = row
             end
         end
@@ -131,26 +227,41 @@ function T.Rows(items, sells, rules, where)
     return rows, unread
 end
 
+-- The list from the reads the banker word and List() share: the saved bank
+-- (Banker.Items), the sell rules with the bank list's context, your bank
+-- rules, and who wants a bank thing (TakeOutWhy.Fill over the quest log,
+-- the route's View and the reservations' grants). r: the one reservations
+-- evaluation of the caller (BankList.Current). -> list, or nil and why.
+function T.Make(client, store, use, r)
+    local saved = store:get("char", ns.HaveTip.PATH)
+    local items = ns.Banker.Items(saved, client.itemInfo)
+    if items == nil then return nil, T.NOT_SEEN end
+    local R = ns.Reservations
+    -- As the banker word: with the reservations not known nothing in
+    -- the bank is offered for sale.
+    if type(r) ~= "table" or r.status == R.UNAVAILABLE then return nil, T.RESERVATIONS_UNKNOWN end
+    local grants = R.Grants(r)
+    local context = ns.BankList.Context(store, R.HeldIn(grants, "bank"))
+    local view, route
+    if type(use) == "function" then route = use("tripRoute") end
+    if type(route) == "table" and type(route.View) == "function" then
+        local ok, v = pcall(route.View)
+        if ok then view = v end
+    end
+    local wanted = ns.TakeOutWhy.Fill(items, view, ns.Nav.QuestLogRows(client), grants)
+    local rows, unread = T.Rows(wanted, ns.Banker.SellRows(items, context), context.bankRules, T.Where(client))
+    if rows == nil then return nil, T.FAILED end
+    local list = { rows = rows, unread = unread }
+    if type(saved) == "table" and whole(saved.at) then list.at = saved.at end
+    return list
+end
+
 function T.Declare(k)
     local api = {}
     local ctx
 
     local function make()
-        local client, store = ctx.client, ctx.store
-        local saved = store:get("char", ns.HaveTip.PATH)
-        local items = ns.Banker.Items(saved, client.itemInfo)
-        if items == nil then return nil, T.NOT_SEEN end
-        local R = ns.Reservations
-        local r = ns.BankList.Current(ctx.use)
-        -- As the banker word: with the reservations not known nothing in
-        -- the bank is offered for sale.
-        if r.status == R.UNAVAILABLE then return nil, T.RESERVATIONS_UNKNOWN end
-        local context = ns.BankList.Context(store, R.HeldIn(R.Grants(r), "bank"))
-        local rows, unread = T.Rows(items, ns.Banker.SellRows(items, context), context.bankRules, T.Where(client))
-        if rows == nil then return nil, T.FAILED end
-        local list = { rows = rows, unread = unread }
-        if whole(saved.at) then list.at = saved.at end
-        return list
+        return T.Make(ctx.client, ctx.store, ctx.use, ns.BankList.Current(ctx.use))
     end
 
     function api.list()

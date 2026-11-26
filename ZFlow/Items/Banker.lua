@@ -10,8 +10,11 @@ local _, ns = ...
 --                  "learned.bankCounts", kept by Items/HaveTip.lua), with how
 --                  long ago: the game tells add-ons the bank only while it is
 --                  open
---   to sell        of those, what the sell rules (Disposition.Decide) would
---                  now sell, with the reason
+--   to sell        of those, what to take out: BankTakeOut's rule (E-19
+--                  join, Flow's B.TakeOutRows): what a route step, a quest
+--                  or a hold wants, then what the sell rules
+--                  (Disposition.Decide) would now sell, never a weapon,
+--                  armor or quest thing to sell; with the reason
 --
 -- One reservations evaluation (Items/Reservations.lua) per word: "to bank"
 -- counts what the goals hold in the bags, "to sell" what they hold in the
@@ -38,6 +41,14 @@ B.HELP = "what to put in the bank now, what your bank held at your last visit, "
 B.MAX = 10   -- rows a list shows before "and N more."
 B.NOT_SEEN = "In your bank: not seen yet. Open your bank once to fill this list."
 B.SELL_HEADER = "In your bank, you would now sell (take it out yourself):"
+-- E-19 join (lane A CHANGES-1): what a route, a quest or a hold wants from
+-- the bank, under Flow's labels; the sell header only for what is sold.
+B.ROUTE_HEADER = "In your bank, for your route (take it out yourself):"
+B.QUEST_HEADER = "In your bank, for a quest (take it out yourself):"
+B.HOLD_HEADER = "In your bank, held (take it out yourself):"
+-- Each take's header, in the order the groups are said.
+B.TAKES = { { take = "route", header = B.ROUTE_HEADER }, { take = "quest", header = B.QUEST_HEADER },
+    { take = "hold", header = B.HOLD_HEADER }, { take = "sell", header = B.SELL_HEADER } }
 B.NOTHING_TO_SELL = "Nothing in your bank to sell."
 B.SELL_NOT_SEEN = "In your bank to sell: not known until your bank is seen."
 B.FAILED = "could not be listed this time."
@@ -113,6 +124,16 @@ local function sellReason(d)
     return nil
 end
 
+-- The rule of the part of a decision that sells (your own choice marks the
+-- row mine, as Flow's r.mine).
+local function sellRule(d)
+    while type(d) == "table" do
+        if d.action == "sell" then return d.rule end
+        d = d.rest
+    end
+    return nil
+end
+
 function B.SellRows(items, context)
     if type(items) ~= "table" then return nil end
     local D, rows = ns.Disposition, {}
@@ -120,8 +141,10 @@ function B.SellRows(items, context)
         local d = D.Decide(e, context)
         local n = D.CountOf(d, "sell")
         if n == nil or n > 0 then
-            rows[#rows + 1] = { key = e.key, name = e.name, count = n, quality = e.quality,
-                                reason = sellReason(d) or "the sell rules would sell it" }
+            local row = { key = e.key, name = e.name, count = n, quality = e.quality,
+                          reason = sellReason(d) or "the sell rules would sell it" }
+            if sellRule(d) == "yourChoice" then row.mine = true end
+            rows[#rows + 1] = row
         end
     end
     return rows
@@ -130,10 +153,29 @@ end
 function B.SellLines(rows, max)
     if type(rows) ~= "table" then return { B.SELL_NOT_SEEN } end
     if #rows == 0 then return { B.NOTHING_TO_SELL } end
-    return listed({ B.SELL_HEADER }, rows, max, function(r)
-        local head = whole(r.count) and (r.count .. " x " .. nameOf(r)) or nameOf(r)
-        return head .. ": " .. tostring(r.reason)
-    end)
+    -- One group per take, each in the rows' own order; a row with no take
+    -- is the sell rules' (B.SellRows).
+    local groups = {}
+    for _, r in ipairs(rows) do
+        local take = r.take
+        if take == nil then take = "sell" end
+        groups[take] = groups[take] or {}
+        local g = groups[take]
+        g[#g + 1] = r
+    end
+    local lines = {}
+    for _, kind in ipairs(B.TAKES) do
+        local g = groups[kind.take]
+        if g then
+            lines[#lines + 1] = kind.header
+            listed(lines, g, max, function(r)
+                local head = nameOf(r)
+                if whole(r.count) then head = r.count .. " x " .. head end
+                return head .. ": " .. tostring(r.reason)
+            end)
+        end
+    end
+    return lines
 end
 
 function B.Declare(k, diag)
@@ -169,9 +211,15 @@ function B.Declare(k, diag)
             local now = type(client.clock) == "function" and client.clock() or nil
             return B.InBankLines(items, type(saved) == "table" and saved.at or nil, now)
         end)
+        -- E-19 join: the bank's rows are BankTakeOut's rule (Flow's
+        -- B.TakeOutRows), with this word's one reservations evaluation.
         section(say, "To sell", function()
             if r.status == R.UNAVAILABLE then return { B.SELL_UNKNOWN } end
-            return B.SellLines(B.SellRows(items, ns.BankList.Context(store, R.HeldIn(grants, "bank"))))
+            local T = ns.BankTakeOut
+            local list, why = T.Make(client, store, ctx.use, r)
+            if list == nil and why == T.NOT_SEEN then return B.SellLines(nil) end
+            if list == nil then return nil end
+            return B.SellLines(list.rows)
         end)
     end
 

@@ -14,6 +14,7 @@ local tests = {}
 local plain = ns.ItemPresent.Plain
 
 local CLOAK, SWORD, RING, HELM = 1000, 2000, 15234, 3000
+local PELT = 4865   -- not armor or a weapon: the bank's junk the banker word may sell
 local LINK = {
     cloak = "item:1000:0:0:0:0:0:0:0",
     sword = "item:2000:0:0:0:0:0:0:0",
@@ -26,6 +27,7 @@ local INFO = {
     [SWORD] = { name = "Bent Sword", quality = 0, sellPrice = 9, classID = 2 },
     [RING] = { name = "Dull Ring", quality = 0, sellPrice = 6, classID = 4 },
     [HELM] = { name = "Dented Helm", quality = 0, sellPrice = 7, classID = 4 },
+    [PELT] = { name = "Ruined Pelt", quality = 0, sellPrice = 5, classID = 15 },
 }
 -- What the character wears: back, main hand, a finger.
 local WORN = { [15] = LINK.cloak, [16] = LINK.sword, [11] = LINK.ringBear }
@@ -242,7 +244,7 @@ end
 -- the banker word, the auction list and the trader use too).
 tests["gear sets: a set piece in the bank is not offered for sale by the banker word; the bank list holds it"] = function(t)
     local c, addon = start({ worn = WORN,
-        char = { learned = { bankCounts = { at = 1000, counts = { [CLOAK] = 1 } } } } })
+        char = { learned = { bankCounts = { at = 1000, counts = { [CLOAK] = 1, [PELT] = 2 } } } } })
     local function toSell()
         local lines, part = say(c, "banker"), nil
         local out = {}
@@ -252,13 +254,16 @@ tests["gear sets: a set piece in the bank is not offered for sale by the banker 
         end
         return out
     end
-    t.ok(starts(toSell(), "1 x Frayed Cloak: junk"), "no set yet: the banker would sell it")
+    -- E-19 join (section 885): armor in the bank is never offered for sale
+    -- by the banker word (NOT_OUT, as Flow's B.TakeOutRows), set or no set;
+    -- the bank's junk that is not armor still is.
+    local before = toSell()
+    t.ok(starts(before, "2 x Ruined Pelt: junk"), "no set yet: the banker would sell the pelt: " .. joined(before))
+    t.ok(not starts(before, "1 x Frayed Cloak"), "no set yet: banked armor is held back (NOT_OUT): " .. joined(before))
     say(c, "set save tank")
     local after = toSell()
     t.ok(not starts(after, "1 x Frayed Cloak"), "the set piece is not offered for sale: " .. joined(after))
-    -- The nothing-to-sell line has no "In your bank" header, so look in the whole answer.
-    local all = say(c, "banker")
-    t.ok(has(all, addon.Banker.NOTHING_TO_SELL), "nothing in the bank to sell: " .. joined(all))
+    t.ok(starts(after, "2 x Ruined Pelt: junk"), "the pelt still is: " .. joined(after))
     -- The bank list's decision context holds it too.
     local d = addon.Disposition.Decide({ key = CLOAK, quality = 0, sellPrice = 4, classID = 4 },
         addon.BankList.Context(addon.store, nil))

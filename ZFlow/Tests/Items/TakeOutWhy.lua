@@ -92,4 +92,28 @@ tests["banker rows: a held thing is taken out with the hold's reason, after the 
     t.eq(rows[1] and { rows[1].take, rows[1].reason, rows[1].next }, { "hold", "for one of your item goals", nil })
 end
 
+-- E-19 join CHANGES-2 (§885): how many a hold keeps in the bank, so the
+-- hold row says the held part. Fails before: no count is given.
+tests["take out why: a hold gives how many it keeps in the bank"] = function(t)
+    local claim = { kind = "item", key = 4865, amount = 2, activity = "goal" }
+    local reason, n = TW().HoldFor(4865, { { claim = claim, from = { bank = 2 } } })
+    t.eq(reason, TW().REASONS.goal)
+    t.eq(n, 2)
+    local out = TW().Fill({ { key = 4865, name = "Ruined Pelt", count = 3 } }, nil, {},
+        { { claim = claim, unknown = "bank", got = 0 } })
+    t.eq({ out[1].hold, out[1].holdCount }, { TW().REASONS.goal, 2 }, "an unseen bank's share")
+end
+
+-- E-19 join CHANGES-3 (section 888.1): the held count is every claim's on
+-- the key, as Reservations.HeldIn sums them; the reason is the first's.
+-- Fails before: only the first claim was counted (2, not 5).
+tests["take out why: two claims on one key hold their sum in the bank"] = function(t)
+    local a = { kind = "item", key = 4865, amount = 2, activity = "goal" }
+    local b = { kind = "item", key = 4865, amount = 3, activity = "tailoring" }
+    local grants = { { claim = a, from = { bank = 2 } }, { claim = b, from = { bank = 3 } } }
+    local out = TW().Fill({ { key = 4865, name = "Ruined Pelt", count = 6 } }, nil, {}, grants)
+    t.eq({ out[1].hold, out[1].holdCount }, { TW().REASONS.goal, 5 })
+    t.eq(ns.Reservations.HeldIn(grants, "bank"):Held(4865), 5, "the same sum as the sell side")
+end
+
 return tests
