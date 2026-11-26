@@ -598,6 +598,15 @@ function Arrow.Start(k, diag, own)
     -- layout. shaped: its handle holds lines. moved: the one-time move to
     -- the modern arrow was looked at.
     local drawn, shaped, moved = "modern", false, false
+    -- B-13, B-14: the world map switches' menu rows, or none.
+    local function mapRows()
+        local MT = k.use and k.use("mapToggles")
+        if type(MT) ~= "table" or type(MT.MenuItems) ~= "function" then return {} end
+        local ok, rows = pcall(MT.MenuItems)
+        if ok and type(rows) == "table" then return rows end
+        return {}
+    end
+
     local function canShapes()
         local q = handles and handles.quest
         return q ~= nil and type(q.shapes) == "function"
@@ -1235,7 +1244,7 @@ function Arrow.Start(k, diag, own)
                  styles = Arrow.Styles(style()), canShapes = canShapes(), feedback = feedback,
                  party = party, step = { name = stepName, from = from, open = drawer ~= nil },
                  nearest = nearest, waypoint = waypoint, professions = professions,
-                 travel = travel }
+                 travel = travel, mapToggles = mapRows() }
     end
     -- The tooltip's lines for one arrow, or nil when none is on the screen.
     -- The lines are the step's own, also for an arrow whose text is off.
@@ -1452,6 +1461,13 @@ function Arrow.Start(k, diag, own)
                 if not ok then k.problems:add("arrow", "follow", err) end
             else
                 say("pointing at a party member is not ready.")
+            end
+        elseif action.mapToggle ~= nil then
+            -- B-13, B-14: the world map switches (Nav/MapToggles.lua).
+            local MT = k.use and k.use("mapToggles")
+            if type(MT) == "table" and type(MT.Toggle) == "function" then
+                local ok, err = pcall(MT.Toggle, action.mapToggle)
+                if not ok then k.problems:add("arrow", "mapToggle", err) end
             end
         elseif action.professions ~= nil then
             -- Lead section 382: the Professions tick (Nav/ProfFeed.lua).

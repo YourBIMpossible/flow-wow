@@ -33,6 +33,7 @@ local function read(s)
         buttons = type(s.buttons) == "table" and s.buttons or {},
         windows = type(s.windows) == "table" and s.windows or {},
         travel = type(s.travel) == "table" and s.travel or {},
+        mapToggles = type(s.mapToggles) == "table" and s.mapToggles or {},
     }
 end
 
@@ -74,6 +75,12 @@ function M.Items(state)
     end
     -- Lead section 382 (Nav/ProfFeed.lua): the profession coach on or off.
     show[#show + 1] = { key = M.PROFESSIONS, text = M.PROFESSIONS_TEXT, checked = s.professions }
+    -- B-13, B-14 (Nav/MapToggles.lua): flight masters and the route on the map.
+    for _, r in ipairs(s.mapToggles) do
+        if type(r) == "table" and type(r.key) == "string" and type(r.text) == "string" then
+            show[#show + 1] = { key = r.key, text = r.text, checked = r.checked == true }
+        end
+    end
     -- Lead section 387 R3: Buttons and Flow windows, under Show so the top
     -- level stays at Topics.MENU_MAX.
     show[#show + 1] = M.ButtonsRow(s.buttons)
@@ -510,6 +517,8 @@ function M.Action(key, state)
     end
     -- Lead section 382: { professions = the new value } for the tick.
     if key == M.PROFESSIONS then return { professions = not s.professions } end
+    -- B-13, B-14: { mapToggle = key } for Nav/MapToggles.lua's Toggle.
+    if key:match("^map%.") then return { mapToggle = key } end
     if M.WINDOWS[key] then return { window = M.WINDOWS[key] } end
     -- Lead section 387 R3: Buttons and Flow windows.
     if key == M.BUTTONS or key == M.FLOW then return { open = key } end
