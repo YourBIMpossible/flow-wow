@@ -283,6 +283,7 @@ Nav\Trip.lua
 UI\RouteTracker.lua
 UI\RouteList.lua
 UI\MapRoute.lua
+UI\StepCard.lua
 UI\BuffStrip.lua
 UI\QuestTrackers.lua
 Nav\QuestAdvice.lua
@@ -333,6 +334,7 @@ Nav\FollowAdvice.lua
 UI\RouteArea.lua
 UI\MapRouteLines.lua
 Nav\MapToggles.lua
+UI\KeyBindingNames.lua
 Gear\BagUpgrades.lua
 UI\InventoryList.lua
 Nav\WhereNext.lua
