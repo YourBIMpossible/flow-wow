@@ -352,6 +352,8 @@ return {
     -- R4, R5: the route beside the quest log, and its marks and zone card on the world map.
     "UI/RouteList.lua",
     "UI/MapRoute.lua",
+    -- A1-13: the step card window (after Nav/StepCard, whose card it draws, and the kit).
+    "UI/StepCard.lua",
     -- Old-Flow parity R6: your class buffs with the time left, under the player frame (after the class packs and the kit).
     "UI/BuffStrip.lua",
     -- Old-Flow parity A2-21: the game's quest tracker and Questie's tracker, each on or off by its own row (needs two client calls: CLIENT NEED).
