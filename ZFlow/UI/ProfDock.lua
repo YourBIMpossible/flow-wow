@@ -29,7 +29,10 @@ local _, ns = ...
 --     row = { recipe, name, quality, icon, item, chance, cost, ready,
 --             missing = { { item, name, count, bank, from } }, tooltip }
 --   ProfDock.View(model) -> a kit window spec          pure
---     model = { prof, next, rows, width, height }
+--     model = { prof, skill, max, next, rows, todo, pick, width, height }
+--     skill/max (when read) stand at the top as a line and a bar;
+--     todo is ProfDock.Todo's rows, under "Still to do".
+--   ProfDock.Todo(cardPrompts, learnPrompts, prof) -> rows   pure
 --   ProfDock.Dock(rect, screenW, screenH, height) -> point, width | nil
 --   ProfDock.Declare(k) -> api
 --
@@ -58,8 +61,8 @@ D.TITLE_PLAIN = "%s: professions"
 D.ROWS = 5
 D.WIDTH, D.MIN_WIDTH, D.MAX_WIDTH = 384, 320, 480
 -- The window's own title and edges, the "Next step" heading and its
--- two-line box; then the list's heading; then each row of the list.
-D.BASE_HEIGHT, D.LIST_HEAD, D.ROW_HEIGHT = 150, 36, 28
+-- card; then the list's heading; then each row of the list.
+D.BASE_HEIGHT, D.LIST_HEAD, D.ROW_HEIGHT = 166, 36, 28
 D.GAP = 6
 -- The game's profession window, classic then modern.
 D.FRAMES = { "TradeSkillFrame", "ProfessionsFrame" }
@@ -67,6 +70,15 @@ D.DEFAULT_POINT = { "TOPLEFT", "TOPLEFT", 16, -560 }
 
 D.HEAD_NEXT = "Next step"
 D.HEAD_LIST = "Cheapest skill points"
+D.HEAD_TODO = "Still to do"
+-- The skill at the top: a line and the bar under it; the "Still to
+-- do" section's heading and its wrapped lines.
+D.SKILL_LINE, D.BAR = 28, 18
+D.TODO_HEAD, D.TODO_ROW = 36, 40
+-- Difficulty in words, on the row itself: orange and yellow are
+-- never carried by colour alone.
+D.CHANCE_SURE = "Sure skill point"
+D.CHANCE_MIGHT = "Might give a skill point"
 D.READY = "Ready"
 D.NEED = "Need %d %s"
 D.MORE = " +%d more"
@@ -383,32 +395,96 @@ function D.Pick(advice, where)
     return out
 end
 
-function D.Height(rows, pick)
+-- "Still to do" (all-windows row 3): what ProfCard and ProfLearn
+-- already work out, gathered into the panel. cardPrompts: ProfCard's
+-- prompts ({ id, text }); only this profession's own is the panel's
+-- business. learnPrompts: ProfLearn's ({ id, text }) — a recipe in
+-- the bags is the character's, whichever profession it belongs to.
+function D.Todo(cardPrompts, learnPrompts, prof)
+    local out = {}
+    if type(cardPrompts) == "table" and text(prof) then
+        local PC = ns.ProfCard
+        local prefix = "aps.prof."
+        if type(PC) == "table" and text(PC.PREFIX) then prefix = PC.PREFIX end
+        for _, p in ipairs(cardPrompts) do
+            if type(p) == "table" and p.id == prefix .. prof and text(p.text) then
+                out[#out + 1] = { text = p.text, icon = D.ICON.train_tier }
+            end
+        end
+    end
+    if type(learnPrompts) == "table" then
+        for _, p in ipairs(learnPrompts) do
+            if type(p) == "table" and text(p.text) then
+                out[#out + 1] = { text = p.text, icon = D.ICON.learn_recipe }
+            end
+        end
+    end
+    return out
+end
+
+function D.Height(rows, pick, more)
     local n = type(rows) == "table" and #rows or 0
     local p = type(pick) == "table" and #pick or 0
     local h = D.BASE_HEIGHT
+    if type(more) == "table" and more.bar then h = h + D.SKILL_LINE + D.BAR end
     if n > 0 then h = h + D.LIST_HEAD + n * D.ROW_HEIGHT end
+    local todo = 0
+    if type(more) == "table" and whole(more.todo) then todo = more.todo end
+    if todo > 0 then h = h + D.TODO_HEAD + todo * D.TODO_ROW end
     if p > 0 then h = h + D.PICK_HEAD + p * D.PICK_ROW end
     return h
+end
+
+-- A cheapest row's smaller line: its difficulty in words (never
+-- colour alone), and its cost in coins when a price is known.
+local function rowSub(row)
+    local said
+    if row.chance == "sure" then said = D.CHANCE_SURE else said = D.CHANCE_MIGHT end
+    local cost = costText(row.cost)
+    if cost then said = said .. " · " .. cost end
+    return said
 end
 
 function D.View(model)
     if type(model) ~= "table" then model = {} end
     local nextStep = type(model.next) == "table" and model.next or D.Next(nil, nil, nil, nil)
     local rows = type(model.rows) == "table" and model.rows or {}
-    local children = {
-        { kind = "section", key = "nextHead", text = D.HEAD_NEXT },
-        { kind = "line", key = "next", text = nextStep.text, sub = nextStep.sub, icon = nextStep.icon },
-    }
+    local children = {}
+    -- The profession and its skill at the top, as a bar that fills —
+    -- only when the skill was read; the next step's reason covers the
+    -- panel when it was not.
+    local hasSkill = whole(model.skill) and whole(model.max) and model.max > 0
+    if hasSkill and text(model.prof) then
+        local words = string.format("%d / %d", model.skill, model.max)
+        local icon = D.PICK_ICON[model.prof]
+        if icon == nil then icon = D.PICK_ICON_ANY end
+        children[#children + 1] = { kind = "line", key = "skill", text = model.prof, icon = icon, right = words }
+        children[#children + 1] = { kind = "bar", key = "skillBar", text = words,
+            value = model.skill, max = model.max }
+    end
+    children[#children + 1] = { kind = "section", key = "nextHead", text = D.HEAD_NEXT }
+    children[#children + 1] = { kind = "card", key = "next", text = nextStep.text, sub = nextStep.sub,
+        icon = nextStep.icon, wrap = true }
     if #rows > 0 then
         children[#children + 1] = { kind = "section", key = "listHead", text = D.HEAD_LIST }
         for i, row in ipairs(rows) do
+            local right, tone = D.READY, "good"
+            if not row.ready then right, tone = need(row), "warn" end
             children[#children + 1] = { kind = "line", key = "row" .. i, text = coloured(row.name, row.quality),
-                icon = row.icon, right = row.ready and D.READY or need(row), tone = row.ready and "good" or "warn",
-                tooltip = row.tooltip }
+                icon = row.icon, sub = rowSub(row), right = right, tone = tone, tooltip = row.tooltip }
         end
     end
-    local pick = type(model.pick) == "table" and model.pick or {}
+    local todo = {}
+    if type(model.todo) == "table" then todo = model.todo end
+    if #todo > 0 then
+        children[#children + 1] = { kind = "section", key = "todoHead", text = D.HEAD_TODO }
+        for i, row in ipairs(todo) do
+            children[#children + 1] = { kind = "line", key = "todo" .. i, text = row.text, icon = row.icon,
+                wrap = true }
+        end
+    end
+    local pick = {}
+    if type(model.pick) == "table" then pick = model.pick end
     if #pick > 0 then
         children[#children + 1] = { kind = "section", key = "pickHead", text = D.HEAD_PICK }
         for i, row in ipairs(pick) do
@@ -416,11 +492,12 @@ function D.View(model)
                 icon = row.icon, tooltip = row.tooltip }
         end
     end
+    local more = { bar = hasSkill == true, todo = #todo }
     return {
         id = D.ID,
         title = text(model.prof) and string.format(D.TITLE, title(), model.prof)
             or string.format(D.TITLE_PLAIN, title()),
-        width = model.width or D.WIDTH, height = model.height or D.Height(rows, pick),
+        width = model.width or D.WIDTH, height = model.height or D.Height(rows, pick, more),
         point = D.DEFAULT_POINT, escape = false,
         children = children,
     }
@@ -430,10 +507,18 @@ end
 function D.Plain(model)
     local out = {}
     local nextStep = type(model) == "table" and type(model.next) == "table" and model.next or D.Next(nil, nil, nil, nil)
+    if type(model) == "table" and whole(model.skill) and whole(model.max) and text(model.prof) then
+        out[#out + 1] = { kind = "info", text = string.format("%s: %d / %d", model.prof, model.skill, model.max) }
+    end
     out[#out + 1] = { kind = "info", text = D.HEAD_NEXT .. ": " .. nextStep.text }
     if text(nextStep.sub) then out[#out + 1] = { kind = "info", text = nextStep.sub } end
     for _, row in ipairs(type(model) == "table" and type(model.rows) == "table" and model.rows or {}) do
         out[#out + 1] = { kind = "info", text = row.name .. ": " .. (row.ready and D.READY or need(row)) }
+    end
+    local todoRows = {}
+    if type(model) == "table" and type(model.todo) == "table" then todoRows = model.todo end
+    for _, row in ipairs(todoRows) do
+        out[#out + 1] = { kind = "info", text = D.HEAD_TODO .. ": " .. row.text }
     end
     for _, row in ipairs(type(model) == "table" and type(model.pick) == "table" and model.pick or {}) do
         out[#out + 1] = { kind = "info", text = D.HEAD_PICK .. ": " .. row.text
@@ -540,18 +625,20 @@ function D.Declare(k)
                 return nil
             end
 
+            -- A saved table read that never raises.
+            local function saved(scope, path)
+                if type(path) ~= "string" then return nil end
+                local ok, v = pcall(ctx.store.get, ctx.store, scope, path)
+                if ok and type(v) == "table" then return v end
+                return nil
+            end
+
             -- A free primary slot: the picker's own advice, with its
             -- setting and its saved "not now" honoured.
             local function pickRows(here)
                 local PP = ns.ProfPick
                 if type(PP) ~= "table" or type(PP.Advice) ~= "function" then return {} end
                 if ctx.settings:get(PP.SETTING) == false then return {} end
-                local function saved(scope, path)
-                    if type(path) ~= "string" then return nil end
-                    local ok, v = pcall(ctx.store.get, ctx.store, scope, path)
-                    if ok and type(v) == "table" then return v end
-                    return nil
-                end
                 local advice = call(PP.Advice, ask("professions"), ask("class"), ask("level"),
                     saved("char", PP.STATE))
                 local npcs, faction = saved("account", PP.NPCS), ask("faction")
@@ -560,6 +647,32 @@ function D.Declare(k)
                     local lines = PP.Lines(PP.StepOf(name, here, npcs, faction))
                     return type(lines) == "table" and lines[1] or nil
                 end)
+            end
+
+            -- "Still to do": ProfCard's prompts for this profession
+            -- (at its cap, or the next rank it can learn) and
+            -- ProfLearn's bag recipes, from the same saved reads
+            -- those modules use themselves.
+            local function todoRows(prof)
+                local card
+                local PC = ns.ProfCard
+                local Seen = ns.ProfSeen
+                if type(PC) == "table" and type(PC.Prompts) == "function" and type(Seen) == "table" then
+                    card = call(PC.Prompts, saved("char", Seen.READINGS), saved("account", Seen.NPCS),
+                        ask("faction"), saved("char", PC.LISTS), ask("level"))
+                end
+                local learn
+                local PL = ns.ProfLearn
+                local Book = ns.RecipeBook
+                if type(PL) == "table" and type(PL.Prompts) == "function" and type(Book) == "table" then
+                    local function nameOf(id)
+                        local info = ask("itemInfo", id)
+                        if type(info) == "table" then return info.name end
+                        return nil
+                    end
+                    learn = call(PL.Prompts, ask("bagItems"), nameOf, saved("char", Book.PATH))
+                end
+                return D.Todo(card, learn, prof)
             end
 
             local function build()
@@ -597,10 +710,13 @@ function D.Declare(k)
                     nextStep.icon = icon or nextStep.icon
                 end
                 local pick = pickRows(input.here)
-                local height = D.Height(rows, pick)
+                local todo = todoRows(prof)
+                local hasSkill = false
+                if whole(skill) and whole(max) then hasSkill = true end
+                local height = D.Height(rows, pick, { bar = hasSkill, todo = #todo })
                 local point, width = slot(height)
-                return { prof = prof, next = nextStep, rows = rows, pick = pick, height = height,
-                    width = width or D.WIDTH, point = point }
+                return { prof = prof, skill = skill, max = max, next = nextStep, rows = rows, pick = pick,
+                    todo = todo, height = height, width = width or D.WIDTH, point = point }
             end
 
             local function draw()
