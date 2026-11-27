@@ -290,6 +290,7 @@ return {
     -- FLOW-PARITY D-12: the buff item the self button holds (before FlowButton).
     "Rotation/BuffItemPick.lua",
     "Rotation/FlowButton.lua",
+    "Rotation/Cooldowns.lua",
     -- N1, N2, N20, N5 key actions (P-KEYS slice D).
     "Rotation/KeyActions.lua",
     -- N39, N40, N26, N27: auto attack, the spells list and the placed notice (P-KEYS slice E).
