@@ -140,6 +140,7 @@ tests["cooldowns: a spell on its own cooldown gets a face, a sweep and its secon
     t.eq(face.texture, "tex:Smite")
     t.eq(face.point, CD.DEFAULT_POINT, "the group stands at its default place")
     t.eq(face.size, CD.SIZE)
+    t.eq(face.name, ns.id.framePrefix .. CD.FACE_NAME, "the face's name is built from the frame prefix, like the buttons'")
 end
 
 tests["cooldowns: ready, global-only and unread spells get no face; the group still stands"] = function(t)
@@ -207,6 +208,27 @@ tests["cooldowns combined: one big face on the Flow button's right, the soonest 
         t.eq(big.shown, true)
         t.eq(big.sweep, { kind = "spell", id = RENEW }, "the soonest spell only")
         t.eq(big.seconds, "5.0")
+        t.ok(big.anchor ~= nil and big.anchor.to == flowName, "anchored to the Flow button")
+    end
+end
+
+tests["cooldowns combined: no Flow frame to anchor to, no face; the frame there, the face stands"] = function(t)
+    if not has(t) then return end
+    local flowName = ns.id.framePrefix .. "FlowButton"
+    local c, k = boot({ mode = "combined" })
+    c.setSpellCooldown(SMITE, true); c.setSpellCooldownLeft(SMITE, 30)
+    offer(c, k)
+    local big
+    for i = 1, #c.cooldownFaces do
+        if c.cooldownFaces[i].size == CD.COMBINED_SIZE then big = c.cooldownFaces[i] end
+    end
+    t.ok(big ~= nil, "the combined face was made")
+    if big then t.eq(big.shown, false, "no frame by that name: the anchor is refused and the face stays hidden") end
+    c.setFrameRect(flowName, { left = 400, bottom = 200, width = 52, height = 52 })
+    c.advance(2, 20)
+    if big then
+        t.eq(big.shown, true, "the frame there: the face stands on the next tick")
+        t.eq(big.sweep, { kind = "spell", id = SMITE })
         t.ok(big.anchor ~= nil and big.anchor.to == flowName, "anchored to the Flow button")
     end
 end

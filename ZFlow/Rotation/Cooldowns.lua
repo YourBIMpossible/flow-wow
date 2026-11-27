@@ -46,8 +46,8 @@ CD.COMBINED_SIZE = 58 -- the Combined face: the Flow button's size
 CD.GAP = 4
 CD.MIN_LEFT = 1.5
 CD.MAX_FACES = 7
-CD.FACE_NAME = "ZFlowCooldownFace1"
-CD.COMBINED_NAME = "ZFlowCooldownFaceBig"
+CD.FACE_NAME = "CooldownFace1"
+CD.COMBINED_NAME = "CooldownFaceBig"
 CD.MODE_SETTING = "flowButton.layout"
 
 -- The seconds as they are written on a face: nil when the time is
@@ -215,10 +215,15 @@ function CD.Declare(k)
         return CD.DEFAULT_POINT
     end
 
+    local function prefix()
+        if type(ns.id) == "table" and type(ns.id.framePrefix) == "string" then return ns.id.framePrefix end
+        return ""
+    end
+
     local function faceAt(i)
         if faces[i] == nil then
             local spec = { size = CD.SIZE }
-            if i == 1 then spec.name = CD.FACE_NAME end
+            if i == 1 then spec.name = prefix() .. CD.FACE_NAME end
             faces[i] = ask(client, "cooldownFace", spec)
         end
         return faces[i]
@@ -226,7 +231,7 @@ function CD.Declare(k)
 
     local function big()
         if bigFace == nil then
-            bigFace = ask(client, "cooldownFace", { name = CD.COMBINED_NAME, size = CD.COMBINED_SIZE })
+            bigFace = ask(client, "cooldownFace", { name = prefix() .. CD.COMBINED_NAME, size = CD.COMBINED_SIZE })
         end
         return bigFace
     end
@@ -235,10 +240,7 @@ function CD.Declare(k)
         local FB = ns.FlowButton
         local base = "FlowButton"
         if type(FB) == "table" and type(FB.FRAME) == "string" then base = FB.FRAME end
-        local prefix = nil
-        if type(ns.id) == "table" then prefix = ns.id.framePrefix end
-        if type(prefix) == "string" then return prefix .. base end
-        return base
+        return prefix() .. base
     end
 
     -- Draw one tracked row on one face: the picture, the sweep, the
@@ -311,7 +313,7 @@ function CD.Declare(k)
         if grip ~= nil or faces[1] == nil then return end
         if type(ns.MoveHandle) ~= "table" or type(ns.MoveHandle.Attach) ~= "function" then return end
         local ok, handle = pcall(ns.MoveHandle.Attach, k, client, {
-            target = CD.FACE_NAME,
+            target = prefix() .. CD.FACE_NAME,
             width = CD.MAX_FACES * (CD.SIZE + CD.GAP),
             height = CD.SIZE,
             quiet = true,
