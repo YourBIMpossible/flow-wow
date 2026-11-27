@@ -241,6 +241,7 @@ UI\MoveHandle.lua
 Rotation\ClickSlots.lua
 Rotation\BuffItemPick.lua
 Rotation\FlowButton.lua
+Rotation\Cooldowns.lua
 Rotation\KeyActions.lua
 Rotation\SpellKeys.lua
 Rotation\Enchant.lua
