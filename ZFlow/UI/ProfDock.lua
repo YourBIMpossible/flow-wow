@@ -61,8 +61,10 @@ D.TITLE_PLAIN = "%s: professions"
 D.ROWS = 5
 D.WIDTH, D.MIN_WIDTH, D.MAX_WIDTH = 384, 320, 480
 -- The window's own title and edges, the "Next step" heading and its
--- card; then the list's heading; then each row of the list.
-D.BASE_HEIGHT, D.LIST_HEAD, D.ROW_HEIGHT = 166, 36, 28
+-- card; then the list's heading; then each row of the list. A list
+-- row carries a smaller line now, so it stands as tall as a
+-- free-slot row (PICK_ROW).
+D.BASE_HEIGHT, D.LIST_HEAD, D.ROW_HEIGHT = 166, 36, 40
 D.GAP = 6
 -- The game's profession window, classic then modern.
 D.FRAMES = { "TradeSkillFrame", "ProfessionsFrame" }
@@ -422,6 +424,16 @@ function D.Todo(cardPrompts, learnPrompts, prof)
     return out
 end
 
+-- One predicate for the skill bar (§951): the profession named and
+-- its skill and cap read. View draws by it and build() adds the
+-- bar's room by it, so the two never disagree.
+function D.HasSkill(prof, skill, max)
+    if not text(prof) then return false end
+    if not whole(skill) then return false end
+    if not whole(max) then return false end
+    return max > 0
+end
+
 function D.Height(rows, pick, more)
     local n = type(rows) == "table" and #rows or 0
     local p = type(pick) == "table" and #pick or 0
@@ -453,8 +465,8 @@ function D.View(model)
     -- The profession and its skill at the top, as a bar that fills —
     -- only when the skill was read; the next step's reason covers the
     -- panel when it was not.
-    local hasSkill = whole(model.skill) and whole(model.max) and model.max > 0
-    if hasSkill and text(model.prof) then
+    local hasSkill = D.HasSkill(model.prof, model.skill, model.max)
+    if hasSkill then
         local words = string.format("%d / %d", model.skill, model.max)
         local icon = D.PICK_ICON[model.prof]
         if icon == nil then icon = D.PICK_ICON_ANY end
@@ -492,7 +504,7 @@ function D.View(model)
                 icon = row.icon, tooltip = row.tooltip }
         end
     end
-    local more = { bar = hasSkill == true, todo = #todo }
+    local more = { bar = hasSkill, todo = #todo }
     return {
         id = D.ID,
         title = text(model.prof) and string.format(D.TITLE, title(), model.prof)
@@ -711,9 +723,7 @@ function D.Declare(k)
                 end
                 local pick = pickRows(input.here)
                 local todo = todoRows(prof)
-                local hasSkill = false
-                if whole(skill) and whole(max) then hasSkill = true end
-                local height = D.Height(rows, pick, { bar = hasSkill, todo = #todo })
+                local height = D.Height(rows, pick, { bar = D.HasSkill(prof, skill, max), todo = #todo })
                 local point, width = slot(height)
                 return { prof = prof, skill = skill, max = max, next = nextStep, rows = rows, pick = pick,
                     todo = todo, height = height, width = width or D.WIDTH, point = point }

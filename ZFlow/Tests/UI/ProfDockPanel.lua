@@ -26,7 +26,7 @@ local COLOURS = {
 local function input()
     return { prof = "Blacksmithing", skill = 50, max = 75, book = BOOK, colours = COLOURS,
         bags = { [2] = 3 }, bank = {},
-        price = function(item) return item == 2 and 100 or nil end,
+        price = function(item) if item == 2 then return 100 end return nil end,
         name = function(item) return NAMES[item] end }
 end
 local function keyed(view, key)
@@ -83,8 +83,7 @@ tests["professions panel: a cheapest row says its difficulty in words and its co
     t.eq(first.right, "Ready", "what to do stays at the right")
 end
 
-tests["professions panel: still to do gathers the rank and the bag recipes"] = function(t)
-    local card = {
+tests["professions panel: still to do gathers the rank and the bag recipes"] = function(t)    local card = {
         { id = "aps.prof.Blacksmithing", text = "Blacksmithing is at its cap (75/75). Trainer seen: Test Smith. Expert costs 5 gold." },
         { id = "aps.prof.Tailoring", text = "Tailoring is at its cap (75/75)." },
     }
@@ -102,6 +101,28 @@ tests["professions panel: still to do gathers the rank and the bag recipes"] = f
     t.eq(keyed(view, "todo1").wrap, true, "a long line wraps")
     t.ok(D().Height({}, {}, { todo = 2 }) > D().Height({}, {}), "the section stands taller")
     t.eq(#D().Todo(nil, nil, "Blacksmithing"), 0, "nothing known: nothing claimed")
+end
+
+tests["professions panel: a row with a smaller line stands as tall as a free-slot row (Zen's changes)"] = function(t)
+    local view = D().View({ prof = "Blacksmithing", rows = rows(),
+        next = D().Next({}, "no recipe", nil, input()) })
+    t.ok(keyed(view, "row1").sub ~= nil, "the row carries a smaller line")
+    t.eq(D().ROW_HEIGHT, D().PICK_ROW, "a two-line row gets a two-line row's room")
+    t.eq(D().Height(rows(), {}) - D().Height({}, {}), D().LIST_HEAD + 2 * D().PICK_ROW,
+        "the height counts it so, per row")
+end
+
+tests["professions panel: one predicate says whether the skill bar stands (Zen's changes)"] = function(t)
+    t.eq(D().HasSkill("Blacksmithing", 50, 75), true)
+    t.eq(D().HasSkill(nil, 50, 75), false, "no profession named: no bar")
+    t.eq(D().HasSkill("Blacksmithing", nil, 75), false)
+    t.eq(D().HasSkill("Blacksmithing", 50, nil), false)
+    t.eq(D().HasSkill("Blacksmithing", 50, 0), false, "a cap of nothing: no bar")
+    -- Height and View agree: skill read but no profession named
+    -- adds no room and draws no bar.
+    local view = D().View({ skill = 50, max = 75, rows = {}, next = D().Next({}, "no recipe", nil, input()) })
+    t.eq(keyed(view, "skillBar"), nil)
+    t.eq(view.height, D().Height({}, {}), "no room added for a bar that never draws")
 end
 
 return tests
