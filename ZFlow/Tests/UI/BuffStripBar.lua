@@ -85,4 +85,39 @@ tests["buff bar: the strip's height counts a bar under each timed buff"] = funct
     t.ok(type(B.BAR) == "number" and B.BAR > 0, "BuffStrip.BAR")
 end
 
+tests["buff bar: a numeric texture is kept as the buff's icon (Zen's changes)"] = function(t)
+    if type(ns.offline) ~= "table" or type(ns.offline.addon) ~= "function" then
+        t.skip("no whole add-on offline")
+        return
+    end
+    local c = ns.make.fakeClient()
+    c.setSaved(ns.id.accountDB, { layout = { arrowIntroSeen = true } })
+    c.setSaved(ns.id.charDB, {})
+    c.setScreen(1024, 768)
+    c.setFrameRect(B.FRAME, { l = 20, r = 250, b = 640, t = 740 })
+    c.setClass("MAGE")
+    local addon = ns.offline.addon(c)
+    local lastTree
+    local realKit = c.kitWindow
+    c.kitWindow = function(id, tree, extra)
+        lastTree = tree
+        return realKit(id, tree, extra)
+    end
+    c.fire("ADDON_LOADED", ns.id.addon); c.fire("PLAYER_LOGIN"); c.fire("PLAYER_ENTERING_WORLD")
+    -- The client answers spellTexture with a file number first
+    -- (Core/Client.lua:1760-1770); the kit takes numbers.
+    c.setSpellId("Frost Armor", 7302)
+    c.setSpellTexture(7302, 123456)
+    c.setPlayerBuffs({ ["Frost Armor"] = 1800 })
+    c.advance(B.EVERY + 0.1, 2)
+    t.ok(lastTree ~= nil, "the strip drew")
+    if not lastTree then return end
+    local icon
+    ns.Kit.Each(lastTree, function(p)
+        if p.kind == "line" and p.text == "Frost Armor" then icon = p.icon end
+    end)
+    t.eq(icon, 123456, "the number is the icon, not dropped")
+    t.eq(B.GONE, nil, "the dead 'ran out' string is gone (Zen's changes)")
+end
+
 return tests

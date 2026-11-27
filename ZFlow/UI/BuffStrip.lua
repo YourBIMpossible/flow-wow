@@ -45,10 +45,12 @@ B.SOON = 60
 B.KEEP = 120
 B.GAP = 4
 B.WIDTH, B.HEAD, B.ROW = 220, 34, 30
+-- B.HEAD stays though the header part is gone (§948): it is the
+-- window's own title bar and the padding above and below the
+-- rows, which the height still has to cover.
 B.BAR = 18     -- the room a timed buff's bar stands in (bar and its gap)
 B.ON = "on"
 B.SOON_TEXT = "Runs out soon. Cast it again."
-B.GONE = "ran out"
 B.GONE_TEXT = "Cast it again."
 B.LABEL = "Show your class buffs and their time left"
 -- Owner's report (lead section 561 item 6): "I have no idea what these are
@@ -114,11 +116,13 @@ end
 -- last, faded. icons: { [name] = texture }, or nil.
 function B.Children(rows, about, icons)
     local kids = {}
+    local list = {}
+    if type(rows) == "table" then list = rows end
     local function iconOf(name)
         if type(icons) == "table" then return icons[name] end
         return nil
     end
-    for i, r in ipairs(type(rows) == "table" and rows or {}) do
+    for i, r in ipairs(list) do
         if r.gone then
             kids[#kids + 1] = { kind = "line", key = "buff" .. i, text = tostring(r.name),
                 icon = iconOf(r.name), right = B.GONE_TEXT, tone = "bad", enabled = false }
@@ -145,8 +149,10 @@ function B.Children(rows, about, icons)
 end
 
 function B.Height(rows, about)
+    local list = {}
+    if type(rows) == "table" then list = rows end
     local n = 0
-    for _, r in ipairs(type(rows) == "table" and rows or {}) do
+    for _, r in ipairs(list) do
         n = n + B.ROW
         if r.left ~= nil and not r.gone then n = n + B.BAR end
     end
@@ -225,7 +231,10 @@ function B.Declare(k)
             local id = ask("spellId", name)
             if id ~= nil then
                 local tex = ask("spellTexture", id)
-                if type(tex) == "string" then out[name] = tex end
+                -- The client answers a file number first, a path
+                -- when it has one; the kit takes either.
+                if type(tex) == "number" and tex > 0 then out[name] = tex end
+                if type(tex) == "string" and tex ~= "" then out[name] = tex end
             end
         end
         return out
