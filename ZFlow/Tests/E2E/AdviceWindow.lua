@@ -51,7 +51,7 @@ local function window(c) return c.kitWindows().Advisor end
 local function lineParts(w)
     local out = {}
     for _, p in ipairs(w and w.parts or {}) do
-        if p.kind == "line" then out[#out + 1] = p end
+        if p.kind == "line" or p.kind == "card" or p.kind == "fadedLine" then out[#out + 1] = p end
     end
     return out
 end
@@ -63,8 +63,12 @@ local function handIn(w)
     return nil
 end
 
--- The height a window of that many text rows has: the title bar, the
--- padding above and below, and the rows.
+-- The height a window of that many rows has, as the fake's fit
+-- measures it: the title bar, the padding above and below, and one
+-- line height per part — the fake knows the height of lines only
+-- (its own words in ClientFake.lua), so a card counts as one row
+-- here. The real client's card drawing measures a card at card
+-- height; when it lands, this model takes the card count too.
 local function fitted(rows)
     return SIZE.title + 2 * SIZE.pad + rows * SIZE.lineHeight
 end
@@ -84,11 +88,15 @@ end
 tests["advice window: the hand-in line is whole and wraps; no quest name is cut"] = function(t)
     local c = start({ log = { row(1, LONG_A, true), row(2, LONG_B, true) } })
     local p = handIn(window(c))
-    t.ok(p ~= nil, "the hand-in line is in the window")
+    t.ok(p ~= nil, "the hand-in prompt is in the window")
     if p == nil then return end
+    -- The prompt is a card now (the Advice row). The whole text is on
+    -- it, uncut; that it wraps is asked for on the card itself and
+    -- asserted on the view tree in Tests/UI/AdvisorCards.lua — the
+    -- fake measures wrapping for lines only, and the card's drawing
+    -- (which wraps it in game) is the client's K-0 work.
+    t.eq(p.kind, "card", "the hand-in prompt stands as a card")
     t.ok(p.text:find(LONG_A, 1, true) ~= nil and p.text:find(LONG_B, 1, true) ~= nil, "both names whole: " .. p.text)
-    t.eq(p.wrap, true, "the line wraps instead of being cut")
-    t.ok(type(p.rows) == "number" and p.rows >= 2, "longer than one row, so drawn on more")
 end
 
 tests["advice window: the window is as tall as its lines"] = function(t)
@@ -97,23 +105,30 @@ tests["advice window: the window is as tall as its lines"] = function(t)
     if type(w) ~= "table" then t.ok(false, "no window") return end
     -- Lead section 564 R8: the first time it shows, a row under the title
     -- says what the panel is (a section part); it counts one row, for as
-    -- long as it is there.
+    -- long as it is there. Prompts are cards (the Advice row); the
+    -- fake's fit counts every part as one row (see fitted).
     local function rowsOf(win)
         local n = 0
-        for _, p in ipairs(lineParts(win)) do n = n + (p.rows or 1) end
         for _, p in ipairs(win.parts) do
-            if p.kind == "section" then n = n + 1 end
+            if p.kind == "card" or p.kind == "section" or p.kind == "fadedLine" then n = n + 1
+            elseif p.kind == "line" then n = n + (p.rows or 1) end
+        end
+        return n
+    end
+    local function cardsOf(win)
+        local n = 0
+        for _, p in ipairs(win.parts) do
+            if p.kind == "card" then n = n + 1 end
         end
         return n
     end
     local rows = rowsOf(w)
-    t.eq(#lineParts(w), 1, "one line")
-    t.eq(w.height, fitted(rows), "one line: no empty space under it")
+    t.eq(cardsOf(w), 1, "one prompt, as a card")
+    t.eq(w.height, fitted(rows), "one card: no empty space under it")
     addon.advisor.Add("test.other", "Repair your gear.", 0)
     local two = window(c)
-    local rows2 = rowsOf(two)
-    t.eq(rows2, rows + 1)
-    t.eq(two.height, fitted(rows2), "it grows with a second line")
+    t.eq(cardsOf(two), 2)
+    t.eq(two.height, fitted(rowsOf(two)), "it grows with a second card")
     addon.advisor.Remove("test.other")
     t.eq(window(c).height, fitted(rows), "and shrinks back")
 end

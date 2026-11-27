@@ -469,6 +469,8 @@ function PARTS.card(p, out)
     end
     ok, why = flag(p, out, "enabled", true, "a card")
     if not ok then return nil, why end
+    ok, why = flag(p, out, "wrap", false, "a card")
+    if not ok then return nil, why end
     if p.onClick ~= nil then
         if type(p.onClick) ~= "function" then return nil, "a card: onClick must be a function" end
         out.onClick = p.onClick

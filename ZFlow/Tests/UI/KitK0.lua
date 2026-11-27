@@ -45,6 +45,15 @@ return {
         t.eq(K.TextOf(card), "Blackmaw Hold", "a card reads by its text")
     end,
 
+    ["k0: a card may wrap, like a line (section 408: never cut)"] = function(t)
+        if not has(t) then return end
+        local tree = win({ { kind = "card", key = "w1", text = "A long prompt that runs on", wrap = true } })
+        local card = first(tree, "card")
+        t.eq(card.wrap, true, "the wrap flag is carried into the tree")
+        local plain = first(win({ { kind = "card", key = "w2", text = "Short" } }), "card")
+        t.eq(plain.wrap, false, "and stays off unless asked")
+    end,
+
     ["k0: a card needs its text, and a known tone"] = function(t)
         if not has(t) then return end
         local tree, why = win({ { kind = "card", sub = "no title" } })

@@ -140,7 +140,7 @@ tests["advisor panel: it lists at most MAX_SHOWN prompts and says how many more 
     t.eq(lines[1], TITLE, "the title first (sections 340/341)")
     t.eq(#lines, A.MAX_SHOWN + 2, "the title, the shown prompts and one more line")
     t.eq(lines[2], "Prompt " .. n .. ".", "the highest first")
-    t.eq(lines[#lines], "and 2 more", "the rest are counted")
+    t.eq(lines[#lines], "2 more prompts", "the rest are counted")
     t.eq(#api.List(), n, "List holds every prompt")
 end
 

@@ -36,7 +36,7 @@ local function window(c) return c.kitWindows()[ns.Advisor.KIT_ID] end
 local function lines(c)
     local out = {}
     for _, p in ipairs(window(c) and window(c).parts or {}) do
-        if p.kind == "line" then out[#out + 1] = p.text end
+        if p.kind == "line" or p.kind == "card" or p.kind == "fadedLine" then out[#out + 1] = p.text end
     end
     return out
 end

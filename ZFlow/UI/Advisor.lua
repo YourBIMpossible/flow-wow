@@ -149,6 +149,37 @@ Advisor.KIT_ID = "Advisor"
 Advisor.KIT_WIDTH = 320
 -- G32: the panel opened on purpose.
 Advisor.NONE = "No advice right now."
+-- The Advice row (all-windows; the modernization assessment's
+-- section 1): a prompt is drawn as a card with the icon of its
+-- kind — the last part of its id ("l6c.repair" is a repair
+-- prompt). A small table here, not a game read; a kind with no
+-- entry gets a card with no picture. The pictures are first
+-- guesses, not seen in game.
+Advisor.KIND_ICONS = {
+    repair = "Interface\\Icons\\Trade_BlackSmithing",
+    trainer = "Interface\\Icons\\INV_Misc_Book_09",
+    bank = "Interface\\Icons\\INV_Misc_Bag_10",
+    vendor = "Interface\\Icons\\INV_Misc_Coin_01",
+    setup = "Interface\\Icons\\INV_Misc_Gear_01",
+    attune = "Interface\\Icons\\INV_Misc_Key_14",
+    learn = "Interface\\Icons\\INV_Scroll_02",
+}
+
+-- Advisor.KindOf(id) -> the prompt's kind: its id's last part.
+function Advisor.KindOf(id)
+    if type(id) ~= "string" then return nil end
+    local kind = string.match(id, "([^.]+)$")
+    return kind
+end
+
+-- How many prompts are not shown, in plain words.
+function Advisor.MoreText(n)
+    return tostring(n) .. " more prompts"
+end
+
+-- A pressing level as a card's tone: "now" is bad, "soon" warns,
+-- "info" is untinted.
+local TONE = { now = "bad", soon = "warn" }
 Advisor.OFF = "the advice panel is turned off in the settings (Advisor panel)."
 Advisor.NOT_READY = "the advice panel is not ready yet."
 Advisor.WORD = "advice"
@@ -179,14 +210,20 @@ function Advisor.Title(id)
     return tostring(id.title) .. ": " .. Advisor.TITLE
 end
 
--- Advisor.View(lines, title) -> a kit window spec: a header, then one line for
--- each text, top to bottom. A line that is no text is left out, so it
--- cannot cost the window. Nothing in it can be pressed. Escape does not
--- close it: advice should not go with every Escape.
+-- Advisor.View(lines, title, about, levels, kinds) -> a kit window spec:
+-- a header, then one row for each text, top to bottom. A line that is
+-- no text is left out, so it cannot cost the window. Nothing in it can
+-- be pressed. Escape does not close it: advice should not go with
+-- every Escape.
 -- about: the one line that says what the panel is, first, or nil.
--- levels: { [i] = "soon" | "now" } for lines[i], or nil (C-44): put on the
--- line as urgency, for whoever draws its colour. An "info" line has none.
-function Advisor.View(lines, title, about, levels)
+-- levels: { [i] = "soon" | "now" } for lines[i], or nil (C-44): put on
+-- the row as urgency, for whoever draws its colour. An "info" row
+-- has none.
+-- kinds: { [i] = kind } for lines[i], or nil (the Advice row): a
+-- prompt with a kind stands as a card with that kind's icon and its
+-- urgency as the card's tone; the kind "more" is the count of the
+-- rest, drawn faded; a line with no kind stays a line, as before.
+function Advisor.View(lines, title, about, levels, kinds)
     if type(title) ~= "string" or title == "" then title = Advisor.Title() end
     -- Lead section 408: the title stands in the title bar only (no header
     -- part repeats it), a long line wraps and is never cut, and the window
@@ -198,18 +235,42 @@ function Advisor.View(lines, title, about, levels)
     if type(about) == "string" and about:find("%S") then
         kids[#kids + 1] = { kind = "section", key = "about", text = about }
     end
+    local cards = 0
     if type(lines) == "table" then
         for i = 1, #lines do
             local text = lines[i]
             if type(text) == "string" and text:find("%S") then
-                local line = { kind = "line", key = "prompt" .. i, text = text, wrap = true }
                 local level = type(levels) == "table" and levels[i] or nil
-                if level ~= nil and level ~= Advisor.LEVELS[1] and LEVEL[level] then line.urgency = level end
-                kids[#kids + 1] = line
+                local pressing = nil
+                if level ~= nil and level ~= Advisor.LEVELS[1] and LEVEL[level] then pressing = level end
+                local kind = type(kinds) == "table" and kinds[i] or nil
+                if kind == "more" then
+                    kids[#kids + 1] = { kind = "fadedLine", key = "more", text = text }
+                elseif type(kind) == "string" then
+                    local card = { kind = "card", key = "prompt" .. i, text = text, icon = Advisor.KIND_ICONS[kind], wrap = true }
+                    if pressing ~= nil then
+                        card.urgency = pressing
+                        card.tone = TONE[pressing]
+                    end
+                    kids[#kids + 1] = card
+                    cards = cards + 1
+                else
+                    local line = { kind = "line", key = "prompt" .. i, text = text, wrap = true }
+                    if pressing ~= nil then line.urgency = pressing end
+                    kids[#kids + 1] = line
+                end
             end
         end
     end
     view.height = Advisor.KitHeight(#kids)
+    if cards > 0 then
+        -- A card stands taller than a line: grow the window by the
+        -- difference, once per card (a first guess; the window fits).
+        local size = ns.Kit.look.size
+        local cardMin = size.cardMin
+        if type(cardMin) ~= "number" then cardMin = size.lineHeight end
+        view.height = view.height + cards * (cardMin - size.lineHeight)
+    end
     return view
 end
 
@@ -274,20 +335,23 @@ function Advisor.Declare(k, diag)
         end
         local lines = {}
         local levels = {}
+        local kinds = {}
         for i = 1, math.min(#list, Advisor.MAX_SHOWN) do
             lines[i] = list[i].text
             levels[i] = list[i].urgency
+            kinds[i] = Advisor.KindOf(list[i].id)
         end
         if #list == 0 then lines[1] = Advisor.NONE end
         if #list > Advisor.MAX_SHOWN then
-            lines[#lines + 1] = "and " .. (#list - Advisor.MAX_SHOWN) .. " more"
+            lines[#lines + 1] = Advisor.MoreText(#list - Advisor.MAX_SHOWN)
+            kinds[#kinds + 1] = "more"
         end
         -- The plain panel has no title of its own: the title is its first line.
         local title = Advisor.Title(k.id or ns.id)
         local rows = { title }
         for i = 1, #lines do rows[#rows + 1] = lines[i] end
         -- Every time it shows it says what it is (section 578 point A).
-        host.draw(Advisor.View(lines, title, Advisor.ABOUT, levels), rows)
+        host.draw(Advisor.View(lines, title, Advisor.ABOUT, levels, kinds), rows)
         if not closed then host.show(true) end
     end
 

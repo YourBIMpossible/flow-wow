@@ -60,12 +60,13 @@ local function kitShown(c)
     return w ~= nil and w.shown == true
 end
 
--- The words of the window's lines, in drawing order.
+-- The words of the window's rows, in drawing order: the prompts
+-- (cards since the Advice row), the lines, and the faded count.
 local function lines(c)
     local out = {}
     local w = kit(c)
     for _, p in ipairs(w and w.parts or {}) do
-        if p.kind == "line" then out[#out + 1] = p.text end
+        if p.kind == "line" or p.kind == "card" or p.kind == "fadedLine" then out[#out + 1] = p.text end
     end
     return out
 end
@@ -123,7 +124,7 @@ tests["advisor kit: at most MAX_SHOWN prompts, then how many more"] = function(t
     local got = lines(c)
     t.eq(#got, A.MAX_SHOWN + 1, "the shown prompts and one more line")
     t.eq(got[1], "Prompt " .. n .. ".", "the highest first")
-    t.eq(got[#got], "and 2 more", "the rest are counted")
+    t.eq(got[#got], "2 more prompts", "the rest are counted")
 end
 
 tests["advisor kit: advisor.panel off hides the window at once; on shows the kept prompts"] = function(t)
