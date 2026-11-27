@@ -47,12 +47,16 @@ tests["buff strip: each line says how long, and what to do when it matters"] = f
         { name = "Test Ward", soon = false },
         { name = "Test Shield", gone = true },
     })
-    t.eq(kids[1].kind, "header")
-    t.eq(kids[2].text, "Test Intellect"); t.eq(kids[2].right, "25 min"); t.eq(kids[2].sub, nil)
+    -- The buff bar (all-windows row 2): no header repeats the title;
+    -- a timed buff is a line and the bar under it.
+    t.eq(kids[1].kind, "line")
+    t.eq(kids[1].text, "Test Intellect"); t.eq(kids[1].right, "25 min"); t.eq(kids[1].sub, nil)
+    t.eq(kids[2].kind, "bar"); t.eq(kids[2].value, 1500); t.eq(kids[2].max, 1500)
     t.eq(kids[3].right, "30 s"); t.eq(kids[3].tone, "warn"); t.eq(kids[3].sub, B.SOON_TEXT)
-    t.eq(kids[4].right, B.ON, "no time: on")
-    t.eq(kids[5].right, B.GONE); t.eq(kids[5].tone, "bad"); t.eq(kids[5].sub, B.GONE_TEXT)
-    for i = 2, 5 do t.eq(kids[i].onClick, nil, "a line is not a button") end
+    t.eq(kids[4].kind, "bar"); t.eq(kids[4].tone, "warn")
+    t.eq(kids[5].kind, "fadedLine"); t.eq(kids[5].right, B.ON, "no time: on")
+    t.eq(kids[6].right, B.GONE_TEXT); t.eq(kids[6].tone, "bad"); t.eq(kids[6].sub, nil)
+    for i = 1, 6 do t.eq(kids[i].onClick, nil, "a row is not a button") end
     t.ok(ns.Kit.Window({ id = B.ID, title = "t", children = kids }) ~= nil, "the kit takes it")
 end
 

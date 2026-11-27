@@ -21,8 +21,8 @@ local _, ns = ...
 -- it; the dragged place is saved (account, BuffStrip.PATH).
 --
 --   BuffStrip.Time(seconds) -> "12 min" | "40 s" | nil (no time to show)
---   BuffStrip.Rows(names, buffs, gone) -> { { name, left, soon, gone } }
---   BuffStrip.Children(rows) -> the kit parts
+--   BuffStrip.Rows(names, buffs, gone, peaks) -> { { name, left, soon, gone, full } }
+--   BuffStrip.Children(rows, about, icons) -> the kit parts
 --   BuffStrip.Dock(rect, screenW, screenH, height) -> point | nil
 --   BuffStrip.Declare(k) -> api;  api.Refresh(), api.Shown(), api.rows()
 --   ns.use(BuffStrip.NAME) -> { Rows = api.rows, Shown = api.Shown }
@@ -45,6 +45,7 @@ B.SOON = 60
 B.KEEP = 120
 B.GAP = 4
 B.WIDTH, B.HEAD, B.ROW = 220, 34, 30
+B.BAR = 18     -- the room a timed buff's bar stands in (bar and its gap)
 B.ON = "on"
 B.SOON_TEXT = "Runs out soon. Cast it again."
 B.GONE = "ran out"
@@ -74,15 +75,23 @@ end
 
 -- names: the class buffs, in the pack's order. buffs: client.playerBuffs()
 -- ({ [name] = seconds left, math.huge (no end) or true (time not known) }).
--- gone: { [name] = true } for those that ran out. Up first, then run out.
-function B.Rows(names, buffs, gone)
+-- gone: { [name] = true } for those that ran out. peaks: { [name] =
+-- seconds }, the longest time each buff has been seen with — a timed
+-- row carries it as `full`, the bar's full length. Up first, then run
+-- out.
+function B.Rows(names, buffs, gone, peaks)
     local out = {}
     if type(names) ~= "table" or type(buffs) ~= "table" then return out end
     for _, name in ipairs(names) do
         local left = type(name) == "string" and buffs[name] or nil
         if left ~= nil and left ~= false then
             local secs = finite(left) and left or nil
-            out[#out + 1] = { name = name, left = secs, soon = secs ~= nil and secs <= B.SOON }
+            local row = { name = name, left = secs, soon = secs ~= nil and secs <= B.SOON }
+            if secs ~= nil and type(peaks) == "table" then
+                local peak = peaks[name]
+                if finite(peak) and peak > 0 then row.full = peak end
+            end
+            out[#out + 1] = row
         end
     end
     if type(gone) == "table" then
@@ -95,29 +104,54 @@ function B.Rows(names, buffs, gone)
     return out
 end
 
--- about: the one line that says what the strip is, or nil.
-function B.Children(rows, about)
-    local kids = { { kind = "header", key = "header", title = B.HEADER } }
-    if type(about) == "string" and about ~= "" then
-        kids[#kids + 1] = { kind = "line", key = "about", text = about, wrap = true }
+-- The buff bar (all-windows row 2): one row per buff with the spell's
+-- own icon; a timed buff has the time at its right and a thin bar
+-- under it that drains (the bar's words are the time left); an aura
+-- stands faded with "on"; one that ran out says what to do where its
+-- timer was, and stands dimmed. No header repeats the title — the
+-- window's title already says "Your buffs".
+-- about: the one line that says what the strip is, or nil — it stands
+-- last, faded. icons: { [name] = texture }, or nil.
+function B.Children(rows, about, icons)
+    local kids = {}
+    local function iconOf(name)
+        if type(icons) == "table" then return icons[name] end
+        return nil
     end
     for i, r in ipairs(type(rows) == "table" and rows or {}) do
-        local line = { kind = "line", key = "buff" .. i, text = tostring(r.name) }
         if r.gone then
-            line.right, line.tone, line.sub = B.GONE, "bad", B.GONE_TEXT
-        else
-            line.right = B.Time(r.left) or B.ON
+            kids[#kids + 1] = { kind = "line", key = "buff" .. i, text = tostring(r.name),
+                icon = iconOf(r.name), right = B.GONE_TEXT, tone = "bad", enabled = false }
+        elseif r.left ~= nil then
+            local line = { kind = "line", key = "buff" .. i, text = tostring(r.name),
+                icon = iconOf(r.name), right = B.Time(r.left) or B.ON }
             if r.soon then line.tone, line.sub = "warn", B.SOON_TEXT end
+            kids[#kids + 1] = line
+            local full = r.full
+            if not finite(full) or full <= 0 then full = r.left end
+            local bar = { kind = "bar", key = "bar" .. i, text = B.Time(r.left) or B.ON,
+                value = r.left, max = full }
+            if r.soon then bar.tone = "warn" end
+            kids[#kids + 1] = bar
+        else
+            kids[#kids + 1] = { kind = "fadedLine", key = "buff" .. i, text = tostring(r.name),
+                icon = iconOf(r.name), right = B.ON }
         end
-        kids[#kids + 1] = line
+    end
+    if type(about) == "string" and about ~= "" then
+        kids[#kids + 1] = { kind = "fadedLine", key = "about", text = about, wrap = true }
     end
     return kids
 end
 
 function B.Height(rows, about)
-    local n = type(rows) == "table" and #rows or 0
-    if type(about) == "string" and about ~= "" then n = n + B.ABOUT_ROWS end
-    return B.HEAD + n * B.ROW
+    local n = 0
+    for _, r in ipairs(type(rows) == "table" and rows or {}) do
+        n = n + B.ROW
+        if r.left ~= nil and not r.gone then n = n + B.BAR end
+    end
+    if type(about) == "string" and about ~= "" then n = n + B.ABOUT_ROWS * B.ROW end
+    return B.HEAD + n
 end
 
 -- Under the frame, left edges in line. nil when the frame or the screen is
@@ -137,6 +171,7 @@ function B.Declare(k)
     local api = {}
     local ctx, handle, rows
     local seen, gone = {}, {}
+    local peak = {}         -- { [name] = seconds }: the longest time seen
 
     local function ask(name, ...)
         local c = ctx and ctx.client
@@ -158,21 +193,41 @@ function B.Declare(k)
         if handle and handle.shown() then handle.close() end
     end
 
-    -- What ran out: on last time with little left, not on now.
+    -- What ran out: on last time with little left, not on now. The
+    -- longest time each buff has been seen with is kept beside it, as
+    -- the bar's full length; it goes when the run-out note does.
     local function track(list, buffs, now)
         for _, name in ipairs(list) do
             local left = buffs[name]
             if left ~= nil and left ~= false then
                 seen[name] = finite(left) and left or false
+                if finite(left) and (peak[name] == nil or left > peak[name]) then peak[name] = left end
                 gone[name] = nil
             else
                 if finite(seen[name]) and seen[name] <= B.SOON + B.EVERY and finite(now) then gone[name] = now end
                 seen[name] = nil
-                if gone[name] ~= nil and (not finite(now) or now - gone[name] > B.KEEP) then gone[name] = nil end
+                if gone[name] ~= nil and (not finite(now) or now - gone[name] > B.KEEP) then
+                    gone[name] = nil
+                    peak[name] = nil
+                end
             end
         end
         local out = {}
         for name in pairs(gone) do out[name] = true end
+        return out
+    end
+
+    -- The spell's own picture for a buff name, the read the buff
+    -- button uses; nil when the game does not answer.
+    local function icons(list)
+        local out = {}
+        for _, name in ipairs(list) do
+            local id = ask("spellId", name)
+            if id ~= nil then
+                local tex = ask("spellTexture", id)
+                if type(tex) == "string" then out[name] = tex end
+            end
+        end
         return out
     end
 
@@ -226,13 +281,13 @@ function B.Declare(k)
         if ctx.settings:get(B.SETTING) == false then return hide() end
         local list, buffs = names(), ask("playerBuffs")
         if type(list) ~= "table" or type(buffs) ~= "table" or ask("dead") == true then return hide() end
-        rows = B.Rows(list, buffs, track(list, buffs, ask("now")))
+        rows = B.Rows(list, buffs, track(list, buffs, ask("now")), peak)
         if #rows == 0 then return hide() end
         -- Every time it shows it says what it is (section 578 point A).
         local about = B.ABOUT
         local height = B.Height(rows, about)
         local tree, why = ns.Kit.Window({ id = B.ID, title = (k.id or ns.id).title .. ": " .. B.HEADER,
-            width = B.WIDTH, height = height, closable = true, escape = false, children = B.Children(rows, about) })
+            width = B.WIDTH, height = height, closable = true, escape = false, children = B.Children(rows, about, icons(list)) })
         if not tree then
             k.problems:add(B.NAME, "tree", tostring(why))
             return
@@ -255,7 +310,7 @@ function B.Declare(k)
         start = function(c) ctx = c end,
         stop = function()
             if handle then handle.close() end
-            seen, gone, rows = {}, {}, nil
+            seen, gone, peak, rows = {}, {}, {}, nil
         end,
     })
     return api
