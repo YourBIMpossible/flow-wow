@@ -240,10 +240,12 @@ function Advisor.View(lines, title, about, levels, kinds)
         for i = 1, #lines do
             local text = lines[i]
             if type(text) == "string" and text:find("%S") then
-                local level = type(levels) == "table" and levels[i] or nil
+                local level = nil
+                if type(levels) == "table" then level = levels[i] end
                 local pressing = nil
                 if level ~= nil and level ~= Advisor.LEVELS[1] and LEVEL[level] then pressing = level end
-                local kind = type(kinds) == "table" and kinds[i] or nil
+                local kind = nil
+                if type(kinds) == "table" then kind = kinds[i] end
                 if kind == "more" then
                     kids[#kids + 1] = { kind = "fadedLine", key = "more", text = text }
                 elseif type(kind) == "string" then
