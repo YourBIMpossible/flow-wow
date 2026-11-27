@@ -54,6 +54,22 @@ tests["advice cards: a prompt is a card with its kind's icon"] = function(t)
     t.ok(type(A.KIND_ICONS) == "table", "Advisor.KIND_ICONS")
     if type(A.KIND_ICONS) ~= "table" then return end
     t.ok(type(A.KIND_ICONS.repair) == "string", "a repair prompt has an icon")
+    -- Plexy's changes (§945): the table is keyed on the kinds the
+    -- shipped prompts actually use — the last part of their ids —
+    -- and the four kinds no prompt uses are gone.
+    for _, kind in ipairs({ "turnIn", "questHandIn", "progress", "riding", "trainer", "bank" }) do
+        t.ok(type(A.KIND_ICONS[kind]) == "string", "a real prompt kind has an icon: " .. kind)
+    end
+    for _, kind in ipairs({ "vendor", "setup", "attune", "learn" }) do
+        t.eq(A.KIND_ICONS[kind], nil, "no prompt uses this kind: " .. kind)
+    end
+    local _, c2 = start({ prompts = { { "quest.turnIn", "Ready to hand in: Test wolves.", 10 } } })
+    local turnIn = byKind(c2, "card")
+    t.eq(#turnIn, 1)
+    local view2 = A.View({ "Ready to hand in: Test wolves." }, nil, nil, nil, { "turnIn" })
+    local tree2
+    ns.Kit.Each(view2, function(p) if p.kind == "card" then tree2 = p end end)
+    t.ok(tree2 ~= nil and tree2.icon == A.KIND_ICONS.turnIn, "the turn-in card carries its icon")
     local _, c = start({ prompts = { { "l6c.repair", "Repair your gear.", 10 } } })
     local cards = byKind(c, "card")
     t.eq(#cards, 1, "one card for one prompt")

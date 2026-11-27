@@ -152,17 +152,27 @@ Advisor.NONE = "No advice right now."
 -- The Advice row (all-windows; the modernization assessment's
 -- section 1): a prompt is drawn as a card with the icon of its
 -- kind — the last part of its id ("l6c.repair" is a repair
--- prompt). A small table here, not a game read; a kind with no
--- entry gets a card with no picture. The pictures are first
--- guesses, not seen in game.
+-- prompt). Keyed on the kinds the shipped prompts actually
+-- use (§945: quest.turnIn, items.questHandIn, party.invite,
+-- nav.riding, aps.talents.spend, ...); a kind with no entry
+-- gets a card with no picture, and so do the prompts whose
+-- id ends in a name (a spell, a profession, an item). The
+-- pictures are first guesses, not seen in game.
 Advisor.KIND_ICONS = {
     repair = "Interface\\Icons\\Trade_BlackSmithing",
-    trainer = "Interface\\Icons\\INV_Misc_Book_09",
     bank = "Interface\\Icons\\INV_Misc_Bag_10",
-    vendor = "Interface\\Icons\\INV_Misc_Coin_01",
-    setup = "Interface\\Icons\\INV_Misc_Gear_01",
-    attune = "Interface\\Icons\\INV_Misc_Key_14",
-    learn = "Interface\\Icons\\INV_Scroll_02",
+    trainer = "Interface\\Icons\\INV_Misc_Book_09",
+    turnIn = "Interface\\Icons\\INV_Misc_QuestionMark",
+    questHandIn = "Interface\\Icons\\INV_Misc_QuestionMark",
+    progress = "Interface\\Icons\\INV_Misc_Key_14",
+    riding = "Interface\\Icons\\Ability_Mount_RidingHorse",
+    mountMilestone = "Interface\\Icons\\Ability_Mount_RidingHorse",
+    spend = "Interface\\Icons\\INV_Misc_Book_11",
+    travelAdvice = "Interface\\Icons\\INV_Misc_Map_01",
+    classQuest = "Interface\\Icons\\INV_Misc_QuestionMark",
+    questBuy = "Interface\\Icons\\INV_Misc_Coin_01",
+    questAuction = "Interface\\Icons\\INV_Misc_Coin_03",
+    questLeftover = "Interface\\Icons\\INV_Misc_Bag_07",
 }
 
 -- Advisor.KindOf(id) -> the prompt's kind: its id's last part.
