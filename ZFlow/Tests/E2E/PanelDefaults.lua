@@ -41,7 +41,7 @@ tests["panel defaults: nothing saved, the info bar is on the screen at login wit
     local c, addon = boot()
     t.eq(addon.settings:get("infoBar.shown"), true, "on by default")
     t.eq(shown(c), true, "the bar is shown with no setting touched")
-    t.eq(bar(c) and bar(c).text, "1.23g  |  Bags 12  |  Dur 50%  |  XP 45%")
+    t.eq(bar(c) and bar(c).text, "1.23g  |  Bags 12  |  Durability 50%  |  Experience 45%")
     local row = addon.settings:row("infoBar.shown")
     t.eq(type(row) == "table" and row.default, true, "the row's default")
 end

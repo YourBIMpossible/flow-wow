@@ -47,14 +47,14 @@ end
 
 tests["info bar: durability is the most worn item"] = function(t)
     local worn = { [1] = { cur = 50, max = 100 }, [5] = { cur = 17, max = 20 } }
-    t.eq(call("Short", "durability", worn), "Dur 50%")
+    t.eq(call("Short", "durability", worn), "Durability 50%")
     t.eq(call("Detail", "durability", worn), "Durability: 50% on the most worn item")
-    t.eq(call("Short", "durability", {}), "Dur n/a", "nothing that wears: not zero")
+    t.eq(call("Short", "durability", {}), "Durability: not available", "nothing that wears: not zero")
 end
 
 tests["info bar: experience with the amount needed and rested"] = function(t)
     local xp = { cur = 450, max = 1000, rested = 200 }
-    t.eq(call("Short", "xp", xp), "XP 45%")
+    t.eq(call("Short", "xp", xp), "Experience 45%")
     t.eq(call("Detail", "xp", xp), "Experience: 450 / 1000 (45%), rested 200")
     t.eq(call("Detail", "xp", { cur = 0, max = 400, rested = 0 }), "Experience: 0 / 400 (0%), not rested")
 end
@@ -63,17 +63,17 @@ tests["info bar: the watched faction, its standing and progress"] = function(t)
     local rep = { name = "Test Faction", standing = 5, label = "Friendly", min = 3000, max = 9000, value = 6000 }
     t.eq(call("Short", "rep", rep), "Friendly 50%")
     t.eq(call("Detail", "rep", rep), "Reputation: Test Faction, Friendly, 3000 / 6000")
-    t.eq(call("Short", "rep", false), "Rep none")
+    t.eq(call("Short", "rep", false), "Reputation: none")
     t.eq(call("Detail", "rep", false), "Reputation: no faction watched")
     local noLabel = { name = "Test Faction", standing = 9, min = 0, max = 0, value = 0 }
-    t.eq(call("Short", "rep", noLabel), "Rep 0%", "a standing with no width and no label")
+    t.eq(call("Short", "rep", noLabel), "Reputation 0%", "a standing with no width and no label")
 end
 
 tests["info bar: server time, hearthstone, frame rate and latency"] = function(t)
     t.eq(call("Short", "clock", { hour = 14, minute = 5 }), "14:05")
     t.eq(call("Detail", "clock", { hour = 9, minute = 30 }), "Server time: 09:30")
-    t.eq(call("Short", "hearth", 0), "Hearth ready")
-    t.eq(call("Short", "hearth", 61), "Hearth 2m")
+    t.eq(call("Short", "hearth", 0), "Hearthstone ready")
+    t.eq(call("Short", "hearth", 61), "Hearthstone 2 min")
     t.eq(call("Detail", "hearth", 720), "Hearthstone: 12 min")
     t.eq(call("Detail", "hearth", 0), "Hearthstone: ready")
     t.eq(call("Short", "fps", 60), "60 fps")
@@ -85,18 +85,18 @@ end
 -- A read the client does not answer (nil) is not available, never zero.
 tests["info bar: every metric not answered shows as not available"] = function(t)
     for _, m in ipairs(IB().METRICS or {}) do
-        t.eq(call("Short", m.id, nil), m.label .. " n/a", m.id)
+        t.eq(call("Short", m.id, nil), m.name .. ": not available", m.id)
         t.eq(call("Detail", m.id, nil), m.name .. ": not available", m.id)
     end
-    t.eq(call("Short", "gold", "x"), "Gold n/a", "a value of the wrong kind")
-    t.eq(call("Short", "xp", { cur = 1 }), "XP n/a", "a part missing")
+    t.eq(call("Short", "gold", "x"), "Gold: not available", "a value of the wrong kind")
+    t.eq(call("Short", "xp", { cur = 1 }), "Experience: not available", "a part missing")
 end
 
 tests["info bar: a strip on one line, a box one metric a line"] = function(t)
     local ids = { "gold", "fps" }
     local values = { gold = 7 }
-    t.eq(call("Text", ids, values, "strip"), "7c  |  FPS n/a")
-    t.eq(call("Text", ids, values, "box"), "7c\nFPS n/a")
+    t.eq(call("Text", ids, values, "strip"), "7c  |  Frame rate: not available")
+    t.eq(call("Text", ids, values, "box"), "7c\nFrame rate: not available")
     t.eq(call("Text", {}, values, "strip"), "")
 end
 

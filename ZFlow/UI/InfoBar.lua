@@ -37,6 +37,25 @@ IB.METRICS = {
 local BY_ID = {}
 for _, m in ipairs(IB.METRICS) do BY_ID[m.id] = m end
 
+IB.NOT_AVAILABLE = "Not available"
+
+-- An icon per metric (all-windows row 4): a small table in the bar,
+-- not a new game read — the tile drawing is the client's, and these
+-- are the pictures it draws from. First guesses, as elsewhere.
+IB.ICONS = {
+    gold = "Interface\\Icons\\INV_Misc_Coin_01",
+    bags = "Interface\\Icons\\INV_Misc_Bag_07",
+    durability = "Interface\\Icons\\Trade_BlackSmithing",
+    xp = "Interface\\Icons\\INV_Misc_Star_01",
+    rep = "Interface\\Icons\\INV_Banner_01",
+    clock = "Interface\\Icons\\INV_Misc_PocketWatch_01",
+    hearth = "Interface\\Icons\\INV_Misc_Rune_01",
+    fps = "Interface\\Icons\\INV_Misc_Gear_01",
+    latency = "Interface\\Icons\\INV_Misc_Gear_02",
+}
+
+function IB.Icon(id) return IB.ICONS[id] end
+
 -- The game events each metric is read on. The timed ones are read on the
 -- slow timer while shown (hearthstone also when a cooldown changes).
 IB.EVENTS = {
@@ -115,7 +134,8 @@ local function clockOk(v) return type(v) == "table" and finite(v.hour) and finit
 local function clock(v) return string.format("%02d:%02d", v.hour, v.minute) end
 local function latencyOk(v) return type(v) == "table" and finite(v.home) and finite(v.world) end
 
--- The short words on the bar.
+-- The words on the bar: plain, with nothing abbreviated that needs
+-- the tooltip to be sure what it is.
 local SHORT = {
     gold = function(v) if finite(v) and v >= 0 then return money(v) end end,
     bags = function(v)
@@ -124,18 +144,18 @@ local SHORT = {
     end,
     durability = function(v)
         local low = worst(v)
-        if low then return "Dur " .. low .. "%" end
+        if low then return "Durability " .. low .. "%" end
     end,
-    xp = function(v) if xpOk(v) then return "XP " .. xpPct(v) .. "%" end end,
+    xp = function(v) if xpOk(v) then return "Experience " .. xpPct(v) .. "%" end end,
     rep = function(v)
-        if v == false then return "Rep none" end
-        if repOk(v) then return (type(v.label) == "string" and v.label or "Rep") .. " " .. repPct(v) .. "%" end
+        if v == false then return "Reputation: none" end
+        if repOk(v) then return (type(v.label) == "string" and v.label or "Reputation") .. " " .. repPct(v) .. "%" end
     end,
     clock = function(v) if clockOk(v) then return clock(v) end end,
     hearth = function(v)
         if not finite(v) or v < 0 then return nil end
-        if v == 0 then return "Hearth ready" end
-        return "Hearth " .. math.ceil(v / 60) .. "m"
+        if v == 0 then return "Hearthstone ready" end
+        return "Hearthstone " .. math.ceil(v / 60) .. " min"
     end,
     fps = function(v) if finite(v) and v >= 0 then return math.floor(v) .. " fps" end end,
     latency = function(v) if latencyOk(v) then return v.world .. " ms" end end,
@@ -182,7 +202,7 @@ function IB.Short(id, v)
     if not m then return nil end
     local ok, s = pcall(fn, v)
     if ok and type(s) == "string" then return s end
-    return m.label .. " n/a"
+    return m.name .. ": not available"
 end
 
 function IB.Detail(id, v)
@@ -191,6 +211,57 @@ function IB.Detail(id, v)
     local ok, s = pcall(fn, v)
     if ok and type(s) == "string" then return s end
     return m.name .. ": not available"
+end
+
+-- A tile's value alone (the label stands under or beside it, in the
+-- tile drawing): the same reads as the strip's words, without the
+-- label folded in.
+local VALUE = {
+    gold = function(v) if finite(v) and v >= 0 then return money(v) end end,
+    bags = function(v)
+        local free = freeSlots(v)
+        if free then return tostring(free) end
+    end,
+    durability = function(v)
+        local low = worst(v)
+        if low then return low .. "%" end
+    end,
+    xp = function(v) if xpOk(v) then return xpPct(v) .. "%" end end,
+    rep = function(v)
+        if v == false then return "None watched" end
+        if repOk(v) then return repPct(v) .. "%" end
+    end,
+    clock = function(v) if clockOk(v) then return clock(v) end end,
+    hearth = function(v)
+        if not finite(v) or v < 0 then return nil end
+        if v == 0 then return "Ready" end
+        return math.ceil(v / 60) .. " min"
+    end,
+    fps = function(v) if finite(v) and v >= 0 then return tostring(math.floor(v)) end end,
+    latency = function(v) if latencyOk(v) then return v.world .. " ms" end end,
+}
+
+-- The tiles (all-windows row 4): one per chosen metric, in order —
+-- its icon, its full label, its value in plain words, and whether it
+-- could be read. A metric that cannot be read keeps its tile and
+-- says "Not available" in it, so absence is visible, never silent.
+function IB.Tiles(ids, values)
+    local out = {}
+    values = type(values) == "table" and values or {}
+    for _, id in ipairs(ids or {}) do
+        local m, fn = BY_ID[id], VALUE[id]
+        if m and fn then
+            local ok, s = pcall(fn, values[id])
+            local tile = { id = id, icon = IB.ICONS[id], label = m.name, available = false }
+            if ok and type(s) == "string" then
+                tile.text, tile.available = s, true
+            else
+                tile.text = IB.NOT_AVAILABLE
+            end
+            out[#out + 1] = tile
+        end
+    end
+    return out
 end
 
 -- A strip on one line, a box one metric a line.

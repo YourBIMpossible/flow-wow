@@ -72,7 +72,7 @@ tests["info bar: turned off it shows nothing; turned on, the four default metric
     local c, addon = boot({ before = values, account = off() })
     t.eq(text(c), nil, "off as saved")
     t.ok(on(addon, "infoBar.shown", true), "the setting is there")
-    t.eq(text(c), "1.23g  |  Bags 12  |  Dur 50%  |  XP 45%")
+    t.eq(text(c), "1.23g  |  Bags 12  |  Durability 50%  |  Experience 45%")
 end
 
 tests["info bar: a hidden bar reads nothing and listens to nothing of its own"] = function(t)
@@ -99,23 +99,23 @@ tests["info bar: each metric updates from its own event, not from a timer"] = fu
     t.eq(c.counted.xp or 0, xpReads, "experience is not polled")
     c.setMoney(7)
     c.fire("PLAYER_MONEY")
-    t.eq(text(c), "7c  |  Bags 12  |  Dur 50%  |  XP 45%")
+    t.eq(text(c), "7c  |  Bags 12  |  Durability 50%  |  Experience 45%")
     c.setXp({ cur = 900, max = 1000, rested = 0 })
     c.fire("PLAYER_XP_UPDATE", "player")
-    t.eq(text(c), "7c  |  Bags 12  |  Dur 50%  |  XP 90%")
+    t.eq(text(c), "7c  |  Bags 12  |  Durability 50%  |  Experience 90%")
     c.setBags({ { bag = 0, free = 1, total = 16 } })
     c.fire("BAG_UPDATE_DELAYED")
-    t.eq(text(c), "7c  |  Bags 1  |  Dur 50%  |  XP 90%")
+    t.eq(text(c), "7c  |  Bags 1  |  Durability 50%  |  Experience 90%")
     c.setDurability({ [1] = { cur = 10, max = 100 } })
     c.fire("UPDATE_INVENTORY_DURABILITY")
-    t.eq(text(c), "7c  |  Bags 1  |  Dur 10%  |  XP 90%")
+    t.eq(text(c), "7c  |  Bags 1  |  Durability 10%  |  Experience 90%")
 end
 
 tests["info bar: the clock and frame rate on a slow timer only while shown"] = function(t)
     local c, addon = boot({ account = { settings = { infoBar = { shown = true, metrics = "clock fps" } } } })
     c.setGameTime(14, 5)
     c.setFramerate(60)
-    t.eq(text(c), "Clock n/a  |  FPS n/a", "not yet read")
+    t.eq(text(c), "Server time: not available  |  Frame rate: not available", "not yet read")
     c.advance(5, 20)
     t.eq(text(c), "14:05  |  60 fps")
     c.setGameTime(14, 6)
@@ -131,26 +131,26 @@ tests["info bar: a metric the client does not answer is not available, never zer
     local c = boot({ account = { settings = { infoBar = { shown = true,
         metrics = "gold bags durability xp rep clock hearth fps latency" } } } })
     c.advance(5, 20)
-    t.eq(text(c), "Gold n/a  |  Bags n/a  |  Dur n/a  |  XP n/a  |  Rep n/a  |  Clock n/a  |  Hearth n/a"
-        .. "  |  FPS n/a  |  Latency n/a")
+    t.eq(text(c), "Gold: not available  |  Free bag slots: not available  |  Durability: not available  |  Experience: not available  |  Reputation: not available  |  Server time: not available  |  Hearthstone: not available"
+        .. "  |  Frame rate: not available  |  Latency: not available")
 end
 
 -- Section 236: data arriving late, and a read that fails then recovers.
 tests["info bar: experience read late, and reputation that fails then recovers"] = function(t)
     local c = boot({ account = { settings = { infoBar = { shown = true, metrics = "xp rep" } } } })
-    t.eq(text(c), "XP n/a  |  Rep n/a")
+    t.eq(text(c), "Experience: not available  |  Reputation: not available")
     c.setXp({ cur = 100, max = 400, rested = 0 })
     c.fire("PLAYER_XP_UPDATE", "player")
-    t.eq(text(c), "XP 25%  |  Rep n/a")
+    t.eq(text(c), "Experience 25%  |  Reputation: not available")
     c.setWatchedFaction(false)
     c.fire("UPDATE_FACTION")
-    t.eq(text(c), "XP 25%  |  Rep none")
+    t.eq(text(c), "Experience 25%  |  Reputation: none")
     c.setWatchedFaction({ name = "Test Faction", standing = 4, label = "Neutral", min = 0, max = 3000, value = 1500 })
     c.fire("UPDATE_FACTION")
-    t.eq(text(c), "XP 25%  |  Neutral 50%")
+    t.eq(text(c), "Experience 25%  |  Neutral 50%")
     c.setWatchedFaction(nil)
     c.fire("UPDATE_FACTION")
-    t.eq(text(c), "XP 25%  |  Rep n/a", "unknown again: not the old value")
+    t.eq(text(c), "Experience 25%  |  Reputation: not available", "unknown again: not the old value")
 end
 
 -- Section 236: a reload in the middle keeps place, size, layout and choice.
@@ -167,7 +167,7 @@ tests["info bar: a reload keeps the place, size, layout, look and metrics"] = fu
     local b = bar(c2)
     t.ok(b ~= nil and b.shown, "shown after the reload")
     if not b then return end
-    t.eq(b.text, "XP 45%\n1.23g")
+    t.eq(b.text, "Experience 45%\n1.23g")
     t.eq(b.point, { "TOP", "TOP", 10, -40 })
     t.eq({ b.width, b.height }, { 180, 50 })
     t.eq(b.fontSize, 16)
@@ -182,7 +182,7 @@ tests["info bar: a setting changed while shown takes effect at once"] = function
     on(addon, "infoBar.opacity", 0)
     t.eq(bar(c).alpha, 0)
     on(addon, "infoBar.layout", "box")
-    t.eq(text(c), "1.23g\nBags 12\nDur 50%\nXP 45%")
+    t.eq(text(c), "1.23g\nBags 12\nDurability 50%\nExperience 45%")
     on(addon, "infoBar.metrics", "bags")
     t.eq(text(c), "Bags 12")
 end
