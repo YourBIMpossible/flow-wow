@@ -148,8 +148,12 @@ local SHORT = {
     end,
     xp = function(v) if xpOk(v) then return "Experience " .. xpPct(v) .. "%" end end,
     rep = function(v)
-        if v == false then return "Reputation: none" end
-        if repOk(v) then return (type(v.label) == "string" and v.label or "Reputation") .. " " .. repPct(v) .. "%" end
+        if v == false then return "Reputation: No faction watched" end
+        if repOk(v) then
+            local word = "Reputation"
+            if type(v.label) == "string" then word = v.label end
+            return word .. " " .. repPct(v) .. "%"
+        end
     end,
     clock = function(v) if clockOk(v) then return clock(v) end end,
     hearth = function(v)
@@ -178,7 +182,7 @@ local DETAIL = {
         return string.format("Experience: %d / %d (%d%%), %s", v.cur, v.max, xpPct(v), rested)
     end,
     rep = function(v)
-        if v == false then return "Reputation: no faction watched" end
+        if v == false then return "Reputation: No faction watched" end
         if not repOk(v) then return nil end
         local parts = { v.name }
         if type(v.label) == "string" then parts[#parts + 1] = v.label end
@@ -228,8 +232,11 @@ local VALUE = {
     end,
     xp = function(v) if xpOk(v) then return xpPct(v) .. "%" end end,
     rep = function(v)
-        if v == false then return "None watched" end
-        if repOk(v) then return repPct(v) .. "%" end
+        if v == false then return "No faction watched" end
+        if repOk(v) then
+            if type(v.label) == "string" then return v.label .. " " .. repPct(v) .. "%" end
+            return repPct(v) .. "%"
+        end
     end,
     clock = function(v) if clockOk(v) then return clock(v) end end,
     hearth = function(v)
@@ -247,7 +254,7 @@ local VALUE = {
 -- says "Not available" in it, so absence is visible, never silent.
 function IB.Tiles(ids, values)
     local out = {}
-    values = type(values) == "table" and values or {}
+    if type(values) ~= "table" then values = {} end
     for _, id in ipairs(ids or {}) do
         local m, fn = BY_ID[id], VALUE[id]
         if m and fn then

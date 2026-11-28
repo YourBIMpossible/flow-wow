@@ -63,8 +63,8 @@ tests["info bar: the watched faction, its standing and progress"] = function(t)
     local rep = { name = "Test Faction", standing = 5, label = "Friendly", min = 3000, max = 9000, value = 6000 }
     t.eq(call("Short", "rep", rep), "Friendly 50%")
     t.eq(call("Detail", "rep", rep), "Reputation: Test Faction, Friendly, 3000 / 6000")
-    t.eq(call("Short", "rep", false), "Reputation: none")
-    t.eq(call("Detail", "rep", false), "Reputation: no faction watched")
+    t.eq(call("Short", "rep", false), "Reputation: No faction watched")
+    t.eq(call("Detail", "rep", false), "Reputation: No faction watched")
     local noLabel = { name = "Test Faction", standing = 9, min = 0, max = 0, value = 0 }
     t.eq(call("Short", "rep", noLabel), "Reputation 0%", "a standing with no width and no label")
 end

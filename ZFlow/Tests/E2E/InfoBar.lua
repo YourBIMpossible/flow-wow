@@ -144,7 +144,7 @@ tests["info bar: experience read late, and reputation that fails then recovers"]
     t.eq(text(c), "Experience 25%  |  Reputation: not available")
     c.setWatchedFaction(false)
     c.fire("UPDATE_FACTION")
-    t.eq(text(c), "Experience 25%  |  Reputation: none")
+    t.eq(text(c), "Experience 25%  |  Reputation: No faction watched")
     c.setWatchedFaction({ name = "Test Faction", standing = 4, label = "Neutral", min = 0, max = 3000, value = 1500 })
     c.fire("UPDATE_FACTION")
     t.eq(text(c), "Experience 25%  |  Neutral 50%")

@@ -44,7 +44,7 @@ tests["info bar tiles: a metric that cannot be read says so in its tile"] = func
     t.eq(tiles[1].available, false, "not read: the tile says so, it does not vanish")
     t.eq(tiles[2].available, false)
     t.eq(tiles[3].available, true, "no faction watched was read, and says so")
-    t.eq(tiles[3].text, "None watched")
+    t.eq(tiles[3].text, "No faction watched", "one wording for the empty state, everywhere")
     t.eq(IB.NOT_AVAILABLE, "Not available")
 end
 
@@ -60,11 +60,19 @@ tests["info bar tiles: every metric has an icon, and the hearth and clock read p
     t.eq(tiles[4].text, "44 ms")
 end
 
+tests["info bar tiles: the reputation tile carries the standing, like the strip (Plexy's changes)"] = function(t)
+    local rep = { name = "Test Faction", label = "Friendly", min = 3000, max = 9000, value = 6000 }
+    local tiles = IB.Tiles({ "rep" }, { rep = rep })
+    t.eq(tiles[1].text, "Friendly 50%", "the standing stands in the tile, not only the share")
+    local bare = { name = "Test Faction", min = 0, max = 100, value = 25 }
+    t.eq(IB.Tiles({ "rep" }, { rep = bare })[1].text, "25%", "no standing read: the share alone")
+end
+
 tests["info bar: the strip's own words are plain, with nothing abbreviated away"] = function(t)
     local worn = { { cur = 50, max = 100 } }
     t.eq(call("Short", "durability", worn), "Durability 50%")
     t.eq(call("Short", "xp", { cur = 45, max = 100 }), "Experience 45%")
-    t.eq(call("Short", "rep", false), "Reputation: none")
+    t.eq(call("Short", "rep", false), "Reputation: No faction watched")
     t.eq(call("Short", "hearth", 0), "Hearthstone ready")
     t.eq(call("Short", "hearth", 61), "Hearthstone 2 min")
     t.eq(call("Short", "durability", {}), "Durability: not available", "unread says so in words")
